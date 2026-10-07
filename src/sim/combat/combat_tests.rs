@@ -10105,6 +10105,7 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
                 false,
                 rules.general.safety_altitude,
                 |_, _, _| None,
+                None,
             )
             .expect("the bomb is still in flight");
         assert!(

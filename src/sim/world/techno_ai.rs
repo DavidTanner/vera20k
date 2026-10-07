@@ -364,6 +364,16 @@ impl Simulation {
                     .zip(self.playfield_size_height)
                     .map(|(bounds, height)| (bounds.base, height)),
             };
+            let anims = &self.substrate.anims;
+            let pending_delete = &self.substrate.pending_delete;
+            let anim_live = |anim: u64| anims.contains_key(anim) && !pending_delete.contains(&anim);
+            let nuke = rules.map(|rules| {
+                crate::sim::projectile::NukeImpactContext::new(
+                    interner,
+                    crate::sim::superweapon::nuke::nuke_ball_type(rules),
+                    &anim_live,
+                )
+            });
             let result = self
                 .projectiles
                 .advance_one(
@@ -388,10 +398,15 @@ impl Simulation {
                     |projectile, candidate, phase| {
                         collision_world.collide(projectile, candidate, phase)
                     },
+                    nuke.as_ref(),
                 )
                 .expect("projectile remained present for its Logic slot");
             let terminal = !result.expired.is_empty() || !result.detonations.is_empty();
             if let Some(rules) = rules {
+                // The rest of a `NUKE` impact precedes the slot's detonations.
+                for &impact in result.nuke_impacts() {
+                    crate::sim::superweapon::nuke::impact(self, rules, impact);
+                }
                 outcome.bridge_state_changed |= self.commit_logic_projectile_detonations(
                     rules,
                     ctx.overlay_registry,

@@ -845,7 +845,10 @@ use crate::sim::world::Simulation;
 // kamikaze tracker saves its nodes.
 // 293 -> 294: the Iron Curtain's state saves the Techno's tint stage (+0x1A4)
 // and its timer (+0x198). Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 294;
+// 294 -> 295: the scenario's lighting saves the nuke flash (0x00A9FABC and its
+// timer) and NukeAmbientChangeRate= (+0x3578); a bullet saves its wait on a
+// NUKE impact's anim (+0x154/+0x158). Prior records lack them.
+const SNAPSHOT_VERSION: u32 = 295;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3858,7 +3861,7 @@ mod tests {
         // 292 -> 293: the native Rocket locomotor object; no rocket phase
         // machine; the kamikaze tracker's nodes.
         // 293 -> 294: the Iron Curtain's tint stage and timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 294);
+        assert_eq!(super::SNAPSHOT_VERSION, 295);
     }
 
     #[test]

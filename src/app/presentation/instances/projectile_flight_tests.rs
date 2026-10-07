@@ -240,6 +240,7 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
                     }
                     None
                 },
+                None,
             )
             .unwrap();
         assert_eq!(ordinary_visits, 1);

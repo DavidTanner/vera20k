@@ -150,6 +150,9 @@ pub struct ParsedLightingProfiles {
     /// `DominatorAmbientChangeRate=` (`+0x3594`): the ambient fade's interval
     /// in frames while the Dominator is active, on the 1000 scale.
     pub dominator_change_rate: i32,
+    /// `NukeAmbientChangeRate=` (`+0x3578`): the interval while the nuke
+    /// flash runs, in whole frames.
+    pub nuke_change_rate: i32,
 }
 
 /// Integer RGB identity used by the light profile cache.
@@ -665,11 +668,26 @@ pub fn parse_lighting_profiles(ini: &IniFile) -> ParsedLightingProfiles {
             "DominatorAmbientChangeRate",
             f64::from(DOMINATOR_CHANGE_RATE_DEFAULT as f32 * 0.001_f32),
         ),
+        // `0x0068AAD5..0x0068AAFD`, before the Dominator keys: the stored
+        // Set_Defaults value is the default, and the answer goes straight to
+        // `Math::ftol` (no scale or bias).
+        nuke_change_rate: crate::util::native_x87::MaskedX87Chop53::ftol_i32_low_masked(
+            crate::util::native_x87::MaskedX87Chop53::load_f64(
+                crate::util::native_x87::NativeF64Bits::from_bits(
+                    section
+                        .read_double("NukeAmbientChangeRate", f64::from(NUKE_CHANGE_RATE_DEFAULT))
+                        .to_bits(),
+                ),
+            ),
+        ),
     }
 }
 
 /// `DominatorAmbientChangeRate=`'s Set_Defaults value (`0x00683941`).
 const DOMINATOR_CHANGE_RATE_DEFAULT: i32 = 1;
+
+/// `NukeAmbientChangeRate=`'s Set_Defaults value (`0x0068393B`).
+pub const NUKE_CHANGE_RATE_DEFAULT: i32 = 1;
 
 impl Default for ParsedLightingProfiles {
     fn default() -> Self {
@@ -699,6 +717,7 @@ impl Default for ParsedLightingProfiles {
                 level_units: 0,
             },
             dominator_change_rate: DOMINATOR_CHANGE_RATE_DEFAULT,
+            nuke_change_rate: NUKE_CHANGE_RATE_DEFAULT,
         }
     }
 }

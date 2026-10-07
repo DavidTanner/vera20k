@@ -204,7 +204,7 @@ impl DamageConsequences {
         // constant-type call sites never pass type 0 (the 25th,
         // `TriggerAction::Execute`, takes its type from map data), and the one
         // in `BulletClass::AI` (`0x00467EA7`) is the silent type 13 of the
-        // `NUKE` payload.
+        // `NUKE` payload (`sim::superweapon::nuke::impact`).
         if let DamageDelivery::Ordinary { fire_events, .. } = delivery {
             world.fire_events.extend(fire_events);
         }

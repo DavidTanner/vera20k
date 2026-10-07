@@ -31,6 +31,17 @@
 //! target adjustment (467CEC) runs only after admission. There is no separate
 //! distance-to-target expiry rule for ordinary shots.
 //!
+//! ## The `NUKE` warhead's impact (`0x00467E53..0x00467F99`)
+//!
+//! A bullet whose warhead ID is `NUKE` (strcmpi, `0x00467E5E`) does not
+//! detonate at its impact. The AI clamps a negative height to the ground,
+//! flashes the screen, raises a radar event, constructs the `NUKEBALL` anim
+//! and waits for it ([`ProjectileNukeImpact`]; the world runs the middle
+//! steps). While the anim lives each AI returns at its head
+//! (`0x00466705..0x00466717`); the first one after detonates where the
+//! bullet stands with the impact flag clear (`0x0046671D..0x00466771`). The
+//! draw skips a waiting bullet (`0x004680F6`).
+//!
 //! All flight arms retain one binary64 velocity authority.
 //! `launch` owns the native scalar FireAt math; combat resolves its receivers.
 //! RESIDUAL (GSI-08.06/07): FLH/pivot slope translation, directed Building
@@ -46,8 +57,12 @@ mod native_math;
 use std::collections::BTreeMap;
 
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, SharedCellDummy};
-use crate::sim::intern::InternedId;
+use crate::sim::anim_class::AnimId;
+use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::rng::SimRng;
+
+/// The warhead ID the AI's impact compares against (`0x0081AF98`).
+const NUKE_WARHEAD: &str = "NUKE";
 
 /// Lepton-space position for an in-flight projectile.
 ///
@@ -1115,6 +1130,13 @@ pub struct Projectile {
     /// [`Simulation::construct_bullet_scheme`]: crate::sim::world::Simulation::construct_bullet_scheme
     #[serde(default)]
     firer_house: Option<InternedId>,
+    /// Bullet `+0x158`: set at a `NUKE` impact (`0x00467F3C`), cleared when
+    /// the wait ends (`0x0046676A`).
+    #[serde(default)]
+    awaiting_anim: bool,
+    /// Bullet `+0x154`: the anim the impact constructed (`0x00467F36`).
+    #[serde(default)]
+    awaited_anim: Option<AnimId>,
 }
 
 impl Projectile {
@@ -1122,6 +1144,50 @@ impl Projectile {
     /// (`+0x114`); `None` is native's -1.
     pub fn firer_house(&self) -> Option<InternedId> {
         self.firer_house
+    }
+
+    /// Waiting on its anim after a `NUKE` impact (`+0x158`); the draw skips
+    /// such a bullet (`BulletClass::DrawSHPOrVoxel`, `0x004680F6`).
+    pub fn awaiting_anim(&self) -> bool {
+        self.awaiting_anim
+    }
+
+    /// The anim a waiting bullet holds (`+0x154`).
+    pub fn awaited_anim(&self) -> Option<AnimId> {
+        self.awaited_anim
+    }
+
+    /// `BulletClass::AI`'s `NUKE` block (`0x00467E53..0x00467F99`) for the
+    /// bullet at its impact Location, `candidate` the coordinate its flight
+    /// step committed. Another warhead (strcmpi, `0x00467E5E`) answers none.
+    /// A `NUKE` bullet below the ground rises to it (`0x00467E6B..0x00467E81`)
+    /// and, when the `NUKEBALL` type exists, waits (`+0x158`,
+    /// `0x00467F3C`) with the tail's cell (`0x00467FBA`) committed; the world
+    /// takes the middle steps (`0x00467E87..0x00467F2D`).
+    pub(crate) fn nuke_impact(
+        &mut self,
+        nuke: &NukeImpactContext<'_>,
+        terrain: Option<&ResolvedTerrainGrid>,
+        shared_cell_dummy: &SharedCellDummy,
+        candidate: ProjectileCoord,
+    ) -> Option<ProjectileNukeImpact> {
+        if !nuke
+            .interner
+            .resolve(self.payload.warhead)
+            .eq_ignore_ascii_case(NUKE_WARHEAD)
+        {
+            return None;
+        }
+        self.position = raise_to_ground(self.position, terrain, shared_cell_dummy, self.on_bridge);
+        if nuke.nuke_ball_type {
+            self.awaiting_anim = true;
+            self.awaited_anim = None;
+            self.previous_cell = ((candidate.x / 256) as i16, (candidate.y / 256) as i16);
+        }
+        Some(ProjectileNukeImpact {
+            projectile_id: self.id,
+            waits: nuke.nuke_ball_type,
+        })
     }
 
     /// The facts [`resolve_impact_coord`] reads, with the bullet at its
@@ -1156,6 +1222,8 @@ pub enum ProjectileDetonationReason {
     /// straight to `DetonateAtCoord` (`0x0070D782`): one detonation, without
     /// the BulletClass cluster loop and its draws.
     DeathWeapon,
+    /// A `NUKE` impact's wait ended: its anim is gone (`0x00466771`).
+    AnimEnded,
 }
 
 /// One deferred `BulletClass::Detonate` handoff for combat to apply.
@@ -1169,11 +1237,73 @@ pub struct ProjectileDetonation {
     pub reason: ProjectileDetonationReason,
 }
 
+/// A `NUKE` warhead's impact (`BulletClass::AI 0x00467E53`), the bullet on
+/// its clamped Location. The world flashes the screen and raises the radar
+/// event; when the bullet waits it constructs the anim and hands it to
+/// [`ProjectileStore::await_anim`]. Otherwise the bullet's detonation is in
+/// the same pass's result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProjectileNukeImpact {
+    projectile_id: u64,
+    waits: bool,
+}
+
+impl ProjectileNukeImpact {
+    pub(crate) fn projectile_id(self) -> u64 {
+        self.projectile_id
+    }
+
+    /// The `NUKEBALL` type exists (`0x00467EB6..0x00467ECA`): the bullet
+    /// waits on its anim.
+    pub(crate) fn waits(self) -> bool {
+        self.waits
+    }
+}
+
+/// What `BulletClass::AI`'s `NUKE` block and the wait it starts read
+/// outside the store.
+pub(crate) struct NukeImpactContext<'a> {
+    interner: &'a StringInterner,
+    nuke_ball_type: bool,
+    anim_live: &'a dyn Fn(AnimId) -> bool,
+}
+
+impl<'a> NukeImpactContext<'a> {
+    /// `interner` resolves the warhead IDs for the `NUKE` test;
+    /// `nuke_ball_type` is whether `AnimTypeClass::FindIndex("NUKEBALL") @
+    /// 0x00427CB0` finds a type (`0x00467EB1`); `anim_live` answers whether
+    /// an anim still lives. Its UnInit clears a waiting bullet's `+0x154`
+    /// (`BulletClass::PointerExpired 0x004685BE`, reached through the holder
+    /// list `0x00B0F5B8`); VERA reuses no anim id, so a dead one's id finds
+    /// nothing.
+    pub(crate) fn new(
+        interner: &'a StringInterner,
+        nuke_ball_type: bool,
+        anim_live: &'a dyn Fn(AnimId) -> bool,
+    ) -> Self {
+        Self {
+            interner,
+            nuke_ball_type,
+            anim_live,
+        }
+    }
+}
+
 /// Results from one stable-order projectile pass.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ProjectileAdvanceResult {
     pub detonations: Vec<ProjectileDetonation>,
     pub expired: Vec<u64>,
+    nuke_impacts: Vec<ProjectileNukeImpact>,
+}
+
+impl ProjectileAdvanceResult {
+    /// The `NUKE` impacts the pass reached, in order. The world takes their
+    /// middle steps before the pass's detonations
+    /// (`crate::sim::superweapon::nuke::impact`).
+    pub(crate) fn nuke_impacts(&self) -> &[ProjectileNukeImpact] {
+        &self.nuke_impacts
+    }
 }
 
 /// Serialized, stable-id ordered projectile collection.
@@ -1292,9 +1422,19 @@ impl ProjectileStore {
                 collision: spawn.collision,
                 on_bridge: false,
                 firer_house: None,
+                awaiting_anim: false,
+                awaited_anim: None,
             },
         );
         id
+    }
+
+    /// `0x00467F36`: the anim a waiting bullet holds (`+0x154`), or none
+    /// when none was constructed, which ends the wait at its next AI.
+    pub(crate) fn await_anim(&mut self, id: u64, anim: Option<AnimId>) {
+        if let Some(projectile) = self.projectiles.get_mut(&id) {
+            projectile.awaited_anim = anim;
+        }
     }
 
     /// Bullet `+0x114` as `BulletClass::Construct` leaves it.
@@ -1374,10 +1514,12 @@ impl ProjectileStore {
                 ProjectileCollisionPhase::TargetLocation => None,
                 ProjectileCollisionPhase::ImpactLadder => None,
             },
+            None,
             true,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn advance_one(
         &mut self,
         id: u64,
@@ -1394,6 +1536,7 @@ impl ProjectileStore {
             ProjectileCoord,
             ProjectileCollisionPhase,
         ) -> Option<ProjectileCollisionResponse>,
+        nuke: Option<&NukeImpactContext<'_>>,
     ) -> Option<ProjectileAdvanceResult> {
         if !self.projectiles.contains_key(&id) {
             return None;
@@ -1409,6 +1552,7 @@ impl ProjectileStore {
             target_is_aircraft,
             safety_altitude,
             collides_at,
+            nuke,
             false,
         ))
     }
@@ -1430,6 +1574,7 @@ impl ProjectileStore {
             ProjectileCoord,
             ProjectileCollisionPhase,
         ) -> Option<ProjectileCollisionResponse>,
+        nuke: Option<&NukeImpactContext<'_>>,
         remove_terminal: bool,
     ) -> ProjectileAdvanceResult {
         let mut result = ProjectileAdvanceResult::default();
@@ -1438,6 +1583,29 @@ impl ProjectileStore {
             let Some(projectile) = self.projectiles.get_mut(&id) else {
                 continue;
             };
+
+            // `0x00466705..0x00466788`: a `NUKE` impact's wait. While its
+            // anim lives the AI returns. After, the bullet leaves the holder
+            // list, clears `+0x158` and detonates where it stands with the
+            // impact flag clear.
+            if projectile.awaiting_anim {
+                let live = nuke.is_some_and(|nuke| {
+                    projectile
+                        .awaited_anim
+                        .is_some_and(|anim| (nuke.anim_live)(anim))
+                });
+                if live {
+                    continue;
+                }
+                projectile.awaiting_anim = false;
+                result.detonations.push(ladder_detonation(
+                    projectile,
+                    false,
+                    ProjectileDetonationReason::AnimEnded,
+                    &mut collides_at,
+                ));
+                continue;
+            }
 
             let target_position = match projectile.target {
                 ProjectileTarget::Cell { rx, ry } => cell_target_coord(terrain, rx, ry),
@@ -1678,16 +1846,9 @@ impl ProjectileStore {
 
             let mut impact = snap_impact.unwrap_or(candidate);
             if impact_flag {
-                // `0x00467BF0..0x00467C06`: GetHeight and, when negative,
-                // SetHeight(0) both query the committed coordinate before the
-                // fuse, and both count the deck for an OnBridge bullet. The
-                // setter does not rewrite the stack coordinate used below.
-                use crate::sim::movement::ground_pose::{height_at_z, z_at_height};
-                let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
-                if height_at_z(impact.z, floor, projectile.on_bridge) < 0 {
-                    let floor = projectile_ground_z(terrain, shared_cell_dummy, impact);
-                    impact.z = z_at_height(floor, 0, projectile.on_bridge);
-                }
+                // `0x00467BF0..0x00467C06`, before the fuse. The setter does
+                // not rewrite the stack coordinate used below.
+                impact = raise_to_ground(impact, terrain, shared_cell_dummy, projectile.on_bridge);
             }
 
             // `ProximityDetector::Check @ 0x004E11F0`. The reference is the
@@ -1783,18 +1944,23 @@ impl ProjectileStore {
                 ProjectileDetonationReason::Fuse
             };
             projectile.position = impact;
+            if let Some(nuke) = nuke
+                && let Some(nuke_impact) =
+                    projectile.nuke_impact(nuke, terrain, shared_cell_dummy, candidate)
+            {
+                result.nuke_impacts.push(nuke_impact);
+                if nuke_impact.waits {
+                    continue;
+                }
+            }
             // `0x00467FA2`: the AI hands its impact flag to the resolution
             // ladder, which picks where the detonation lands.
-            let world =
-                match collides_at(projectile, impact, ProjectileCollisionPhase::ImpactLadder) {
-                    Some(ProjectileCollisionResponse::ImpactLadder(world)) => world,
-                    _ => ImpactLadderWorld::default(),
-                };
-            let resolved =
-                resolve_impact_coord(&projectile.impact_ladder_bullet(impact_flag), &world);
-            result
-                .detonations
-                .push(detonation(projectile, resolved, reason));
+            result.detonations.push(ladder_detonation(
+                projectile,
+                impact_flag,
+                reason,
+                &mut collides_at,
+            ));
         }
 
         if remove_terminal {
@@ -2222,6 +2388,48 @@ fn step_toward(from: ProjectileCoord, target: ProjectileCoord, speed: i32) -> Pr
         from.y + ((i64::from(dy) * i64::from(speed)) / i64::from(max_delta)) as i32,
         from.z + ((i64::from(dz) * i64::from(speed)) / i64::from(max_delta)) as i32,
     )
+}
+
+/// `ObjectClass::GetHeight @ 0x005F5F40` and, when negative,
+/// `ObjectClass::SetHeight(0) @ 0x005F5FA0` on a bullet at `location`: each
+/// queries the ground there and counts the deck for an OnBridge bullet.
+fn raise_to_ground(
+    mut location: ProjectileCoord,
+    terrain: Option<&ResolvedTerrainGrid>,
+    shared_cell_dummy: &SharedCellDummy,
+    on_bridge: bool,
+) -> ProjectileCoord {
+    use crate::sim::movement::ground_pose::{height_at_z, z_at_height};
+    let floor = projectile_ground_z(terrain, shared_cell_dummy, location);
+    if height_at_z(location.z, floor, on_bridge) < 0 {
+        let floor = projectile_ground_z(terrain, shared_cell_dummy, location);
+        location.z = z_at_height(floor, 0, on_bridge);
+    }
+    location
+}
+
+/// `BulletClass::ResolveImpactCoordAndDetonate @ 0x00468D80` for a bullet at
+/// its Location: the ladder picks the coordinate and combat detonates there.
+fn ladder_detonation(
+    projectile: &Projectile,
+    impact_flag: bool,
+    reason: ProjectileDetonationReason,
+    collides_at: &mut impl FnMut(
+        &Projectile,
+        ProjectileCoord,
+        ProjectileCollisionPhase,
+    ) -> Option<ProjectileCollisionResponse>,
+) -> ProjectileDetonation {
+    let world = match collides_at(
+        projectile,
+        projectile.position,
+        ProjectileCollisionPhase::ImpactLadder,
+    ) {
+        Some(ProjectileCollisionResponse::ImpactLadder(world)) => world,
+        _ => ImpactLadderWorld::default(),
+    };
+    let resolved = resolve_impact_coord(&projectile.impact_ladder_bullet(impact_flag), &world);
+    detonation(projectile, resolved, reason)
 }
 
 // YR BulletClass::Detonate linkage: only this handoff permits combat damage/effects.

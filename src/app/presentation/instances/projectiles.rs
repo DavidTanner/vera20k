@@ -150,7 +150,9 @@ pub(crate) fn projectile_draw_instance(
     order: &NativeDisplayOrder,
 ) -> Option<PlannedObjectInstance> {
     let parent = order.object_draw(projectile.id, SpriteEncoding::Plain)?;
-    if kind.inviso || kind.voxel {
+    // `0x004680E2..0x004680FE`: an `Inviso=` type and a bullet waiting on
+    // its `NUKE` anim (`+0x158`) draw nothing.
+    if kind.inviso || kind.voxel || projectile.awaiting_anim() {
         return None;
     }
     let frame = u16::from(projectile_shp_frame(projectile, kind));

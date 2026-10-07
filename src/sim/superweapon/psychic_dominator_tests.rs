@@ -370,9 +370,10 @@ fn retail_start_matches_native() {
 }
 
 /// UpdateLighting against the native rows: the target and RecalcLighting's
-/// tint for every Dominator status, with and without a raging storm, on the
-/// oracle's profiles. The NukeFlash and chrono screen rows are a residual
-/// (VERA has neither), and status 6 has no VERA value.
+/// tint for every Dominator status, with and without a raging storm and in
+/// each nuke flash state, on the oracle's profiles. The chrono screen rows
+/// are a residual (VERA has none), and Dominator status 6 has no VERA
+/// value.
 #[test]
 fn update_lighting_matches_native() {
     let oracle = oracle();
@@ -381,7 +382,7 @@ fn update_lighting_matches_native() {
     let mut replayed = 0;
     for row in rows(&oracle, "update_lighting") {
         let psydom = u8::try_from(int(&row["psydom"])).unwrap();
-        if int(&row["nuke"]) != 0 || int(&row["chrono"]) != 0 || psydom > 5 {
+        if int(&row["chrono"]) != 0 || psydom > 5 {
             continue;
         }
         sim.session.lighting = ScenarioLightingState::new(
@@ -404,7 +405,11 @@ fn update_lighting_matches_native() {
                 ..ScenarioLightProfileUnits::dominator_default()
             },
             1,
+            1,
         );
+        sim.session
+            .lighting
+            .set_nuke_flash_for_test(int(&row["nuke"]), 0, 30);
         sim.lightning_storm = row["storm"]
             .as_bool()
             .unwrap()
@@ -429,14 +434,15 @@ fn update_lighting_matches_native() {
         assert_eq!(global_lighting_events(&sim) - lighting_before, 1);
         replayed += 1;
     }
-    assert_eq!(replayed, 12);
+    assert_eq!(replayed, 36);
 }
 
 /// The ambient fade (`LogicClass::PerTickUpdate`, `0x0055B33D..0x0055B4D7`)
 /// against the native rows: its gates, the interval each state selects
-/// (`DominatorAmbientChangeRate=` while the Dominator is active), the
-/// target's clamp and the clamped step. Rows with NukeFlash or the chrono
-/// screen are a residual (VERA has neither).
+/// (`NukeAmbientChangeRate=` while the nuke flash runs,
+/// `DominatorAmbientChangeRate=` while the Dominator is active), the
+/// target's clamp and the clamped step. The chrono screen's row is a
+/// residual (VERA has none).
 #[test]
 fn ambient_step_matches_native() {
     let oracle = oracle();
@@ -445,7 +451,7 @@ fn ambient_step_matches_native() {
     let owner = sim.interner.intern("Americans");
     let mut replayed = 0;
     for row in rows(&oracle, "ambient_step") {
-        if int(&row["nuke"]) != 0 || int(&row["chrono"]) != 0 {
+        if int(&row["chrono"]) != 0 {
             continue;
         }
         let (nonzero, interval, step) = crate::rules::ruleset::ambient_change_terms(
@@ -456,12 +462,19 @@ fn ambient_step_matches_native() {
         rules.general.ambient_change_interval_frames = interval;
         rules.general.ambient_change_step = step;
         sim.session.binary_frame = u32::try_from(int(&row["frame"])).unwrap();
+        sim.session.lighting = ScenarioLightingState::new(
+            ScenarioLightProfileUnits::normal_default(),
+            ScenarioLightProfileUnits::ion_default(),
+            ScenarioLightProfileUnits::dominator_default(),
+            int(&row["dominator_rate"]),
+            int(&row["nuke_rate"]),
+        );
         let lighting = &mut sim.session.lighting;
+        lighting.set_nuke_flash_for_test(int(&row["nuke"]), 0, 30);
         lighting.target_ambient = int(&row["target"]);
         lighting.current_ambient = int(&row["current"]);
         let (start, duration) = pair(&row["timer"]);
         lighting.transition_timer = CdTimer::from_raw(start, duration);
-        lighting.dominator_change_rate = int(&row["dominator_rate"]);
         let psydom = u8::try_from(int(&row["psydom"])).unwrap();
         sim.psychic_dominator =
             PsychicDominatorState::for_test(psydom, ORACLE_CELL, Some(owner), None);
@@ -490,7 +503,7 @@ fn ambient_step_matches_native() {
         );
         replayed += 1;
     }
-    assert_eq!(replayed, 20);
+    assert_eq!(replayed, 23);
 }
 
 /// The map's `Dominator*=` keys against the native reads

@@ -686,6 +686,7 @@ mod tests {
                         false,
                         rules.general.safety_altitude,
                         |_, _, _| None,
+                        None,
                     )
                     .unwrap();
                 let bullet = store.get(1).unwrap();

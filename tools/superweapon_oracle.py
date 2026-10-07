@@ -13,7 +13,8 @@ ambient_step), src/sim/superweapon/spy_plane_tests.rs (spy_plane_launch,
 send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (aircraft_leave_map), src/sim/team_script_vm/super_actions_tests.rs
 (team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
-(iron_tint).
+(iron_tint) and src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait,
+nuke_flash, nuke_lighting_read).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -112,6 +113,21 @@ fixture machinery):
   (+0x1A4), its timer (+0x198) and the Scenario draw, with
   IsIronCurtained 0x41BF40, CDTimerClass::Remaining 0x4B4D70 and
   RandomRanged 0x65C7E0 run natively.
+- nuke_impact: BulletClass::AI's NUKE block and tail 0x467E53..0x467FEE as a
+  slice: the warhead test 0x410A40, GetHeight 0x5F5F40 and SetHeight
+  0x5F5FA0 (floor 0x578080 and Mark recorded), GetMapCoords 0x41BEA0,
+  FindIndex 0x427CB0 over fixture AnimTypes and 0x48ACE0 run natively;
+  ScreenNukeFlash, CreateRadarEvent, the anim constructor and the handoff
+  0x468D80 are recorded. The holder list 0xB0F5B8 and the committed cell.
+- nuke_wait: BulletClass::AI's head 0x4666F2..0x466788 as a slice: the
+  IsAlive and wait tests, the holder list's removal, the handoff and UnInit.
+- nuke_flash: ScreenNukeFlash 0x53AB70 and the head of
+  LightningStorm::Process (0x53A6C0..0x53A742) once a frame: the flash's
+  status and timer (0xA9FABC, 0x827FC8/0x827FCC), Timer_1248, the ambient
+  target, RecalcLighting's arguments and UpdateLighting.
+- nuke_lighting_read: Read_INI_Basic's NukeAmbientChangeRate=
+  (0x68AAD5..0x68AAFD): Set_Defaults' value, ReadDouble's default and the
+  ftol of authored tokens.
 """
 from pathlib import Path
 import math
@@ -2405,36 +2421,51 @@ TRAMPOLINE = STUBS + 0x600
 TRAMPOLINE_VALUE = STUBS + 0x680
 
 
-def dominator_lighting_read():
-    """The map's Dominator lighting. ScenarioClass::Set_Defaults 0x683610's
-    block 0x683915..0x6839BD (EBP the Scenario, EBX zero as at 0x68365A, EAX
-    100 as at 0x6838C2) writes the defaults. For each key, Read_INI_Basic's
-    default slice turns the stored value into ReadDouble's default (its double
-    at [ESP]), and its conversion slice turns ReadDouble's answer into the
-    stored value: a trampoline loads the answer into ST0 (FLD qword) and jumps
-    to the slice's FMUL. The answers are the defaults (a missing key) and
-    each token's float scan widened to double."""
-    emu = Emu()
+def scenario_lighting_defaults(emu):
+    """ScenarioClass::Set_Defaults 0x683610's lighting block
+    0x683915..0x6839BD with EBP the Scenario, EBX zero (as at 0x68365A) and
+    EAX 100 (as at 0x6838C2)."""
     uc = emu.uc
-    sp = STACK_BASE + STACK_SIZE - 0x1000
     uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
-    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
     uc.reg_write(UC_X86_REG_EBP, SCENARIO)
     uc.reg_write(UC_X86_REG_EBX, 0)
     uc.reg_write(UC_X86_REG_EAX, 100)
     run_checked(uc, 0x683915, 0x6839BD, count=100)
+
+
+def converted(emu, value, start, end):
+    """A conversion slice of Read_INI_Basic on ReadDouble's answer `value`:
+    a trampoline loads it into ST0 (FLD qword) and jumps to `start`; EAX at
+    `end`."""
+    uc = emu.uc
+    uc.mem_write(TRAMPOLINE_VALUE, struct.pack('<d', value))
+    jump = start - (TRAMPOLINE + 11)
+    uc.mem_write(TRAMPOLINE, b'\xdd\x05' + u32(TRAMPOLINE_VALUE) + b'\xe9'
+                 + struct.pack('<i', jump))
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, TRAMPOLINE, end, count=500)
+    return i32(uc.reg_read(UC_X86_REG_EAX))
+
+
+def dominator_lighting_read():
+    """The map's Dominator lighting. Set_Defaults' lighting block
+    ([`scenario_lighting_defaults`]) writes the defaults. For each key,
+    Read_INI_Basic's default slice turns the stored value into ReadDouble's
+    default (its double at [ESP]), and its conversion slice turns
+    ReadDouble's answer into the stored value ([`converted`], from the slice's
+    FMUL). The answers are the defaults (a missing key) and each token's float
+    scan widened to double."""
+    emu = Emu()
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    scenario_lighting_defaults(emu)
     defaults = {name: emu.read_i32(SCENARIO + offset)
                 for name, offset, _default, _convert in DOMINATOR_LIGHTING_SITES}
 
     def convert(value, start, end):
-        uc.mem_write(TRAMPOLINE_VALUE, struct.pack('<d', value))
-        jump = start - (TRAMPOLINE + 11)
-        uc.mem_write(TRAMPOLINE, b'\xdd\x05' + u32(TRAMPOLINE_VALUE) + b'\xe9'
-                     + struct.pack('<i', jump))
-        uc.reg_write(UC_X86_REG_ESP, sp)
-        uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
-        run_checked(uc, TRAMPOLINE, end, count=500)
-        return i32(uc.reg_read(UC_X86_REG_EAX))
+        return converted(emu, value, start, end)
 
     rows = []
     for name, offset, (default_start, default_end), (start, end) in DOMINATOR_LIGHTING_SITES:
@@ -2475,12 +2506,7 @@ def relight_row(*, storm=False, psydom=0, nuke=0, level=0, ambient=1000):
     emu = Emu()
     uc = emu.uc
     sp = STACK_BASE + STACK_SIZE - 0x1000
-    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
-    uc.reg_write(UC_X86_REG_ESP, sp)
-    uc.reg_write(UC_X86_REG_EBP, SCENARIO)
-    uc.reg_write(UC_X86_REG_EBX, 0)
-    uc.reg_write(UC_X86_REG_EAX, 100)
-    run_checked(uc, 0x683915, 0x6839BD, count=100)
+    scenario_lighting_defaults(emu)
     for offset, value in RELIGHT_GROUND_LEVEL:
         emu.write32(SCENARIO + offset, value)
     write8(emu, G_STORM_ACTIVE, storm)
@@ -3185,6 +3211,321 @@ def iron_tint():
     return rows
 
 
+
+# ---------------------------------------------------------------- nuke impact
+
+NUKE_FIXTURE = BASE + 0x3F8000
+NUKE_BULLET = NUKE_FIXTURE
+NUKE_BULLET_VT = NUKE_FIXTURE + 0x800
+NUKE_WARHEAD = NUKE_FIXTURE + 0x1000
+NUKE_ANIM_TYPE_ITEMS = NUKE_FIXTURE + 0x1800
+NUKE_ANIM_TYPES = NUKE_FIXTURE + 0x2000
+NUKE_HOLDER_ITEMS = NUKE_FIXTURE + 0x3000
+NUKE_HOLDER_VT = NUKE_FIXTURE + 0x3800
+NUKE_OTHER_HOLDER = NUKE_FIXTURE + 0x4000
+NUKE_ANIM = NUKE_FIXTURE + 0x4800
+STUB_NUKE_MARK = STUBS + 0x900
+STUB_NUKE_UNINIT = STUBS + 0x910
+STUB_NUKE_FIND = STUBS + 0x920
+ANIM_TYPE_COUNT = 0x8B4160
+# The anim-holder list (a DynamicVectorClass: vtable, items +4, capacity +8,
+# IsAllocated +0xD, count +0x10, growth +0x14) PointerExpired walks for an
+# expiring anim (0x725A2E).
+ANIM_HOLDERS = 0xB0F5B8
+# ObjectClass's bridge deck height, 416 as its initializer leaves it.
+DECK_OFFSET = 0xAC13BC
+DECK_LEPTONS = 416
+# BulletClass: IsOnMap +0x74, OnBridge +0x8C, IsAlive +0x90, Location +0x9C,
+# Warhead +0x128, the committed cell +0x14C, NextAnim +0x154, its wait +0x158.
+B_ON_MAP, B_ON_BRIDGE, B_ALIVE, B_LOCATION = 0x74, 0x8C, 0x90, 0x9C
+B_WARHEAD, B_CELL, B_NEXT_ANIM, B_WAITS = 0x128, 0x14C, 0x154, 0x158
+NUKE_FLASH_START, NUKE_FLASH_DURATION = 0x827FC8, 0x827FCC
+
+
+def nuke_bullet(emu, *, warhead='NUKE', location=(0, 0, 0), ground=0, on_bridge=False,
+                on_map=True):
+    """A fixture bullet whose vtable holds the native GetHeight 0x5F5F40,
+    SetHeight 0x5F5FA0 and GetMapCoords 0x41BEA0, with Mark vt+0x124 and
+    UnInit vt+0xF8 recorded stubs; the floor height 0x578080 answers
+    `ground` and records the coordinate it was asked for."""
+    emu.write32(NUKE_BULLET, NUKE_BULLET_VT)
+    for slot, target in ((0x1C8, 0x5F5F40), (0x1CC, 0x5F5FA0), (0x1B8, 0x41BEA0),
+                         (0x124, STUB_NUKE_MARK), (0xF8, STUB_NUKE_UNINIT)):
+        emu.write32(NUKE_BULLET_VT + slot, target)
+    emu.hook(STUB_NUKE_MARK, lambda e: e.events.append(['mark', e.arg(0)]), 4)
+    emu.hook(STUB_NUKE_UNINIT, lambda e: e.events.append(['uninit']), 0)
+    write_coord(emu, NUKE_BULLET + B_LOCATION, location)
+    write8(emu, NUKE_BULLET + B_ON_BRIDGE, on_bridge)
+    write8(emu, NUKE_BULLET + B_ON_MAP, on_map)
+    write8(emu, NUKE_BULLET + B_ALIVE, 1)
+    emu.write32(NUKE_BULLET + B_WARHEAD, NUKE_WARHEAD)
+    emu.uc.mem_write(NUKE_WARHEAD + 0x24, warhead.encode().ljust(0x18, b'\0'))
+    emu.write32(DECK_OFFSET, DECK_LEPTONS)
+
+    def floor(e):
+        e.events.append(['floor', read_coord(e, e.arg(0))])
+        return ground
+
+    emu.hook(0x578080, floor, 4)
+
+
+NUKE_HOLDER_NAMES = {NUKE_BULLET: 'bullet', NUKE_OTHER_HOLDER: 'other'}
+
+
+def nuke_holders(emu, holders):
+    """The holder list with `holders` (names) and room for four; its Find
+    vt+0x10 is a stub answering the item's index or -1."""
+    addresses = {name: address for address, name in NUKE_HOLDER_NAMES.items()}
+    emu.write32(ANIM_HOLDERS, NUKE_HOLDER_VT)
+    emu.write32(NUKE_HOLDER_VT + 0x10, STUB_NUKE_FIND)
+    emu.write32(ANIM_HOLDERS + 4, NUKE_HOLDER_ITEMS)
+    emu.write32(ANIM_HOLDERS + 8, 4)
+    write8(emu, ANIM_HOLDERS + 0xD, 1)
+    emu.write32(ANIM_HOLDERS + 0x10, len(holders))
+    emu.write32(ANIM_HOLDERS + 0x14, 10)
+    for index, name in enumerate(holders):
+        emu.write32(NUKE_HOLDER_ITEMS + 4 * index, addresses[name])
+
+    def find(e):
+        wanted = e.read32(e.arg(0))
+        items = [e.read32(NUKE_HOLDER_ITEMS + 4 * index)
+                 for index in range(e.read_i32(ANIM_HOLDERS + 0x10))]
+        return items.index(wanted) if wanted in items else 0xFFFFFFFF
+
+    emu.hook(STUB_NUKE_FIND, find, 4)
+
+
+def nuke_holders_now(emu):
+    return [NUKE_HOLDER_NAMES.get(emu.read32(NUKE_HOLDER_ITEMS + 4 * index), 'unknown')
+            for index in range(emu.read_i32(ANIM_HOLDERS + 0x10))]
+
+
+def nuke_impact_row(*, warhead='NUKE', height=-40, ground=416, on_bridge=False, on_map=True,
+                    types=('NUKEANIM', 'NUKEBALL'), impact_flag=1, holders=(),
+                    xy=(10 * 256 + 100, 12 * 256 + 50),
+                    candidate=(11 * 256 + 3, 13 * 256 + 200, 900)):
+    """BulletClass::AI's impact tail 0x467E53..0x467FEE as a slice: EBP the
+    bullet (at `height` above the floor, and the deck for an OnBridge one),
+    [ESP+0x18] the impact flag, [ESP+0x24] the candidate the flight step
+    committed. The NUKE test 0x410A40, GetHeight, SetHeight, GetMapCoords,
+    FindIndex 0x427CB0 (over fixture AnimTypes) and 0x48ACE0 run natively;
+    ScreenNukeFlash 0x53AB70, CreateRadarEvent 0x65FA70, the anim
+    constructor 0x421EA0 and the handoff 0x468D80 are recorded stubs."""
+    emu = Emu()
+    deck = DECK_LEPTONS if on_bridge else 0
+    location = (xy[0], xy[1], ground + deck + height)
+    nuke_bullet(emu, warhead=warhead, location=location, ground=ground,
+                on_bridge=on_bridge, on_map=on_map)
+    nuke_holders(emu, holders)
+    names = {}
+    for index, name in enumerate(types):
+        kind = NUKE_ANIM_TYPES + 0x100 * index
+        emu.uc.mem_write(kind + 0x24, name.encode().ljust(0x18, b'\0'))
+        emu.write32(NUKE_ANIM_TYPE_ITEMS + 4 * index, kind)
+        names[kind] = name
+    emu.write32(ANIM_TYPES, NUKE_ANIM_TYPE_ITEMS)
+    emu.write32(ANIM_TYPE_COUNT, len(types))
+    emu.hook(0x53AB70, lambda e: e.events.append(['screen_nuke_flash']), 0)
+    emu.hook(0x65FA70, lambda e: e.events.append(
+        ['radar', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         list(struct.unpack('<hh', struct.pack('<I', e.arg(0))))]), 4)
+
+    def anim(e):
+        e.events.append(['anim', names.get(e.arg(0), hex(e.arg(0))), read_coord(e, e.arg(1)),
+                         i32(e.arg(2)), i32(e.arg(3)), e.arg(4), i32(e.arg(5)),
+                         e.arg(6) & 0xFF])
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(0x468D80, lambda e: e.events.append(['detonate', e.arg(0) & 0xFF]), 4)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp + 0x18, u32(impact_flag))
+    write_coord(emu, sp + 0x24, candidate)
+    emu.write32(NUKE_BULLET + B_CELL, 0x7FFF7FFF)
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, NUKE_BULLET)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x467E53, 0x467FEE, count=200_000)
+    anim_held = emu.read32(NUKE_BULLET + B_NEXT_ANIM)
+    return dict(warhead=warhead, height=height, ground=ground, on_bridge=on_bridge,
+                on_map=on_map, types=list(types), impact_flag=impact_flag,
+                holders=list(holders), location=list(location), candidate=list(candidate),
+                events=emu.events, location_after=read_coord(emu, NUKE_BULLET + B_LOCATION),
+                next_anim=int(anim_held != 0), waits=read8(emu, NUKE_BULLET + B_WAITS),
+                holders_after=nuke_holders_now(emu), cell=read_cell(emu, NUKE_BULLET + B_CELL))
+
+
+def nuke_impact():
+    """The retail NUKE payload below the floor, on it and above it, other
+    spellings and warheads, a bridge, a bullet off the map's marks, the
+    anim types without NUKEBALL or with it first or lower-case, a list
+    already holding an object, and a cell at negative coordinates."""
+    row = nuke_impact_row
+    return [row(), row(warhead='Nuke', height=0), row(warhead='nuke', height=25),
+            row(height=-1), row(on_bridge=True, height=-10), row(on_map=False),
+            row(types=('NUKEANIM',)), row(types=('NUKEANIM',), impact_flag=0),
+            row(types=('NUKEBALL',)), row(types=('NUKEANIM', 'nukeball')),
+            row(warhead='NUKE2'), row(warhead='NukeMaker', impact_flag=0), row(warhead='NUK'),
+            row(holders=('other',)), row(xy=(-300, -1), candidate=(-3, -257, 0)),
+            row(xy=(255, 256))]
+
+
+def nuke_wait_row(*, alive=True, waits=True, anim=True, holders=('bullet',)):
+    """BulletClass::AI's head from 0x4666F2 (EBP the bullet) as a slice:
+    ObjectClass::AI 0x5F3E70 (a recorded stub), the IsAlive and wait tests,
+    the holder list's removal (Find vt+0x10 a stub, the compaction native),
+    the handoff 0x468D80 and UnInit (recorded stubs). It stops where the AI
+    returns (0x467FEE, or 0x466781 after UnInit) or goes on to the flight
+    (0x466789)."""
+    emu = Emu()
+    nuke_bullet(emu)
+    write8(emu, NUKE_BULLET + B_ALIVE, alive)
+    write8(emu, NUKE_BULLET + B_WAITS, waits)
+    emu.write32(NUKE_BULLET + B_NEXT_ANIM, NUKE_ANIM if anim else 0)
+    nuke_holders(emu, holders)
+    emu.hook(0x5F3E70, lambda e: e.events.append(['object_ai']), 0)
+    emu.hook(0x468D80, lambda e: e.events.append(['detonate', e.arg(0) & 0xFF]), 4)
+    uc = emu.uc
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_EBP, NUKE_BULLET)
+    uc.reg_write(UC_X86_REG_ECX, NUKE_BULLET)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    end = run_checked(uc, 0x4666F2, (0x466781, 0x466789, 0x467FEE), count=10_000)
+    return dict(alive=alive, waits=waits, anim=anim, holders=list(holders),
+                end={0x466781: 'detonated', 0x466789: 'flies', 0x467FEE: 'returns'}[end],
+                events=emu.events, waits_after=read8(emu, NUKE_BULLET + B_WAITS),
+                holders_after=nuke_holders_now(emu))
+
+
+def nuke_wait():
+    row = nuke_wait_row
+    return [row(), row(anim=False), row(waits=False, holders=()), row(alive=False),
+            row(alive=False, anim=False), row(anim=False, holders=('other', 'bullet')),
+            row(anim=False, holders=('bullet', 'other')), row(anim=False, holders=()),
+            row(waits=False, anim=False, holders=())]
+
+
+def nuke_flash_emu():
+    """Set_Defaults' lighting in the Scenario, the flash reset as
+    SuperWeaponEffects::ResetAll 0x539760 leaves it, and RecalcLighting
+    0x53AD00, UpdateLighting 0x53C280 and the redraw 0x4F42F0 recorded."""
+    emu = Emu()
+    scenario_lighting_defaults(emu)
+    emu.write32(G_NUKE_FLASH, 0)
+    emu.write32(NUKE_FLASH_START, 0xFFFFFFFF)
+    emu.write32(NUKE_FLASH_DURATION, 0xFFFFFFFF)
+
+    def recalc(e):
+        e.events.append(['recalc', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+                         i32(e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0)), i32(e.arg(1))])
+
+    emu.hook(0x53AD00, recalc, 8)
+    emu.hook(0x53C280, lambda e: e.events.append(['update_lighting']), 0)
+    emu.hook(0x4F42F0, lambda e: e.events.append(['redraw', e.arg(0)]), 4)
+    return emu
+
+
+def nuke_flash_state(emu):
+    return [emu.read_i32(G_NUKE_FLASH), emu.read_i32(NUKE_FLASH_START),
+            emu.read_i32(NUKE_FLASH_DURATION)]
+
+
+def nuke_flash_process(emu, frame):
+    """The head of LightningStorm::Process (0x53A6C0..0x53A742) at `frame`."""
+    emu.write32(FRAME, frame & 0xFFFFFFFF)
+    emu.events = []
+    uc = emu.uc
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x53A6C0, 0x53A742, count=1_000)
+    return list(emu.events)
+
+
+def nuke_flash_row(*, frame=4000, frames=60, timer=(77, 55), target=100):
+    """ScreenNukeFlash 0x53AB70 at `frame` over a Scenario whose Timer_1248
+    and ambient target hold `timer` and `target`, then Process's head once a
+    frame for `frames` frames: a step is a frame whose flash changed or that
+    called out."""
+    emu = nuke_flash_emu()
+    emu.write32(SCENARIO + SCN_TIMER, timer[0])
+    emu.write32(SCENARIO + SCN_TIMER + 8, timer[1])
+    emu.write32(SCENARIO + SCN_TARGET, target)
+    emu.write32(FRAME, frame & 0xFFFFFFFF)
+    emu.events = []
+    emu.invoke(0x53AB70)
+    start = dict(flash=nuke_flash_state(emu),
+                 timer=[emu.read_i32(SCENARIO + SCN_TIMER),
+                        emu.read_i32(SCENARIO + SCN_TIMER + 8)],
+                 target=emu.read_i32(SCENARIO + SCN_TARGET), events=list(emu.events))
+    steps, last = [], nuke_flash_state(emu)
+    for offset in range(1, frames + 1):
+        events = nuke_flash_process(emu, frame + offset)
+        now = nuke_flash_state(emu)
+        if now != last or events:
+            steps.append([offset, *now, events])
+        last = now
+    return dict(frame=frame, frames=frames, timer=list(timer), target_before=target,
+                start=start, steps=steps)
+
+
+def nuke_flash_step_row(*, status, start, duration, frame):
+    """Process's head once at `frame` with the flash as given."""
+    emu = nuke_flash_emu()
+    emu.write32(G_NUKE_FLASH, status)
+    emu.write32(NUKE_FLASH_START, start)
+    emu.write32(NUKE_FLASH_DURATION, duration)
+    events = nuke_flash_process(emu, frame)
+    return dict(status=status, start=start, duration=duration, frame=frame,
+                after=nuke_flash_state(emu), events=events)
+
+
+def nuke_flash():
+    """The retail flash from start to off (and one starting where the
+    timer's sum wraps), and single steps at each test's edges."""
+    step = nuke_flash_step_row
+    steps = [step(status=1, start=100, duration=30, frame=130),
+             step(status=1, start=100, duration=30, frame=131),
+             step(status=1, start=100, duration=-1, frame=5000),
+             step(status=2, start=100, duration=15, frame=115),
+             step(status=2, start=100, duration=15, frame=116),
+             step(status=2, start=100, duration=-1, frame=5000),
+             step(status=0, start=100, duration=15, frame=5000),
+             step(status=3, start=100, duration=15, frame=5000),
+             step(status=1, start=0x7FFFFFF0, duration=30, frame=0x7FFFFFF1),
+             step(status=1, start=-50, duration=30, frame=-19),
+             step(status=1, start=-50, duration=30, frame=-20)]
+    return dict(runs=[nuke_flash_row(), nuke_flash_row(frame=17, timer=(-1, 0), target=150)],
+                steps=steps)
+
+
+NUKE_CHANGE_RATE_TOKENS = ('0', '1', '1.5', '2.99', '3', '10', '-1', '-2.5', '.5', '1000000',
+                           '3000000000')
+
+
+def nuke_lighting_read():
+    """The map's NukeAmbientChangeRate= (Read_INI_Basic 0x68AAD5..0x68AAFD):
+    Set_Defaults' value (+0x3578), the default slice (FILD, FSTP double
+    [ESP]) and the answer through Math::ftol 0x7C5F00 (0x68AAF8), a
+    trampoline standing in for ReadDouble as in dominator_lighting_read."""
+    emu = Emu()
+    uc = emu.uc
+    scenario_lighting_defaults(emu)
+    stored = emu.read_i32(SCENARIO + 0x3578)
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_ESI, SCENARIO)
+    uc.reg_write(UC_X86_REG_EDI, 0)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x68AAD5, 0x68AAE9, count=50)
+    default = struct.unpack('<d', uc.mem_read(uc.reg_read(UC_X86_REG_ESP), 8))[0]
+    authored = []
+    for token in NUKE_CHANGE_RATE_TOKENS:
+        value = struct.unpack('<f', struct.pack('<f', float(token)))[0]
+        authored.append([token, converted(emu, value, 0x68AAF8, 0x68AAFD)])
+    return dict(stored_default=stored, default_double=default,
+                default_units=converted(emu, default, 0x68AAF8, 0x68AAFD), authored=authored)
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -3209,6 +3550,10 @@ def generate():
             'aircraft_leave_map': aircraft_leave_map(),
             'team_super_actions': team_super_actions(),
             'iron_tint': iron_tint(),
+            'nuke_impact': nuke_impact(),
+            'nuke_wait': nuke_wait(),
+            'nuke_flash': nuke_flash(),
+            'nuke_lighting_read': nuke_lighting_read(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -3243,7 +3588,11 @@ if __name__ == '__main__':
                'the threat call\'s arguments, the Fire_SW indexes and cells, the '
                'mission target and the step; the Iron Curtain\'s tint stage: '
                'IronCurtain\'s writes and UpdateIronTint\'s stages, timers and '
-               'Scenario draws over a curtain\'s life'),
+               'Scenario draws over a curtain\'s life; the NUKE warhead\'s impact: '
+               'its warhead test, ground clamp, flash, radar event, NUKEBALL '
+               'arguments, holder list and committed cell, the wait at the AI\'s '
+               'head, the flash\'s statuses, timers and relights, and the map\'s '
+               'NukeAmbientChangeRate'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -3354,7 +3703,27 @@ if __name__ == '__main__':
                        'recorded stubs',
                        'iron_tint: the Techno is a fixture holding its vtable (slot '
                        '+0x160 the native IsIronCurtained), both timers and the stage; '
-                       'nothing is stubbed'],
+                       'nothing is stubbed',
+                       'nuke_impact: the slice starts with EBP the bullet (vtable slots '
+                       '+0x1C8/+0x1CC/+0x1B8 the native GetHeight, SetHeight and '
+                       'GetMapCoords; Mark +0x124 and UnInit +0xF8 recorded stubs), '
+                       '[ESP+0x18] the impact flag and [ESP+0x24] the committed '
+                       'candidate; the floor height 0x578080 answers the row\'s ground; '
+                       'AnimTypeClass::Array holds the row\'s types; ScreenNukeFlash '
+                       '0x53AB70, CreateRadarEvent 0x65FA70, the anim constructor '
+                       '0x421EA0 and the handoff 0x468D80 are recorded stubs; the holder '
+                       'list 0xB0F5B8 has room for four; the deck height 0xAC13BC holds '
+                       '416',
+                       'nuke_wait: ObjectClass::AI 0x5F3E70, the holder list\'s Find '
+                       'vt+0x10, the handoff 0x468D80 and UnInit vt+0xF8 are recorded or '
+                       'supplied stubs',
+                       'nuke_flash: the Scenario holds Set_Defaults\' lighting block; the '
+                       'flash starts reset as SuperWeaponEffects::ResetAll 0x539760 leaves '
+                       'it; RecalcLighting 0x53AD00, UpdateLighting 0x53C280 and the redraw '
+                       '0x4F42F0 are recorded stubs; status 3 has no writer but the save '
+                       'stream (0x53993E)',
+                       'nuke_lighting_read: as dominator_lighting_read, ReadDouble 0x5283D0 '
+                       'is not run'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -3379,4 +3748,9 @@ if __name__ == '__main__':
                       'TeamClass::script_action_55': 0x6EFC70,
                       'TeamClass::script_action_57': 0x6F0130,
                       'TechnoClass::IronCurtain': 0x70E2B0,
-                      'TechnoClass::UpdateIronTint': 0x70E5A0}))
+                      'TechnoClass::UpdateIronTint': 0x70E5A0,
+                      'BulletClass::AI_nuke_impact': 0x467E53,
+                      'BulletClass::AI_head': 0x4666F2,
+                      'ScreenNukeFlash': 0x53AB70,
+                      'LightningStorm::Process_nuke_flash': 0x53A6C0,
+                      'ScenarioClass::Read_INI_Basic_nuke_rate': 0x68AAD5}))
