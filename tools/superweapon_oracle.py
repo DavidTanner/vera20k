@@ -14,8 +14,11 @@ send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (aircraft_leave_map), src/sim/team_script_vm/super_actions_tests.rs
 (team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
 (iron_tint, effect_tint_intensity), src/app/presentation/instances/units.rs
-(curtain_draw_arm) and src/sim/superweapon/nuke_tests.rs (nuke_impact,
-nuke_wait, nuke_flash, nuke_lighting_read).
+(curtain_draw_arm), src/app/presentation/curtain_tint_tests.rs
+(drawshp_curtain_arm, building_colour_word, anim_colour_word,
+building_anim_light, blit_pickers, blitters) and
+src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
+nuke_lighting_read).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -121,6 +124,23 @@ fixture machinery):
   0x73BF7B..0x73C166 as a slice: the flash arm 0x70D190, IsIronCurtained
   0x41BF40, GetEffectTintIntensity, the [ColorAdd] conversion by pixel
   format, Berzerk and the Deactivated halving 0x70FBD0 run natively.
+- drawshp_curtain_arm: TechnoClass::DrawSHP's intensity arm
+  0x70631F..0x706389 as a slice for a building and a unit: each class's
+  flash arm, IsIronCurtained 0x41BF40, the airstrike gate and
+  ScaleByIronTintPhase 0x70E380 and the airstrike phase 0x70E4B0 run
+  natively.
+- building_colour_word: the colour word BuildingClass_DrawBody
+  (0x43D386..0x43D544) and BuildingClass::Draw (0x43DC1C..0x43DDF1) compute
+  for their blits: the LaserTargetColor= and ForceShieldColor= [ColorAdd]
+  colours by pixel format, the Force Shield byte, and the shroud's zero.
+- anim_colour_word: AnimClass::DrawIt's colour block 0x4233EE..0x423630: the
+  slot byte, the cell's first building (0x47C520, natively) and its word.
+- building_anim_light: BuildingClass::UpdateAnimation's anim light
+  0x450A47..0x450A77: 0x456FB0 and the slot loop 0x451F60 natively.
+- blit_pickers: ConvertClass's blitter pickers 0x490B90 (uncompressed
+  frames) and 0x490E50 (compressed) for each draw's flags.
+- blitters: the four blitters those picks reach, each plain and tinted copy
+  on a line with a hole and a Z-rejected pixel, for several colour words.
 - nuke_impact: BulletClass::AI's NUKE block and tail 0x467E53..0x467FEE as a
   slice: the warhead test 0x410A40, GetHeight 0x5F5F40 and SetHeight
   0x5F5FA0 (floor 0x578080 and Mark recorded), GetMapCoords 0x41BEA0,
@@ -3239,6 +3259,13 @@ RETAIL_COLOR_ADD = ((0, 0, 0), (31, 0, 0), (0, 63, 0), (0, 0, 31), (24, 0, 0), (
 # cap, and values the 32-bit product wraps on.
 TINT_INTENSITIES = (0, 1, 199, 255, 256, 500, 999, 1000, 1001, 1234, 1500, 1999, 2000, 2001,
                     4000, -1, -256, -1000, 0x400000, 0x7FFFFFFF, -0x80000000)
+# Curtain timers (start, duration) at frame 5000: time left 1 and 0, a stopped
+# timer holding time and one holding none, and one starting after the frame.
+CURTAIN_EDGES = ((4990, 11), (4990, 10), (-1, 7), (-1, 0), (5001, 750))
+# Each tint stage with a tint timer (start, duration) it can hold at frame 5000.
+CURTAIN_STAGE_TINTS = ((0, (-1, 0)), (1, (4998, 6)), (2, (4998, 4)), (3, (4980, 24)),
+                       (4, (4996, 8)), (5, (4990, 16)), (6, (4996, 8)), (7, (4999, 6)),
+                       (8, (4997, 4)), (9, (4990, 20)), (10, (4990, 20)))
 
 
 def curtain_techno(emu, *, stage=0, tint=(-1, 0), curtain=(-1, 0)):
@@ -3328,11 +3355,9 @@ def curtain_draw_arm():
     flash count's bit 1, IronCurtainColor indexes other than retail's 0 in
     each pixel format, Berzerk, Deactivated and a caller's colour word."""
     rows = []
-    for curtain in ((4990, 11), (4990, 10), (-1, 7), (-1, 0), (5001, 750)):
+    for curtain in CURTAIN_EDGES:
         rows.append(curtain_draw_arm_row(curtain=curtain))
-    for stage, tint in ((0, (-1, 0)), (1, (4998, 6)), (2, (4998, 4)), (3, (4980, 24)),
-                        (4, (4996, 8)), (5, (4990, 16)), (6, (4996, 8)), (7, (4999, 6)),
-                        (8, (4997, 4)), (9, (4990, 20)), (10, (4990, 20))):
+    for stage, tint in CURTAIN_STAGE_TINTS:
         for intensity in (1000, 1500, 300):
             rows.append(curtain_draw_arm_row(stage=stage, tint=tint, intensity=intensity))
     for flash in (2, 3, 1):
@@ -3347,6 +3372,385 @@ def curtain_draw_arm():
     rows.append(curtain_draw_arm_row(deactivated=True, intensity=-7))
     rows.append(curtain_draw_arm_row(word=0x1234))
     return rows
+
+
+# ------------------------------------------------- the curtain's tint on buildings
+
+TINT_FIXTURE = BASE + 0x3F4000
+TINT_CELL = TINT_FIXTURE
+TINT_OTHER = TINT_FIXTURE + 0x200
+TINT_OTHER_VT = TINT_FIXTURE + 0x300
+TINT_AIRSTRIKE = TINT_FIXTURE + 0x400
+TINT_ANIM = TINT_FIXTURE + 0x800
+TINT_ANIM_VT = TINT_FIXTURE + 0xA00
+TINT_ANIM_TYPES = TINT_FIXTURE + 0x1000
+TINT_SLOT_ANIMS = TINT_FIXTURE + 0x1800
+TINT_CONVERT = TINT_FIXTURE + 0x2000
+TINT_BLITTER = TINT_FIXTURE + 0x2400
+TINT_ZBUFFER = TINT_FIXTURE + 0x2480
+TINT_ABUFFER = TINT_FIXTURE + 0x24C0
+TINT_LINES = TINT_FIXTURE + 0x2800
+BLIT_TABLES, BLIT_TABLES_SIZE = 0x70000000, 0x80000
+STUB_TINT_WHAT = STUBS + 0xA00
+STUB_TINT_COORDS = STUBS + 0xA10
+STUB_TINT_ANIM_COORDS = STUBS + 0xA20
+STUB_TINT_OTHER_WHAT = STUBS + 0xA30
+STUB_TINT_GET_CELL = STUBS + 0xA40
+# TechnoClass: the AirstrikeClass aimed at it (+0x294), whose target is +0x50.
+TECHNO_AIRSTRIKE = 0x294
+# RulesClass: the [AudioVisual] indexes LaserTargetColor= and ForceShieldColor=
+# read at 0x66B818 and 0x66B891.
+RULES_LASER_TARGET_COLOR, RULES_FORCE_SHIELD_COLOR = 0x18A4, 0x18B0
+# The byte CellClass 0x47C520 requires before it walks a cell's objects.
+CELL_OBJECTS_LIVE = 0xA8E9A0
+# The ZBuffer and ABuffer instances the blitters wrap their line pointers by.
+ZBUFFER_PTR, ABUFFER_PTR = 0x887644, 0x87E8A4
+
+
+def tint_building(emu, *, curtain=(4990, 750), stage=0, tint=(-1, 0), shielded=1,
+                  airstrike=None, kind='building', flash=0,
+                  coords=(10 * 256 + 128, 12 * 256 + 128, 0)):
+    """curtain_techno's Techno as a building ('building') or a unit: vt+0x160
+    the native IsIronCurtained 0x41BF40, vt+0x464 its class's flash arm
+    (BuildingClass 0x456F80, TechnoClass 0x70D190), vt+0x2C WhatAmI answering
+    6 or 1 and vt+0x48 GetCoords answering `coords`; the flash count, the
+    Force Shield byte IronCurtain writes (+0x1C4), and an AirstrikeClass at
+    +0x294 aimed at it ('self') or at another object ('other')."""
+    this = curtain_techno(emu, stage=stage, tint=tint, curtain=curtain)
+    emu.write32(this, CURTAIN_VT)
+    emu.write32(CURTAIN_VT + 0x160, 0x41BF40)
+    emu.write32(CURTAIN_VT + 0x464, 0x456F80 if kind == 'building' else 0x70D190)
+    emu.write32(CURTAIN_VT + 0x2C, STUB_TINT_WHAT)
+    emu.hook(STUB_TINT_WHAT, lambda _e: 6 if kind == 'building' else 1, 0)
+    emu.write32(CURTAIN_VT + 0x48, STUB_TINT_COORDS)
+    emu.hook(STUB_TINT_COORDS, coords_stub(coords), 4)
+    emu.write32(this + TECHNO_FLASH, flash)
+    emu.write32(this + TECHNO_FORCE_SHIELDED, shielded)
+    emu.write32(this + TECHNO_AIRSTRIKE, TINT_AIRSTRIKE if airstrike else 0)
+    emu.write32(TINT_AIRSTRIKE + 0x50, this if airstrike == 'self' else TINT_OTHER)
+    return this
+
+
+def tint_rules(emu, *, force_color=6, laser_color=4, pixel_format=2):
+    """Rules holding the retail [ColorAdd] and the row's LaserTargetColor= and
+    ForceShieldColor= indexes; 0x4BBC90 answers the row's pixel format."""
+    for index, rgb in enumerate(RETAIL_COLOR_ADD):
+        emu.uc.mem_write(RULES + RULES_COLOR_ADD + 3 * index, bytes(rgb))
+    emu.write32(RULES + RULES_LASER_TARGET_COLOR, laser_color)
+    emu.write32(RULES + RULES_FORCE_SHIELD_COLOR, force_color)
+    emu.write32(PIXEL_FORMAT, pixel_format)
+
+
+def tint_shroud(emu, shrouded):
+    """MapClass::operator[] 0x5657A0 answers the fixture cell, and 0x487950
+    (whether the cell's centre is shrouded) the row's answer; both record."""
+    def cell(e):
+        e.events.append(['cell', list(struct.unpack('<hh', e.uc.mem_read(e.arg(0), 4)))])
+        return TINT_CELL
+
+    def shroud(e):
+        e.events.append(['shroud', e.uc.reg_read(UC_X86_REG_ECX) == TINT_CELL])
+        return int(shrouded)
+
+    emu.hook(0x5657A0, cell, 4)
+    emu.hook(0x487950, shroud, 0)
+
+
+def drawshp_curtain_arm_row(*, kind='building', intensity=1000, curtain=(4990, 750), stage=2,
+                            tint=(4998, 4), flash=0, airstrike=None, frame=5000):
+    """TechnoClass::DrawSHP's intensity arm 0x70631F..0x706389 as a slice: ESI
+    tint_building's Techno, [ESP+0x7C] the draw intensity. The result is EBP,
+    the intensity DrawSHP hands the blit."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    this = tint_building(emu, curtain=curtain, stage=stage, tint=tint, kind=kind, flash=flash,
+                         airstrike=airstrike)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp + 0x7C, u32(intensity))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ESI, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x70631F, 0x706389, count=10_000)
+    return dict(kind=kind, intensity=intensity, curtain=list(curtain), stage=stage,
+                tint=list(tint), flash=flash, airstrike=airstrike, frame=frame,
+                out_intensity=i32(uc.reg_read(UC_X86_REG_EBP)))
+
+
+def drawshp_curtain_arm():
+    """For a building and a unit: the curtain's edges, each stage's scale at
+    the intensities of a lit, a bright and a dark cell, the flash count's bit
+    1 (each class's own arm), and an airstrike aimed at the object or
+    elsewhere while the curtain is off and the stage still reads 2 (only a
+    building's draw takes it)."""
+    row = drawshp_curtain_arm_row
+    rows = []
+    for kind in ('building', 'unit'):
+        rows += [row(kind=kind, curtain=curtain) for curtain in CURTAIN_EDGES]
+        for stage, tint in CURTAIN_STAGE_TINTS:
+            rows += [row(kind=kind, stage=stage, tint=tint, intensity=intensity)
+                     for intensity in (1000, 1500, 300)]
+        for flash in (2, 3, 1):
+            rows += [row(kind=kind, flash=flash, intensity=intensity)
+                     for intensity in (1000, 1600)]
+        rows += [row(kind=kind, curtain=(-1, 0), airstrike=airstrike)
+                 for airstrike in ('self', 'other')]
+    return rows
+
+
+def building_colour_word_row(*, curtain=(4990, 750), shielded=1, force_color=6, laser_color=4,
+                             airstrike=None, shrouded=False, pixel_format=2, frame=5000):
+    """The colour word a building's draws hand the blit, from both blocks that
+    compute it, each as a slice on tint_building's building with tint_rules'
+    Rules: BuildingClass_DrawBody's 0x43D386..0x43D544 (ESI the building, the
+    word in EDI) and BuildingClass::Draw's 0x43DC1C..0x43DDF1 (EBP the
+    building, the word in [ESP+0x1C]). The LaserTargetColor= colour while an
+    airstrike is set, the ForceShieldColor= one while the building is
+    curtained (IsIronCurtained 0x41BF40) with the Force Shield byte at 1, each
+    converted by the pixel format 0x4BBC90 reads (2 is RGB565, the active
+    retail one); none if 0x487950 calls the building's cell shrouded. Above
+    the low 16 bits the conversion leaves stale register bits."""
+    words, events = [], []
+    for start, end, this_reg in ((0x43D386, 0x43D544, UC_X86_REG_ESI),
+                                 (0x43DC1C, 0x43DDF1, UC_X86_REG_EBP)):
+        emu = Emu()
+        emu.write32(FRAME, frame)
+        this = tint_building(emu, curtain=curtain, shielded=shielded, airstrike=airstrike)
+        tint_rules(emu, force_color=force_color, laser_color=laser_color,
+                   pixel_format=pixel_format)
+        tint_shroud(emu, shrouded)
+        uc = emu.uc
+        sp = STACK_BASE + STACK_SIZE - 0x1000
+        uc.reg_write(UC_X86_REG_ESP, sp)
+        uc.reg_write(this_reg, this)
+        uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+        run_checked(uc, start, end, count=10_000)
+        words.append(uc.reg_read(UC_X86_REG_EDI) if start == 0x43D386 else emu.read32(sp + 0x1C))
+        events.append(emu.events)
+    return dict(curtain=list(curtain), shielded=shielded, force_color=force_color,
+                laser_color=laser_color, airstrike=airstrike, shrouded=shrouded,
+                pixel_format=pixel_format, frame=frame, draw_body_word=words[0],
+                draw_word=words[1], events=events)
+
+
+def building_colour_word():
+    """The Force Shield, the Iron Curtain (the byte at 0, and at 2), the
+    curtain's edges, the shroud, an airstrike with and without the shield,
+    every ForceShieldColor= index, and the other pixel formats."""
+    row = building_colour_word_row
+    rows = [row(), row(shielded=0), row(shielded=2), row(shrouded=True),
+            row(airstrike='self', shielded=0), row(airstrike='self'),
+            row(airstrike='self', shrouded=True), row(airstrike='other', shielded=0)]
+    rows += [row(curtain=curtain) for curtain in CURTAIN_EDGES]
+    rows += [row(force_color=index) for index in range(16)]
+    for pixel_format in (1, 0, 3):
+        rows += [row(pixel_format=pixel_format), row(pixel_format=pixel_format, force_color=9)]
+    return rows
+
+
+def anim_colour_word_row(*, slot_anim=True, occupant='building', curtain=(4990, 750),
+                         shielded=1, force_color=6, airstrike=None, shrouded=False,
+                         coords=(10 * 256 + 200, 12 * 256 + 40, 30), frame=5000):
+    """AnimClass::DrawIt's colour block 0x4233EE..0x423630 as a slice: ESI a
+    fixture anim (+0x118 the building-slot byte CreateAnimForSlot sets at
+    0x45199B; vt+0x48 GetCoords answering `coords`). MapClass::operator[] by
+    coordinate 0x565730 answers the fixture cell, whose ground objects (+0xE4,
+    then each +0x30) 0x47C520 walks natively for the first building:
+    `occupant` 'building' (the building alone), 'behind' (another object, then
+    the building) or 'none' (the other object alone). The building is
+    tint_building's and the Rules tint_rules'; 0x5657A0 and 0x487950 answer as
+    in building_colour_word. The result is EBP at 0x423630 (also stored at
+    [ESP+0x1C])."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    building = tint_building(emu, curtain=curtain, shielded=shielded, airstrike=airstrike)
+    tint_rules(emu, force_color=force_color)
+    tint_shroud(emu, shrouded)
+    emu.write32(TINT_ANIM, TINT_ANIM_VT)
+    emu.write32(TINT_ANIM_VT + 0x48, STUB_TINT_ANIM_COORDS)
+    emu.hook(STUB_TINT_ANIM_COORDS, coords_stub(coords), 4)
+    write8(emu, TINT_ANIM + 0x118, int(slot_anim))
+
+    def cell_by_coord(e):
+        e.events.append(['coord', read_coord(e, e.arg(0))])
+        return TINT_CELL
+
+    emu.hook(0x565730, cell_by_coord, 4)
+    write8(emu, CELL_OBJECTS_LIVE, 1)
+    emu.write32(TINT_OTHER, TINT_OTHER_VT)
+    emu.write32(TINT_OTHER_VT + 0x2C, STUB_TINT_OTHER_WHAT)
+    emu.hook(STUB_TINT_OTHER_WHAT, lambda _e: 1, 0)
+    emu.write32(TINT_CELL + 0xE4, building if occupant == 'building' else TINT_OTHER)
+    emu.write32(TINT_OTHER + 0x30, building if occupant == 'behind' else 0)
+    emu.write32(building + 0x30, 0)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ESI, TINT_ANIM)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x4233EE, 0x423630, count=10_000)
+    return dict(slot_anim=slot_anim, occupant=occupant, curtain=list(curtain),
+                shielded=shielded, force_color=force_color, airstrike=airstrike,
+                shrouded=shrouded, coords=list(coords), frame=frame,
+                word=uc.reg_read(UC_X86_REG_EBP), stored=emu.read32(sp + 0x1C),
+                events=emu.events)
+
+
+def anim_colour_word():
+    """The Force Shield's word on a slot anim; an anim off a slot; a cell whose
+    first object is not the building, and one with no building; the Iron
+    Curtain; the curtain's edges; the shroud; an airstrike; other
+    ForceShieldColor= indexes; a coordinate west and north of the map."""
+    row = anim_colour_word_row
+    return [row(), row(slot_anim=False), row(occupant='behind'), row(occupant='none'),
+            row(shielded=0), row(curtain=(4990, 11)), row(curtain=(4990, 10)),
+            row(shrouded=True), row(airstrike='self', shielded=0), row(airstrike='self'),
+            row(force_color=0), row(force_color=9), row(coords=(-3, -257, 0))]
+
+
+def building_anim_light_row(*, intensity=1000, curtain=(4990, 750), stage=2, tint=(4998, 4),
+                            flash=0, airstrike=None, frame=5000):
+    """BuildingClass::UpdateAnimation's anim light 0x450A47..0x450A77 as a
+    slice: EAX the Convert its vt+0x1E4 call left (the fixture Convert), ESI
+    tint_building's building (vt+0x1BC GetCell answering the fixture cell,
+    whose +0x10A holds `intensity`). 0x456FB0 (the flash arm, then
+    GetEffectTintIntensity 0x70E360 while curtained or aimed at by an
+    airstrike) and the slot loop 0x451F60 run natively over the building's
+    slots (+0x55C): an anim whose type has ShouldUseCellDrawer (+0x35C), one
+    whose type has not, and nineteen empty slots. The result: the building's
+    +0x700 and each anim's drawer (+0xD4, the fixture Convert once written)
+    and intensity (+0xFC, -12345 until written)."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    this = tint_building(emu, curtain=curtain, stage=stage, tint=tint, flash=flash,
+                         airstrike=airstrike)
+    emu.write32(CURTAIN_VT + 0x1BC, STUB_TINT_GET_CELL)
+    emu.hook(STUB_TINT_GET_CELL, lambda _e: TINT_CELL, 0)
+    emu.uc.mem_write(TINT_CELL + 0x10A, struct.pack('<h', intensity))
+    for index in range(21):
+        emu.write32(this + 0x55C + 4 * index, 0)
+    write8(emu, this + 0x6ED, 0)
+    anims = []
+    for index, cell_drawer in enumerate((True, False)):
+        anim = TINT_SLOT_ANIMS + 0x200 * index
+        kind = TINT_ANIM_TYPES + 0x400 * index
+        write8(emu, kind + 0x35C, int(cell_drawer))
+        emu.write32(anim + 0xC8, kind)
+        emu.write32(anim + 0xD4, 0)
+        emu.write32(anim + 0xFC, -12345)
+        emu.write32(this + 0x55C + 4 * index, anim)
+        anims.append(anim)
+    uc = emu.uc
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_ESI, this)
+    uc.reg_write(UC_X86_REG_EAX, TINT_CONVERT)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x450A47, 0x450A77, count=10_000)
+    return dict(intensity=intensity, curtain=list(curtain), stage=stage, tint=list(tint),
+                flash=flash, airstrike=airstrike, frame=frame,
+                building_light=struct.unpack('<h', uc.mem_read(this + 0x700, 2))[0],
+                drawer_set=[emu.read32(anim + 0xD4) == TINT_CONVERT for anim in anims],
+                anim_light=[emu.read_i32(anim + 0xFC) for anim in anims])
+
+
+def building_anim_light():
+    """The curtain's edges, each stage's scale at three cell intensities, the
+    flash count's bit 1, an airstrike aimed at the building or elsewhere off
+    the curtain, and cell intensities at 0, the cap and below 0."""
+    row = building_anim_light_row
+    rows = [row(curtain=curtain) for curtain in CURTAIN_EDGES]
+    for stage, tint in CURTAIN_STAGE_TINTS:
+        rows += [row(stage=stage, tint=tint, intensity=intensity)
+                 for intensity in (1000, 1500, 300)]
+    rows += [row(flash=flash, intensity=intensity) for flash in (2, 3)
+             for intensity in (1000, 1600)]
+    rows += [row(curtain=(-1, 0), airstrike=airstrike) for airstrike in ('self', 'other')]
+    rows += [row(curtain=(-1, 0), intensity=intensity) for intensity in (0, 2000, -5, -1000)]
+    return rows
+
+
+# DrawSHP's flags for a building's DrawBody pieces (0x6E00: Z read and write),
+# its other callers (0x2E00), and AnimClass::DrawIt's and the voxel cache
+# blit's (0x2800: Z read).
+BLIT_FLAGS = (0x6E00, 0x2E00, 0x2800)
+# The 16-bit ConvertClass constructor 0x48E740's blitter in each field the
+# pickers answer for BLIT_FLAGS (RTTI class names), and where it stores them.
+BLITTERS = ((0x98, 0x7E56F0),   # BlitTransXlatAlphaZRead<WORD>, 0x48F721
+            (0xBC, 0x7E5630),   # BlitTransXlatAlphaZReadWrite<WORD>, 0x48F9AC
+            (0x138, 0x7E5420),  # RLEBlitTransXlatAlphaZRead<WORD>, 0x490058
+            (0x158, 0x7E53A0))  # RLEBlitTransXlatAlphaZReadWrite<WORD>, 0x4902A3
+BLIT_WORDS = (0, 0x0018, 0xE000, 0xE798, 0xABCD0018)
+# One line of four pixels: a hole, drawn, behind the Z line, drawn.
+LINE_SOURCE = (0, 5, 200, 77)
+LINE_RLE = (5, 0, 1, 200, 77)
+LINE_Z = (0x1000, 0x1000, 0x0005, 0x1000)
+LINE_A = (3, 3, 3, 9)
+LINE_Z_VALUE = 0x100
+
+
+def blit_pickers():
+    """ConvertClass's blitter pickers for each of BLIT_FLAGS: 0x490B90 for an
+    uncompressed frame and 0x490E50 for a compressed one (CC_Draw_Shape
+    0x4AED70 picks by the frame's compression bit, 0x69E900), run natively on
+    a fixture Convert whose fields hold their own offsets (+8 is not zero, so
+    the lazy initializer 0x48EBF0 never runs). A row is [flags, the field
+    0x490B90 answers, the field 0x490E50 answers]."""
+    emu = Emu()
+    for offset in range(0, 0x200, 4):
+        emu.write32(TINT_CONVERT + offset, offset)
+    return [[flags, emu.invoke(0x490B90, ecx=TINT_CONVERT, args=[flags]),
+             emu.invoke(0x490E50, ecx=TINT_CONVERT, args=[flags])] for flags in BLIT_FLAGS]
+
+
+def blitter_row(field, vtable, *, word, intensity=1000):
+    """The blitter of Convert field `field` (vtable `vtable`) drawing the LINE_*
+    line twice, each time on fresh lines: its plain copy (vt+4), then its
+    tinted copy (vt+8) with the colour word `word`. A standard blitter takes
+    (destination, source, count, Z value, Z line, A line, intensity, 0[,
+    word]), an RLE one (destination, source, count, skip 0, Z value, Z line, A
+    line, intensity, 0, Z-adjust line[, word]). Its conversion table (+4: 64K
+    words) and row table (+8, the 0x420140 LUT: 255 rows of 256 row bases)
+    hold arbitrary distinct words; the ZBuffer and ABuffer instances wrap far
+    past these lines. The result: each copy's destination words (0xAAAA where
+    it drew nothing) and Z line."""
+    emu = Emu()
+    emu.uc.mem_map(BLIT_TABLES, BLIT_TABLES_SIZE)
+    conv, rows = BLIT_TABLES, BLIT_TABLES + 0x20000
+    emu.uc.mem_write(conv, struct.pack('<65536H', *[(i * 0x9E37 + 0x1357) & 0xFFFF
+                                                     for i in range(65536)]))
+    emu.uc.mem_write(rows, struct.pack('<65280H', *[((q * 7 + a) & 0xFF) << 8
+                                                     for q in range(255) for a in range(256)]))
+    emu.write32(TINT_BLITTER, vtable)
+    emu.write32(TINT_BLITTER + 4, conv)
+    emu.write32(TINT_BLITTER + 8, rows)
+    for instance, pointer in ((TINT_ZBUFFER, ZBUFFER_PTR), (TINT_ABUFFER, ABUFFER_PTR)):
+        emu.write32(instance + 0x1C, 0x7FFFFFFF)
+        emu.write32(instance + 0x20, 0x1000)
+        emu.write32(pointer, instance)
+    rle = field in (0x138, 0x158)
+    dest, source, zline, aline, adjust = (TINT_LINES + 0x40 * k for k in range(5))
+    out = {}
+    for name, slot in (('plain', 4), ('tinted', 8)):
+        emu.uc.mem_write(dest, struct.pack('<4H', *[0xAAAA] * 4))
+        emu.uc.mem_write(source, bytes(LINE_RLE if rle else LINE_SOURCE))
+        emu.uc.mem_write(zline, struct.pack('<4H', *LINE_Z))
+        emu.uc.mem_write(aline, struct.pack('<4H', *LINE_A))
+        emu.uc.mem_write(adjust, bytes(4))
+        if rle:
+            args = [dest, source, 4, 0, LINE_Z_VALUE, zline, aline, intensity, 0, adjust]
+        else:
+            args = [dest, source, 4, LINE_Z_VALUE, zline, aline, intensity, 0]
+        emu.invoke(emu.read32(vtable + slot), ecx=TINT_BLITTER,
+                   args=args + ([word] if slot == 8 else []))
+        out[name] = list(struct.unpack('<4H', emu.uc.mem_read(dest, 8)))
+        out[name + '_z'] = list(struct.unpack('<4H', emu.uc.mem_read(zline, 8)))
+    return dict(field=field, vtable=vtable, word=word, intensity=intensity, **out)
+
+
+def blitters():
+    """Each of BLITTERS' plain and tinted copies for each of BLIT_WORDS."""
+    return [blitter_row(field, vtable, word=word) for field, vtable in BLITTERS
+            for word in BLIT_WORDS]
 
 
 
@@ -3690,6 +4094,12 @@ def generate():
             'iron_tint': iron_tint(),
             'effect_tint_intensity': effect_tint_intensity(),
             'curtain_draw_arm': curtain_draw_arm(),
+            'drawshp_curtain_arm': drawshp_curtain_arm(),
+            'building_colour_word': building_colour_word(),
+            'anim_colour_word': anim_colour_word(),
+            'building_anim_light': building_anim_light(),
+            'blit_pickers': blit_pickers(),
+            'blitters': blitters(),
             'nuke_impact': nuke_impact(),
             'nuke_wait': nuke_wait(),
             'nuke_flash': nuke_flash(),
@@ -3730,7 +4140,11 @@ if __name__ == '__main__':
                'IronCurtain\'s writes and UpdateIronTint\'s stages, timers and '
                'Scenario draws over a curtain\'s life, GetEffectTintIntensity over '
                'every stage and time left, and the intensity and colour word '
-               'DrawVoxelBody\'s curtain block hands the composite blit; the NUKE '
+               'DrawVoxelBody\'s curtain block hands the composite blit; the curtain\'s '
+               'tint on buildings: DrawSHP\'s intensity arm for a building and a unit, '
+               'the colour word DrawBody, BuildingClass::Draw and AnimClass::DrawIt '
+               'compute, the building anims\' light UpdateAnimation writes, the blitter '
+               'each draw\'s flags pick and whether its tinted copy ORs the word; the NUKE '
                'warhead\'s impact: '
                'its warhead test, ground clamp, flash, radar event, NUKEBALL '
                'arguments, holder list and committed cell, the wait at the AI\'s '
@@ -3858,6 +4272,20 @@ if __name__ == '__main__':
                        'format 0x8205D0 is the row\'s (retail RGB565 is 2); the high half '
                        'of the colour word holds stale ECX bits from the fixture Rules '
                        'address; nothing is stubbed',
+                       'drawshp_curtain_arm, building_colour_word, anim_colour_word, '
+                       'building_anim_light: the Techno is curtain_techno\'s, its vtable '
+                       'holding the native IsIronCurtained 0x41BF40 and flash arms '
+                       '(0x456F80, 0x70D190); WhatAmI vt+0x2C, GetCoords vt+0x48 and GetCell '
+                       'vt+0x1BC answer the row; MapClass::operator[] 0x5657A0 and by '
+                       'coordinate 0x565730 answer one fixture cell; 0x487950 (the cell\'s '
+                       'centre shrouded) answers the row; the slices start with the '
+                       'registers their blocks read (ESI, EBP or EAX as named); above the '
+                       'low 16 bits the colour words hold stale register bits',
+                       'blit_pickers: a fixture Convert whose fields hold their offsets',
+                       'blitters: the blitter objects carry the real vtables the 16-bit '
+                       'Convert constructor 0x48E740 stores in each field, with fixture '
+                       'conversion and row tables; the ZBuffer (0x887644) and ABuffer '
+                       '(0x87E8A4) instances wrap far past the lines',
                        'nuke_impact: the slice starts with EBP the bullet (vtable slots '
                        '+0x1C8/+0x1CC/+0x1B8 the native GetHeight, SetHeight and '
                        'GetMapCoords; Mark +0x124 and UnInit +0xF8 recorded stubs), '
@@ -3905,6 +4333,13 @@ if __name__ == '__main__':
                       'TechnoClass::UpdateIronTint': 0x70E5A0,
                       'TechnoClass::GetEffectTintIntensity': 0x70E360,
                       'UnitClass::DrawVoxelBody_curtain_block': 0x73BF7B,
+                      'TechnoClass::DrawSHP_curtain_arm': 0x70631F,
+                      'BuildingClass_DrawBody_colour_word': 0x43D386,
+                      'BuildingClass::Draw_colour_word': 0x43DC1C,
+                      'AnimClass::DrawIt_colour_word': 0x4233EE,
+                      'BuildingClass::UpdateAnimation_anim_light': 0x450A47,
+                      'ConvertClass_pick_blitter': 0x490B90,
+                      'ConvertClass_pick_compressed_blitter': 0x490E50,
                       'BulletClass::AI_nuke_impact': 0x467E53,
                       'BulletClass::AI_head': 0x4666F2,
                       'ScreenNukeFlash': 0x53AB70,

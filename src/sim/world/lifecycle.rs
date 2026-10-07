@@ -1186,20 +1186,7 @@ impl Simulation {
                 return;
             };
             let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-            let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(&cells));
-            let open = |cell| {
-                Ok(match cell {
-                    crate::map::cell_index::NativeCellIdentity::Real(index) => {
-                        let cell = &terrain.cells()[index];
-                        self.fog.is_ground_unshrouded(viewer, cell.rx, cell.ry)
-                    }
-                    crate::map::cell_index::NativeCellIdentity::Dummy => false,
-                })
-            };
-            if !matches!(
-                crate::sim::vision::coordinate_is_shrouded(&cells, point, &open),
-                Ok(true)
-            ) {
+            if !crate::sim::vision::cell_is_shrouded(&self.fog, &cells, viewer, cell) {
                 return;
             }
         }

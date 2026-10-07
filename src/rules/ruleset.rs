@@ -687,6 +687,11 @@ pub struct GeneralRules {
     /// this value to arm its idle timer before subsequent idle/RNG decisions.
     /// Preserve the native double; milliunit quantization changes its timer.
     pub idle_action_frequency: f64,
+    /// `[AudioVisual] ForceShieldColor=`, a `[ColorAdd]` index
+    /// (`Rules+0x18B0`): ReadInt at `0x0066B877..0x0066B891` over its current
+    /// value, constructor 0 (`0x006678C1`). A Force Shielded building's draws
+    /// OR its colour into their pixels (`app/presentation/lighting.rs`).
+    pub force_shield_color: i32,
     /// `ConditionRedSparkingProbability=` ([General]) — per-tick probability that
     /// the `AI_Update` damage-Spark particle system spawns while health is below
     /// ConditionRed. Default **0.02** (verified `RulesClass__Constructor`; stock INI
@@ -1846,6 +1851,7 @@ impl Default for GeneralRules {
             slaves_free_sound: None,
             elite_flash_timer: 0,
             idle_action_frequency: f64::from_bits(0x3fb5_3f7c_ed91_6873),
+            force_shield_color: 0,
             condition_red_sparking_probability: 0.02,
             condition_yellow_sparking_probability: 0.01,
             condition_red_spark_threshold: damage_spark_spawn_threshold(0.02),
@@ -2342,6 +2348,9 @@ impl GeneralRules {
         };
         let bomb_ticking_sound = audio_visual_sound("BombTickingSound");
         let bomb_attach_sound = audio_visual_sound("BombAttachSound");
+        // ReadAudioVisual too (`0x0066B877..0x0066B891`).
+        let force_shield_color =
+            audio_visual.read_int("ForceShieldColor", defaults.force_shield_color);
         // Rules ReadAI6739E5..673A31 is independent of ReadGeneral.
         // Constructor66760E..66761E supplies PathDelay0.016 and blockage60.
         let ai = ini.section_or_empty("AI");
@@ -2361,6 +2370,7 @@ impl GeneralRules {
                 blockage_path_delay_ticks,
                 bomb_ticking_sound,
                 bomb_attach_sound,
+                force_shield_color,
                 ..defaults
             };
         };
@@ -2674,6 +2684,7 @@ impl GeneralRules {
             elite_flash_timer: audio_visual.read_int("EliteFlashTimer", defaults.elite_flash_timer),
             idle_action_frequency: audio_visual
                 .read_double("IdleActionFrequency", defaults.idle_action_frequency),
+            force_shield_color,
             building_garrisoned_sound: audio_visual
                 .read_name("BuildingGarrisonedSound", 0x80)
                 .map(str::to_owned),

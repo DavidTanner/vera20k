@@ -40,7 +40,13 @@ fn resolve_palette(rgb_linear: vec3f, tint: vec3f, light: vec4u, index: u32, a: 
     let rgb = vec3u(round(clamp(srgb_encode(rgb_linear), vec3f(0.0), vec3f(1.0)) * 255.0));
     // 493E52/494BDD/4991F4 read A only after source-hole/Z admission. A=0
     // still stores palette row zero; N1 and special indices keep their rules.
-    let word = native_palette_word(rgb, index, light, a);
+    var word = native_palette_word(rgb, index, light, a);
+    // The colour word the tinted blitters OR into each drawn pixel
+    // (494CD9/498293/4993C2), carried in bits 18.. of each channel word.
+    if index != 0u {
+        word = word | (((light.x >> 18u) & 31u) << 11u) | (((light.y >> 18u) & 63u) << 5u)
+            | ((light.z >> 18u) & 31u);
+    }
     let encoded = vec3f(f32(RETAIL_FIVE[(word >> 11u) & 31u]),
                         f32(RETAIL_SIX[(word >> 5u) & 63u]), f32(RETAIL_FIVE[word & 31u])) / 255.0;
     return srgb_decode(encoded);

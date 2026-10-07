@@ -1093,19 +1093,13 @@ impl Simulation {
         }
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let coord = terrain.native_cell_coord(cell);
-        let centre =
-            crate::sim::movement::target_cell_coord(coord.0 as u16, coord.1 as u16, Some(&cells));
-        let open = |cell: Cell| {
-            Ok(match cell {
-                Cell::Real(index) => {
-                    let cell = &terrain.cells()[index];
-                    self.fog.is_ground_unshrouded(e.owner(), cell.rx, cell.ry)
-                }
-                Cell::Dummy => false,
-            })
-        };
-        let shrouded = crate::sim::vision::coordinate_is_shrouded(&cells, centre, &open);
-        if matches!(shrouded, Ok(true)) { 7 } else { 0 }
+        let shrouded = crate::sim::vision::cell_is_shrouded(
+            &self.fog,
+            &cells,
+            e.owner(),
+            (coord.0 as u16, coord.1 as u16),
+        );
+        if shrouded { 7 } else { 0 }
     }
 
     /// A mover's own `Can_Enter_Cell` (vtable `+0x1AC`) at a cell, as its
