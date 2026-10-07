@@ -59,18 +59,22 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    sections `nuke_impact`, `nuke_wait`, `nuke_flash`, `nuke_lighting_read`, replayed
    in `superweapon/nuke_tests.rs`; production observations
    ([map_observation.md](../../tools/map_observation.md#nuclear-missile-observation)).
+10. The Iron Curtain's tint on voxel units: GetEffectTintIntensity `0x70E360` on the
+    tint stage's owner (`superweapon/invulnerability.rs`) and UnitClass::DrawVoxelBody's
+    curtain arm `0x73BF9C` on the composite's light (`app/presentation/instances/units.rs`).
+    Oracle sections `effect_tint_intensity` and `curtain_draw_arm`, replayed in
+    `invulnerability_tests.rs` and `units.rs`; production observations
+    ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The Iron Curtain's and Force Shield's tint on screen: no draw reads the stage yet.
-  UnitClass::DrawVoxelBody scales a curtained unit's intensity by it and adds the
-  `IronCurtainColor=` `[ColorAdd]` colour (`0x0073BF9C..0x0073C07A`, through
-  `GetEffectTintIntensity 0x70E360`); TechnoClass::Draw, DrawSHP and the building anim
-  updates scale theirs (residuals in `superweapon/invulnerability.rs` and
-  `render/draw_state.rs`).
+- The Force Shield's and Iron Curtain's tint on buildings: TechnoClass::DrawSHP
+  (`0x00706334`) and the building anim updates scale their intensity by the stage, and
+  TechnoClass::Draw (`0x0070678D`) the building voxel parts' and voxel aircraft's (a
+  residual in `superweapon/invulnerability.rs`).
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold
