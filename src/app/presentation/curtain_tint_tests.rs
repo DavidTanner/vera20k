@@ -170,10 +170,13 @@ fn the_building_colour_word_matches_native() {
 
 /// Each `anim_colour_word` row (AnimClass::DrawIt `0x004233EE..0x00423630`
 /// run natively, the cell's objects walked by `0x0047C520`) with no
-/// airstrike: [`slot_anim_colour_word`] for the anim's slot byte and the
-/// cell's first building, if any.
+/// airstrike: a slot anim over a building, first among the cell's objects or
+/// behind another, takes that building's [`building_colour_word`]; an anim
+/// that is not a slot anim, or whose cell holds no building, takes none. The
+/// rows stand in for VERA's cell lookup (`instances/shp.rs`
+/// `anim_colour_word`), which is read, not replayed.
 #[test]
-fn the_slot_anim_colour_word_matches_native() {
+fn the_anim_colour_word_matches_native() {
     let oracle = oracle();
     let rows = oracle["anim_colour_word"].as_array().unwrap();
     assert_eq!(rows.len(), 13);
@@ -184,20 +187,19 @@ fn the_slot_anim_colour_word_matches_native() {
             continue;
         }
         assert_eq!(row["word"], row["stored"], "{row}");
-        sim.session.binary_frame = int(&row["frame"]) as u32;
-        let building = shielded(row);
-        let word = slot_anim_colour_word(
-            row["slot_anim"].as_bool().unwrap(),
-            (row["occupant"] != "none").then_some(&building),
-            &sim,
-            &rules(int(&row["force_color"])),
-            || row["shrouded"].as_bool().unwrap(),
-        );
-        assert_eq!(
-            u64::from(word),
-            row["word"].as_u64().unwrap() & 0xFFFF,
-            "{row}"
-        );
+        let native = row["word"].as_u64().unwrap() & 0xFFFF;
+        if !row["slot_anim"].as_bool().unwrap() || row["occupant"] == "none" {
+            assert_eq!(native, 0, "{row}");
+        } else {
+            sim.session.binary_frame = int(&row["frame"]) as u32;
+            let word = building_colour_word(
+                &shielded(row),
+                &sim,
+                &rules(int(&row["force_color"])),
+                || row["shrouded"].as_bool().unwrap(),
+            );
+            assert_eq!(u64::from(word), native, "{row}");
+        }
         compared += 1;
     }
     assert_eq!(compared, 11);

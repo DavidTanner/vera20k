@@ -97,9 +97,10 @@ pub(crate) fn anim_palette_light(
 /// the curtain (`IsIronCurtained @ 0x0041BF40`, vt+0x160), GetEffectTintIntensity
 /// (`0x0070E360`) scales it before the blit picks its LightConvert row.
 /// UnitClass::DrawVoxelBody (`0x0073BF9C..0x0073BFB8`), TechnoClass::DrawSHP
-/// (`0x00706334..0x00706387`: building bodies, bibs and buildup, SHP
+/// (`0x0070631F..0x00706389`: building bodies, bibs and buildup, SHP
 /// vehicles) and TechnoClass::Draw (`0x0070678D..0x007067E2`: a building's
-/// voxel turret and barrel) apply it. A draw reads the frame Main_Tick
+/// voxel turret and barrel; DrawSHP's sequence, read rather than executed)
+/// apply it. A draw reads the frame Main_Tick
 /// renders under; its render (`0x0055DBBE`) precedes the logic
 /// (`0x0055DC9E`) and the increment (`0x0055DE81`), so that is `sim`'s
 /// committed `binary_frame`. VERA's compatibility tint, for translucent and
@@ -130,10 +131,15 @@ pub(crate) fn curtain_light(
 /// UpdateIronTint (BuildingClass::Update `0x0043FE22`, TechnoClass::AI
 /// `0x0043FE56`).
 ///
-/// RESIDUAL: VERA reads the tint stage UpdateIronTint wrote at that frame,
-/// where native reads the one before it. They differ on the frames a stage
-/// moves on, about ten in a curtain's life, by the step between two stages'
-/// scales. The event relights that call GetEffectTintIntensity too
+/// RESIDUAL: VERA reads the tint stage and timer UpdateIronTint left at that
+/// frame, where native reads the ones before it. The stages' scales meet at
+/// each boundary (`InvulnerabilityState::effect_tint_intensity`'s oracle
+/// rows) but stage 3's start, ten frames into the curtain, whose
+/// `RandomRanged(-5, 5)` offset moves its first scale off 512: there VERA
+/// draws the anims for one frame at 396..627/256 where native draws 512/256.
+/// Above a light of 2000 the cap the scaled stages apply also moves by that
+/// frame at stage 1's start and stage 10's. The event relights that call
+/// GetEffectTintIntensity too
 /// (CreateAnimForSlot `0x00451AEE`, UpdateAnimLighting `0x00452073`, Flash
 /// `0x00456E8C`, placement `0x0043FA12`, ChangeOwner `0x00448E10`) hold
 /// until the next update, at most a frame.
@@ -208,24 +214,6 @@ pub(crate) fn building_colour_word(
     rules
         .color_add
         .rgb565_word(rules.general.force_shield_color)
-}
-
-/// AnimClass::DrawIt's colour word for an anim (`0x004233EE..0x00423630`):
-/// a building slot anim (its `+0x118`, set by CreateAnimForSlot at
-/// `0x0045199B`) takes [`building_colour_word`] of the first building among
-/// the ground objects of the cell under the anim's coordinate (`0x00565730`,
-/// `0x0047C520`: `building`), with that cell's shroud; any other anim none.
-pub(crate) fn slot_anim_colour_word(
-    slot_anim: bool,
-    building: Option<&crate::sim::game_entity::GameEntity>,
-    sim: &Simulation,
-    rules: &RuleSet,
-    shrouded: impl FnOnce() -> bool,
-) -> u16 {
-    match building {
-        Some(building) if slot_anim => building_colour_word(building, sim, rules, shrouded),
-        _ => 0,
-    }
 }
 
 pub(crate) fn color_scheme_rgb(

@@ -1054,10 +1054,14 @@ fn emit_building_anims(
     }
 }
 
-/// [`crate::app::presentation::lighting::slot_anim_colour_word`] for the anim
-/// `anim`: the cell under its coordinate (`0x00565730`; off the map, the
-/// Dummy, which holds no objects) and that cell's first ground building
-/// (`0x0047C520`).
+/// AnimClass::DrawIt's colour word for the anim `anim`
+/// (`0x004233EE..0x00423630`): a building slot anim (its `+0x118`, set by
+/// CreateAnimForSlot at `0x0045199B`) takes
+/// [`crate::app::presentation::lighting::building_colour_word`] of the first
+/// building among the ground objects of the cell under its coordinate
+/// (`0x00565730`, `0x0047C520`; off the map, the Dummy, which holds none),
+/// with that cell's shroud; any other anim none. The lookup is read, not
+/// executed: the oracle's rows stub the cell.
 fn anim_colour_word(
     state: &AppState,
     sim: &crate::sim::world::Simulation,
@@ -1065,36 +1069,36 @@ fn anim_colour_word(
     shrouded: &impl Fn((u16, u16)) -> bool,
     anim: u64,
 ) -> u16 {
-    let (Some(rules), Some(cells), Some(object), Some(coord)) = (
-        state.rules(),
-        cells,
-        sim.anim(anim),
-        sim.anim_absolute_coord(anim),
-    ) else {
+    let (Some(rules), Some(cells), Some(coord)) =
+        (state.rules(), cells, sim.anim_absolute_coord(anim))
+    else {
         return 0;
     };
+    if !sim
+        .anim(anim)
+        .is_some_and(|object| object.is_building_anim())
+    {
+        return 0;
+    }
     let cell = cells.lookup_world(coord.x, coord.y);
     if matches!(cell, crate::map::cell_index::NativeCellIdentity::Dummy) {
         return 0;
     }
     let (x, y) = cells.coord(cell);
     let cell = (x as u16, y as u16);
-    let building = sim
-        .substrate
+    sim.substrate
         .occupancy
         .first_building_on_layer(
             cell.0,
             cell.1,
             crate::sim::movement::locomotor::MovementLayer::Ground,
         )
-        .and_then(|id| sim.entities().get(id));
-    crate::app::presentation::lighting::slot_anim_colour_word(
-        object.is_building_anim(),
-        building,
-        sim,
-        rules,
-        || shrouded(cell),
-    )
+        .and_then(|id| sim.entities().get(id))
+        .map_or(0, |building| {
+            crate::app::presentation::lighting::building_colour_word(building, sim, rules, || {
+                shrouded(cell)
+            })
+        })
 }
 
 fn resolve_infantry_shp_frame(
