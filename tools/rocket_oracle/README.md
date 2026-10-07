@@ -68,3 +68,28 @@ waits for the running cadence.
 
 Not covered: Remove's cell arm, Save/Load (`0054E750`/`0054E7B0`) and the
 dummy cell GetCellAt answers off the cell array.
+
+## Draw matrix
+
+`draw_matrix.py` runs `RocketLocomotionClass::Draw_Matrix` (`00663470`, slot
+`+0x24` of the ILocomotion vtable), which `AircraftClass::Draw_It` draws a
+missile's body through (`00414969`), and the camera product the draw takes of
+it (`00754BE0`, `005AF980`). It reuses `flight.py`'s harness: every flight row
+runs again and, after the constructor and each Process, Draw_Matrix runs on the
+live locomotor and owner; each row keeps the first frame of each distinct
+facing step and CurrentPitch. The sampled flights must reproduce `flight.json`.
+Sweep rows snap the owner's facing and write CurrentPitch directly: every
+facing step at ten pitches, both sides of each step's rounding boundary, and
+V3, CMisl and DMisl owners with incoming draw keys 0 and 7.
+
+```sh
+python -m tools.rocket_oracle.draw_matrix --check
+cargo test -p vera20k --lib render::vxl_raster::tests::rocket_draw_matrix_matches_native
+```
+
+The Rust test compares the production pose matrix and its camera product bit
+for bit. The draw key is recorded, not ported: it is `-1` (uncached) for a
+pitched missile except at the stored PitchFinal product (`0x40`), and the
+step alone at zero pitch; the image depends only on the step and the pitch.
+
+Not covered: the voxel caches, Draw_Point, Shadow_Matrix and rasterization.

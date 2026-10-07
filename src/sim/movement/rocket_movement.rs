@@ -147,6 +147,12 @@ impl RocketRuntime {
         f32_value(NativeF32Bits::from_bits(self.current_pitch))
     }
 
+    /// CurrentPitch in radians above the horizon, as
+    /// `RocketLocomotionClass::Draw_Matrix @ 0x00663470` tilts the body by it.
+    pub(crate) fn draw_pitch(&self) -> f32 {
+        f32::from_bits(self.current_pitch)
+    }
+
     #[cfg(test)]
     pub(crate) fn set_mission_state_for_test(&mut self, state: i32) {
         self.mission_state = state;

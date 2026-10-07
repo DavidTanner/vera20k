@@ -205,6 +205,9 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     // Slope-transition sprites belong to the match's voxel models; the cache
     // otherwise keeps every earlier match's pages alive.
     *state.renderer.vxl_slope_transition_cache.borrow_mut() = Default::default();
+    // The pose page's model memo resolves each type's `Image=` from the
+    // match's rules, which the next match's mode and map can change.
+    *state.renderer.vxl_pose_frame_cache.borrow_mut() = Default::default();
     state.match_state.match_presentation.palette_set = result.presentation.palette_set;
     state.match_state.match_presentation.sprite_atlas = result.presentation.sprite_atlas;
     state.match_state.match_presentation.overlay_atlas = result.presentation.overlay_atlas;

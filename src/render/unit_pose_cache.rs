@@ -1,13 +1,16 @@
-//! Per-frame sprites of tilted (crashing) bodies.
+//! Per-frame sprites of posed bodies: tilted (crashing) bodies and pitched
+//! rockets.
 //!
 //! `FlyLocomotionClass` Draw_Matrix's crashing arm (`0x004CF610`) and
 //! `JumpjetLocomotionClass`'s `TiltCrashJumpjet=` arm (`0x0054DCC0`) key their
 //! draw -1, so the native voxel cache never holds such a pose: the body is
-//! rasterized afresh every frame with its current roll and pitch. This page
-//! does the same for the tilted bodies on screen. It is rebuilt each
-//! presentation frame ([`VxlPoseFrameCache::begin_frame`]) and its used rows
-//! are written into one reused GPU page after the unit instances are built
-//! ([`VxlPoseFrameCache::upload`]).
+//! rasterized afresh every frame with its current roll and pitch.
+//! `RocketLocomotionClass::Draw_Matrix` (`0x00663470`) keys a pitched missile
+//! -1 too, except at the stored PitchFinal product, whose cached image is the
+//! one a fresh render gives. This page renders the posed bodies on screen. It
+//! is rebuilt each presentation frame ([`VxlPoseFrameCache::begin_frame`]) and
+//! its used rows are written into one reused GPU page after the unit instances
+//! are built ([`VxlPoseFrameCache::upload`]).
 
 use std::collections::BTreeMap;
 
@@ -15,7 +18,7 @@ use crate::assets::asset_manager::AssetManager;
 use crate::assets::vpl_file::VplFile;
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::gpu::GpuContext;
-use crate::render::unit_atlas::{CrashTilt, UnitModel, UnitSpriteEntry, UnitSpriteKey};
+use crate::render::unit_atlas::{PoseTilt, UnitModel, UnitSpriteEntry, UnitSpriteKey};
 use crate::render::vxl_raster::VxlSprite;
 use crate::rules::ruleset::RuleSet;
 
@@ -29,11 +32,11 @@ pub struct VxlPoseFrameCache {
     cursor_y: u32,
     shelf_height: u32,
     dirty: bool,
-    /// The GPU page, created on the first crash pose and rewritten in place.
+    /// The GPU page, created on the first pose and rewritten in place.
     texture: Option<BatchTexture>,
-    /// `VOXELS.VPL`, parsed on the first crash pose.
+    /// `VOXELS.VPL`, parsed on the first pose.
     vpl: Option<Option<VplFile>>,
-    /// Each tilted type's voxel model, parsed on its first tilted pose.
+    /// Each posed type's voxel model, parsed on its first pose.
     models: BTreeMap<String, Option<UnitModel>>,
 }
 
@@ -53,14 +56,14 @@ impl VxlPoseFrameCache {
         self.dirty = false;
     }
 
-    /// Rasterize one tilted body at its arm's pose and place it on this frame's
-    /// page. None when the model does not resolve or the page is full.
+    /// Rasterize one body at its arm's pose and place it on this frame's page.
+    /// None when the model does not resolve or the page is full.
     pub fn render(
         &mut self,
         asset_manager: &AssetManager,
         rules: Option<&RuleSet>,
         key: &UnitSpriteKey,
-        tilt: CrashTilt,
+        tilt: PoseTilt,
     ) -> Option<UnitSpriteEntry> {
         if self.pixels.is_empty() {
             self.begin_frame();
@@ -78,7 +81,7 @@ impl VxlPoseFrameCache {
             .entry(key.type_id.clone())
             .or_insert_with(|| UnitModel::load(asset_manager, &key.type_id, rules))
             .as_ref()?;
-        let (sprite, native_draw_bounds) = model.render_crash_pose(key, vpl, tilt);
+        let (sprite, native_draw_bounds) = model.render_pose(key, vpl, tilt);
         let (px, py) = self.try_place(&sprite)?;
         self.blit(&sprite, px, py);
         self.dirty = true;

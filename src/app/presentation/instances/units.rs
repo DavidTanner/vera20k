@@ -243,7 +243,6 @@ const fn display_binary_frame_for_committed_session(committed_binary_frame: u32)
 fn body_sort_depth(
     state: &AppState,
     entity: &crate::sim::game_entity::GameEntity,
-    _band: EntityDrawBand,
     drawn_row_y: f32,
     z: u8,
 ) -> f32 {
@@ -433,7 +432,7 @@ pub(crate) fn build_unit_instances(
 
         // Sampled at the turret's frame, so the two sprites cannot disagree.
         let body_facing = entity.body_facing_byte(sim.session.binary_frame);
-        if let BodyDraw::CrashPose(tilt) = body {
+        if let BodyDraw::Pose(tilt) = body {
             let key = UnitSpriteKey {
                 type_id: type_str.to_string(),
                 turret_index,
@@ -443,7 +442,7 @@ pub(crate) fn build_unit_instances(
                 slope_type: stable_slope_for_key(slope_state),
                 barrel_pitch: 0,
             };
-            emit_crash_pose_sprite(
+            emit_pose_sprite(
                 state,
                 &mut pieces,
                 entity,
@@ -506,7 +505,7 @@ pub(crate) fn build_unit_instances(
                 unit_entry_for_slope_state(state, atlas, &key, slope_state)
             {
                 let depth_y: f32 = sy + entry.offset_y + entry.pixel_size[1] + dock_depth_y_offset;
-                let depth: f32 = body_sort_depth(state, entity, band, depth_y, interp_z);
+                let depth: f32 = body_sort_depth(state, entity, depth_y, interp_z);
                 let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
                 let native_shadow = matches!(texture_source, UnitTextureSource::Stable(_))
                     && prepare_unit_shadow(
@@ -637,9 +636,8 @@ pub(crate) fn build_unit_instances(
 /// How an object's body is drawn this frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BodyDraw {
-    /// A tilted body at its locomotor arm's roll and pitch, on the per-frame
-    /// pose page.
-    CrashPose(crate::render::unit_atlas::CrashTilt),
+    /// A body at its locomotor arm's pose, on the per-frame pose page.
+    Pose(crate::render::unit_atlas::PoseTilt),
     /// Body, turret and barrel sprites: the turret facing (`+0x3A0`) and the
     /// barrel elevation (`+0x370`), sampled at one frame.
     Turret { turret: u16, barrel_elevation: u16 },
@@ -755,7 +753,7 @@ fn unit_body_draw<'a>(
     Some((model, body))
 }
 
-/// The crash pose is decided before the turret split. `tilt_crash_jumpjet` is
+/// The locomotor pose is decided before the turret split. `tilt_crash_jumpjet` is
 /// the drawn model's `TiltCrashJumpjet=` and `turret_parts` its
 /// [`draws_turret_parts`]: the split follows the model being drawn, as
 /// `UnitClass::DrawVoxelBody` tests its draw type (`0x0073B7A3`), not the
@@ -776,8 +774,8 @@ fn body_draw(
     tilt_crash_jumpjet: bool,
     turret_parts: bool,
 ) -> BodyDraw {
-    if let Some(tilt) = crash_body_tilt(entity, band, tilt_crash_jumpjet) {
-        return BodyDraw::CrashPose(tilt);
+    if let Some(tilt) = body_pose(entity, band, tilt_crash_jumpjet) {
+        return BodyDraw::Pose(tilt);
     }
     if !turret_parts {
         return BodyDraw::Composite;
@@ -791,48 +789,54 @@ fn body_draw(
     }
 }
 
-/// A tilted body's arm and its roll and pitch (`TechnoClass+0x328`/`+0x32C`).
-/// Fly Draw_Matrix applies them to a crashing body while it is airborne
-/// (`0x004CF6A3`): every airborne Fly body is in the Top band
-/// (`In_Which_Layer @ 0x004CFCF0`). Jumpjet Draw_Matrix applies them to a
-/// `TiltCrashJumpjet=` type whenever either angle passes its gate
-/// (`0x0054DCDA..0x0054DD13`), crashing or not.
-fn crash_body_tilt(
+/// The locomotor Draw_Matrix arm that poses this body, if any. Fly
+/// Draw_Matrix tilts a crashing body by its roll and pitch
+/// (`TechnoClass+0x328`/`+0x32C`) while it is airborne (`0x004CF6A3`): every
+/// airborne Fly body is in the Top band (`In_Which_Layer @ 0x004CFCF0`).
+/// Jumpjet Draw_Matrix tilts a `TiltCrashJumpjet=` type whenever either angle
+/// passes its gate (`0x0054DCDA..0x0054DD13`), crashing or not. Rocket
+/// Draw_Matrix (`0x00663470`) pitches the body whenever CurrentPitch is not
+/// zero; at zero it is the plain facing matrix.
+fn body_pose(
     entity: &crate::sim::game_entity::GameEntity,
     band: EntityDrawBand,
     tilt_crash_jumpjet: bool,
-) -> Option<crate::render::unit_atlas::CrashTilt> {
-    use crate::render::unit_atlas::CrashTilt;
+) -> Option<crate::render::unit_atlas::PoseTilt> {
+    use crate::render::unit_atlas::PoseTilt;
     use crate::rules::locomotor_type::LocomotorKind;
-    let kind = entity.locomotor.as_ref()?.kind;
+    let locomotor = entity.locomotor.as_ref()?;
+    if let Some(rocket) = locomotor.rocket_runtime() {
+        let pitch = rocket.draw_pitch();
+        return (pitch != 0.0).then_some(PoseTilt::Rocket(pitch));
+    }
     let rocking = entity.rocking.as_ref()?;
     let angles = [
         rocking.angle_sideways.to_num::<f32>(),
         rocking.angle_forwards.to_num::<f32>(),
     ];
-    match kind {
+    match locomotor.kind {
         LocomotorKind::Fly if entity.crashing && band != EntityDrawBand::Ground => {
-            Some(CrashTilt::Fly(angles))
+            Some(PoseTilt::Fly(angles))
         }
         LocomotorKind::Jumpjet
             if tilt_crash_jumpjet && crate::render::vxl_raster::jumpjet_tilt_applies(angles) =>
         {
-            Some(CrashTilt::Jumpjet(angles))
+            Some(PoseTilt::Jumpjet(angles))
         }
         _ => None,
     }
 }
 
-/// One crashing body drawn at its current pose on this frame's pose page. It
-/// joins the Top band in emission order like an atlas body; aircraft cast no
-/// VERA shadow (recorded on the draw passes).
+/// One posed body drawn on this frame's pose page. It joins its display
+/// layer in emission order like an atlas body; aircraft cast no VERA shadow
+/// (recorded on the draw passes).
 #[allow(clippy::too_many_arguments)]
-fn emit_crash_pose_sprite(
+fn emit_pose_sprite(
     state: &AppState,
     pieces: &mut Vec<ObjectPieceInstance>,
     entity: &crate::sim::game_entity::GameEntity,
     key: &UnitSpriteKey,
-    tilt: crate::render::unit_atlas::CrashTilt,
+    tilt: crate::render::unit_atlas::PoseTilt,
     [center_x, center_y]: [f32; 2],
     z: u8,
     tint: [f32; 3],
@@ -852,7 +856,7 @@ fn emit_crash_pose_sprite(
         return;
     };
     let depth_y = center_y + entry.offset_y + entry.pixel_size[1];
-    let depth = body_sort_depth(state, entity, EntityDrawBand::Top, depth_y, z);
+    let depth = body_sort_depth(state, entity, depth_y, z);
     let voxel_adjust = super::foot_depth::unit_z_adjust(state, entity, true) as f32;
     let bounds = composite_draw_bounds([(entry, [center_x, center_y])]);
     let (composite_rect, split) = bounds.depth_rect(false);
@@ -1445,7 +1449,7 @@ fn emit_turret_unit_sprites(
         Some((e, _)) => center_y + e.offset_y + e.pixel_size[1] + dock_depth_y_offset,
         None => center_y + dock_depth_y_offset,
     };
-    let entity_depth: f32 = body_sort_depth(state, entity, band, entity_depth_y, z);
+    let entity_depth: f32 = body_sort_depth(state, entity, entity_depth_y, z);
 
     // Emit body first (always). Uses frame fallback for mismatched HVA counts.
     // Natively hull, turret and barrel are composited off-screen and blitted
@@ -1686,7 +1690,7 @@ pub(super) fn house_color_to_remap_row(hc: HouseColorIndex) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::unit_atlas::CrashTilt;
+    use crate::render::unit_atlas::PoseTilt;
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::InternedId;
@@ -1774,7 +1778,7 @@ mod tests {
         for turret_parts in [false, true] {
             assert_eq!(
                 body_draw(&entity, EntityDrawBand::Top, 0, false, turret_parts),
-                BodyDraw::CrashPose(CrashTilt::Fly([0.5, -0.25]))
+                BodyDraw::Pose(PoseTilt::Fly([0.5, -0.25]))
             );
         }
         // Only the airborne (Top) Fly body is posed.
@@ -1790,7 +1794,7 @@ mod tests {
         ));
         assert_eq!(
             body_draw(&entity, EntityDrawBand::Ground, 0, true, true),
-            BodyDraw::CrashPose(CrashTilt::Jumpjet([0.5, -0.25]))
+            BodyDraw::Pose(PoseTilt::Jumpjet([0.5, -0.25]))
         );
         // Under 0.005 on both axes the Jumpjet draws its plain facing matrix.
         entity.rocking = Some(crate::sim::components::RockingState {
@@ -1802,6 +1806,55 @@ mod tests {
             body_draw(&entity, EntityDrawBand::Top, 0, true, true),
             BodyDraw::Turret { .. }
         ));
+    }
+
+    /// A missile draws its plain facing while CurrentPitch is zero and Rocket
+    /// Draw_Matrix's pitched pose once Move_To sets it, in any band and ahead
+    /// of the turret split.
+    #[test]
+    fn a_rocket_takes_its_pitched_pose_once_move_to_sets_its_pitch() {
+        use crate::rules::missile_spawn::MissileSpawnRules;
+        use crate::sim::components::DriveCoord;
+        use crate::sim::movement::rocket_movement::move_to;
+        let blocks = MissileSpawnRules::default();
+        let destination = DriveCoord {
+            x: 2560,
+            y: 0,
+            z: 0,
+        };
+        let launched = |block| {
+            let mut entity = GameEntity::test_default(1, "V3ROCKET", "Russians", 0, 0);
+            entity.category = EntityCategory::Aircraft;
+            let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Rocket);
+            let rocket = locomotor.rocket_runtime_mut().expect("a Rocket payload");
+            assert_eq!(rocket.draw_pitch().to_bits(), 0);
+            move_to(rocket, block, destination, 0);
+            entity.locomotor = Some(locomotor);
+            entity
+        };
+        // The constructor's V3 block starts at PitchInitial 0.
+        let level = launched(&blocks.v3);
+        assert_eq!(
+            body_draw(&level, EntityDrawBand::Top, 0, false, false),
+            BodyDraw::Composite
+        );
+        // Its CMisl block starts vertical: PitchInitial 1 quarter turn.
+        let raised = launched(&blocks.cmisl);
+        let pitch = raised
+            .locomotor
+            .as_ref()
+            .and_then(|locomotor| locomotor.rocket_runtime())
+            .map(|rocket| rocket.draw_pitch())
+            .unwrap();
+        assert!((pitch - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        for band in [EntityDrawBand::Top, EntityDrawBand::Ground] {
+            for turret_parts in [false, true] {
+                assert_eq!(
+                    body_draw(&raised, band, 0, false, turret_parts),
+                    BodyDraw::Pose(PoseTilt::Rocket(pitch))
+                );
+            }
+        }
     }
 
     #[test]
