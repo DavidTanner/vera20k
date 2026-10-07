@@ -7,10 +7,7 @@ use super::{
     radar_surface::RadarSurface,
 };
 use bytemuck::Zeroable;
-use std::{
-    mem::{offset_of, size_of},
-    time::Duration,
-};
+use std::{mem::size_of, time::Duration};
 use wgpu::util::DeviceExt;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 struct Layer {
@@ -95,7 +92,7 @@ impl Gpu {
                     buffers: &[wgpu::VertexBufferLayout {
                         array_stride: size_of::<SpriteInstance>() as u64,
                         step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &INSTANCE_ATTRIBUTES,
+                        attributes: &crate::render::batch::SPRITE_INSTANCE_ATTRIBUTES,
                     }],
                     compilation_options: Default::default(),
                 },
@@ -592,31 +589,3 @@ fn native_radar_outline_all_themes_match_gpu_presentation() {
         );
     }
 }
-
-macro_rules! attribute {
-    ($location:expr, $format:ident, $($field:tt)+) => {
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::$format,
-            offset: offset_of!(SpriteInstance, $($field)+) as u64,
-            shader_location: $location,
-        }
-    };
-}
-
-const INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 15] = [
-    attribute!(0, Float32x2, position),
-    attribute!(1, Float32x2, size),
-    attribute!(2, Float32x2, uv_origin),
-    attribute!(3, Float32x2, uv_size),
-    attribute!(4, Float32, depth),
-    attribute!(5, Float32x3, tint),
-    attribute!(6, Float32, alpha),
-    attribute!(7, Uint32, draw_state.remap_row),
-    attribute!(8, Uint32, draw_state.fx_flags),
-    attribute!(9, Float32x4, draw_state.fx_params),
-    attribute!(10, Float32x4, draw_state.effect_tint),
-    attribute!(11, Float32, z_adjust),
-    attribute!(12, Uint32, z_gradient),
-    attribute!(13, Float32x2, zshape_origin),
-    attribute!(14, Uint32x4, palette_light),
-];

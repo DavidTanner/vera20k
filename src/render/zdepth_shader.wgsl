@@ -122,7 +122,7 @@ fn fs_main(input: VertexOutput) -> FragOutput {
     let frag_depth: f32 = stored_native_depth(32768 + i32(round(camera.camera_pos.y + camera.native_z_origin_y)) - i32(round(ground_row)));
 
     var output: FragOutput;
-    output.color = vec4f(resolve_palette(color.rgb, input.tint, vec3f(1.0), opaque_palette(input.palette_light, color.a, 0u), 1u, tactical_a_at(input.position.xy)), color.a);
+    output.color = vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a, 0u), 1u, tactical_a_at(input.position.xy)), color.a);
     output.depth = frag_depth;
     if (camera.pad1 > 0.5) {
         output.color = debug_depth_color(frag_depth);

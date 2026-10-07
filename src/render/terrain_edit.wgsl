@@ -36,7 +36,7 @@ fn admitted_pixel(input: VertexOutput) -> AdmittedPixel {
 fn body_color(input: VertexOutput, index: u32) -> vec3f {
     let color = textureLoad(t_sprite, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)),
         vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0);
-    return resolve_palette(color.rgb, input.tint, vec3f(1.0), input.palette_light, index, tactical_a_at(input.position.xy));
+    return resolve_palette(color.rgb, input.tint, input.palette_light, index, tactical_a_at(input.position.xy));
 }
 
 fn terrain_pixel(input: VertexOutput, shadow: bool) -> TerrainOutput {

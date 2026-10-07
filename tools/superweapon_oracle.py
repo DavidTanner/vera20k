@@ -13,8 +13,9 @@ ambient_step), src/sim/superweapon/spy_plane_tests.rs (spy_plane_launch,
 send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (aircraft_leave_map), src/sim/team_script_vm/super_actions_tests.rs
 (team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
-(iron_tint) and src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait,
-nuke_flash, nuke_lighting_read).
+(iron_tint, effect_tint_intensity), src/app/presentation/instances/units.rs
+(curtain_draw_arm) and src/sim/superweapon/nuke_tests.rs (nuke_impact,
+nuke_wait, nuke_flash, nuke_lighting_read).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -113,6 +114,13 @@ fixture machinery):
   (+0x1A4), its timer (+0x198) and the Scenario draw, with
   IsIronCurtained 0x41BF40, CDTimerClass::Remaining 0x4B4D70 and
   RandomRanged 0x65C7E0 run natively.
+- effect_tint_intensity: TechnoClass::GetEffectTintIntensity 0x70E360 over
+  every tint stage and time left UpdateIronTint writes, applied to a set of
+  draw intensities (one emulator: the function only reads).
+- curtain_draw_arm: UnitClass::DrawVoxelBody's intensity and colour block
+  0x73BF7B..0x73C166 as a slice: the flash arm 0x70D190, IsIronCurtained
+  0x41BF40, GetEffectTintIntensity, the [ColorAdd] conversion by pixel
+  format, Berzerk and the Deactivated halving 0x70FBD0 run natively.
 - nuke_impact: BulletClass::AI's NUKE block and tail 0x467E53..0x467FEE as a
   slice: the warhead test 0x410A40, GetHeight 0x5F5F40 and SetHeight
   0x5F5FA0 (floor 0x578080 and Mark recorded), GetMapCoords 0x41BEA0,
@@ -3211,6 +3219,136 @@ def iron_tint():
     return rows
 
 
+CURTAIN_TECHNO = BASE + 0x3F2000
+CURTAIN_VT = BASE + 0x3F3000
+# TechnoClass: the flash count +0xF0, AirstrikeTintTimer (+0x1B4 start,
+# +0x1BC time left), AirstrikeTintStage, Deactivated and Berzerk.
+TECHNO_FLASH, TECHNO_AIRSTRIKE_TIMER, TECHNO_AIRSTRIKE_STAGE = 0xF0, 0x1B4, 0x1C0
+TECHNO_DEACTIVATED, TECHNO_BERZERK = 0x1C8, 0x298
+# RulesClass: [ColorAdd] (sixteen RGB triples) and the [AudioVisual] indexes
+# IronCurtainColor= and BerserkColor= read at 0x66B838 and 0x66B857.
+RULES_COLOR_ADD, RULES_IRON_CURTAIN_COLOR, RULES_BERSERK_COLOR = 0x1874, 0x18A8, 0x18AC
+# The surface pixel format 0x4BBC90 returns; 2 is RGB565, the active retail one
+# (docs/research/LIGHTCONVERT_ROW_RGB565_ORACLE_2026_09_09.md).
+PIXEL_FORMAT = 0x8205D0
+# Retail RULESMD.INI [ColorAdd], in order.
+RETAIL_COLOR_ADD = ((0, 0, 0), (31, 0, 0), (0, 63, 0), (0, 0, 31), (24, 0, 0), (0, 56, 0),
+                    (0, 0, 24), (31, 63, 31), (7, 7, 7), (24, 56, 24), (14, 28, 14), (15, 0, 15),
+                    (24, 56, 0), (16, 32, 0))
+# The draw intensities each tint stage is applied to: the 0..2000 scale, its
+# cap, and values the 32-bit product wraps on.
+TINT_INTENSITIES = (0, 1, 199, 255, 256, 500, 999, 1000, 1001, 1234, 1500, 1999, 2000, 2001,
+                    4000, -1, -256, -1000, 0x400000, 0x7FFFFFFF, -0x80000000)
+
+
+def curtain_techno(emu, *, stage=0, tint=(-1, 0), curtain=(-1, 0)):
+    """A fixture Techno: IronTintStage, IronTintTimer (start, time left) and
+    IronCurtainTimer as given; the airstrike tint at its constructor's stage 0
+    with both timers stopped."""
+    this = CURTAIN_TECHNO
+    emu.write32(this + TECHNO_IC_TIMER, curtain[0])
+    emu.write32(this + TECHNO_IC_TIMER + 8, curtain[1])
+    emu.write32(this + TECHNO_TINT_TIMER, tint[0])
+    emu.write32(this + TECHNO_TINT_TIMER + 8, tint[1])
+    emu.write32(this + TECHNO_TINT_STAGE, stage)
+    emu.write32(this + TECHNO_AIRSTRIKE_TIMER, 0xFFFFFFFF)
+    emu.write32(this + TECHNO_AIRSTRIKE_TIMER + 8, 0)
+    emu.write32(this + TECHNO_AIRSTRIKE_STAGE, 0)
+    return this
+
+
+def effect_tint_intensity():
+    """TechnoClass::GetEffectTintIntensity 0x70E360 (ScaleByIronTintPhase
+    0x70E380, then the airstrike phase 0x70E4B0 at stage 0) over the domain
+    UpdateIronTint writes (stages 0 to 10, iron_tint): every stage with each
+    time left its timer can hold (0 to 25 frames, the longest being stage 3's
+    20 plus 5), the stopped timer IronCurtain leaves (start -1, 0 left) and
+    one past its end, each applied to TINT_INTENSITIES. The function only
+    reads, so one emulator serves every row. A row is [stage, tint timer
+    start, time left field, frame, results in TINT_INTENSITIES' order]."""
+    emu = Emu()
+    frame = 5000
+    emu.write32(FRAME, frame)
+    rows = []
+    for stage in range(11):
+        timers = [(-1, 0), (frame - 30, 25)]
+        timers += [(frame - 3, left + 3) for left in range(26)]
+        for start, field in timers:
+            this = curtain_techno(emu, stage=stage, tint=(start, field))
+            rows.append([stage, start, field, frame,
+                         [i32(emu.invoke(0x70E360, ecx=this, args=[intensity & 0xFFFFFFFF]))
+                          for intensity in TINT_INTENSITIES]])
+    return dict(intensities=list(TINT_INTENSITIES), rows=rows)
+
+
+def curtain_draw_arm_row(*, intensity=1000, word=0, curtain=(4990, 750), stage=2,
+                         tint=(4998, 4), flash=0, berzerk=False, deactivated=False,
+                         iron_color=0, berserk_color=4, pixel_format=2, frame=5000):
+    """UnitClass::DrawVoxelBody's intensity and colour block 0x73BF7B..0x73C166
+    as a slice: EBP the unit (vtable slots +0x464 and +0x160 the native
+    flash arm 0x70D190 and IsIronCurtained 0x41BF40), [ESP+0x1E0] the draw
+    intensity and [ESP+0x1E4] the colour word its caller passed. Rules hold
+    the retail [ColorAdd] and the row's indexes; 0x4BBC90 reads the row's
+    pixel format. The result is ECX (the intensity the composite blit takes)
+    and ESI (its colour word) at 0x73C166."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    this = curtain_techno(emu, stage=stage, tint=tint, curtain=curtain)
+    emu.write32(this, CURTAIN_VT)
+    emu.write32(CURTAIN_VT + 0x464, 0x70D190)
+    emu.write32(CURTAIN_VT + 0x160, 0x41BF40)
+    emu.write32(this + TECHNO_FLASH, flash)
+    write8(emu, this + TECHNO_DEACTIVATED, int(deactivated))
+    write8(emu, this + TECHNO_BERZERK, int(berzerk))
+    for index, rgb in enumerate(RETAIL_COLOR_ADD):
+        emu.uc.mem_write(RULES + RULES_COLOR_ADD + 3 * index, bytes(rgb))
+    emu.write32(RULES + RULES_IRON_CURTAIN_COLOR, iron_color)
+    emu.write32(RULES + RULES_BERSERK_COLOR, berserk_color)
+    emu.write32(PIXEL_FORMAT, pixel_format)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp + 0x1E0, u32(intensity))
+    uc.mem_write(sp + 0x1E4, u32(word))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x73BF7B, 0x73C166, count=10_000)
+    return dict(intensity=intensity, word=word, curtain=list(curtain), stage=stage,
+                tint=list(tint), flash=flash, berzerk=berzerk, deactivated=deactivated,
+                iron_color=iron_color, berserk_color=berserk_color,
+                pixel_format=pixel_format, frame=frame,
+                out_intensity=i32(uc.reg_read(UC_X86_REG_ECX)),
+                out_word=uc.reg_read(UC_X86_REG_ESI))
+
+
+def curtain_draw_arm():
+    """The arm's gate at the curtain's edges (time left 1 and 0, a stopped
+    timer holding time and none), each stage's scale at the draw intensities
+    of a lit and a dark cell, and the arms VERA leaves as residuals: the
+    flash count's bit 1, IronCurtainColor indexes other than retail's 0 in
+    each pixel format, Berzerk, Deactivated and a caller's colour word."""
+    rows = []
+    for curtain in ((4990, 11), (4990, 10), (-1, 7), (-1, 0), (5001, 750)):
+        rows.append(curtain_draw_arm_row(curtain=curtain))
+    for stage, tint in ((0, (-1, 0)), (1, (4998, 6)), (2, (4998, 4)), (3, (4980, 24)),
+                        (4, (4996, 8)), (5, (4990, 16)), (6, (4996, 8)), (7, (4999, 6)),
+                        (8, (4997, 4)), (9, (4990, 20)), (10, (4990, 20))):
+        for intensity in (1000, 1500, 300):
+            rows.append(curtain_draw_arm_row(stage=stage, tint=tint, intensity=intensity))
+    for flash in (2, 3, 1):
+        rows.append(curtain_draw_arm_row(flash=flash, intensity=1000))
+        rows.append(curtain_draw_arm_row(flash=flash, intensity=1600))
+    for pixel_format in (2, 1, 0):
+        rows.append(curtain_draw_arm_row(iron_color=4, pixel_format=pixel_format))
+        rows.append(curtain_draw_arm_row(iron_color=9, pixel_format=pixel_format))
+    rows.append(curtain_draw_arm_row(berzerk=True))
+    rows.append(curtain_draw_arm_row(berzerk=True, curtain=(-1, 0)))
+    rows.append(curtain_draw_arm_row(deactivated=True))
+    rows.append(curtain_draw_arm_row(deactivated=True, intensity=-7))
+    rows.append(curtain_draw_arm_row(word=0x1234))
+    return rows
+
+
 
 # ---------------------------------------------------------------- nuke impact
 
@@ -3550,6 +3688,8 @@ def generate():
             'aircraft_leave_map': aircraft_leave_map(),
             'team_super_actions': team_super_actions(),
             'iron_tint': iron_tint(),
+            'effect_tint_intensity': effect_tint_intensity(),
+            'curtain_draw_arm': curtain_draw_arm(),
             'nuke_impact': nuke_impact(),
             'nuke_wait': nuke_wait(),
             'nuke_flash': nuke_flash(),
@@ -3588,7 +3728,10 @@ if __name__ == '__main__':
                'the threat call\'s arguments, the Fire_SW indexes and cells, the '
                'mission target and the step; the Iron Curtain\'s tint stage: '
                'IronCurtain\'s writes and UpdateIronTint\'s stages, timers and '
-               'Scenario draws over a curtain\'s life; the NUKE warhead\'s impact: '
+               'Scenario draws over a curtain\'s life, GetEffectTintIntensity over '
+               'every stage and time left, and the intensity and colour word '
+               'DrawVoxelBody\'s curtain block hands the composite blit; the NUKE '
+               'warhead\'s impact: '
                'its warhead test, ground clamp, flash, radar event, NUKEBALL '
                'arguments, holder list and committed cell, the wait at the AI\'s '
                'head, the flash\'s statuses, timers and relights, and the map\'s '
@@ -3704,6 +3847,17 @@ if __name__ == '__main__':
                        'iron_tint: the Techno is a fixture holding its vtable (slot '
                        '+0x160 the native IsIronCurtained), both timers and the stage; '
                        'nothing is stubbed',
+                       'effect_tint_intensity: one emulator for every row (the function '
+                       'only reads); the fixture Techno holds the stage and tint timer, '
+                       'its airstrike tint at stage 0 with both timers stopped; nothing '
+                       'is stubbed',
+                       'curtain_draw_arm: the slice starts with EBP the unit (vtable '
+                       'slots +0x464 and +0x160 the native 0x70D190 and 0x41BF40) and '
+                       '[ESP+0x1E0]/[ESP+0x1E4] the intensity and colour word; Rules '
+                       'hold the retail [ColorAdd] and the row\'s indexes; the pixel '
+                       'format 0x8205D0 is the row\'s (retail RGB565 is 2); the high half '
+                       'of the colour word holds stale ECX bits from the fixture Rules '
+                       'address; nothing is stubbed',
                        'nuke_impact: the slice starts with EBP the bullet (vtable slots '
                        '+0x1C8/+0x1CC/+0x1B8 the native GetHeight, SetHeight and '
                        'GetMapCoords; Mark +0x124 and UnInit +0xF8 recorded stubs), '
@@ -3749,6 +3903,8 @@ if __name__ == '__main__':
                       'TeamClass::script_action_57': 0x6F0130,
                       'TechnoClass::IronCurtain': 0x70E2B0,
                       'TechnoClass::UpdateIronTint': 0x70E5A0,
+                      'TechnoClass::GetEffectTintIntensity': 0x70E360,
+                      'UnitClass::DrawVoxelBody_curtain_block': 0x73BF7B,
                       'BulletClass::AI_nuke_impact': 0x467E53,
                       'BulletClass::AI_head': 0x4666F2,
                       'ScreenNukeFlash': 0x53AB70,

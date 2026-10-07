@@ -51,14 +51,13 @@ impl SinkingWaterlines {
     }
 }
 
-/// The voxel shader's unused tint W lane transports this signed world row.
-/// A separate flag preserves all ordinary tint/opacity semantics and avoids
-/// changing SpriteInstance's cross-platform vertex ABI for a rare draw arm.
+/// The voxel shader's `sinking_row` lane transports this signed world row,
+/// which it reads only under FX_SINKING_CLIP.
 pub(crate) fn apply_waterline_clip(draw: &mut DrawState, row: Option<i16>) {
     draw.fx_flags &= !FX_SINKING_CLIP;
     if let Some(row) = row {
         draw.fx_flags |= FX_SINKING_CLIP;
-        draw.effect_tint[3] = f32::from(row);
+        draw.sinking_row = f32::from(row);
     }
 }
 

@@ -29,7 +29,6 @@ struct Instance {
     @location(7) remap_row: u32,
     @location(8) fx_flags: u32,
     @location(9) fx_params: vec4f,
-    @location(10) effect_tint: vec4f,
     @location(14) palette_light: vec4u,
 };
 
@@ -40,7 +39,6 @@ struct VertexOutput {
     @location(2) alpha: f32,
     @location(3) @interpolate(flat) fx_flags: u32,
     @location(4) fx_params: vec4f,
-    @location(5) effect_tint: vec4f,
     @location(11) @interpolate(flat) palette_light: vec4u,
 };
 
@@ -84,7 +82,6 @@ fn vertex_impl(
     output.alpha = instance.alpha;
     output.fx_flags = instance.fx_flags;
     output.fx_params = instance.fx_params;
-    output.effect_tint = instance.effect_tint;
     output.palette_light = instance.palette_light;
     return output;
 }
@@ -103,16 +100,16 @@ fn vs_depth(@builtin(vertex_index) idx: u32, instance: Instance) -> VertexOutput
     return output;
 }
 
-fn apply_fx(color: vec4f, _flags: u32, params: vec4f, effect_tint: vec4f) -> vec4f {
+fn apply_fx(color: vec4f, _flags: u32, params: vec4f) -> vec4f {
     // Original location: `RA2-GAME.EXE-IDB` canon,
     // `rendering.drawStateEffects.ra2yr.json`; this representation-neutral
     // branch mirrors the voxel shader so SHP and VXL share one DrawState ABI.
-    // YR resolves selector opacity and invulnerability brightness before either
-    // SHP or VXL submission. EMP and mirror deliberately remain no-op residuals.
-    // Invulnerability/temporal brightness is folded into the gamma-space
-    // light multiply by the caller (natively 0x0070E380 scales the brightness
-    // argument itself, which selects the same LightConvert row); only opacity
-    // is applied here.
+    // YR resolves selector opacity before either SHP or VXL submission. EMP
+    // and mirror deliberately remain no-op residuals. An effect on the
+    // object's light, such as the Iron Curtain's tint, scales the intensity
+    // its PaletteLight carries (natively GetEffectTintIntensity 0x0070E360
+    // scales the intensity argument, which selects the LightConvert row);
+    // only opacity is applied here.
     return vec4f(color.rgb, color.a * params.x);
 }
 
@@ -130,9 +127,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Map lighting happens before the shared DrawState effect branch, matching
     // the voxel fragment path. Alpha 1.0 = opaque; no draw state changes order.
     return apply_fx(
-        vec4f(resolve_palette(color.rgb, input.tint, input.effect_tint.rgb, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
+        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
         input.fx_flags,
         input.fx_params,
-        input.effect_tint,
     );
 }
