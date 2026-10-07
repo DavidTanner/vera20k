@@ -499,8 +499,8 @@ from the repository root; for an external profile copy, set
 `launch.selected_map_file` to the absolute path of the tracked map.
 
 With release binary SHA-256
-`3017ba4b04d0adf61b3abe1449888a70b398345688e3615d1368425ebf675a3b`
-(31,945,328 bytes) and map SHA-256
+`d39a897f33bc67f4fa06a7a411687bf40fe8276290f3eed37f133e8f6a866fe1`
+(31,950,128 bytes) and map SHA-256
 `0a3861e8bf90a61cc122ed0233e46cc8764e0074eb9ab852aa76dc48b1883499`, tick 9010
 restarts the charge (start 9010) and the silo runs Missile (mission 22) until it
 returns to Guard at 9019. The warhead strikes the ground in the AI of frame 9412:
@@ -535,8 +535,8 @@ root: run a profile copy whose `launch.selected_map_file` is the tracked map's
 absolute path.
 
 With release binary SHA-256
-`3017ba4b04d0adf61b3abe1449888a70b398345688e3615d1368425ebf675a3b`
-(31,945,328 bytes) and map SHA-256
+`d39a897f33bc67f4fa06a7a411687bf40fe8276290f3eed37f133e8f6a866fe1`
+(31,950,128 bytes) and map SHA-256
 `3cc2686b370b82a91766b5c848bc34f2cd35ba60f772d5587f583778004f9ae7`, the computer's
 NukeSpecial is granted on the first step (charge start 0, 9000 frames) and is ready
 from step 9001. Its Strategy tick fires it at frame 9018 (the charge restarts there):
