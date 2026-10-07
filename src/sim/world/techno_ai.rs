@@ -995,6 +995,7 @@ pub(crate) fn mission_handlers_run(sim: &Simulation, id: u64) -> bool {
 }
 
 /// `TechnoClass::AI_Update`'s leading common steps, in native order: the
+/// Iron Curtain tint stage (`0x006F9EAF`, [`iron_tint_step`]), the
 /// promotion sample (`0x006FA054`), the drain blocks (`0x006FA14B..
 /// 0x006FA224`, directly after the rank-cache write at `0x006FA145`), the
 /// CaptureManager update (`0x006FA730`), then the IsAlive gate (`0x006FA735`)
@@ -1018,6 +1019,7 @@ fn techno_common_steps(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
+    iron_tint_step(sim, id);
     veterancy_promotion_step(sim, id, rules);
     crate::sim::credit_income::drain_common_step(sim, id, rules);
     allied_target_drop_step(sim, id, rules);
@@ -1038,6 +1040,32 @@ fn techno_common_steps(
         entity.advance_door(sim.session.binary_frame);
     }
     true
+}
+
+/// `TechnoClass::UpdateIronTint` (`0x006F9EAF`), the first step of
+/// `TechnoClass::AI_Update` after the hover flag and the Gattling sound: a
+/// curtained object's tint stage, whose stage 2 draws from the Scenario
+/// stream ([`InvulnerabilityState::update_tint`]).
+///
+/// RESIDUAL: the next step, `TechnoClass::UpdateAirstrikeTint`
+/// (`0x0070E920`, called at `0x006F9EB6`), steps the airstrike tint of a
+/// building its own AirstrikeClass (`+0x294`) targets and makes the same
+/// Scenario `RandomRanged(-5, 5)` draw at that stage machine's stage 2 step.
+/// VERA has no AirstrikeClass (Boris' airstrike), so the draw is missing with
+/// it. Trigger: a building marked by Boris. Downstream: later Scenario draws
+/// shift.
+///
+/// [`InvulnerabilityState::update_tint`]: crate::sim::superweapon::invulnerability::InvulnerabilityState::update_tint
+fn iron_tint_step(sim: &mut Simulation, id: u64) {
+    let frame = sim.session.binary_frame as i32;
+    if let Some(curtain) = sim
+        .substrate
+        .entities
+        .get_mut(id)
+        .and_then(|entity| entity.invulnerability.as_mut())
+    {
+        curtain.update_tint(frame, &mut sim.scenario_rng);
+    }
 }
 
 /// Techno6FA4FB follows target validity and precedes mission dispatch. The

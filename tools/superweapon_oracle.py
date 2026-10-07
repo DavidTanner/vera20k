@@ -11,8 +11,9 @@ src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections) and
 src/sim/superweapon/psychic_dominator_tests.rs (psydom_*, update_lighting,
 ambient_step), src/sim/superweapon/spy_plane_tests.rs (spy_plane_launch,
 send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
-(aircraft_leave_map) and src/sim/team_script_vm/super_actions_tests.rs
-(team_super_actions).
+(aircraft_leave_map), src/sim/team_script_vm/super_actions_tests.rs
+(team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
+(iron_tint).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -106,6 +107,11 @@ fixture machinery):
   GetPowerRatio 0x4FCE30, the RechargeTimer read, GetRechargeTime 0x6CC260,
   the wait test and Quarry_To_Threat 0x645BB0, with the threat scan,
   Fire_SW and Assign_Mission_Target recorded.
+- iron_tint: TechnoClass::UpdateIronTint 0x70E5A0 once a frame over a
+  curtain's life, after TechnoClass::IronCurtain 0x70E2B0: the stage
+  (+0x1A4), its timer (+0x198) and the Scenario draw, with
+  IsIronCurtained 0x41BF40, CDTimerClass::Remaining 0x4B4D70 and
+  RandomRanged 0x65C7E0 run natively.
 """
 from pathlib import Path
 import math
@@ -3109,6 +3115,76 @@ def team_super_actions():
     return rows
 
 
+IRON_TINT = BASE + 0x3F0000
+IRON_TINT_TECHNO = IRON_TINT
+IRON_TINT_VT = IRON_TINT + 0x1000
+# TechnoClass: IronCurtainTimer (+0x18C start, +0x194 time left), IronTintTimer
+# (+0x198, +0x1A0), IronTintStage, and the Force Shield byte IronCurtain writes.
+TECHNO_IC_TIMER, TECHNO_TINT_TIMER = 0x18C, 0x198
+TECHNO_TINT_STAGE, TECHNO_FORCE_SHIELDED = 0x1A4, 0x1C4
+
+
+def iron_tint_row(*, duration, frames, applies=(0,), force_shield=False, seed=7, start=1000,
+                  before=2):
+    """A constructed Techno (stage 10, both timers stopped at 0) whose
+    UpdateIronTint 0x70E5A0 runs once a frame from `before` frames ahead of
+    offset 0 to offset `frames` - 1, with TechnoClass::IronCurtain 0x70E2B0
+    (house 0) ahead of it at each offset in `applies`. IsIronCurtained
+    0x41BF40 (vt+0x160), CDTimerClass::Remaining 0x4B4D70 and the Scenario
+    RandomRanged 0x65C7E0 (seeded by 0x65C6D0) run natively. A step is a
+    frame whose stage or tint timer changed or that drew: [offset, stage,
+    tint timer start, tint timer time left, draws]."""
+    emu = Emu()
+    this = IRON_TINT_TECHNO
+    emu.write32(this, IRON_TINT_VT)
+    emu.write32(IRON_TINT_VT + 0x160, 0x41BF40)
+    for timer in (TECHNO_IC_TIMER, TECHNO_TINT_TIMER):
+        emu.write32(this + timer, 0xFFFFFFFF)
+        emu.write32(this + timer + 8, 0)
+    emu.write32(this + TECHNO_TINT_STAGE, 10)
+    seed_scenario_rng(emu, seed)
+    record_draws(emu)
+
+    def state():
+        return [emu.read_i32(this + TECHNO_TINT_STAGE), emu.read_i32(this + TECHNO_TINT_TIMER),
+                emu.read_i32(this + TECHNO_TINT_TIMER + 8)]
+
+    steps, last = [], state()
+    for offset in range(-before, frames):
+        emu.write32(FRAME, (start + offset) & 0xFFFFFFFF)
+        emu.events = []
+        if offset in applies:
+            emu.invoke(0x70E2B0, ecx=this, args=[duration, 0, int(force_shield)])
+        emu.invoke(0x70E5A0, ecx=this)
+        now = state()
+        if now != last or emu.events:
+            steps.append([offset, *now, [event[2:] for event in emu.events]])
+        last = now
+    return dict(duration=duration, frames=frames, applies=list(applies),
+                force_shield=force_shield, seed=seed, start=start, before=before, steps=steps,
+                force_shielded=emu.read_i32(this + TECHNO_FORCE_SHIELDED),
+                curtain_timer=[emu.read_i32(this + TECHNO_IC_TIMER),
+                               emu.read_i32(this + TECHNO_IC_TIMER + 8)],
+                rng_after=rng_state(emu))
+
+
+def iron_tint():
+    """The retail Iron Curtain and Force Shield durations to past their end,
+    a re-application before the draw and one after it, and short durations
+    around each test of the curtain's time left (54 at stage 5, 30 at 6).
+    Seed 7 draws 4 first (stage 3 lasts 24 frames), so its stage 5 first runs
+    out at offset 58: curtains of 111, 112 and 113 frames have 53, 54 and 55
+    left there."""
+    rows = [iron_tint_row(duration=750, frames=760),
+            iron_tint_row(duration=500, frames=510, force_shield=True, seed=11),
+            iron_tint_row(duration=750, frames=120, applies=(0, 9, 40), seed=3)]
+    for duration in (1, 6, 10, 11, 30, 31, 40, 54, 55, 60, 84, 85, 100):
+        rows.append(iron_tint_row(duration=duration, frames=duration + 3, seed=duration))
+    for duration in (111, 112, 113):
+        rows.append(iron_tint_row(duration=duration, frames=duration + 3, seed=7))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -3132,6 +3208,7 @@ def generate():
             'spyplane_missions': spyplane_missions(),
             'aircraft_leave_map': aircraft_leave_map(),
             'team_super_actions': team_super_actions(),
+            'iron_tint': iron_tint(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -3164,7 +3241,9 @@ if __name__ == '__main__':
                'and the aircraft off-map removal and its predicate; script actions '
                '55 and 57: the leader, the Super checked, the power and charge gates, '
                'the threat call\'s arguments, the Fire_SW indexes and cells, the '
-               'mission target and the step'),
+               'mission target and the step; the Iron Curtain\'s tint stage: '
+               'IronCurtain\'s writes and UpdateIronTint\'s stages, timers and '
+               'Scenario draws over a curtain\'s life'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -3272,7 +3351,10 @@ if __name__ == '__main__':
                        'row\'s kind; the centre\'s and target\'s GetCoords vt+0x48 answer '
                        'the row; Greatest_Threat vt+0x3C4 answers the row\'s target or '
                        'NULL; Fire_SW 0x4FAE50 and Assign_Mission_Target 0x6E9050 are '
-                       'recorded stubs'],
+                       'recorded stubs',
+                       'iron_tint: the Techno is a fixture holding its vtable (slot '
+                       '+0x160 the native IsIronCurtained), both timers and the stage; '
+                       'nothing is stubbed'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -3295,4 +3377,6 @@ if __name__ == '__main__':
                       'AircraftClass::Mission_SpyplaneOverfly': 0x4157C0,
                       'AircraftClass::AI_leave_map': 0x414F47,
                       'TeamClass::script_action_55': 0x6EFC70,
-                      'TeamClass::script_action_57': 0x6F0130}))
+                      'TeamClass::script_action_57': 0x6F0130,
+                      'TechnoClass::IronCurtain': 0x70E2B0,
+                      'TechnoClass::UpdateIronTint': 0x70E5A0}))

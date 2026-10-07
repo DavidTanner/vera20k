@@ -688,8 +688,8 @@ name up in the retail root: run a profile copy whose `launch.selected_map_file` 
 tracked map's absolute path.
 
 With release binary SHA-256
-`f4d3c441feda523f49a3ec30ef47dbc7f68611d9abc4bce76153ee6465360428`
-(31,967,584 bytes) and map SHA-256
+`8b44496850c4fe123a5db50821e82aad3e3cf34e84d484179f15b2e6d93bac58`
+(31,917,728 bytes) and map SHA-256
 `2db0b369a31466407936ed3a887be7cc9dfc2068b0ff9ddee732f215ad17b97c`, the computer's
 IronCurtainSpecial is granted on the first step (charge start 0, 4500 frames) and is
 ready from step 4501. Its first team pass with an enemy, at frame 3675, creates the
@@ -698,14 +698,14 @@ Soviet Iron Curtain Team (`0ACDAEFC-G`, six HTNK, AI trigger condition 5). The s
 at steps 7183..7185 for (51,51), 20 cells (`AISafeDistance=`) from the observer's base
 towards the computer's (script action 53), guard (action 5), and at frame 7512 the house
 fires its Iron Curtain at the team's centre (action 55; the charge restarts there). The
-team then attacks the observer's yard under the curtain. The 8000-step run ends with
-state hash `16084261659391202685` and BGRA SHA-256
-`6fc3701bc6d8bb9600dc3cf6a540c70265b69deec4b590ee816005b7d52792c6`. A copy that ends at
+team then attacks the observer's yard under the curtain. Ten frames into the curtain each
+HTNK draws its tint number from the Scenario stream (`TechnoClass::UpdateIronTint`).
+The 8000-step run ends with state hash `14395597863552765605` and BGRA SHA-256
+`04134b470752b79a8cbdb41144210b6367884c3e2b42399190866925eac92704`. A copy that ends at
 7530 with `camera_cell` (51,51) shows the team at its gathering point among the
-curtain's anims (state hash `8556636916486512679`, BGRA SHA-256
+curtain's anims (state hash `3678630503708879027`, BGRA SHA-256
 `2d549f944794aef1a46bfcd70448e4adf4e896eebc49bb211e2c53a8e73d33c2`); the units' own
-tint and its stage machine (`TechnoClass::UpdateIronTint` `0x70E5A0`) are not ported
-(the superweapons checkpoint's next chains).
+tint is not drawn yet (the superweapons checkpoint's next chains).
 
 ## Computer Chronosphere observation
 
@@ -729,14 +729,14 @@ two share one spot until they move off: the second's own landing cell, (39,32), 
 under the plant, and the warp's blocked search moves it to the cell where the first had
 landed (read from `movement/teleport_chrono.rs`, not compared with gamemd). The team then
 destroys the observer's yard and moves on to its barracks. The 9000-step run
-ends with state hash `9628039434125704489` and BGRA SHA-256
+ends with state hash `11801351645231858838` and BGRA SHA-256
 `dc0794bbf93373d106354519149a88a068751905eb0f13834d08fe536b44a409`; a copy that ends at
-7405 with `camera_cell` (41,36) shows the arrival (state hash `5285862740273670136`,
+7405 with `camera_cell` (41,36) shows the arrival (state hash `11728301622766041197`,
 BGRA SHA-256 `62ad0af511ef1c65ab607fad0e7f1ac878a9daf65a7cf979eff24a31707390a6`). The
 same binary loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300
-steps (state hash `17265848597308621850`). These are Rust production observations: the
-chain's native comparisons are the `tools.superweapon_oracle` `team_super_actions` rows,
-and no whole-run timing or pixel equivalence with gamemd is claimed.
+steps (state hash `8142462839629644773`). These are Rust production observations: the
+chains' native comparisons are the `tools.superweapon_oracle` `team_super_actions` and
+`iron_tint` rows, and no whole-run timing or pixel equivalence with gamemd is claimed.
 
 ## Siege Chopper deployment observation
 

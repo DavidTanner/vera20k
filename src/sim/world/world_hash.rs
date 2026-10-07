@@ -1591,13 +1591,7 @@ impl Simulation {
 
             if let Some(ref inv) = entity.invulnerability {
                 1u8.hash(hasher);
-                inv.timer.start_frame().hash(hasher);
-                inv.timer.duration().hash(hasher);
-                let kind_byte: u8 = match inv.kind {
-                    crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain => 0,
-                    crate::sim::superweapon::invulnerability::InvulnKind::ForceShield => 1,
-                };
-                kind_byte.hash(hasher);
+                inv.hash_state(hasher);
             } else {
                 0u8.hash(hasher);
             }

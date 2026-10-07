@@ -843,7 +843,9 @@ use crate::sim::world::Simulation;
 // timers, mission state, speed, latch, elite byte, pitch and cruise start
 // distance) in its payload; the entity's rocket phase machine is removed; the
 // kamikaze tracker saves its nodes.
-const SNAPSHOT_VERSION: u32 = 293;
+// 293 -> 294: the Iron Curtain's state saves the Techno's tint stage (+0x1A4)
+// and its timer (+0x198). Prior records lack them.
+const SNAPSHOT_VERSION: u32 = 294;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3855,7 +3857,8 @@ mod tests {
         // Dominator's globals, permanent control and Dominator lighting.
         // 292 -> 293: the native Rocket locomotor object; no rocket phase
         // machine; the kamikaze tracker's nodes.
-        assert_eq!(super::SNAPSHOT_VERSION, 293);
+        // 293 -> 294: the Iron Curtain's tint stage and timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 294);
     }
 
     #[test]
