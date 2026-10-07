@@ -53,6 +53,8 @@ impl Simulation {
         cell: (u16, u16),
         overlay_registry: Option<&OverlayTypeRegistry>,
     ) -> bool {
+        #[cfg(test)]
+        super::ai_fire::observe(super::ai_fire::AiFireEvent::Fire(sw_type_id, cell));
         let Some(sw) = rules.super_weapon(self.interner.resolve(sw_type_id)) else {
             return false;
         };

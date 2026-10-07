@@ -37,22 +37,37 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    `spy_plane_launch`, `send_spy_planes`, `spyplane_missions`, `aircraft_leave_map`;
    production observations
    ([map_observation.md](../../tools/map_observation.md#spy-plane-observation)).
+7. Iron Curtain and Chronosphere, computer path: the team script actions that fire
+   them, 55 `0x6EFC70` and 57 `0x6F0130` (`team_script_vm/super_actions.rs`), with
+   the AI trigger conditions' readiness test (`superweapon::super_nearly_ready`).
+   Oracle section `team_super_actions`, replayed in `super_actions_tests.rs`;
+   production observations
+   ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
+   Action 56 `0x6EFE60` is not ported: only the retail campaign map SOV02SMD.MAP
+   uses it (four scripts).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The AI's Chronosphere: team script `0x6EFE60` and the ChronoWarpTo paths
-  (`0x4DF7F0`, `0x522FE0`).
+- The Iron Curtain's and Force Shield's unit tint: TechnoClass::AI (`0x6F9EAF`) steps
+  each curtained techno's tint stage (`+0x1A4`, TechnoClass::UpdateIronTint `0x70E5A0`),
+  which draws the scenario RNG once per techno (`RandomRanged(-5, 5)` at `0x70E694`),
+  so VERA's scenario stream drifts after every Iron Curtain or Force Shield (read, not
+  executed). The draw path has no stage to feed `0x70E380` (a residual in
+  `render/draw_state.rs`).
 - The nuke's screen flash (`NukeFlash`) and its lighting arm (`+0x3570`/`+0x3574`,
   a residual in `sim/light_sources.rs`).
-- The other superweapon team-script actions (`0x6EFC70`, `0x6F0130`; identities
-  unverified, Iron Curtain likely) and the existing types' gaps (Deactivate's
-  start = -1, the offline-provider hold `+0x660`, the paradrop plane's Retreat exit
-  `0x415A50`, a residual in `aircraft/paradrop_mission.rs`, and the player tails of
-  Launch cases 0, 1, 2, 9, 10 and 11, a residual in
-  `app/match_runtime/super_selection.rs`).
+- Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
+  with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
+- The existing types' gaps: Deactivate's start = -1, the offline-provider hold
+  `+0x660`, the paradrop plane's Retreat exit `0x415A50` (a residual in
+  `aircraft/paradrop_mission.rs`), and the player tails of Launch cases 0, 1, 2, 9, 10
+  and 11 (a residual in `app/match_runtime/super_selection.rs`).
+
+The ChronoWarpTo paths (`0x4DF7F0`, `0x522FE0`) are map-trigger only; they stay a
+residual in `superweapon/chronosphere.rs`.
 
 Launch jump table `0x6CDE44`: 0 `0x6CDA67`, 1 `0x6CCE64`, 2 `0x6CCD3F`, 3 `0x6CC3B9`,
 4 `0x6CC4B2`, 5 `0x6CD2EE`, 6 `0x6CD537`, 7 `0x6CCDBD`, 8 `0x6CD66F`, 9 `0x6CD7E7`,

@@ -110,7 +110,8 @@ impl AiFireArm {
     }
 }
 
-/// What [`try_fire`] did, in the oracle's terms (observation only).
+/// What [`try_fire`] did, and each Fire_SW, in the oracle's terms
+/// (observation only).
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AiFireEvent {
@@ -121,20 +122,21 @@ pub(crate) enum AiFireEvent {
     /// A Super of this type took the GroundRallyPoint, PsychicDominator or
     /// GeneticMutator arm, a tail call that fires on its own.
     TailArm(AiFireArm, InternedId),
-    /// Fire_SW for a Super of this type at this cell.
+    /// Fire_SW ([`Simulation::fire_super_weapon`], from any caller) for a
+    /// Super of this type at this cell.
     Fire(InternedId, (u16, u16)),
 }
 
 #[cfg(test)]
 thread_local! {
-    /// Observation only: what [`try_fire`] did on this thread while a test
-    /// holds `Some`.
+    /// Observation only: what [`try_fire`] and Fire_SW did on this thread
+    /// while a test holds `Some`.
     pub(crate) static AI_FIRE_LOG: std::cell::RefCell<Option<Vec<AiFireEvent>>> =
         const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]
-fn observe(event: AiFireEvent) {
+pub(super) fn observe(event: AiFireEvent) {
     AI_FIRE_LOG.with(|log| {
         if let Some(log) = log.borrow_mut().as_mut() {
             log.push(event);
@@ -195,8 +197,6 @@ pub(crate) fn try_fire(
             AiFireArm::LightningStorm | AiFireArm::None => None,
         };
         if let Some(cell) = cell {
-            #[cfg(test)]
-            observe(AiFireEvent::Fire(sw_type_id, cell));
             sim.fire_super_weapon(rules, owner, sw_type_id, cell, registry);
         }
     }
