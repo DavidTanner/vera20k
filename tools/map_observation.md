@@ -499,19 +499,24 @@ from the repository root; for an external profile copy, set
 `launch.selected_map_file` to the absolute path of the tracked map.
 
 With release binary SHA-256
-`4b355bff0a1b26c441d0637bd3deac718ca3c29b5008cdf48b4a69ee84527459`
-(31,936,464 bytes) and map SHA-256
+`3017ba4b04d0adf61b3abe1449888a70b398345688e3615d1368425ebf675a3b`
+(31,945,328 bytes) and map SHA-256
 `0a3861e8bf90a61cc122ed0233e46cc8764e0074eb9ab852aa76dc48b1883499`, tick 9010
 restarts the charge (start 9010) and the silo runs Missile (mission 22) until it
-returns to Guard at 9019. The three tanks are gone at 9413 and the silo keeps
-its 1000 health. The 9700-step run ends with state hash `10887219944228002058`
-and BGRA SHA-256
-`85bb143954f0443a7629487e3146129a0cfccb664ce231382f2676bf6e8ebd22`. Shorter
-copies end at 9040 (the missile leaving the open silo, `camera_cell` (47,44))
-and 9428 (the explosion over the tanks). The same binary loaded the unchanged
-retail `XMP03T4.MAP` (`multimd.mix`, SHA-256
+returns to Guard at 9019. The warhead strikes the ground in the AI of frame 9412:
+the screen flash starts, the radar marks the cell and the warhead waits on
+NUKEBALL, which lives through frame 9432. The AI of 9433 detonates the warhead,
+and the three tanks are gone from step 9434 (9413 before the impact was ported);
+the silo keeps its 1000 health. The 9700-step run ends with state hash
+`17915404168070965052` and BGRA SHA-256
+`c95def92a35ce8462b070bf831abd09a0aa0f5555bda795a90419ac9692dd280`. Shorter
+copies end at 9414 (the flash fading in over NUKEBALL and the intact tanks, BGRA
+`bccdc04430c61d48a6742d1f066e4d5455711abf7786fb536da2ababdb8b044c`) and 9436
+(the explosion over the wrecks, BGRA
+`5b12621cc428d70a1f9293f021b12edd8e6c9248b271ce79cc8d816525b1c877`). The same
+binary loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`, SHA-256
 `7a390de363f79743dd54897a49302869a795f839f3387ff03e8c0b70a519e17e`) and
-completed 300 steps (state hash `17740950413039122668`). These are Rust
+completed 300 steps (state hash `8142462839629644773`). These are Rust
 production observations: the chain's native comparisons are the
 `tools.superweapon_oracle` rows, and no whole-run timing or pixel equivalence
 with gamemd is claimed.
@@ -530,19 +535,19 @@ root: run a profile copy whose `launch.selected_map_file` is the tracked map's
 absolute path.
 
 With release binary SHA-256
-`af46874fdacdaa102cf3a0b75f31c1a6713c67f291968560e16fdb7a47998bc1`
-(31,944,480 bytes) and map SHA-256
+`3017ba4b04d0adf61b3abe1449888a70b398345688e3615d1368425ebf675a3b`
+(31,945,328 bytes) and map SHA-256
 `3cc2686b370b82a91766b5c848bc34f2cd35ba60f772d5587f583778004f9ae7`, the computer's
 NukeSpecial is granted on the first step (charge start 0, 9000 frames) and is ready
-from step 9001. Its Strategy tick fires it at frame 9034 (the charge restarts there):
+from step 9001. Its Strategy tick fires it at frame 9018 (the charge restarts there):
 AI_TryFireSW aims at the observer's construction yard, the enemy object it values
-most, which drops from 1000 to 358 health at step 9437 while the computer's own yard
-keeps 1000. The radar the computer builds grants SpyPlaneSpecial at 4013; it is ready
-from 7613 and stays charged, as Launch case 8 was not yet ported (the
-[Computer Spy Plane observation](#computer-spy-plane-observation) fires it). The run ends with state hash `9684770977057573241` and BGRA SHA-256
-`d33afe5c56fc30aae551da0ae37c8bac965b71b570b2b0d541aabcbb7e5f3a14`. The same binary
+most, which drops from 1000 to 358 health at step 9442, after the warhead's wait on
+NUKEBALL, while the computer's own yard keeps 1000. The radar the computer builds
+grants SpyPlaneSpecial at 4013; it is ready from 7613 and the computer launches it at
+7720. The run ends with state hash `9108037398604023490` and BGRA SHA-256
+`6c601b91bce400dbd3aae22dce724cc486d1286d2125b3dea2b3d71d69ee5985`. The same binary
 loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
-(state hash `16055468414702849029`). These are Rust production observations: the
+(state hash `8142462839629644773`). These are Rust production observations: the
 chain's native comparisons are the `tools.superweapon_oracle` `ai_*` rows, and no
 whole-run timing or pixel equivalence with gamemd is claimed.
 
