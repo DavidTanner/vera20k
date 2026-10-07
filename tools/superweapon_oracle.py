@@ -6,14 +6,17 @@ Rust consumers: src/sim/superweapon/fire_tests.rs (click_fire,
 defense_alert), src/sim/world/techno_ai/building_missile.rs (mission_missile),
 src/sim/projectile/launch.rs (both velocities), src/sim/combat/nuke_maker_tests.rs
 (nuke_maker), src/sim/building_art_super.rs (super_anim, opening_super_anim)
-src/sim/superweapon/ai_fire_tests.rs (the ai_* sections) and
-src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections).
+src/sim/superweapon/ai_fire_tests.rs (the ai_* sections),
+src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections) and
+src/sim/superweapon/psychic_dominator_tests.rs (psydom_*, update_lighting,
+ambient_step).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
 - click_fire: SuperClass::ClickFire 0x6CB920 without charge drain or a
   one-time grant: admission, the Lightning Storm deferment refusal, the
-  Launch call, readiness and the recharge timer writes.
+  Psychic Dominator's refusal while one is active, the Launch call,
+  readiness and the recharge timer writes.
 - defense_alert: the computer house's launch alert 0x4FAF00 (Fire_SW's
   house loop): its gates, CoordStruct::Distance3D 0x41C380 of base minus
   cell, the Scenario RandomRanged(0, 99) draw and the stores.
@@ -57,17 +60,34 @@ fixture machinery):
 - chrono_destination: Launch case 4's +0x288 for one object of the source
   block, the Unit's and the others' arithmetic run as slices of Launch
   (0x6CC9AF..0x6CCA4C, 0x6CCB6A..0x6CCC2D).
+- psydom_process: PsychicDominator::Process 0x53AF40, one step of each
+  status, and status 2's first firing stage for every percent 0..100 (and a
+  few outside) and anim frame count 1..64.
+- psydom_start: PsyDom::Start 0x53AE50: its globals, the first anim's
+  constructor arguments, Timer_1248 and the UpdateLighting call.
+- update_lighting: ScenarioClass::UpdateLighting 0x53C280 for every
+  NukeFlash, ChronoScreen, storm and Dominator state: the ambient target and
+  RecalcLighting's arguments.
+- ambient_step: LogicClass::PerTickUpdate's ambient fade
+  (0x55B33D..0x55B4D7) run as a slice: gates, the interval each lighting
+  state picks for Timer_1248, the target clamp and the clamped step.
+- dominator_lighting_read: ScenarioClass::Set_Defaults's Dominator lighting
+  values and Read_INI_Basic's conversion of each Dominator key, for a
+  missing key and authored tokens.
+- relight: CellClass::ProcessColourComponents 0x484180's Ground/Level arms
+  (0x48445F..0x4845A2) for each storm, Dominator and NukeFlash state: the
+  Dominator's top scalar reads NukeLevel (+0x3574), its bottom DominatorLevel.
 """
 from pathlib import Path
 import math
 import struct
 
 from unicorn import UC_HOOK_CODE
-from unicorn.x86_const import (UC_X86_REG_EBP, UC_X86_REG_EBX, UC_X86_REG_ECX,
-                               UC_X86_REG_EDI, UC_X86_REG_EDX, UC_X86_REG_ESI,
-                               UC_X86_REG_ESP, UC_X86_REG_FPCW)
+from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBP, UC_X86_REG_EBX,
+                               UC_X86_REG_ECX, UC_X86_REG_EDI, UC_X86_REG_EDX,
+                               UC_X86_REG_ESI, UC_X86_REG_ESP, UC_X86_REG_FPCW)
 
-from tools.ai_base_building_oracle import FAKE, RULES, STUBS, Emu, u32
+from tools.ai_base_building_oracle import FAKE, RULES, SCENARIO, STUBS, Emu, u32
 from tools.native_oracle import (NATIVE_FPCW, STACK_BASE, STACK_SIZE, OracleError,
                                  finish_vectors, provenance, run_checked)
 
@@ -209,11 +229,13 @@ def coords_stub(coords):
 
 TYPE_MULTI_MISSILE = 0
 TYPE_LIGHTNING_STORM = 2
+TYPE_PSYCHIC_DOMINATOR = 7
 
 
 def click_fire_row(*, kind=TYPE_MULTI_MISSILE, pre_click=False, post_click=False,
                    manual=False, recharge=900, start=-1, left=0, granted=True,
-                   charged=True, on_hold=False, frame=5000, deferment=False, player=True):
+                   charged=True, on_hold=False, frame=5000, deferment=False, player=True,
+                   dominator_active=False):
     emu = Emu()
     emu.write32(FRAME, frame)
     emu.write32(SUPER + 0x24, -1)
@@ -253,17 +275,22 @@ def click_fire_row(*, kind=TYPE_MULTI_MISSILE, pre_click=False, post_click=False
 
     def psydom_active(e):
         e.events.append(['psychic_dominator_active'])
-        return 0
+        return int(dominator_active)
+
+    def psydom_message(e):
+        e.events.append(['dominator_message'])
 
     emu.hook(STUB_LAUNCH, launch, 8)
     emu.hook(0x53A0E0, has_deferment, 0)
     emu.hook(0x53AE00, storm_message, 0)
     emu.hook(0x53B400, psydom_active, 0)
+    emu.hook(0x53B410, psydom_message, 0)
     result = emu.invoke(0x6CB920, ecx=SUPER, args=[int(player), CELL_ARG]) & 0xFF
     return dict(kind=kind, pre_click=pre_click, post_click=post_click, manual=manual,
                 recharge=recharge, start=start, left=left, granted=granted,
                 charged=charged, on_hold=on_hold, frame=frame, deferment=deferment,
-                player=player, result=result, events=emu.events,
+                player=player, dominator_active=dominator_active, result=result,
+                events=emu.events,
                 start_after=emu.read_i32(SUPER + 0x30),
                 left_after=emu.read_i32(SUPER + 0x38),
                 granted_after=bool(read8(emu, SUPER + 0x6D)),
@@ -288,6 +315,10 @@ def click_fire():
         for player in (False, True):
             rows.append(click_fire_row(kind=TYPE_LIGHTNING_STORM, start=frame - 900,
                                        left=900, deferment=deferment, player=player))
+    for active in (False, True):
+        for player in (False, True):
+            rows.append(click_fire_row(kind=TYPE_PSYCHIC_DOMINATOR, start=frame - 900,
+                                       left=900, dominator_active=active, player=player))
     for pre_click, post_click, manual in ((True, False, False), (False, True, False),
                                           (False, False, True), (True, True, False),
                                           (False, True, True)):
@@ -1923,6 +1954,381 @@ def chrono_destination():
                                cells={(41, 41): {'flags': 0x100}}),
     ]
 
+# ---------------------------------------------------------------- psychic dominator
+
+# The Psychic Dominator's globals (SuperWeaponEffects, reset by 0x539740 and
+# saved by 0x539890): its cell, status, anim and owner.
+G_PSYDOM_COORDS = 0xA9FA48
+G_PSYDOM_STATUS = 0xA9FAC0
+G_PSYDOM_ANIM = 0xA9FAC4
+G_PSYDOM_OWNER = 0xA9FAC8
+G_NUKE_FLASH = 0xA9FABC
+G_CHRONO_SCREEN = 0xA9FAB0
+G_STORM_ACTIVE = 0xA9FAB4
+PSYDOM = BASE + 0x380000
+PSYDOM_ANIM = PSYDOM
+PSYDOM_ANIM_TYPE = PSYDOM + 0x1000
+PSYDOM_ANIM_TYPE_VT = PSYDOM + 0x2000
+PSYDOM_IMAGE = PSYDOM + 0x3000
+PSYDOM_FIRST_ANIM = PSYDOM + 0x4000
+PSYDOM_SECOND_ANIM = PSYDOM + 0x5000
+PSYDOM_HOUSE = PSYDOM + 0x6000
+STUB_PSYDOM_IMAGE = STUBS + 0x500
+# ScenarioClass fields: Timer_1248 (start, pad, duration), the ambient
+# target +0x3530 and current +0x352C, the profiles and the two fade rates.
+SCN_TIMER = 0x1248
+SCN_TARGET = 0x3530
+SCN_CURRENT = 0x352C
+SCN_CELL_REDRAW = 0x34AB
+SCN_PROFILES = {'ambient': 0x3528, 'ion': (0x3548, 0x354C, 0x3550, 0x3554),
+                'nuke': (0x3560, 0x3564, 0x3568, 0x356C),
+                'dominator': (0x357C, 0x3580, 0x3584, 0x3588)}
+SCN_NUKE_RATE = 0x3578
+SCN_DOMINATOR_RATE = 0x3594
+
+
+def psydom_process_emu():
+    """One emulator for many PsychicDominator::Process 0x53AF40 calls: its
+    anim's type answers GetImage (vt+0x9C) with a fixture image whose frame
+    count (+6) each step writes; MindControlArea 0x53B080 and UpdateLighting
+    0x53C280 are recorded stubs."""
+    emu = Emu()
+    emu.write32(PSYDOM_ANIM + 0xC8, PSYDOM_ANIM_TYPE)
+    emu.write32(PSYDOM_ANIM_TYPE, PSYDOM_ANIM_TYPE_VT)
+    emu.write32(PSYDOM_ANIM_TYPE_VT + 0x9C, STUB_PSYDOM_IMAGE)
+
+    def image(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != PSYDOM_ANIM_TYPE:
+            raise OracleError('GetImage on an unexpected type')
+        return PSYDOM_IMAGE
+
+    emu.hook(STUB_PSYDOM_IMAGE, image, 0)
+    emu.hook(0x53B080, lambda e: e.events.append(['mind_control_area']), 0)
+    emu.hook(0x53C280, lambda e: e.events.append(['update_lighting']), 0)
+    return emu
+
+
+def psydom_process_step(emu, *, status, stage=0, frames=0, percent=50, ambient=(100, 100)):
+    emu.events = []
+    emu.write32(G_PSYDOM_STATUS, status)
+    emu.write32(G_PSYDOM_ANIM, PSYDOM_ANIM)
+    emu.uc.mem_write(G_PSYDOM_COORDS, struct.pack('<hh', 33, 44))
+    emu.write32(PSYDOM_ANIM + 0xAC, stage)
+    emu.uc.mem_write(PSYDOM_IMAGE + 6, struct.pack('<h', frames))
+    emu.write32(RULES + 0x304, percent)
+    emu.write32(SCENARIO + SCN_TARGET, ambient[0])
+    emu.write32(SCENARIO + SCN_CURRENT, ambient[1])
+    emu.invoke(0x53AF40)
+    return dict(status=status, stage=stage, frames=frames, percent=percent,
+                ambient=list(ambient), status_after=emu.read_i32(G_PSYDOM_STATUS),
+                anim_after=int(emu.read32(G_PSYDOM_ANIM) != 0),
+                coords_after=read_cell(emu, G_PSYDOM_COORDS), events=list(emu.events))
+
+
+PSYDOM_PERCENTS = list(range(0, 101)) + [-10, -1, 101, 150, 1000]
+PSYDOM_FRAMES = list(range(1, 65))
+
+
+def psydom_fire_stages():
+    """Status 2's test (0x53AF64..0x53AFAA): for each DominatorFireAtPercentage
+    (Rules+0x304) and anim frame count, the first stage (+0xAC) whose
+    FILD/FIDIV ratio is at least FILD percent FMUL 0.01, searched in
+    0..2*frames (the test is monotonic in the stage); None if none is."""
+    emu = psydom_process_emu()
+    rows = []
+    for percent in PSYDOM_PERCENTS:
+        firsts = []
+        for frames in PSYDOM_FRAMES:
+            def fires(stage):
+                step = psydom_process_step(emu, status=2, stage=stage, frames=frames,
+                                           percent=percent)
+                fired = step['status_after'] == 3
+                if fired != (step['events'] == [['mind_control_area']]):
+                    raise OracleError('status 3 without MindControlArea')
+                return fired
+            low, high = 0, 2 * frames + 1
+            while low < high:
+                middle = (low + high) // 2
+                if fires(middle):
+                    high = middle
+                else:
+                    low = middle + 1
+            firsts.append(low if low <= 2 * frames else None)
+        rows.append([percent, firsts])
+    return dict(frames=PSYDOM_FRAMES, first_stage=rows)
+
+
+def psydom_process():
+    """Single steps of every status, the status 2 rows at the retail
+    PDFXCLD count (60 frames, 20 percent) and a zero frame count."""
+    emu = psydom_process_emu()
+    step = lambda **row: psydom_process_step(emu, **row)
+    rows = [step(status=0), step(status=6), step(status=-1), step(status=1)]
+    for stage in (11, 12, 13):
+        rows.append(step(status=2, stage=stage, frames=60, percent=20))
+    rows += [step(status=2, stage=0, frames=0, percent=20),
+             step(status=2, stage=5, frames=0, percent=20)]
+    for stage in (10, 11, 21, 30):
+        rows.append(step(status=3, stage=stage, frames=21))
+    for stage in (19, 20, 21, 30):
+        rows.append(step(status=4, stage=stage, frames=21))
+    rows += [step(status=5, ambient=(100, 100)), step(status=5, ambient=(100, 120)),
+             step(status=5, ambient=(150, 140))]
+    return dict(steps=rows, fire_stages=psydom_fire_stages())
+
+
+def psydom_start_row(*, first=True, second=True, frame=4000, cell=(33, 44), level=0):
+    """PsyDom::Start 0x53AE50 (ECX the house, the cell by value; RET 4) with
+    Rules DominatorFirstAnim/SecondAnim (+0x2FC/+0x300) set or null: the
+    globals, the anim constructor 0x421EA0's arguments (a recorded stub),
+    Timer_1248 and UpdateLighting 0x53C280 (a recorded stub)."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    emu.write32(RULES + 0x2FC, PSYDOM_FIRST_ANIM if first else 0)
+    emu.write32(RULES + 0x300, PSYDOM_SECOND_ANIM if second else 0)
+    emu.write32(SCENARIO + SCN_TIMER, 77)
+    emu.write32(SCENARIO + SCN_TIMER + 8, 55)
+    Cells(emu, {tuple(cell): level})
+
+    def anim(e):
+        kind = {PSYDOM_FIRST_ANIM: 'first', PSYDOM_SECOND_ANIM: 'second'}.get(e.arg(0),
+                                                                             hex(e.arg(0)))
+        e.events.append(['anim', kind, read_coord(e, e.arg(1)), i32(e.arg(2)), i32(e.arg(3)),
+                         e.arg(4), i32(e.arg(5)), e.arg(6) & 0xFF])
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(0x53C280, lambda e: e.events.append(['update_lighting']), 0)
+    packed = struct.unpack('<I', struct.pack('<hh', *cell))[0]
+    emu.invoke(0x53AE50, ecx=PSYDOM_HOUSE, args=[packed])
+    return dict(first=first, second=second, frame=frame, cell=list(cell), level=level,
+                status=emu.read_i32(G_PSYDOM_STATUS),
+                owner_set=int(emu.read32(G_PSYDOM_OWNER) == PSYDOM_HOUSE),
+                anim_set=int(emu.read32(G_PSYDOM_ANIM) != 0),
+                coords=read_cell(emu, G_PSYDOM_COORDS),
+                timer=[emu.read_i32(SCENARIO + SCN_TIMER), emu.read_i32(SCENARIO + SCN_TIMER + 8)],
+                events=emu.events)
+
+
+def psydom_start():
+    return [psydom_start_row(), psydom_start_row(level=2, cell=(70, 12), frame=9),
+            psydom_start_row(first=False), psydom_start_row(second=False)]
+
+
+def update_lighting_row(*, nuke=0, chrono=0, storm=False, psydom=0):
+    """ScenarioClass::UpdateLighting 0x53C280: the ambient target it writes
+    (+0x3530) and RecalcLighting 0x53AD00's arguments (ECX, EDX and two stack
+    words; a recorded stub)."""
+    emu = Emu()
+    emu.write32(G_NUKE_FLASH, nuke)
+    emu.write32(G_CHRONO_SCREEN, chrono)
+    write8(emu, G_STORM_ACTIVE, storm)
+    emu.write32(G_PSYDOM_STATUS, psydom)
+    emu.write32(SCENARIO + SCN_PROFILES['ambient'], 101)
+    for name, values in (('ion', (87, 30, 40, 75)), ('nuke', (200, 175, 150, 125)),
+                         ('dominator', (150, 85, 20, 30))):
+        for offset, value in zip(SCN_PROFILES[name], values):
+            emu.write32(SCENARIO + offset, value)
+
+    def recalc(e):
+        e.events.append(['recalc', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+                         i32(e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0)), i32(e.arg(1))])
+
+    emu.hook(0x53AD00, recalc, 8)
+    emu.invoke(0x53C280)
+    return dict(nuke=nuke, chrono=chrono, storm=storm, psydom=psydom,
+                target=emu.read_i32(SCENARIO + SCN_TARGET), events=emu.events)
+
+
+def update_lighting():
+    return [update_lighting_row(nuke=nuke, chrono=chrono, storm=storm, psydom=psydom)
+            for nuke in (0, 1, 2) for chrono in (0, 1) for storm in (False, True)
+            for psydom in (0, 1, 2, 3, 4, 5, 6)]
+
+
+def ambient_step_row(*, target=150, current=100, rate=0.2, step=0.2, frame=1000,
+                     timer=(999, 1), nuke=0, chrono=0, psydom=0, nuke_rate=3,
+                     dominator_rate=1):
+    """LogicClass::PerTickUpdate's ambient fade (0x55B33D..0x55B4D7) as a
+    slice (EBP the Scenario, EBX the Rules, EDI the frame): the gates, the
+    interval each lighting state selects for Timer_1248, the target clamp and
+    the clamped step. NukeFlash::IsFadingIn/Out 0x53A110/0x53A120,
+    ChronoScreenEffect::Active 0x53BAD0 and PsyDom::Active 0x53B400 run
+    natively on their globals; 0x4AE4C0 and 0x4F42F0 are recorded stubs."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    emu.write32(G_NUKE_FLASH, nuke)
+    emu.write32(G_CHRONO_SCREEN, chrono)
+    emu.write32(G_PSYDOM_STATUS, psydom)
+    emu.uc.mem_write(RULES + 0x1668, struct.pack('<d', rate))
+    emu.uc.mem_write(RULES + 0x1670, struct.pack('<d', step))
+    emu.write32(SCENARIO + SCN_TIMER, timer[0])
+    emu.write32(SCENARIO + SCN_TIMER + 8, timer[1])
+    emu.write32(SCENARIO + SCN_TARGET, target)
+    emu.write32(SCENARIO + SCN_CURRENT, current)
+    emu.write32(SCENARIO + SCN_NUKE_RATE, nuke_rate)
+    emu.write32(SCENARIO + SCN_DOMINATOR_RATE, dominator_rate)
+    write8(emu, SCENARIO + SCN_CELL_REDRAW, 0)
+    emu.hook(0x4AE4C0, lambda e: e.events.append(['cell_lighting']), 0)
+    emu.hook(0x4F42F0, lambda e: e.events.append(['redraw', e.arg(0)]), 4)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, SCENARIO)
+    uc.reg_write(UC_X86_REG_EBX, RULES)
+    uc.reg_write(UC_X86_REG_EDI, frame)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x55B33D, 0x55B4D7, count=10_000)
+    return dict(target=target, current=current, rate=rate, step=step, frame=frame,
+                timer=list(timer), nuke=nuke, chrono=chrono, psydom=psydom,
+                nuke_rate=nuke_rate, dominator_rate=dominator_rate,
+                target_after=emu.read_i32(SCENARIO + SCN_TARGET),
+                current_after=emu.read_i32(SCENARIO + SCN_CURRENT),
+                timer_after=[emu.read_i32(SCENARIO + SCN_TIMER),
+                             emu.read_i32(SCENARIO + SCN_TIMER + 8)],
+                cell_redraw=read8(emu, SCENARIO + SCN_CELL_REDRAW), events=emu.events)
+
+
+def ambient_step():
+    row = ambient_step_row
+    rows = [row(), row(psydom=1), row(psydom=4, dominator_rate=7), row(psydom=5, target=100,
+                                                                       current=150),
+            row(nuke=1), row(nuke=2), row(chrono=1), row(nuke=1, psydom=2),
+            row(timer=(995, 6)), row(timer=(994, 6)), row(timer=(-1, 0)), row(timer=(-1, 3)),
+            row(target=100), row(rate=0.0), row(target=-5, current=10), row(target=105),
+            row(target=95, current=100), row(step=0.07), row(step=0.29), row(step=0.57),
+            row(rate=0.01), row(rate=0.0011), row(psydom=3, dominator_rate=0),
+            row(psydom=3, dominator_rate=-4)]
+    return rows
+
+
+# ScenarioClass::Read_INI_Basic 0x689E90's Dominator keys: (key, Scenario
+# offset, the default-inverse slice, the conversion slice). Each default slice
+# ends after FSTP double [ESP]; each conversion slice starts at the FMUL after
+# ReadDouble returns and ends after Math__ftol.
+DOMINATOR_LIGHTING_SITES = (
+    ('DominatorAmbient', 0x357C, (0x68AAFD, 0x68AB17), (0x68AB26, 0x68AB37)),
+    ('DominatorRed', 0x3580, (0x68AB37, 0x68AB51), (0x68AB60, 0x68AB71)),
+    ('DominatorGreen', 0x3584, (0x68AB71, 0x68AB8B), (0x68AB9A, 0x68ABAB)),
+    ('DominatorBlue', 0x3588, (0x68ABAB, 0x68ABC5), (0x68ABD4, 0x68ABE5)),
+    ('DominatorGround', 0x358C, (0x68ABE5, 0x68ABFF), (0x68AC0E, 0x68AC1F)),
+    ('DominatorLevel', 0x3590, (0x68AC1F, 0x68AC39), (0x68AC48, 0x68AC59)),
+    ('DominatorAmbientChangeRate', 0x3594, (0x68AC59, 0x68AC73), (0x68AC82, 0x68AC93)),
+)
+DOMINATOR_PERCENT_TOKENS = ('0', '1.5', '.85', '.2', '.3', '1', '.01', '.009', '.0099',
+                            '1.99999', '-.2', '.155', '2.5')
+DOMINATOR_MILLI_TOKENS = ('0', '.001', '.0015', '.0009', '.002', '.05', '-.001', '.0319',
+                          '1.99999', '.000989')
+TRAMPOLINE = STUBS + 0x600
+TRAMPOLINE_VALUE = STUBS + 0x680
+
+
+def dominator_lighting_read():
+    """The map's Dominator lighting. ScenarioClass::Set_Defaults 0x683610's
+    block 0x683915..0x6839BD (EBP the Scenario, EBX zero as at 0x68365A, EAX
+    100 as at 0x6838C2) writes the defaults. For each key, Read_INI_Basic's
+    default slice turns the stored value into ReadDouble's default (its double
+    at [ESP]), and its conversion slice turns ReadDouble's answer into the
+    stored value: a trampoline loads the answer into ST0 (FLD qword) and jumps
+    to the slice's FMUL. The answers are the defaults (a missing key) and
+    each token's float scan widened to double."""
+    emu = Emu()
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, SCENARIO)
+    uc.reg_write(UC_X86_REG_EBX, 0)
+    uc.reg_write(UC_X86_REG_EAX, 100)
+    run_checked(uc, 0x683915, 0x6839BD, count=100)
+    defaults = {name: emu.read_i32(SCENARIO + offset)
+                for name, offset, _default, _convert in DOMINATOR_LIGHTING_SITES}
+
+    def convert(value, start, end):
+        uc.mem_write(TRAMPOLINE_VALUE, struct.pack('<d', value))
+        jump = start - (TRAMPOLINE + 11)
+        uc.mem_write(TRAMPOLINE, b'\xdd\x05' + u32(TRAMPOLINE_VALUE) + b'\xe9'
+                     + struct.pack('<i', jump))
+        uc.reg_write(UC_X86_REG_ESP, sp)
+        uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+        run_checked(uc, TRAMPOLINE, end, count=500)
+        return i32(uc.reg_read(UC_X86_REG_EAX))
+
+    rows = []
+    for name, offset, (default_start, default_end), (start, end) in DOMINATOR_LIGHTING_SITES:
+        uc.reg_write(UC_X86_REG_ESP, sp)
+        uc.reg_write(UC_X86_REG_ESI, SCENARIO)
+        uc.reg_write(UC_X86_REG_EDI, 0)
+        uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+        run_checked(uc, default_start, default_end, count=50)
+        default = struct.unpack('<d', uc.mem_read(uc.reg_read(UC_X86_REG_ESP), 8))[0]
+        tokens = DOMINATOR_MILLI_TOKENS if offset >= 0x358C else DOMINATOR_PERCENT_TOKENS
+        authored = []
+        for token in tokens:
+            value = struct.unpack('<f', struct.pack('<f', float(token)))[0]
+            authored.append([token, convert(value, start, end)])
+        rows.append(dict(key=name, offset=offset, stored_default=defaults[name],
+                         default_double=default,
+                         default_units=convert(default, start, end), authored=authored))
+    return rows
+
+
+# Map-authored Ground/Level stand-ins (Scenario offset, value), distinct per
+# profile so each arm's reads show; NukeGround/NukeLevel (+0x3570/+0x3574)
+# keep the values Set_Defaults writes, which no INI key changes.
+RELIGHT_GROUND_LEVEL = ((0x3540, 21), (0x3544, 13), (0x3558, 30), (0x355C, 40),
+                        (0x358C, 3), (0x3590, 7))
+RELIGHT_CELL = CELL
+RELIGHT_SCALARS = CELL + 0x800
+
+
+def relight_row(*, storm=False, psydom=0, nuke=0, level=0, ambient=1000):
+    """CellClass::ProcessColourComponents 0x484180's profile arms as a slice
+    (0x48445F..0x4845A2): the gathered additive ([ESP+0x44], zero here: no
+    light reaches the cell) joins the ambient the top holds (written at
+    0x4841DE), both scalars start from the sum, then LightningStorm::IsActive 0x53A100, PsyDom::Active 0x53B400 and
+    NukeFlash::IsFadingIn 0x53A110 pick the Ground/Level each scalar adds for
+    the cell's level (+0x11B). The Scenario holds Set_Defaults' block
+    (0x683915..0x6839BD) with RELIGHT_GROUND_LEVEL over it."""
+    emu = Emu()
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, SCENARIO)
+    uc.reg_write(UC_X86_REG_EBX, 0)
+    uc.reg_write(UC_X86_REG_EAX, 100)
+    run_checked(uc, 0x683915, 0x6839BD, count=100)
+    for offset, value in RELIGHT_GROUND_LEVEL:
+        emu.write32(SCENARIO + offset, value)
+    write8(emu, G_STORM_ACTIVE, storm)
+    emu.write32(G_PSYDOM_STATUS, psydom)
+    emu.write32(G_NUKE_FLASH, nuke)
+    write8(emu, RELIGHT_CELL + 0x11B, level & 0xFF)
+    top, bottom, additive = RELIGHT_SCALARS, RELIGHT_SCALARS + 4, RELIGHT_SCALARS + 8
+    emu.write32(top, ambient)
+    emu.write32(bottom, 0)
+    emu.write32(additive, 0)
+    emu.write32(sp + 0x44, additive)
+    emu.write32(sp + 0x50, bottom)
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBX, top)
+    uc.reg_write(UC_X86_REG_EDI, RELIGHT_CELL)
+    run_checked(uc, 0x48445F, 0x4845A2, count=200)
+    return dict(storm=storm, psydom=psydom, nuke=nuke, level=level, ambient=ambient,
+                nuke_ground=emu.read_i32(SCENARIO + 0x3570),
+                nuke_level=emu.read_i32(SCENARIO + 0x3574), top=emu.read_i32(top),
+                bottom=emu.read_i32(bottom))
+
+
+def relight():
+    rows = [relight_row(psydom=psydom, level=level)
+            for psydom in (0, 1, 2, 3, 4, 5) for level in (0, 2, 7)]
+    rows += [relight_row(storm=True, psydom=3, level=2),
+             relight_row(nuke=1, level=2), relight_row(nuke=1, psydom=3, level=2),
+             relight_row(psydom=3, level=4, ambient=1500)]
+    return rows
+
 
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
@@ -1935,6 +2341,12 @@ def generate():
             'chrono_process': chrono_process(),
             'chrono_update_position': update_position(),
             'chrono_destination': chrono_destination(),
+            'psydom_process': psydom_process(),
+            'psydom_start': psydom_start(),
+            'update_lighting': update_lighting(),
+            'ambient_step': ambient_step(),
+            'dominator_lighting_read': dominator_lighting_read(),
+            'relight': relight(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -1955,7 +2367,12 @@ if __name__ == '__main__':
                'cell and AI_Fire_GenMutator\'s count and pick; the Chrono Warp\'s Teleport '
                'states, owner bytes, timers and end frame, unblocked, blocked once or '
                'twice and with a stale ChronoDelay; Update_Position\'s placement, '
-               'kills, blocks and blocked retarget; Launch case 4\'s destinations'),
+               'kills, blocks and blocked retarget; Launch case 4\'s destinations; the '
+               'Psychic Dominator\'s ClickFire refusal, Process statuses and firing '
+               'stages, Start\'s writes, UpdateLighting\'s targets and RecalcLighting '
+               'arguments, the ambient fade\'s intervals, clamp and step, the map\'s '
+               'Dominator lighting defaults and conversions, and the Ground/Level a '
+               'full cell relight adds in each lighting state'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -1963,7 +2380,8 @@ if __name__ == '__main__':
                      'the opening block starts with EDI -1, as OnConstructionComplete '
                      'sets it at 0x445FCB'],
         substitutions=['Launch 0x6CC390, LightningStorm::HasDeferment 0x53A0E0 and '
-                       'PrintMessage 0x53AE00, PsyDom::Active 0x53B400 (false) are recorded stubs',
+                       'PrintMessage 0x53AE00, PsyDom::Active 0x53B400 (the row\'s answer) and '
+                       'PrintMessage 0x53B410 are recorded stubs',
                        'MapClass::operator[] 0x5657A0 answers one fixture cell; its GetCoords '
                        'vt+0x48 answers the centre raised 104 leptons per supplied level',
                        'object GetCoords vt+0x48, the silo GetFLH vt+0xB0 and the yard '
@@ -2007,7 +2425,30 @@ if __name__ == '__main__':
                        'offset entry, the clicked cell and the Super in their stack slots); '
                        'object WhatAmI vt+0x2C and GetCoords vt+0x48 answer the row; the '
                        'bridge height 0xB0C07C holds 416, as its initializer 0x6CAD80 '
-                       'leaves it'],
+                       'leaves it',
+                       'psydom_process: the anim type\'s GetImage vt+0x9C answers a fixture '
+                       'image whose frame count (+6) the row writes; MindControlArea '
+                       '0x53B080 and UpdateLighting 0x53C280 are recorded stubs; the firing '
+                       'stages come from a binary search over 0..2*frames, the test being '
+                       'monotonic in the stage',
+                       'psydom_start: MapClass::operator[] 0x5657A0 answers one fixture cell '
+                       '(GetCoords: the centre raised 104 leptons per level); the anim '
+                       'constructor 0x421EA0 and UpdateLighting 0x53C280 are recorded stubs',
+                       'update_lighting: RecalcLighting 0x53AD00 is a recorded stub',
+                       'ambient_step: the slice starts with EBP, EBX and EDI holding the '
+                       'Scenario, the Rules and the frame, as PerTickUpdate leaves them; '
+                       '0x4AE4C0 and 0x4F42F0 are recorded stubs',
+                       'dominator_lighting_read: Set_Defaults runs from 0x683915 with EBX '
+                       'zero and EAX 100, the values its earlier instructions leave; '
+                       'CCINIClass::ReadDouble 0x5283D0 is not run: a trampoline loads its '
+                       'answer (the default, or the token scanned as a float and widened) '
+                       'into ST0 before each conversion slice',
+                       'relight: the slice starts after the light gather with EBX and '
+                       '[ESP+0x50] pointing at the top (holding the ambient) and bottom '
+                       'scalars, [ESP+0x44] at the gathered additive and EDI at a fixture '
+                       'cell holding only its level; the '
+                       'Scenario comes from Set_Defaults\' block as in '
+                       'dominator_lighting_read, with authored Ground/Level stand-ins'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -2016,4 +2457,10 @@ if __name__ == '__main__':
                       'AI_GroundRallyPoint': 0x509CD0, 'AI_Fire_GenMutator': 0x509F60,
                       'TeleportLocomotionClass::Process': 0x7192F0,
                       'TeleportLocomotionClass::Update_Position': 0x718260,
-                      'SuperClass::Launch_case4_destination': 0x6CC9AF}))
+                      'SuperClass::Launch_case4_destination': 0x6CC9AF,
+                      'PsychicDominator::Process': 0x53AF40, 'PsyDom::Start': 0x53AE50,
+                      'ScenarioClass::UpdateLighting': 0x53C280,
+                      'LogicClass::PerTickUpdate_ambient_fade': 0x55B33D,
+                      'ScenarioClass::Set_Defaults_lighting': 0x683915,
+                      'ScenarioClass::Read_INI_Basic_dominator': 0x68AAFD,
+                      'CellClass::ProcessColourComponents_profile_arms': 0x48445F}))

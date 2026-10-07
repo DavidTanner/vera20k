@@ -15,9 +15,11 @@ use serde_json::Value;
 const RULES: &str = "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
     [BuildingTypes]\n0=NAMISL\n1=YARD\n2=BIGYARD\n\
     [SuperWeaponTypes]\n0=NukeSpecial\n1=LightningStormSpecial\n2=SpyPlaneSpecial\n\
+    3=PsychicDominatorSpecial\n\
     [NukeSpecial]\nType=MultiMissile\nRechargeTime=1\nAIDefendAgainst=yes\n\
     [LightningStormSpecial]\nType=LightningStorm\nRechargeTime=1\n\
     [SpyPlaneSpecial]\nType=SpyPlane\nRechargeTime=1\n\
+    [PsychicDominatorSpecial]\nType=PsychicDominator\nRechargeTime=1\n\
     [NAMISL]\nStrength=1000\nNukeSilo=yes\nSuperWeapon=NukeSpecial\nFoundation=1x1\n\
     [YARD]\nStrength=1000\nFoundation=1x1\n\
     [BIGYARD]\nStrength=1000\nFoundation=4x4\n";
@@ -83,7 +85,7 @@ fn sim(rules: &RuleSet, human: bool, levels: &[((u16, u16), u8)]) -> Simulation 
 fn click_fire_matches_native() {
     let oracle = oracle();
     let rows = rows(&oracle, "click_fire");
-    assert_eq!(rows.len(), 122);
+    assert_eq!(rows.len(), 126);
     let rules = rules();
     for row in rows {
         let mut sim = sim(&rules, true, &[]);
@@ -93,6 +95,7 @@ fn click_fire_matches_native() {
         let name = match int(&row["kind"]) {
             0 => "NukeSpecial",
             2 => "LightningStormSpecial",
+            7 => "PsychicDominatorSpecial",
             other => panic!("Type={other}"),
         };
         let sw_type_id = sim.interner.intern(name);
@@ -112,6 +115,16 @@ fn click_fire_matches_native() {
             .entry(owner)
             .or_default()
             .insert(sw_type_id, instance);
+        if flag(&row["dominator_active"]) {
+            // A Dominator already rises (`PsyDom::Active @ 0x0053B400`).
+            sim.psychic_dominator =
+                super::super::psychic_dominator::PsychicDominatorState::for_test(
+                    2,
+                    (3, 3),
+                    Some(owner),
+                    None,
+                );
+        }
         if flag(&row["deferment"]) {
             // A storm already counts down.
             assert!(super::super::lightning_storm::start(

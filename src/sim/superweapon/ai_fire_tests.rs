@@ -298,17 +298,7 @@ fn the_try_fire_arms_match_native() {
             .expect("the rally object stands");
         }
         if flag(&row["storm"]) {
-            sim.lightning_storm = Some(LightningStormState {
-                owner: enemy,
-                target_rx: 3,
-                target_ry: 3,
-                deferment_remaining: 0,
-                duration_remaining: 100,
-                center_bolt_timer: 10,
-                scatter_bolt_timer: 10,
-                last_bolt_rx: 3,
-                last_bolt_ry: 3,
-            });
+            sim.lightning_storm = Some(LightningStormState::raging_for_test(enemy, (3, 3)));
         }
         let mut ids = Vec::new();
         for (index, kind) in kinds.iter().enumerate() {
