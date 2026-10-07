@@ -5,13 +5,15 @@
 //! state 3 returns a one-tick delay. States 4..9 run in the combat phase
 //! (`combat::aircraft_release`).
 use super::Simulation;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, attack_mission};
+use crate::sim::aircraft::{AircraftMission, IdleEntry, attack_mission, enter_idle_mode_for};
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::{combat_weapon, fire_coord};
 use crate::sim::components::NavTargetRef;
-use crate::sim::mission::MissionType;
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::air_movement;
+use crate::sim::world::edge_cell::Edge;
 
 impl Simulation {
     ///418006..418030: raw Target presence chooses1/10, preserving pending ammo.
@@ -219,9 +221,14 @@ impl Simulation {
     }
 
     /// State 10 (`0x00418BEC`) after the entry prefix. Returns the mission
-    /// and whether the visit ends in `Enter_Idle_Mode(0, 1)` (`vt+0x484`),
-    /// which the dispatch applies in the same visit.
-    pub(crate) fn aircraft_exit(&mut self, id: u64, rules: &RuleSet) -> (AircraftMission, bool) {
+    /// holding the visit's state and the `Enter_Idle_Mode(0, 1)` (`vt+0x484`)
+    /// it made.
+    pub(crate) fn aircraft_exit(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> (AircraftMission, IdleEntry) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let facts = attack_mission::ExitFacts {
             ammo: entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current),
@@ -243,7 +250,8 @@ impl Simulation {
             sim: self,
             id,
             rules,
-            idle: false,
+            registry,
+            idle: IdleEntry::NotCalled,
         };
         let visit = attack_mission::exit_visit(&facts, &mut host);
         let idle = host.idle;
@@ -265,43 +273,39 @@ struct WorldExit<'a> {
     sim: &'a mut Simulation,
     id: u64,
     rules: &'a RuleSet,
-    idle: bool,
+    registry: Option<&'a OverlayTypeRegistry>,
+    idle: IdleEntry,
 }
 
 impl attack_mission::ExitHost for WorldExit<'_> {
     fn clear_target(&mut self) {
-        if let Some(entity) = self.sim.substrate.entities.get_mut(self.id) {
-            crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
-        }
+        self.sim
+            .assign_target_represented(self.id, None, Some(self.rules))
+            .expect("aircraft dispatch");
     }
 
     fn assign_edge_destination(&mut self) {
-        let sim = &mut *self.sim;
-        let owner = sim.substrate.entities.get(self.id).map(|e| e.owner());
-        let edge = crate::sim::world::edge_cell::Edge::own_edge(
-            owner
-                .and_then(|owner| sim.houses.get(&owner))
-                .map_or(0, |house| house.waypoint_edge),
-        );
-        let cell = crate::sim::world::edge_cell::find_paradrop_edge_cell(
-            sim.playfield_bounds,
-            sim.resolved_terrain.as_ref(),
-            edge,
-            &mut sim.scenario_rng,
-        );
-        // RESIDUAL: with no playfield (headless fixtures) there is no edge to
-        // pick and no draw; every loaded map has one.
-        if let Some((rx, ry)) = cell {
-            sim.assign_aircraft_destination(self.id, Some(NavTargetRef::cell(rx, ry)), self.rules);
+        let edge = Edge::own_edge(self.sim.aircraft_house_waypoint_edge(self.id));
+        if let Some((rx, ry)) = self.sim.aircraft_edge_cell(edge) {
+            self.sim.assign_aircraft_destination(
+                self.id,
+                Some(NavTargetRef::cell(rx, ry)),
+                self.rules,
+            );
         }
     }
 
-    /// `vt+0x1E8 Queue_Mission(Retreat, 0)` for an Airstrike aircraft with
-    /// ammo. RESIDUAL: VERA has no Airstrike (no producer sets the leaf's
-    /// `+0x294` byte) and no aircraft Retreat mission, so this queues nothing.
-    fn retreat(&mut self) {}
+    /// RESIDUAL: VERA has no Airstrike: no producer sets the leaf's `+0x294`
+    /// byte, so this is dormant.
+    fn retreat(&mut self) {
+        let entity = self.sim.substrate.entities.get_mut(self.id).unwrap();
+        crate::sim::mission::authority::queue_entity_mission_deferred(
+            entity,
+            MissionId::from_known(MissionType::Retreat),
+        );
+    }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = true;
+        self.idle = enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
     }
 }

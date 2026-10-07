@@ -709,6 +709,125 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
     );
 }
 
+/// A V3 missile whose target `TechnoClass::AI` dropped (it has no weapon to
+/// fire at it) reaches Mission_Attack's state 10 (`0x00418BEC`): its own
+/// edge's cell becomes the destination, then the original idle mode
+/// (`0x004176F0`, retail `[V3ROCKET]` has `Selectable=no`) drops it and the
+/// Target and commences Retreat. Mission_Retreat (`0x00415A50`) then heads
+/// for another cell on that edge, and Queue_Mission refuses the kamikaze
+/// tracker's next Attack over it.
+#[test]
+fn a_missile_that_lost_its_target_retreats_for_good() {
+    use crate::sim::aircraft::AircraftMission;
+    use crate::sim::components::NavTargetRef;
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+    use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
+    let text = spawner_rules_text().replace("[V3ROCKET]\n", "[V3ROCKET]\nSelectable=no\n");
+    let rules = RuleSet::from_ini(&IniFile::from_str(&text)).unwrap();
+    let mut sim = missile_sim();
+    let v3 = sim
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
+        .expect("spawn V3");
+    let target = sim
+        .spawn_object("TARGET", "Yuri", 20, 20, 0, &rules)
+        .expect("spawn TARGET");
+    let missile = sim
+        .substrate
+        .entities
+        .get(v3)
+        .unwrap()
+        .spawn_manager
+        .as_ref()
+        .unwrap()
+        .slots[0]
+        .spawn
+        .expect("child");
+    for pass in 0..2 {
+        let manager = sim
+            .substrate
+            .entities
+            .get_mut(v3)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap();
+        if pass == 0 {
+            manager.set_target(Some(TargetKind::Entity(target)));
+        }
+        manager.update_timer = CdTimer::default();
+        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    }
+    let entity = sim.substrate.entities.get_mut(missile).unwrap();
+    assert!(!entity.lifecycle.in_limbo, "the missile is launched");
+    assert!(entity.is_mission_only());
+    entity.mission.apply_test_fixture(MissionTestFixture {
+        current: MissionId::from_known(MissionType::Attack),
+        suspended: MissionId::NONE,
+        queued: MissionId::NONE,
+        movement_bypass_latch: 0,
+        handler_state: 0,
+        mission_start_frame: 0,
+        ai_counter: 0,
+        dispatch_timer: MissionDispatchTimer::at_frame(0),
+    });
+    entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 10 });
+    entity.attack_target = None;
+    // Both edge picks draw on the Scenario stream: state 10's, then
+    // Mission_Retreat's, each on the house's own edge.
+    let mut rng = sim.scenario_rng.clone();
+    let mut pick = || {
+        find_paradrop_edge_cell(
+            sim.playfield_bounds,
+            sim.resolved_terrain.as_ref(),
+            Edge::North,
+            &mut rng,
+        )
+    };
+    let _state10 = pick();
+    let (rx, ry) = pick().expect("the playfield has an edge");
+
+    let fires = crate::sim::aircraft::dispatch_aircraft_mission(&mut sim, &rules, missile, None);
+    assert!(!fires);
+    let entity = sim.substrate.entities.get(missile).unwrap();
+    assert_eq!(
+        entity.mission.current(),
+        MissionId::from_known(MissionType::Retreat)
+    );
+    assert_eq!(entity.mission.queued(), MissionId::NONE);
+    assert!(
+        entity.aircraft_mission.is_none(),
+        "{:?}",
+        entity.aircraft_mission
+    );
+    assert_eq!(
+        entity.navigation.nav_com, None,
+        "idle mode drops the edge cell"
+    );
+    assert_eq!(entity.mission.dispatch_timer().delay(), 1);
+
+    sim.session.binary_frame += 1;
+    crate::sim::aircraft::dispatch_native_mission(&mut sim, missile, &rules, None);
+    let entity = sim.substrate.entities.get(missile).unwrap();
+    assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(rx, ry)));
+    assert_eq!(entity.mission.dispatch_timer().delay(), 3);
+    assert_eq!(
+        sim.scenario_rng.logical_state(),
+        rng.logical_state(),
+        "two edge picks, nothing else"
+    );
+
+    let entity = sim.substrate.entities.get_mut(missile).unwrap();
+    assert!(
+        !crate::sim::mission::authority::queue_entity_mission_deferred(
+            entity,
+            MissionId::from_known(MissionType::Attack),
+        )
+    );
+    assert_eq!(
+        entity.mission.current(),
+        MissionId::from_known(MissionType::Retreat)
+    );
+}
+
 /// Runs a V3's first manager pass on a still launcher (Idle → Launching,
 /// which promotes the queued target), applies `setup` to the launcher, then
 /// runs the pass whose slot walk may launch. Returns whether the missile is

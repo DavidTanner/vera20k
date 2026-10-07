@@ -1290,19 +1290,21 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     // State 0 → 3 (landed, team-less), one draw.
     crate::sim::aircraft::dispatch_native_mission(&mut fx.sim, shad, &fx.rules, None);
     assert_eq!(handler_state(&fx, shad), super::AIR_STATE_EJECT);
-    // Advance to the state-3 dispatch: the ejection is refused.
+    // Advance to the state-3 dispatch: the ejection is refused, and the idle
+    // mode's tail queues Guard and commences it when ready (`0x00417B44`).
     for _ in 0..20 {
         fx.sim.session.binary_frame += 1;
         crate::sim::aircraft::dispatch_native_mission(&mut fx.sim, shad, &fx.rules, None);
-        if fx.mission_queued(shad) == MissionId::from_known(MissionType::Guard) {
+        if fx.mission(shad) == MissionId::from_known(MissionType::Guard) {
             break;
         }
     }
     assert_eq!(
-        fx.mission_queued(shad),
+        fx.mission(shad),
         MissionId::from_known(MissionType::Guard),
-        "one failed attempt queues Guard"
+        "one failed attempt leaves for Guard"
     );
+    assert_eq!(fx.mission_queued(shad), MissionId::NONE);
     assert_eq!(
         fx.cargo_ids(shad),
         held,
@@ -1313,14 +1315,7 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
         "nobody left the hold"
     );
 
-    // Let the queued Guard commence, then prove the handler stays silent.
-    for _ in 0..30 {
-        fx.tick();
-        if fx.mission(shad) == MissionId::from_known(MissionType::Guard) {
-            break;
-        }
-    }
-    assert_eq!(fx.mission(shad), MissionId::from_known(MissionType::Guard));
+    // The handler stays silent.
     let before = fx.sim.scenario_rng.state();
     for _ in 0..60 {
         fx.sim.session.binary_frame += 1;

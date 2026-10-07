@@ -2,7 +2,8 @@
 //!
 //! Determines what mission to assign when an aircraft has nothing to do. This
 //! is VERA's own tree, not a port of `AircraftClass::Enter_Idle_Mode @
-//! 0x004176F0`: its caller (`aircraft::enter_idle_mode`) records what differs.
+//! 0x004176F0`: it stands in for the original's airborne arm and dock hunt,
+//! whose owner (`aircraft::idle_entry`) records what differs.
 //!
 //! ## Key behaviors
 //! - AirportBound aircraft with no helipad → self-destruct (crash)
@@ -41,7 +42,8 @@ pub enum IdleModeResult {
 /// Decide what mission an aircraft should enter after completing its current one.
 ///
 /// DRIFT, recorded not fixed: `AircraftClass::Enter_Idle_Mode` opens with a
-/// Restore that this decision tree has no equivalent for. At 0x004176F8 it calls
+/// Restore that this decision tree has no equivalent for (the owner runs it
+/// for an aircraft on the ground, `aircraft::idle_entry`). At 0x004176F8 it calls
 /// `Is_Mission_Suspended` (`vtable+0x1FC`) and, when that is true, calls
 /// `Restore_Mission` (`vtable+0x1F8`) at 0x00417706, clears the cursor for
 /// mission 0x19, and RETURNS — the idle selection below is skipped entirely.

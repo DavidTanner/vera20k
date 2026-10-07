@@ -28,7 +28,7 @@ use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
+use crate::sim::world::edge_cell::Edge;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// The distance at which Approach turns to Overfly (`0x00415700 CMP
@@ -157,19 +157,8 @@ fn queue(sim: &mut Simulation, id: u64, mission: MissionType) {
 /// empty cell (`0x00889E68`, both words zero), the destination
 /// (`MapClass::operator[] @ 0x005657A0`, vt+0x480(cell, 1)).
 fn head_for_opposite_edge(sim: &mut Simulation, id: u64, rules: &RuleSet) {
-    let owner = sim.substrate.entities.get(id).map(|plane| plane.owner());
-    let edge = Edge::opposite_edge(
-        owner
-            .and_then(|owner| sim.houses.get(&owner))
-            .map_or(0, |house| house.waypoint_edge),
-    );
-    let cell = find_paradrop_edge_cell(
-        sim.playfield_bounds,
-        sim.resolved_terrain.as_ref(),
-        edge,
-        &mut sim.scenario_rng,
-    );
-    if let Some((rx, ry)) = cell.filter(|&cell| cell != (0, 0)) {
+    let edge = Edge::opposite_edge(sim.aircraft_house_waypoint_edge(id));
+    if let Some((rx, ry)) = sim.aircraft_edge_cell(edge).filter(|&cell| cell != (0, 0)) {
         sim.assign_aircraft_destination(id, Some(NavTargetRef::cell(rx, ry)), rules);
     }
 }

@@ -7,9 +7,9 @@
 //! - Infantry `0x0051D0D0`: `infantry_scatter`.
 //! - Aircraft `0x0041A590`: when the current mission's MissionControl
 //!   `Scatter=` is set, `Enter_Idle_Mode(0, 1)` (`0x004176F0`); it reads
-//!   neither the coordinate nor the flags. RESIDUAL: not dispatched, because
-//!   no aircraft idle-mode owner is callable outside the aircraft mission
-//!   code. Trigger: a landed aircraft asked to scatter. Effect: it keeps its
+//!   neither the coordinate nor the flags. RESIDUAL: not dispatched, so the
+//!   idle mode (`aircraft::enter_idle_mode_now`) is not entered here.
+//!   Trigger: a landed aircraft asked to scatter. Effect: it keeps its
 //!   mission instead of re-entering idle mode. Frequency: rare, since a
 //!   landed aircraft is seldom in a blocked cell.
 //! - Every other class inherits ObjectClass `0x005F43A0` (`RET 0xC`).

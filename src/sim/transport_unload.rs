@@ -740,6 +740,21 @@ fn aircraft_landed(
 ///   dispatch; epilogue draw.
 /// - State 4 (`0x004155C0`): → 0, `return 1`.
 ///
+/// The empty hold's idle mode (`vt+0x484(0, 1)` at `0x004155B5`, the hold
+/// already empty on state-3 entry, and `0x004155A2`, the ejection just
+/// emptied it) is `aircraft::idle_entry`'s.
+///
+/// RESIDUAL: the transport tether. The last ejection leaves the aircraft in
+/// radio contact with the passenger (`Transmit_Message(HELLO)` `0x00415C2E`,
+/// then `UNLOADED` `0x00415C3F`, which `TechnoClass::Receive_Radio @
+/// 0x006F4AB0` answers with TETHER `0x18`), so `In_Radio_Contact` steers the
+/// first idle pass to Enter (7); `AircraftClass::Mission_Enter @ 0x00419C80`
+/// then idles in states 6/7 until the passenger's first cell step breaks the
+/// tether (UNLOAD `8` -> UNTETHER + OVER_OUT), after which Enter_Idle_Mode
+/// re-runs without contact and lands on Guard. VERA keeps no tether, so the
+/// aircraft takes Guard at once. Dormant in retail (no aircraft carries
+/// passengers, above).
+///
 /// RESIDUAL: the NavCom arms are not ported. A landed aircraft compares its
 /// NavCom with its own coordinate (`0x0041522A..0x0041524E`) and takes state
 /// 3 only on a match. Otherwise, with a NavCom, `0x0041531B..0x00415425`
@@ -794,7 +809,7 @@ pub(crate) fn mission_unload(
         }
         AIR_STATE_EJECT => {
             if cargo_count(entity) == 0 {
-                aircraft_enter_idle_mode(sim, id);
+                crate::sim::aircraft::enter_idle_mode_now(sim, rules, id, overlay_registry);
             } else {
                 let ejected = eject_from_aircraft(sim, rules, overlay_registry, id);
                 let hold_empty = sim
@@ -808,7 +823,7 @@ pub(crate) fn mission_unload(
                 // and the mission leaves through the same empty-hold exit, so
                 // this dispatch's epilogue draw is the last one.
                 if hold_empty || !ejected {
-                    aircraft_enter_idle_mode(sim, id);
+                    crate::sim::aircraft::enter_idle_mode_now(sim, rules, id, overlay_registry);
                 }
             }
             unload_epilogue(sim, rules, id)
@@ -821,42 +836,6 @@ pub(crate) fn mission_unload(
         }
         _ => unload_epilogue(sim, rules, id),
     }
-}
-
-/// `AircraftClass::Enter_Idle_Mode @ 0x004176F0` for a landed, human-owned,
-/// team-less transport whose hold just emptied (the `+0x484(0, 1)` calls at
-/// `0x004155B5` — hold already empty on state-3 entry — and `0x004155A2`
-/// — the ejection just emptied it).
-///
-/// Native trace: the mission is not suspended (`+0x1FC` = `0x005B3A10`,
-/// `+0xB0 == -1`); `+0x3D4` is clear — `AircraftClass::Unlimbo @ 0x00414310`
-/// sets it only for a type that is not (`Selectable=` `ObjectType+0x230` and
-/// `Landable=` `AircraftType+0xE0A`) or whose weapon 0 carries `Camera=`
-/// (`WeaponType+0x147`), which is the off-map paradrop/spy-plane class, never
-/// a landable transport — so the landed branch (`GetDisplayLayer == 2`,
-/// `0x0041ADC0`) runs `Set_Destination(NULL, 1)` (`+0x480` = `0x0041AA80`),
-/// `Assign_Target(NULL)` (`+0x3C8` = `0x006FCDB0`) and, for a human house,
-/// picks Guard (5). The airfield hunt is gated on `Ammo (+0x2FC) == 0`, which
-/// a `[SHAD]` without `Ammo=` never satisfies.
-///
-/// Radio residual: the last ejection left the aircraft in radio contact with
-/// the passenger (`Transmit_Message(HELLO)` `0x00415C2E`, then `UNLOADED`
-/// `0x00415C3F`, which `TechnoClass::Receive_Radio @ 0x006F4AB0` answers
-/// with TETHER `0x18`), so `In_Radio_Contact` steers the first idle pass to
-/// Enter (7) (`0x00417AD4`..); `AircraftClass::Mission_Enter @ 0x00419C80`
-/// then idles in states 6/7 until the passenger's first cell step breaks the
-/// tether (UNLOAD `8` → UNTETHER + OVER_OUT), after which `Enter_Idle_Mode`
-/// re-runs without contact and lands on Guard. VERA has no transport tether;
-/// the transient Enter label is not represented and the aircraft goes to
-/// Guard directly. VERA-internal shortcut, gamemd end state matched.
-fn aircraft_enter_idle_mode(sim: &mut Simulation, id: u64) {
-    if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        entity.navigation.nav_com = None;
-        entity.movement_target = None;
-        entity.attack_target = None;
-        entity.passively_acquired_target = false;
-    }
-    queue_guard(sim, id);
 }
 
 /// `DAT_00817A58`: the aircraft ejection scan order, octants S, SW, SE, NW,
@@ -895,7 +874,8 @@ const AIRCRAFT_EXIT_SCAN: [usize; 9] = [4, 5, 3, 7, 1, 0, 6, 2, 4];
 /// epilogue draws happen. Returns `true` when the passenger left the hold. On
 /// success: `Queue_Mission(Move)` (`0x00415C05`), `Set_Destination(scan
 /// cell, 1)` (`0x00415C21`), then the radio handshake described on
-/// [`aircraft_enter_idle_mode`]. No `LeaveTransportSound` on this path.
+/// tether residual on [`mission_unload`]'s idle mode. No `LeaveTransportSound`
+/// on this path.
 fn eject_from_aircraft(
     sim: &mut Simulation,
     rules: &RuleSet,

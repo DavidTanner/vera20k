@@ -583,3 +583,50 @@ fn retail_aircraft_types_are_not_carryalls() {
         assert!(!rules.object(name).unwrap().carryall, "{name}");
     }
 }
+
+/// Mission_Move's state 0 without a NavCom enters idle mode (`0x004176F0`,
+/// `aircraft::idle_entry`). On the ground the original's landed arm drops
+/// the destination and the Target and commences Guard (an unarmed aircraft
+/// of a house that is not human, outside a team), which a Fly aircraft holds
+/// as VERA's Guard state. In flight VERA's tree stands in: Guard is VERA's
+/// state alone, nothing is queued, and the Target stays.
+#[test]
+fn mission_move_idle_mode_on_the_ground_and_in_flight() {
+    use crate::sim::aircraft::AircraftMission;
+    use crate::sim::combat::AttackTarget;
+    for (z, landed) in [(0, true), (1500, false)] {
+        let (mut sim, rules) = fixture(&json!({}));
+        set_current(&mut sim, MissionType::Move);
+        let plane = sim.substrate.entities.get_mut(OWNER).unwrap();
+        plane.locomotor = Some(
+            crate::sim::movement::locomotor::LocomotorState::from_object_type(
+                rules.object("TEST").unwrap(),
+                0,
+            ),
+        );
+        plane.position.exact_z_leptons = Some(z);
+        plane.aircraft_mission = Some(AircraftMission::Move { sub_state: 0 });
+        plane.attack_target = Some(AttackTarget::for_cell(70, 70));
+
+        crate::sim::aircraft::dispatch_aircraft_mission(&mut sim, &rules, OWNER, None);
+        let plane = sim.substrate.entities.get(OWNER).unwrap();
+        let expected = if landed {
+            MissionType::Guard
+        } else {
+            MissionType::Move
+        };
+        assert_eq!(
+            plane.mission.current(),
+            MissionId::from_known(expected),
+            "z {z}"
+        );
+        assert_eq!(plane.mission.queued(), MissionId::NONE, "z {z}");
+        assert!(
+            matches!(plane.aircraft_mission, Some(AircraftMission::Guard)),
+            "z {z}: {:?}",
+            plane.aircraft_mission
+        );
+        assert_eq!(plane.attack_target.is_none(), landed, "z {z}: the Target");
+        assert_eq!(plane.navigation.nav_com, None, "z {z}");
+    }
+}

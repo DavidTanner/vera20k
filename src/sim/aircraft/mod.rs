@@ -12,6 +12,8 @@
 
 pub mod attack_mission;
 pub mod drop_payload;
+mod idle_entry;
+pub(crate) use idle_entry::enter_idle_mode_for;
 pub mod idle_mode;
 pub(crate) mod landing_base;
 mod leave_map;
@@ -19,6 +21,7 @@ mod leave_map;
 mod leave_map_tests;
 pub(crate) mod move_mission;
 pub mod paradrop_mission;
+mod retreat_mission;
 pub mod runtime_contract;
 pub(crate) mod spyplane_mission;
 
@@ -148,10 +151,11 @@ pub fn tick_aircraft_missions(
 /// `MissionClass::AI @ 0x005B3060` for the aircraft missions ported as
 /// native handlers: an alive aircraft whose mission timer is due runs its
 /// current mission's handler (jump table `0x005B34E8`) and restarts the
-/// timer with the frames it returns. These are Unload (`0x004151E0`, vtable
-/// `+0x23C`) and the Spy Plane's two (`+0x26C`, `+0x270`); the other
-/// missions still run on VERA's aircraft state machine
-/// ([`dispatch_aircraft_mission`]).
+/// timer with the frames it returns. These are Retreat (`0x00415A50`,
+/// vtable `+0x230`), Unload (`0x004151E0`, `+0x23C`) and the Spy Plane's
+/// two (`+0x26C`, `+0x270`). Mission_Move and Mission_Attack hold their
+/// state in `AircraftMission` and run in [`dispatch_aircraft_mission`],
+/// beside VERA's aircraft state machine for the other missions.
 pub(crate) fn dispatch_native_mission(
     sim: &mut Simulation,
     id: u64,
@@ -170,6 +174,7 @@ pub(crate) fn dispatch_native_mission(
         return;
     }
     let delay = match entity.mission.current().known() {
+        Some(MissionType::Retreat) => retreat_mission::retreat(sim, id, rules),
         Some(MissionType::Unload) => {
             crate::sim::transport_unload::mission_unload(sim, id, rules, overlay_registry)
         }
@@ -215,13 +220,15 @@ pub(crate) fn dispatch_aircraft_mission(
     {
         return false;
     }
-    // A missile's Rocket runs only Mission_Move here so far; its Attack and
-    // idle missions are not dispatched.
+    // A missile's Rocket runs only the native handlers; VERA's states are
+    // Fly's.
     let kind = e.locomotor.as_ref().map(|l| l.kind);
-    if !(kind == Some(LocomotorKind::Fly) || native_move && kind == Some(LocomotorKind::Rocket)) {
+    if !(kind == Some(LocomotorKind::Fly)
+        || native_handler_current(e) && kind == Some(LocomotorKind::Rocket))
+    {
         return false;
     }
-    match mission_step(sim, rules, id, &mission) {
+    match mission_step(sim, rules, id, &mission, registry) {
         Some(m) => apply_mission_mutation(sim, rules, m, registry),
         None => false,
     }
@@ -253,23 +260,73 @@ fn native_handler_current(entity: &crate::sim::game_entity::GameEntity) -> bool 
 /// Commence's Mission+0xBC reset (`MissionClass::Commence` zeroes it with
 /// the promote) for the handlers ported natively: a commenced Move or Attack
 /// starts Mission_Move or Mission_Attack at state 0. Called by every Commence
-/// (`mission::authority::commence_entity_mission`). An aircraft on one of
+/// (`mission::authority::commence_entity_mission`). A missile's Rocket runs
+/// only native handlers, so it holds the commenced mission's state whatever
+/// it held before, and none for another mission (Retreat from its idle
+/// mode): a stale Attack state would answer for the current mission
+/// (`Simulation::foot_null_destination` reads it). An aircraft on one of
 /// VERA's own states (its idle tree's choices, return to base, docking)
-/// keeps it: those hold no Mission+0xBC, and the paths that queue a Move
-/// over them write its state themselves ([`queue_move_state`]).
+/// keeps it: those hold no Mission+0xBC, and the paths that queue a Move over
+/// them write its state themselves ([`queue_move_state`]).
 pub(crate) fn commence_handler_state(entity: &mut crate::sim::game_entity::GameEntity) {
     use crate::sim::mission::MissionType;
-    if !matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { .. } | AircraftMission::Move { .. })
-    ) {
+    let rocket = entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|locomotor| locomotor.kind == LocomotorKind::Rocket);
+    if !rocket
+        && !matches!(
+            entity.aircraft_mission,
+            Some(AircraftMission::Attack { .. } | AircraftMission::Move { .. })
+        )
+    {
         return;
     }
-    entity.aircraft_mission = Some(match entity.mission.current().known() {
-        Some(MissionType::Move) => AircraftMission::Move { sub_state: 0 },
-        Some(MissionType::Attack) => AircraftMission::Attack { sub_state: 0 },
+    entity.aircraft_mission = match entity.mission.current().known() {
+        Some(MissionType::Move) => Some(AircraftMission::Move { sub_state: 0 }),
+        Some(MissionType::Attack) => Some(AircraftMission::Attack { sub_state: 0 }),
+        _ if rocket => None,
         _ => return,
-    });
+    };
+}
+
+/// The `Enter_Idle_Mode(0, 1)` (`vt+0x484`) a Mission_Move or Mission_Attack
+/// visit made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IdleEntry {
+    NotCalled,
+    /// The original, already applied (`idle_entry`): `AircraftMission` is as
+    /// its Commence and the idle mode left it, so the dispatch writes no
+    /// visit state.
+    Native,
+    /// VERA's tree ([`idle_stand_in`]), which the dispatch applies after the
+    /// visit's state.
+    Vera,
+}
+
+/// vt+0x484 from outside the aircraft dispatch (Mission_Unload's empty
+/// hold): VERA's tree, where it stands in, applies at once.
+pub(crate) fn enter_idle_mode_now(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+) {
+    if enter_idle_mode_for(sim, id, rules, registry) != IdleEntry::Vera {
+        return;
+    }
+    let Some(mission) = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| entity.aircraft_mission.clone())
+    else {
+        return;
+    };
+    let mut m = MissionMutation::new(id, mission);
+    if idle_stand_in(sim, rules, id, &mut m).is_some() {
+        apply_mission_mutation(sim, rules, m, registry);
+    }
 }
 
 /// The Move an order or a spawn manager queues for an aircraft (`vt+0x1E8
@@ -313,30 +370,41 @@ struct MissionMutation {
     paradrop_silent_despawn: bool,
 }
 
+impl MissionMutation {
+    /// No decision yet: `mission` stays.
+    fn new(id: u64, mission: AircraftMission) -> Self {
+        Self {
+            id,
+            new_mission: mission,
+            ammo_delta: 0,
+            fire_at: None,
+            move_to: None,
+            assign_destination: None,
+            self_destruct: false,
+            begin_landing: false,
+            begin_takeoff: false,
+            paradrop_try_drop: false,
+            paradrop_payload_count_pre: 0,
+            paradrop_silent_despawn: false,
+        }
+    }
+}
+
 fn mission_step(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
     mission: &AircraftMission,
+    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) -> Option<MissionMutation> {
     let now = sim.session.binary_frame;
-    let mut m = MissionMutation {
-        id,
-        new_mission: mission.clone(),
-        ammo_delta: 0,
-        fire_at: None,
-        move_to: None,
-        assign_destination: None,
-        self_destruct: false,
-        begin_landing: false,
-        begin_takeoff: false,
-        paradrop_try_drop: false,
-        paradrop_payload_count_pre: 0,
-        paradrop_silent_despawn: false,
-    };
+    let mut m = MissionMutation::new(id, mission.clone());
 
     match mission {
-        AircraftMission::Idle => enter_idle_mode(sim, rules, id, &mut m)?,
+        AircraftMission::Idle => match enter_idle_mode_for(sim, id, rules, registry) {
+            IdleEntry::Native => return None,
+            _ => idle_stand_in(sim, rules, id, &mut m)?,
+        },
 
         AircraftMission::Attack { sub_state } => {
             if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -353,11 +421,8 @@ fn mission_step(
                     None => m.new_mission = sim.aircraft_attack_visit(id, 10, 1),
                 },
                 10 => {
-                    let (mission, idle) = sim.aircraft_exit(id, rules);
-                    m.new_mission = mission;
-                    if idle {
-                        enter_idle_mode(sim, rules, id, &mut m)?;
-                    }
+                    let (mission, idle) = sim.aircraft_exit(id, rules, registry);
+                    end_visit(sim, rules, id, mission, idle, &mut m)?;
                 }
                 // State 2 (`0x00418D1D`) is the epilogue alone. Mission_Attack
                 // runs as the Attack mission's handler, so its epilogue reads
@@ -599,11 +664,8 @@ fn mission_step(
         AircraftMission::Move { sub_state } => {
             let entity = sim.substrate.entities.get(id)?;
             if native_move(entity, mission) {
-                let (mission, idle) = sim.aircraft_move(id, *sub_state, rules);
-                m.new_mission = mission;
-                if idle {
-                    enter_idle_mode(sim, rules, id, &mut m)?;
-                }
+                let (mission, idle) = sim.aircraft_move(id, *sub_state, rules, registry);
+                end_visit(sim, rules, id, mission, idle, &mut m)?;
             } else if entity.movement_target.is_none() {
                 // VERA's Attack Move stand-in ends on arrival.
                 m.new_mission = AircraftMission::Idle;
@@ -674,28 +736,46 @@ fn mission_step(
     Some(m)
 }
 
-/// Enter_Idle_Mode's decision for an aircraft with nothing to do (the Idle
-/// mission, and Mission_Attack state 10's `vt+0x484(0, 1)`).
+/// A Mission_Move or Mission_Attack visit's end: `mission` holds the state
+/// it left, unless the original Enter_Idle_Mode already ran (`None`: the
+/// dispatch then writes nothing).
+fn end_visit(
+    sim: &Simulation,
+    rules: &RuleSet,
+    id: u64,
+    mission: AircraftMission,
+    idle: IdleEntry,
+    m: &mut MissionMutation,
+) -> Option<()> {
+    match idle {
+        IdleEntry::Native => None,
+        IdleEntry::NotCalled => {
+            m.new_mission = mission;
+            Some(())
+        }
+        IdleEntry::Vera => {
+            m.new_mission = mission;
+            idle_stand_in(sim, rules, id, m)
+        }
+    }
+}
+
+/// VERA's tree (`idle_mode`) where it stands in for `AircraftClass::
+/// Enter_Idle_Mode @ 0x004176F0` (`idle_entry`'s RESIDUALs): an aircraft in
+/// flight, and the dock hunt of an armed one on the ground without Ammo.
 ///
 /// A return to an airfield also sends the aircraft there in the same call,
 /// replacing whatever destination it held (state 10's edge cell): the
-/// airborne arm of `AircraftClass::Enter_Idle_Mode @ 0x004176F0` clears it
-/// (`Assign_Destination(NULL, 1)` at `0x004179B4`) and assigns the dock that
-/// answers (`0x004179D7`).
+/// airborne arm clears it (`Assign_Destination(NULL, 1)` at `0x004179B4`)
+/// and assigns the dock that answers (`0x004179D7`).
 ///
-/// RESIDUAL: the rest of 0x004176F0 is VERA's own tree (`idle_mode`): the
-/// Restore and the Retreat/Airstrike returns at its head, FootClass's
-/// Enter_Idle_Mode, Guard vs Area Guard for a computer house, the team and
-/// `+0x3D4` arms, the landed arm (clears the destination and the Target,
-/// `0x00417A89..0x00417A9D`), the airborne arm's clear when no dock answers
-/// (`Find_Nearest_Friendly_Airfield 0x0041A160` and Move), and the tail's
-/// dock and Target clear (`0x00417B1D`, `0x00417B29`). Trigger: an aircraft
-/// entering idle mode on the ground, without a dock, in a team, or computer
-/// owned. Effect: a computer-house aircraft keeps Guard where native takes
-/// Area Guard, a landed or dockless one keeps its destination and Target.
-/// Frequency: every computer-house sortie; the rest are rare. The full port
-/// is the Enter_Idle_Mode mechanism.
-fn enter_idle_mode(
+/// The tree only changes `AircraftMission`: it queues and commences nothing,
+/// so the current mission stays (Move after Mission_Move). After
+/// Mission_Move's state 0 the Rate epilogue reads Move's Rate where the
+/// original reads the commenced mission's (the draw is the same), and a later
+/// Move order restarts Mission_Move when the timer of its last visit expires
+/// ([`queue_move_state`]), not the frame after a Commence.
+fn idle_stand_in(
     sim: &Simulation,
     rules: &RuleSet,
     id: u64,

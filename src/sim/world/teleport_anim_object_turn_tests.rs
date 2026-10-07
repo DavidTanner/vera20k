@@ -393,71 +393,61 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
     let unregistered = OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     let destination = NavTargetRef::cell(12, 7);
 
-    for expiry in [true, false] {
-        let mut sim = relocating_legionnaire((8, 9));
-        install_destination_cells(&mut sim, &rules);
-        let mover = sim.substrate.entities.get_mut(1).unwrap();
-        mover.install_teleport_state_for_test(None);
-        mover.mission.apply_test_fixture(MissionTestFixture {
-            current: MissionId::from_known(MissionType::Attack),
-            suspended: MissionId::from_known(MissionType::Move),
-            queued: MissionId::NONE,
-            movement_bypass_latch: 0,
-            handler_state: 0,
-            mission_start_frame: 0,
-            ai_counter: 0,
-            dispatch_timer: MissionDispatchTimer::at_frame(0),
-        });
-        mover.navigation.nav_com = Some(NavTargetRef::cell(8, 9));
-        mover.navigation.suspended_nav_com = Some(destination);
-        let terrain = sim.resolved_terrain.as_mut().unwrap();
-        let cell = terrain.native_cell_identity((12, 7));
-        terrain.write_native_cell_overlay(cell, Some(overlay));
-        let before = (
-            bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
-            bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
-            sim.rng_state(),
-        );
+    let mut sim = relocating_legionnaire((8, 9));
+    install_destination_cells(&mut sim, &rules);
+    let mover = sim.substrate.entities.get_mut(1).unwrap();
+    mover.install_teleport_state_for_test(None);
+    mover.mission.apply_test_fixture(MissionTestFixture {
+        current: MissionId::from_known(MissionType::Attack),
+        suspended: MissionId::from_known(MissionType::Move),
+        queued: MissionId::NONE,
+        movement_bypass_latch: 0,
+        handler_state: 0,
+        mission_start_frame: 0,
+        ai_counter: 0,
+        dispatch_timer: MissionDispatchTimer::at_frame(0),
+    });
+    mover.navigation.nav_com = Some(NavTargetRef::cell(8, 9));
+    mover.navigation.suspended_nav_com = Some(destination);
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    let cell = terrain.native_cell_identity((12, 7));
+    terrain.write_native_cell_overlay(cell, Some(overlay));
+    let before = (
+        bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
+        bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+        sim.rng_state(),
+    );
 
-        for missing in [None, Some(&unregistered)] {
-            let result = if expiry {
-                sim.mission_restore_after_target_expiry(1, Some(&rules), missing)
-            } else {
-                sim.mission_restore_on_target_detach(1, Some(&rules), missing)
-            };
-            assert!(matches!(
-                result,
-                Err(MissionAuthorityError::AuthorityUnavailable(_))
-            ));
-            assert_eq!(
-                (
-                    bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
-                    bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
-                    sim.rng_state(),
-                ),
-                before,
-                "expiry={expiry}: unavailable inputs refuse before the Restore transaction"
-            );
-        }
-
-        let result = if expiry {
-            sim.mission_restore_after_target_expiry(1, Some(&rules), Some(&registry))
-        } else {
-            sim.mission_restore_on_target_detach(1, Some(&rules), Some(&registry))
-        };
-        assert!(result.unwrap());
-        let mover = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(mover.mission.current().known(), Some(MissionType::Move));
-        assert_eq!(mover.mission.suspended(), MissionId::NONE);
-        assert_eq!(mover.navigation.nav_com, Some(destination));
+    for missing in [None, Some(&unregistered)] {
+        let result = sim.mission_restore_represented(1, Some(&rules), missing);
+        assert!(matches!(
+            result,
+            Err(MissionAuthorityError::AuthorityUnavailable(_))
+        ));
         assert_eq!(
-            crate::sim::movement::motion_query::is_moving(mover),
-            Some(true)
+            (
+                bincode::serialize(sim.substrate.entities.get(1).unwrap()).unwrap(),
+                bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap(),
+                sim.rng_state(),
+            ),
+            before,
+            "unavailable inputs refuse before the Restore transaction"
         );
-        assert_eq!(mover.teleport_state().unwrap().target_cell(), Some((12, 7)));
-        assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
-        assert_ne!(raw_bits(&sim, (12, 7)), 0, "the restored Cell is reserved");
     }
+
+    let result = sim.mission_restore_represented(1, Some(&rules), Some(&registry));
+    assert!(result.unwrap());
+    let mover = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(mover.mission.current().known(), Some(MissionType::Move));
+    assert_eq!(mover.mission.suspended(), MissionId::NONE);
+    assert_eq!(mover.navigation.nav_com, Some(destination));
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(mover),
+        Some(true)
+    );
+    assert_eq!(mover.teleport_state().unwrap().target_cell(), Some((12, 7)));
+    assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+    assert_ne!(raw_bits(&sim, (12, 7)), 0, "the restored Cell is reserved");
 }
 
 /// A ground order to an infantryman on Teleport reaches the Infantry setter,

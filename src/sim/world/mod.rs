@@ -4967,8 +4967,9 @@ impl Simulation {
     ///   released Foot of such a type. Effect: Guard instead of AreaGuard.
     ///   Frequency: nil in stock (every `DefaultToGuardArea=` type is
     ///   psionic-immune and no stock house sets GUARD_AREA).
-    /// - Aircraft Enter_Idle_Mode (`0x004176F0`) is not ported (no stock
-    ///   aircraft can be captured); the trailing `+0x423`-gated
+    /// - Aircraft Enter_Idle_Mode (`0x004176F0`,
+    ///   `aircraft::enter_idle_mode_now`) is not called here, and no stock
+    ///   aircraft can be captured; the trailing `+0x423`-gated
     ///   `vt+0x498`/`vt+0x494` and `vt+0x488(0, 0, 0, 0, 0)` calls are
     ///   unidentified.
     ///

@@ -1192,17 +1192,11 @@ fn queue_child_move(sim: &mut Simulation, child_id: u64) {
 /// destination, which Rocket Move_To ignores in flight. The manager's next
 /// Launching pass hands the missile to the kamikaze tracker
 /// (`sim::kamikaze`), which gives it the target's cell and the Attack mission.
-///
-/// RESIDUAL (next chain): the missile's Mission_Attack (`0x00417FE0`) and
-/// idle missions never run, because the aircraft mission runner dispatches a
-/// Rocket only on Move. Natively each Mission_Attack epilogue draws Scenario
-/// `RandomRanged(0,2)`, and its substate 1 sends the missile at the tracker's
-/// cell (`Assign_Destination(FindFireLocation)`). Trigger: every launch.
-/// Effect: no flight change while Rocket Move_To holds its destination, but
-/// the Scenario RNG stream falls behind native once the tracker commences
-/// Attack; a missile whose launch dropped a high-flying target (no
-/// destination) stays on its launcher instead of being re-sent at the
-/// target's cell. Risk: RNG parity and that stranded missile.
+/// Mission_Attack (`aircraft::attack_mission`) then cycles states 1 and 10,
+/// since a weaponless missile's FindFireLocation finds no cell, until
+/// TechnoClass::AI drops the target; state 10's idle mode
+/// (`aircraft::idle_entry`) then commences Retreat
+/// (`aircraft::retreat_mission`), which the missile keeps.
 ///
 /// RESIDUAL (spawn manager placement): VERA runs every manager in one pass
 /// after combat ([`tick_spawn_managers`]); the original runs each inside its

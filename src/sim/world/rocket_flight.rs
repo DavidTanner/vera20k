@@ -307,8 +307,10 @@ pub(super) mod retail_tests {
     //! force-attacks a tank through an ordinary command and bound runtime
     //! frames. The flight's native comparison is
     //! `movement::rocket_movement::tests`, the missile's Mission_Move and
-    //! Find_Attack_Cell `world::aircraft_move::tests`; this run claims no
-    //! native whole-flight or whole-match comparison.
+    //! Find_Attack_Cell `world::aircraft_move::tests`, its idle mode and
+    //! Mission_Retreat `aircraft::idle_entry::tests` and
+    //! `aircraft::retreat_mission::tests`; this run claims no native
+    //! whole-flight or whole-match comparison.
 
     use crate::headless_scenario::SIM_TICK_MS;
     use crate::sim::command::{Command, CommandEnvelope};
@@ -370,168 +372,230 @@ pub(super) mod retail_tests {
     #[test]
     #[ignore = "requires the configured retail install and stock Hills.mmx"]
     fn retail_v3_strike_flies_its_rocket_into_the_target() {
-        let retail = std::env::var("RA2_DIR")
-            .map(std::path::PathBuf::from)
-            .expect("RA2_DIR names the retail install");
-        let mut scenario = crate::headless_scenario::load(&retail, "Hills.mmx", 0x0B21_D6E5)
-            .expect("load retail Hills through the production loader");
-        let candidates = sites(&scenario);
-        let owner = scenario.sim().session.current_house.expect("launch house");
-        let owner_name = scenario.sim().interner.resolve(owner).to_owned();
-        let runtime = &mut scenario.runtime;
-        let rules = &runtime.resources.rules;
-        let (tilt_frames, altitude) = (
-            rules.missile_spawn.v3.tilt_frames,
-            rules.missile_spawn.v3.altitude,
-        );
-        let sim = &mut runtime.simulation;
-        // The first candidate whose cells admit both Unlimbos.
-        let ((launcher_cell, target_cell), v3, target) = candidates
-            .into_iter()
-            .find_map(|(launcher, target)| {
-                let tank = sim.spawn_object("MTNK", &owner_name, target.0, target.1, 0, rules)?;
-                match sim.spawn_object("V3", &owner_name, launcher.0, launcher.1, 0, rules) {
-                    Some(v3) => Some(((launcher, target), v3, tank)),
-                    None => {
-                        sim.uninit(tank);
-                        None
+        // Ordered at frame 0, the tracker's target is dropped before the
+        // missile's first Mission_Attack visit; ordered at frame 9, it is held
+        // through a state 1 visit.
+        for (order_frame, held) in [(0, false), (9, true)] {
+            let retail = std::env::var("RA2_DIR")
+                .map(std::path::PathBuf::from)
+                .expect("RA2_DIR names the retail install");
+            let mut scenario = crate::headless_scenario::load(&retail, "Hills.mmx", 0x0B21_D6E5)
+                .expect("load retail Hills through the production loader");
+            let candidates = sites(&scenario);
+            let owner = scenario.sim().session.current_house.expect("launch house");
+            let owner_name = scenario.sim().interner.resolve(owner).to_owned();
+            let runtime = &mut scenario.runtime;
+            let rules = &runtime.resources.rules;
+            let (tilt_frames, altitude) = (
+                rules.missile_spawn.v3.tilt_frames,
+                rules.missile_spawn.v3.altitude,
+            );
+            let sim = &mut runtime.simulation;
+            // The first candidate whose cells admit both Unlimbos.
+            let ((launcher_cell, target_cell), v3, target) = candidates
+                .into_iter()
+                .find_map(|(launcher, target)| {
+                    let tank =
+                        sim.spawn_object("MTNK", &owner_name, target.0, target.1, 0, rules)?;
+                    match sim.spawn_object("V3", &owner_name, launcher.0, launcher.1, 0, rules) {
+                        Some(v3) => Some(((launcher, target), v3, tank)),
+                        None => {
+                            sim.uninit(tank);
+                            None
+                        }
                     }
-                }
-            })
-            .expect("Hills admits a V3 and a tank on open level ground");
-        sim.resolve_type_handles(rules);
-        let strength = sim.substrate.entities.get(target).unwrap().health.current;
-        let missile = sim
-            .substrate
-            .entities
-            .get(v3)
-            .and_then(|e| e.spawn_manager.as_ref())
-            .and_then(|m| m.slots[0].spawn)
-            .expect("the V3 builds its missile");
-        let mut seen_anims: BTreeSet<_> = sim.anims().map(|(&id, _)| id).collect();
-        let mut anim_names = BTreeSet::new();
-        let mut launched = None;
-        let mut transitions = Vec::new();
-        let mut highest = i32::MIN;
-        let mut impact = None;
-        let mut detonated = None;
-        let mut last_location = None;
-        let mut moves = Vec::new();
-        for frame in 0..1500 {
-            let commands = if frame == 0 {
-                vec![CommandEnvelope::new(
-                    owner,
-                    runtime.simulation.session.tick + 1,
-                    Command::ForceAttack {
-                        attacker_id: v3,
-                        target_id: target,
-                    },
-                )]
-            } else {
-                Vec::new()
-            };
-            runtime
-                .advance_frame_for_tooling(&commands, SIM_TICK_MS)
-                .expect("advance production frame");
-            let sim = &runtime.simulation;
-            for (&id, anim) in sim.anims() {
-                if seen_anims.insert(id) {
-                    anim_names.insert(sim.interner.resolve(anim.type_id).to_owned());
-                }
-            }
-            // Detonate's UnInit leaves the frame's pending-delete flush.
-            let Some(entity) = sim
+                })
+                .expect("Hills admits a V3 and a tank on open level ground");
+            sim.resolve_type_handles(rules);
+            let strength = sim.substrate.entities.get(target).unwrap().health.current;
+            let missile = sim
                 .substrate
                 .entities
-                .get(missile)
-                .filter(|entity| entity.is_object_alive())
-            else {
-                detonated = Some(frame);
-                impact = last_location;
-                break;
-            };
-            if entity.lifecycle.in_limbo {
-                continue;
-            }
-            launched.get_or_insert(frame);
-            let mission = match entity.aircraft_mission {
-                Some(crate::sim::aircraft::AircraftMission::Move { sub_state }) => {
-                    ("Move", sub_state)
+                .get(v3)
+                .and_then(|e| e.spawn_manager.as_ref())
+                .and_then(|m| m.slots[0].spawn)
+                .expect("the V3 builds its missile");
+            let mut seen_anims: BTreeSet<_> = sim.anims().map(|(&id, _)| id).collect();
+            let mut anim_names = BTreeSet::new();
+            let mut launched = None;
+            let mut transitions = Vec::new();
+            let mut highest = i32::MIN;
+            let mut impact = None;
+            let mut detonated = None;
+            let mut last_location = None;
+            let mut moves = Vec::new();
+            for frame in 0..1500 {
+                let commands = if frame == order_frame {
+                    vec![CommandEnvelope::new(
+                        owner,
+                        runtime.simulation.session.tick + 1,
+                        Command::ForceAttack {
+                            attacker_id: v3,
+                            target_id: target,
+                        },
+                    )]
+                } else {
+                    Vec::new()
+                };
+                runtime
+                    .advance_frame_for_tooling(&commands, SIM_TICK_MS)
+                    .expect("advance production frame");
+                let sim = &runtime.simulation;
+                for (&id, anim) in sim.anims() {
+                    if seen_anims.insert(id) {
+                        anim_names.insert(sim.interner.resolve(anim.type_id).to_owned());
+                    }
                 }
-                Some(crate::sim::aircraft::AircraftMission::Attack { sub_state }) => {
-                    ("Attack", sub_state)
+                // Detonate's UnInit leaves the frame's pending-delete flush.
+                let Some(entity) = sim
+                    .substrate
+                    .entities
+                    .get(missile)
+                    .filter(|entity| entity.is_object_alive())
+                else {
+                    detonated = Some(frame);
+                    impact = last_location;
+                    break;
+                };
+                if entity.lifecycle.in_limbo {
+                    continue;
                 }
-                _ => ("other", 0),
+                launched.get_or_insert(frame);
+                // The current mission and Mission_Move's or Mission_Attack's
+                // state.
+                let state = match entity.aircraft_mission {
+                    Some(
+                        crate::sim::aircraft::AircraftMission::Move { sub_state }
+                        | crate::sim::aircraft::AircraftMission::Attack { sub_state },
+                    ) => Some(sub_state),
+                    _ => None,
+                };
+                let mission = (entity.mission.current().known(), state);
+                let visit = (mission, entity.navigation.nav_com);
+                if moves.last().is_none_or(|&(_, last)| last != visit) {
+                    moves.push((frame, visit));
+                }
+                let location = position_world_coord(&entity.position);
+                highest = highest.max(location.z);
+                last_location = Some(location);
+                let state = entity
+                    .locomotor
+                    .as_ref()
+                    .and_then(|locomotor| locomotor.rocket_runtime())
+                    .expect("the missile flies on its Rocket locomotor")
+                    .mission_state_for_test();
+                if transitions.last().is_none_or(|&(_, last)| last != state) {
+                    transitions.push((frame, state));
+                }
+            }
+            let launched = launched.expect("the V3 launches its missile");
+            let detonated = detonated.expect("the missile detonates");
+            let impact = impact.expect("the missile flew");
+            let health = runtime
+                .simulation
+                .substrate
+                .entities
+                .get(target)
+                .map_or(0, |e| e.health.current);
+            println!(
+                "V3 at {launcher_cell:?}, MTNK at {target_cell:?}: launch frame {launched}, \
+                 states {transitions:?}, missions {moves:?}, highest Z {highest}, \
+                 detonation frame {detonated} near {impact:?}, target health {strength} -> \
+                 {health}, anims {anim_names:?}"
+            );
+            // Launched at the tank with Move queued, commenced the next frame;
+            // the first Mission_Move visit's Find_Attack_Cell moves the NavCom
+            // to a free cell beside the tank (Spawned, the missile may share
+            // only a spawner's cell), which the flying Rocket's Move_To ignores.
+            // The tracker's Attack commences the same frame, restarting the
+            // mission state at Mission_Attack's 0.
+            use crate::sim::components::NavTargetRef;
+            use crate::sim::mission::MissionType::{Attack, Move, Retreat};
+            let tank = Some(NavTargetRef::Entity { id: target });
+            assert_eq!(moves[0].1, ((None, Some(0)), tank), "{moves:?}");
+            assert_eq!(moves[1].1, ((Some(Move), Some(0)), tank), "{moves:?}");
+            let (_, (mission, nav)) = moves[2];
+            assert_eq!(mission, (Some(Attack), Some(0)), "{moves:?}");
+            let Some(NavTargetRef::Cell { rx, ry }) = nav else {
+                panic!("Find_Attack_Cell picks a cell: {moves:?}");
             };
-            let visit = (mission, entity.navigation.nav_com);
-            if moves.last().is_none_or(|&(_, last)| last != visit) {
-                moves.push((frame, visit));
+            assert!(
+                (rx, ry) != target_cell
+                    && rx.abs_diff(target_cell.0) <= 2
+                    && ry.abs_diff(target_cell.1) <= 2,
+                "a free cell beside the tank: {moves:?}"
+            );
+            // Once TechnoClass::AI drops the target the weaponless missile cannot
+            // fire at, state 10 enters idle mode, which drops the destination
+            // and commences Retreat for good; Mission_Retreat's first visit
+            // heads for a cell past the playfield's edge.
+            let retreat = moves
+                .iter()
+                .position(|&(_, ((mission, _), _))| mission == Some(Retreat))
+                .expect("the missile retreats");
+            assert_eq!(
+                moves[retreat - 1].1.0,
+                (Some(Attack), Some(10)),
+                "{moves:?}"
+            );
+            // While it holds the target, state 1's FindFireLocation finds no
+            // cell for a weaponless missile (`0x004197C0`), and the NULL
+            // destination clears the NavCom (`0x004D9510`): state 10 follows
+            // with none, and its Rate epilogue outlasts the target.
+            let attack = &moves[3..retreat];
+            assert!(
+                attack
+                    .iter()
+                    .all(|&(_, ((mission, state), _))| mission == Some(Attack)
+                        && matches!(state, Some(1 | 10))),
+                "{moves:?}"
+            );
+            assert_eq!(
+                attack.iter().any(|&(_, ((_, state), _))| state == Some(1)),
+                held,
+                "{moves:?}"
+            );
+            for pair in attack.windows(2) {
+                if pair[0].1.0.1 == Some(1) {
+                    assert_eq!(pair[1].1, ((Some(Attack), Some(10)), None), "{moves:?}");
+                }
             }
-            let location = position_world_coord(&entity.position);
-            highest = highest.max(location.z);
-            last_location = Some(location);
-            let state = entity
-                .locomotor
-                .as_ref()
-                .and_then(|locomotor| locomotor.rocket_runtime())
-                .expect("the missile flies on its Rocket locomotor")
-                .mission_state_for_test();
-            if transitions.last().is_none_or(|&(_, last)| last != state) {
-                transitions.push((frame, state));
+            assert_eq!(moves[retreat].1, ((Some(Retreat), None), None), "{moves:?}");
+            assert!(
+                moves[retreat..]
+                    .iter()
+                    .all(|&(_, (mission, _))| mission == (Some(Retreat), None)),
+                "Retreat holds: {moves:?}"
+            );
+            let Some((_, (_, Some(NavTargetRef::Cell { rx, ry })))) = moves.get(retreat + 1) else {
+                panic!("Mission_Retreat picks an edge cell: {moves:?}");
+            };
+            let sim = &runtime.simulation;
+            assert!(
+                !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                    (i32::from(*rx), i32::from(*ry)),
+                    sim.playfield_bounds,
+                    sim.resolved_terrain.as_ref(),
+                ),
+                "the edge cell lies past the playfield: {moves:?}"
+            );
+            // Move_To starts the tilt; the climb follows TiltFrames later.
+            assert_eq!(transitions[0].1, 2);
+            assert_eq!(transitions[1], (transitions[0].0 + tilt_frames as u64, 3));
+            assert_eq!(transitions[2].1, 4);
+            assert!(highest >= altitude, "the climb reaches the cruise altitude");
+            let center = [
+                i32::from(target_cell.0) * 256 + 128,
+                i32::from(target_cell.1) * 256 + 128,
+            ];
+            assert!(
+                (impact.x - center[0]).abs() <= 384 && (impact.y - center[1]).abs() <= 384,
+                "the missile comes down on the tank"
+            );
+            assert!(health < strength, "the impact damages the target");
+            for name in ["V3TAKOFF", "V3TRAIL"] {
+                assert!(anim_names.contains(name), "{name} puffs are constructed");
             }
-        }
-        let launched = launched.expect("the V3 launches its missile");
-        let detonated = detonated.expect("the missile detonates");
-        let impact = impact.expect("the missile flew");
-        let health = runtime
-            .simulation
-            .substrate
-            .entities
-            .get(target)
-            .map_or(0, |e| e.health.current);
-        println!(
-            "V3 at {launcher_cell:?}, MTNK at {target_cell:?}: launch frame {launched}, \
-             states {transitions:?}, missions {moves:?}, highest Z {highest}, \
-             detonation frame {detonated} near {impact:?}, target health {strength} -> \
-             {health}, anims {anim_names:?}"
-        );
-        // Launched at the tank on Move; the first Mission_Move visit's
-        // Find_Attack_Cell moves the NavCom to a free cell beside the tank
-        // (Spawned, the missile may share only a spawner's cell), which the
-        // flying Rocket's Move_To ignores. The tracker's Attack commences
-        // the same frame, restarting the mission state at Mission_Attack's 0.
-        use crate::sim::components::NavTargetRef;
-        assert_eq!(
-            moves[0].1,
-            (("Move", 0), Some(NavTargetRef::Entity { id: target }))
-        );
-        let (_, (mission, nav)) = moves[1];
-        assert_eq!(mission, ("Attack", 0), "{moves:?}");
-        let Some(NavTargetRef::Cell { rx, ry }) = nav else {
-            panic!("Find_Attack_Cell picks a cell: {moves:?}");
-        };
-        assert!(
-            (rx, ry) != target_cell
-                && rx.abs_diff(target_cell.0) <= 2
-                && ry.abs_diff(target_cell.1) <= 2,
-            "a free cell beside the tank: {moves:?}"
-        );
-        // Move_To starts the tilt; the climb follows TiltFrames later.
-        assert_eq!(transitions[0].1, 2);
-        assert_eq!(transitions[1], (transitions[0].0 + tilt_frames as u64, 3));
-        assert_eq!(transitions[2].1, 4);
-        assert!(highest >= altitude, "the climb reaches the cruise altitude");
-        let center = [
-            i32::from(target_cell.0) * 256 + 128,
-            i32::from(target_cell.1) * 256 + 128,
-        ];
-        assert!(
-            (impact.x - center[0]).abs() <= 384 && (impact.y - center[1]).abs() <= 384,
-            "the missile comes down on the tank"
-        );
-        assert!(health < strength, "the impact damages the target");
-        for name in ["V3TAKOFF", "V3TRAIL"] {
-            assert!(anim_names.contains(name), "{name} puffs are constructed");
         }
     }
 }
