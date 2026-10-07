@@ -112,12 +112,18 @@ fn voxel_camera_view() -> Mat4 {
 /// `LocomotionClass::Draw_Matrix @ 0x0055A730`: signed step -8..23, native
 /// double angle and float store before table trig. Share the established
 /// table with FLH rather than recomputing an approximately equal sine.
+/// `RotateZ @ 0x005AF1A0` turns each row of the identity into `x*cos +
+/// y*sin` and `y*cos - x*sin`; on ones and zeros that is exact in binary32,
+/// so the zeros keep the signs those products give (row 2 is -0 in one
+/// column for steps 17..31; `tools/rocket_oracle/draw_matrix.json`).
 fn voxel_body_facing(step: u8) -> Mat4 {
     let (sin, cos) = crate::util::native_trig::native_sin_cos_by_step(i32::from(step) - 8)
         .expect("five-bit voxel facing fits native trig table");
+    let row = |x: f32, y: f32| [x * cos + y * sin, y * cos - x * sin];
+    let [[x0, y0], [x1, y1], [x2, y2]] = [row(1.0, 0.0), row(0.0, 1.0), row(0.0, 0.0)];
     Mat4::from_cols(
-        Vec4::new(cos, sin, 0.0, 0.0),
-        Vec4::new(if sin == 0.0 { 0.0 } else { -sin }, cos, 0.0, 0.0),
+        Vec4::new(x0, x1, x2, 0.0),
+        Vec4::new(y0, y1, y2, 0.0),
         Vec4::Z,
         Vec4::W,
     )
@@ -243,6 +249,36 @@ fn voxel_crash_locomotor_matrix(step: u8, tilt: [f32; 2]) -> Mat4 {
     )
 }
 
+/// `RocketLocomotionClass::Draw_Matrix @ 0x00663470`: the facing matrix of
+/// `LocomotionClass::Draw_Matrix @ 0x0055A730`, then, while CurrentPitch
+/// (`+0x54`) is not zero, `Matrix_rotate_y_axis @ 0x005AF080` by its
+/// negation, which raises the nose. RotateY takes the table sine and cosine
+/// of that angle widened to double. Executed in
+/// `tools/rocket_oracle/draw_matrix.py`.
+fn voxel_rocket_locomotor_matrix(step: u8, pitch: f32) -> Mat4 {
+    use crate::util::native_x87::{NativeF32Bits, X87Chop53 as Fpu, X87Value};
+    let facing = voxel_body_facing(step);
+    if pitch == 0.0 {
+        return facing;
+    }
+    let (trig, _) = crate::map::retail_trig::required_math_tables();
+    let angle = Fpu::load_f32(NativeF32Bits::from_bits((-pitch).to_bits()))
+        .expect("CurrentPitch is finite");
+    // The table entries are binary32, so the stores are exact.
+    let entry = |value: X87Value| {
+        f32::from_bits(
+            Fpu::store_f32(value)
+                .expect("a table entry fits a float")
+                .bits(),
+        )
+    };
+    voxel_rotate_y(
+        facing,
+        entry(trig.sin_from_table(angle)),
+        entry(trig.cos_from_table(angle)),
+    )
+}
+
 /// `JumpjetLocomotionClass` Draw_Matrix's `TiltCrashJumpjet=` arm
 /// (`0x0054DD19..0x0054DF06`): the facing matrix of
 /// `LocomotionClass::Draw_Matrix @ 0x0055A730` between a lift and a shifted,
@@ -353,6 +389,9 @@ pub enum BodyTilt {
         angles: [f32; 2],
         half_sizes: [f32; 2],
     },
+    /// `RocketLocomotionClass::Draw_Matrix` (`0x00663470`): CurrentPitch in
+    /// radians above the horizon.
+    Rocket(f32),
 }
 
 /// The draw matrix of one body draw: a tilt arm when one is present, else the
@@ -366,6 +405,10 @@ fn voxel_params_draw_rotation(params: &VxlRenderParams, step: u8) -> Mat4 {
             voxel_jumpjet_tilt_locomotor_matrix(step, angles, half_sizes),
         )
         .expect("finite tilt matrix"),
+        Some(BodyTilt::Rocket(pitch)) => voxel_rotation_product(
+            voxel_camera_view(),
+            voxel_rocket_locomotor_matrix(step, pitch),
+        ),
         None if params.barrel_pitch != 0 => voxel_pitched_draw_rotation(
             params.slope_type,
             params.slope_blend,
@@ -2305,6 +2348,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A native row-major 3x4 matrix written as twelve hex binary32 words.
+    fn native_words(words: &serde_json::Value) -> Mat4 {
+        let words: Vec<u32> = words
+            .as_str()
+            .expect("matrix words")
+            .split(' ')
+            .map(|word| u32::from_str_radix(word, 16).expect("hex word"))
+            .collect();
+        let mut matrix = Mat4::IDENTITY;
+        for row in 0..3 {
+            for col in 0..4 {
+                matrix.col_mut(col)[row] = f32::from_bits(words[row * 4 + col]);
+            }
+        }
+        matrix
+    }
+
+    /// Parity with `tools/rocket_oracle/draw_matrix.json`: the original
+    /// Rocket Draw_Matrix along the native flight corpus and over every
+    /// facing step, and the camera product the aircraft draw takes of it.
+    #[test]
+    fn rocket_draw_matrix_matches_native() {
+        let (trig, _) = crate::map::retail_trig::required_math_tables();
+        if !trig.matches_retail() {
+            assert!(
+                std::env::var_os("RA2_DIR").is_none(),
+                "RA2_DIR is set but the retail sine table does not match"
+            );
+            eprintln!("skipped: set RA2_DIR to the retail install to run this");
+            return;
+        }
+        let vectors: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/rocket_oracle/draw_matrix.json",
+        ))
+        .unwrap();
+        // Bit for bit, zero signs included.
+        let bits = |matrix: Mat4| matrix.to_cols_array().map(f32::to_bits);
+        assert_eq!(
+            bits(native_words(&vectors["camera"])),
+            bits(voxel_camera_view())
+        );
+        let (mut samples, mut draws) = (0, 0);
+        for row in vectors["rows"].as_array().unwrap() {
+            let name = row["name"].as_str().unwrap();
+            for sample in row["samples"].as_array().unwrap() {
+                let facing = sample["facing"].as_u64().unwrap() as u16;
+                let pitch = f32::from_bits(sample["current_pitch"].as_u64().unwrap() as u32);
+                // Presentation keys the body by the facing's high byte.
+                let facing_byte =
+                    crate::render::unit_atlas::canonical_unit_facing((facing >> 8) as u8);
+                let step = voxel_facing_step(facing_byte);
+                assert_eq!(step, voxel_facing_step_u16(facing), "{name}: {facing:#06X}");
+                let case = format!(
+                    "{name}: facing {facing:#06X} pitch {:#010X}",
+                    pitch.to_bits()
+                );
+                assert_eq!(
+                    bits(voxel_rocket_locomotor_matrix(step, pitch)),
+                    bits(native_words(&sample["matrix"])),
+                    "{case}: Draw_Matrix"
+                );
+                samples += 1;
+                if !sample["draw"].is_null() {
+                    let params = VxlRenderParams {
+                        facing: facing_byte,
+                        body_tilt: Some(BodyTilt::Rocket(pitch)),
+                        ..VxlRenderParams::default()
+                    };
+                    assert_eq!(
+                        bits(voxel_params_draw_rotation(&params, step)),
+                        bits(native_words(&sample["draw"])),
+                        "{case}: camera product"
+                    );
+                    draws += 1;
+                }
+            }
+        }
+        assert_eq!((samples, draws), (2247, 504));
     }
 
     #[test]
