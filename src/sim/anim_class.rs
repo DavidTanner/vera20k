@@ -409,6 +409,17 @@ pub struct AnimObject {
     /// is `+0x194` for the ported arm (the `IsMeteor=` arm is not built).
     #[serde(default)]
     pub bounce: Option<BounceState>,
+    /// `AnimClass+0x180`, the owning House (`SetOwnerHouse @ 0x00424CA0`).
+    /// Its expiry also ends the anim (`0x004251D5`). The PsiWarning
+    /// visibility test reads it against the local player (`0x0043B4C0`).
+    #[serde(default)]
+    owner_house: Option<InternedId>,
+    /// `AnimClass+0x17C`, the bullet whose expiry ends this anim
+    /// (`0x00424C90` stores it; `AnimClass::PointerExpired @ 0x00425150`
+    /// clears it and UnInits the anim). The nuclear missile's warning marker
+    /// rides its missile this way.
+    #[serde(default)]
+    attached_bullet: Option<u64>,
 }
 
 impl AnimObject {
@@ -468,7 +479,20 @@ impl AnimObject {
             stop_sound_id: None,
             display: AnimDisplayState::default(),
             bounce: None,
+            owner_house: None,
+            attached_bullet: None,
         }
+    }
+
+    /// The owning House (`AnimClass+0x180`).
+    pub fn owner_house(&self) -> Option<InternedId> {
+        self.owner_house
+    }
+
+    /// The bullet whose expiry ends this anim (`AnimClass+0x17C`).
+    #[cfg(test)]
+    pub(crate) fn attached_bullet(&self) -> Option<u64> {
+        self.attached_bullet
     }
 
     /// Preserve the former field order; the new damage-fire reverse index is
@@ -495,6 +519,12 @@ impl AnimObject {
         self.stop_sound_id.hash(hasher);
         self.completed.hash(hasher);
         self.building_anim.hash(hasher);
+        // Unset links add no bytes, preserving earlier streams.
+        if self.owner_house.is_some() || self.attached_bullet.is_some() {
+            b"anim-owner-house-bullet-v1".hash(hasher);
+            self.owner_house.hash(hasher);
+            self.attached_bullet.hash(hasher);
+        }
     }
 }
 
@@ -571,6 +601,11 @@ pub struct AnimStore {
     /// Which anims may have changed since [`Self::take_touched`]. Transient:
     /// never saved, compared or hashed.
     touched: TouchLog,
+    /// Derived `(bullet, anim)` pairs of the anims whose `+0x17C` names a
+    /// bullet, so a bullet's expiry finds them without a scan. Written with
+    /// that field, rebuilt from the anims on load and clone; never saved,
+    /// compared or hashed.
+    bullet_links: std::collections::BTreeSet<(u64, AnimId)>,
 }
 
 impl AnimStore {
@@ -587,7 +622,12 @@ impl AnimStore {
 
     pub(crate) fn insert(&mut self, object: AnimObject) -> Option<AnimObject> {
         self.touched.note(object.stable_id, self.anims.len());
-        self.anims.insert(object.stable_id, object)
+        if let Some(bullet) = object.attached_bullet {
+            self.bullet_links.insert((bullet, object.stable_id));
+        }
+        let replaced = self.anims.insert(object.stable_id, object);
+        self.unlink_bullet(replaced.as_ref());
+        replaced
     }
 
     pub(crate) fn remove(&mut self, id: AnimId) -> Option<AnimObject> {
@@ -595,7 +635,57 @@ impl AnimStore {
         if removed.is_some() {
             self.touched.note(id, self.anims.len());
         }
+        self.unlink_bullet(removed.as_ref());
         removed
+    }
+
+    /// Drop the index pair of an anim that left the store or was replaced.
+    fn unlink_bullet(&mut self, gone: Option<&AnimObject>) {
+        if let Some(anim) = gone
+            && let Some(bullet) = anim.attached_bullet
+            && self
+                .anims
+                .get(&anim.stable_id)
+                .map(|kept| kept.attached_bullet)
+                != Some(Some(bullet))
+        {
+            self.bullet_links.remove(&(bullet, anim.stable_id));
+        }
+    }
+
+    /// Store `+0x17C` for `id` and keep the index with it.
+    fn set_attached_bullet(&mut self, id: AnimId, bullet: Option<u64>) -> bool {
+        let Some(anim) = self.get_mut(id) else {
+            return false;
+        };
+        let previous = std::mem::replace(&mut anim.attached_bullet, bullet);
+        if let Some(previous) = previous {
+            self.bullet_links.remove(&(previous, id));
+        }
+        if let Some(bullet) = bullet {
+            self.bullet_links.insert((bullet, id));
+        }
+        true
+    }
+
+    /// The anims whose `+0x17C` names `bullet`, in id order.
+    fn attached_to(&self, bullet: u64) -> Vec<AnimId> {
+        self.bullet_links
+            .range((bullet, AnimId::MIN)..=(bullet, AnimId::MAX))
+            .map(|&(_, id)| id)
+            .collect()
+    }
+
+    fn with_links(anims: BTreeMap<AnimId, AnimObject>) -> Self {
+        let bullet_links = anims
+            .values()
+            .filter_map(|anim| Some((anim.attached_bullet?, anim.stable_id)))
+            .collect();
+        Self {
+            anims,
+            touched: TouchLog::everything(),
+            bullet_links,
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&AnimId, &AnimObject)> {
@@ -628,10 +718,7 @@ impl AnimStore {
 
 impl Default for AnimStore {
     fn default() -> Self {
-        Self {
-            anims: BTreeMap::new(),
-            touched: TouchLog::everything(),
-        }
+        Self::with_links(BTreeMap::new())
     }
 }
 
@@ -639,10 +726,7 @@ impl Clone for AnimStore {
     /// A clone starts with an everything-touched log: whatever was derived
     /// from the original says nothing certain about the copy's future.
     fn clone(&self) -> Self {
-        Self {
-            anims: self.anims.clone(),
-            touched: TouchLog::everything(),
-        }
+        Self::with_links(self.anims.clone())
     }
 }
 
@@ -673,10 +757,7 @@ impl<'de> Deserialize<'de> for AnimStore {
         #[serde(rename = "AnimStore")]
         struct Saved(BTreeMap<AnimId, AnimObject>);
         let Saved(anims) = Saved::deserialize(deserializer)?;
-        Ok(Self {
-            anims,
-            touched: TouchLog::everything(),
-        })
+        Ok(Self::with_links(anims))
     }
 }
 
@@ -996,6 +1077,8 @@ impl Simulation {
                 y_sort_adjust: config.y_sort_adjust,
             },
             bounce: None,
+            owner_house: None,
+            attached_bullet: None,
         };
         // The insert must run in every build profile: wrapped in
         // `debug_assert!` it was compiled out of release binaries and no
@@ -1673,6 +1756,100 @@ impl Simulation {
         };
         anim.z_adjust = z_adjust;
         true
+    }
+
+    /// `AnimClass::SetOwnerHouse @ 0x00424CA0`: store `+0x180`.
+    pub(crate) fn set_anim_owner_house(&mut self, id: AnimId, house: InternedId) -> bool {
+        let Some(anim) = self.anim_mut_by_id(id) else {
+            return false;
+        };
+        anim.owner_house = Some(house);
+        true
+    }
+
+    /// `0x00424C90`: store `+0x17C`, the bullet whose expiry ends the anim.
+    pub(crate) fn set_anim_attached_bullet(&mut self, id: AnimId, bullet: Option<u64>) -> bool {
+        self.substrate.anims.set_attached_bullet(id, bullet)
+    }
+
+    /// `AnimClass::PointerExpired @ 0x00425150`'s `+0x17C` arm for a bullet
+    /// leaving the game: each anim holding it clears the link and UnInits
+    /// (`0x004251BE..0x004251D2`, vt+0xF8). Every producer attaches one anim
+    /// per bullet, so the listener order the broadcast visits them in has no
+    /// effect.
+    ///
+    /// The `+0x180` arm (the owning House expiring) is dormant: a House is
+    /// never deleted during a match.
+    pub(crate) fn expire_anim_attached_bullet(&mut self, bullet: u64, rules: Option<&RuleSet>) {
+        for id in self.substrate.anims.attached_to(bullet) {
+            self.substrate.anims.set_attached_bullet(id, None);
+            self.destroy_anim_with_context(id, rules);
+        }
+    }
+
+    /// `0x0043B4C0`, the test `AnimClass::AI` runs every frame for an anim
+    /// whose type sets `PsiWarning=` (`AnimTypeClass+0x373`,
+    /// `0x00423B29..0x00423B5C`) and stores negated as the hidden byte
+    /// `+0x19D`: does `viewer` (native asks for the local player,
+    /// `0x00A83D4C`) detect the anim? Not when it is allied with the anim's
+    /// House (`HouseClass::IsAlliedWith @ 0x004F9A50`, null not allied).
+    /// Otherwise, when one of its PsychicDetection buildings
+    /// (`HouseClass+0x128`: placed buildings whose type's
+    /// `PsychicDetectionRadius=` (`+0x170C`) is positive, added by
+    /// `BuildingClass::Unlimbo` at `0x004414A0` and moved by
+    /// `BuildingClass::ChangeOwner`) is operational (vt+0x350) and its
+    /// GetCoords lies within the radius in leptons (`<< 8`, `jle` at
+    /// `0x0043B5A9`) of the centre of the anim's cell (`MapClass::operator[]
+    /// @ 0x00565730`, `CellClass::Get_Center_Coords @ 0x00480A30`), measured
+    /// as `CoordStruct::Distance3D` (inline at `0x0043B547..0x0043B593`).
+    /// The answer depends on the local player, so the presentation asks it
+    /// in place of the hidden flag. Evidence: instruction reading only; no
+    /// native run compares the distance's rounding at the radius edge.
+    pub(crate) fn psi_warning_detected_by(
+        &self,
+        viewer: InternedId,
+        anim: &AnimObject,
+        rules: &RuleSet,
+    ) -> bool {
+        if anim.owner_house.is_some_and(|house| {
+            crate::sim::combat::combat_weapon::is_ally_by_object(
+                Some(&self.fog.alliances),
+                &self.interner,
+                viewer,
+                house,
+            )
+        }) {
+            return false;
+        }
+        let terrain = self.resolved_terrain.as_ref();
+        let at = anim_world_coords(anim, &self.substrate.entities, terrain);
+        let cell = crate::sim::projectile::cell_ground_coord(
+            terrain,
+            (at.x / 256) as u16,
+            (at.y / 256) as u16,
+        );
+        self.substrate.entities.values().any(|entity| {
+            if entity.owner() != viewer
+                || entity.category != crate::map::entities::EntityCategory::Structure
+                || !entity.lifecycle.object_alive
+                || entity.lifecycle.in_limbo
+            {
+                return false;
+            }
+            let radius = rules
+                .object(self.interner.resolve(entity.type_ref()))
+                .map_or(0, |object| i32::from(object.psychic_detection_radius));
+            if radius <= 0
+                || self.building_operational_state(entity.stable_id(), rules) != Some(true)
+            {
+                return false;
+            }
+            let coords = crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
+            crate::util::native_x87::distance_3d_leptons(
+                [coords.x, coords.y, coords.z],
+                [cell.x, cell.y, cell.z],
+            ) <= radius << 8
+        })
     }
 
     pub(crate) fn update_building_damage_fire(&mut self, building_id: u64, rules: &RuleSet) {

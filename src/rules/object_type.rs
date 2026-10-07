@@ -722,6 +722,17 @@ pub struct ObjectType {
     pub super_weapon: Option<String>,
     /// Secondary superweapon type ID, typically from an upgrade (SuperWeapon2= in rules.ini).
     pub super_weapon2: Option<String>,
+    /// `NukeSilo=` (BuildingType `+0x16BA`, ReadBool at `0x00460A45`,
+    /// constructor clear at `0x0045E127`): `SuperClass::Launch @ 0x006CC390`
+    /// fires a `MultiMissile` weapon from the first such type granting it,
+    /// and `BuildingClass::Mission_Missile @ 0x0044C980` takes its silo arm.
+    pub nuke_silo: bool,
+    /// `ChargedAnimTime=` (BuildingType `+0x16E8`, a float: ReadDouble at
+    /// `0x00460B9E`, `FSTP dword`; constructor 999.0 at `0x0045E1D4`), in
+    /// minutes. A granted weapon's building swaps its SuperAnim slots once
+    /// that little charge remains (`BuildingClass::UpdateAnimation`
+    /// `0x00450F9E`); above 990 the block is off.
+    pub charged_anim_time: f32,
     /// When true, this building provides full map vision while powered.
     /// Used by the Allied Spy Satellite Uplink (GASPYSAT).
     pub spy_sat: bool,
@@ -2282,6 +2293,8 @@ impl ObjectType {
             death_weapon_damage_modifier: section.read_float("DeathWeaponDamageModifier", 1.0),
             super_weapon: section.read_name("SuperWeapon", 0x20).map(str::to_owned),
             super_weapon2: section.read_name("SuperWeapon2", 0x20).map(str::to_owned),
+            nuke_silo: section.read_bool("NukeSilo", false),
+            charged_anim_time: section.read_float("ChargedAnimTime", 999.0),
             spy_sat: section.read_bool("SpySat", false),
             gap_generator: section.read_bool("GapGenerator", false),
             radar: section.read_bool("Radar", false),

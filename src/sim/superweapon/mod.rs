@@ -2,7 +2,8 @@
 //!
 //! Each player has a set of `SuperWeaponInstance`s, one per superweapon type
 //! granted by their buildings. The system ticks after power (for suspend/resume)
-//! and before combat. Lightning Storm is the first implemented launch handler.
+//! and before combat. `fire::launch_ported` lists the `SuperClass::Launch`
+//! arms not yet ported; a click on one of those keeps its charge.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
@@ -11,18 +12,22 @@
 pub mod cell_grid;
 #[cfg(test)]
 mod cell_receiver_tests;
+mod fire;
 pub mod force_shield;
 pub mod genetic_converter;
 pub mod invulnerability;
 pub mod iron_curtain;
 pub mod lightning_storm;
+mod nuke;
+#[cfg(test)]
+mod nuke_tests;
 pub mod paradrop;
 #[cfg(test)]
 mod paradrop_tests;
 pub mod psychic_reveal;
 
 use crate::rules::ruleset::RuleSet;
-use crate::rules::superweapon_type::SuperWeaponKind;
+use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -195,34 +200,60 @@ impl SuperWeaponInstance {
         self.ready_tick = -1;
     }
 
-    /// Suspend charging (low power). Saves remaining time.
-    pub fn suspend(&mut self, current_frame: u32) {
-        if self.charge_start_tick == -1 || self.is_suspended {
-            return;
+    /// `SuperClass::Suspend @ 0x006CB4D0` for a granted Super that is not
+    /// one-time (VERA grants none) and can hold (`+0x71`, set by the
+    /// constructor): holding, or anything for a `ManualControl=` type, stops
+    /// a running recharge keeping the time left; releasing restarts a stopped
+    /// one. A charged Super holds too, and ClickFire refuses a stopped timer.
+    /// Returns whether the hold changed.
+    pub(crate) fn suspend(&mut self, on: bool, manual_control: bool, current_frame: u32) -> bool {
+        if !self.is_active || on == self.is_suspended {
+            return false;
         }
         let mut timer = self.charge_timer();
-        timer.pause(current_frame as i32);
+        if on || manual_control {
+            timer.pause(current_frame as i32);
+        } else {
+            timer.resume(current_frame as i32);
+        }
         self.store_charge_timer(timer);
-        self.is_suspended = true;
+        self.is_suspended = on;
+        true
     }
 
-    /// Resume charging (power restored). Restarts timer with saved remaining.
-    pub fn resume(&mut self, current_frame: u32) {
-        if !self.is_suspended {
+    /// `SuperClass::ClickFire @ 0x006CB920`'s admission without charge drain
+    /// (`0x006CB933..0x006CB95F`): a running recharge timer on a granted,
+    /// charged Super. A timer held for low power does not run.
+    fn click_fire_admits(&self) -> bool {
+        self.charge_start_tick != -1 && self.is_active && self.is_ready
+    }
+
+    /// ClickFire after its Launch (`0x006CBA72..0x006CBB8A`), whatever the
+    /// launch did, for a Super that is not one-time (VERA grants none):
+    /// readiness ends unless the type is `PostClick=`; a `ManualControl=`
+    /// type's timer starts with the recharge time and is paused at once,
+    /// keeping all of it; any other type but `PreClick=`/`PostClick=`
+    /// restarts the recharge of a granted Super that is not ready and not
+    /// held. The recharge is `RechargeTime=`: the Super's custom charge
+    /// time stays -1 (no VERA trigger sets it). `CameoChargeState`, -1 on
+    /// both restarts, is the sidebar's.
+    /// RESIDUAL (the Chronosphere chain): the PreClick animation release
+    /// (`0x006CBAAE..0x006CBAF1`) of a type that is neither.
+    fn finish_click_fire(&mut self, sw: &SuperWeaponType, current_frame: u32) {
+        let frame = current_frame as i32;
+        if !sw.post_click {
+            self.is_ready = false;
+        }
+        if sw.manual_control {
+            let mut timer = CdTimer::started(frame, sw.recharge_time_frames);
+            timer.pause(frame);
+            self.store_charge_timer(timer);
             return;
         }
-        let mut timer = self.charge_timer();
-        timer.resume(current_frame as i32);
-        self.store_charge_timer(timer);
-        self.is_suspended = false;
-    }
-
-    /// Reset after firing — restart charge from full duration.
-    pub fn reset_after_fire(&mut self, recharge_frames: i32, current_frame: u32) {
-        self.is_ready = false;
-        self.ready_tick = -1;
-        self.charge_start_tick = current_frame as i32;
-        self.charge_duration = recharge_frames;
+        if !sw.pre_click && !sw.post_click && self.is_active && !self.is_ready && !self.is_suspended
+        {
+            self.store_charge_timer(CdTimer::started(frame, sw.recharge_time_frames));
+        }
     }
 
     /// Compute charge progress as 0.0–1.0 for sidebar display.
@@ -242,6 +273,37 @@ impl SuperWeaponInstance {
         let elapsed = full_recharge_frames.wrapping_sub(remaining) as f32;
         (elapsed / full_recharge_frames as f32).clamp(0.0, 1.0)
     }
+}
+
+/// The charge each of `owner`'s Supers with `Type=` value `kind_index` has
+/// left, in the house's Supers order (`SuperWeaponTypeClass` array order).
+///
+/// BuildingClass's SuperAnim code compares a Super's `Type=` (`+0xB4`) with
+/// its building type's `SuperWeapon=` array index (`0x0045101C`,
+/// `0x00446430`); retail lists every type at the index of its `Type=`, so
+/// the two name the same weapon. A Super the house was never granted keeps
+/// the constructor's timer, started with no duration
+/// (`SuperClass::SuperClass @ 0x006CAF90`): nothing remains.
+pub(crate) fn supers_of_kind_remaining(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    kind_index: i32,
+) -> Vec<i32> {
+    let frame = sim.session.binary_frame as i32;
+    let weapons = sim.super_weapons.get(&owner);
+    rules
+        .super_weapon_order
+        .iter()
+        .filter_map(|name| rules.super_weapon(name).map(|sw| (name, sw)))
+        .filter(|(_, sw)| sw.kind.native_index() == kind_index)
+        .map(|(name, _)| {
+            sim.interner
+                .get(name)
+                .and_then(|id| weapons?.get(&id))
+                .map_or(0, |inst| inst.charge_remaining(frame))
+        })
+        .collect()
 }
 
 /// View struct for sidebar display — no sim internals exposed.
@@ -324,21 +386,21 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
             continue;
         };
         for (_, inst) in weapons.iter_mut() {
-            if !inst.is_active || inst.is_ready {
+            if !inst.is_active {
                 continue;
             }
-            let type_id_str = sim.interner.resolve(inst.type_id);
-            let sw_powered = rules
-                .super_weapon(type_id_str)
-                .map_or(true, |sw| sw.is_powered);
-
-            // Power suspend/resume
-            if sw_powered {
-                if is_low_power && !inst.is_suspended {
-                    inst.suspend(current_frame);
-                } else if !is_low_power && inst.is_suspended {
-                    inst.resume(current_frame);
-                }
+            let sw = rules.super_weapon(sim.interner.resolve(inst.type_id));
+            // The power arm of `HouseClass @ 0x0050AF10`: a powered type
+            // holds while the house is short of power, and every type is
+            // released otherwise, charged or not. RESIDUAL: native also
+            // holds one whose providing building is offline (`+0x660`).
+            if !is_low_power {
+                inst.suspend(false, sw.is_some_and(|sw| sw.manual_control), current_frame);
+            } else if sw.is_none_or(|sw| sw.is_powered) {
+                inst.suspend(true, sw.is_some_and(|sw| sw.manual_control), current_frame);
+            }
+            if inst.is_ready {
+                continue;
             }
 
             // Charge advancement
@@ -378,10 +440,10 @@ pub fn tick_active_superweapon_effects(
 /// revoked earlier, and revokes each one no building provides.
 ///
 /// gamemd: the grant pass `HouseClass @ 0x0050B1D0` (Ghidra label
-/// `HouseClass__AI_ResumeProduction`, called from `BuildingClass::Unlimbo`
+/// `HouseClass__Grant_Provided_Supers`, called from `BuildingClass::Unlimbo`
 /// and `HouseClass::Update`) calls `SuperClass::Grant @ 0x006CB560` for each
 /// weapon whose present flag `+0x6D` is clear. The revoke pass
-/// `HouseClass @ 0x0050AF10` (label `HouseClass__AI_ManageProduction`) calls
+/// `HouseClass @ 0x0050AF10` (label `HouseClass__Update_Owned_Supers`) calls
 /// `SuperClass @ 0x006CB7B0` (label `SuperClass__Deactivate`), which clears
 /// `+0x6D` and the charged flag `+0x6F`. Grant returns early only while
 /// `+0x6D` is set, and otherwise restarts the recharge timer at the full
@@ -471,12 +533,12 @@ mod frame_tests {
 
         assert_eq!(instance.charge_progress(104, 10), 0.4);
 
-        instance.suspend(104);
+        assert!(instance.suspend(true, false, 104));
         assert_eq!(instance.charge_start_tick, -1);
         assert_eq!(instance.charge_duration, 6);
         assert_eq!(instance.charge_progress(1000, 10), 0.4);
 
-        instance.resume(1000);
+        assert!(instance.suspend(false, false, 1000));
         assert_eq!(instance.charge_progress(1003, 10), 0.7);
         assert_eq!(instance.charge_progress(1006, 10), 1.0);
     }
@@ -488,12 +550,12 @@ mod frame_tests {
         instance.activate(4, u32::MAX - 1);
 
         assert_eq!(instance.charge_progress(0, 4), 0.5);
-        instance.suspend(0);
+        assert!(instance.suspend(true, false, 0));
         assert_eq!(instance.charge_start_tick, -1);
         assert_eq!(instance.charge_duration, 2);
         assert_eq!(instance.charge_progress(1000, 4), 0.5);
 
-        instance.resume(0);
+        assert!(instance.suspend(false, false, 0));
         assert_eq!(instance.charge_progress(1, 4), 0.75);
         assert_eq!(instance.charge_progress(2, 4), 1.0);
     }

@@ -411,6 +411,11 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         building.ready_latch().hash(hasher);
         b"building-repair-progress-620".hash(hasher);
         building.repair_progress().hash(hasher);
+        // Constructor -1 adds no bytes, preserving earlier streams.
+        if building.firing_super_weapon() != -1 {
+            b"building-firing-super-weapon-5f8".hash(hasher);
+            building.firing_super_weapon().hash(hasher);
+        }
     }
     // Infantry already folds the same owned byte above. Native default0
     // retains the prior Unit/Aircraft hash stream; loaded nonzero Foot68D
@@ -707,6 +712,10 @@ impl Simulation {
             projectile.collision.elasticity_bits.hash(hasher);
             projectile.on_bridge.hash(hasher);
             projectile.collision.arcing.hash(hasher);
+            if let Some(house) = projectile.firer_house() {
+                b"bullet-firer-scheme-v1".hash(hasher);
+                house.index().hash(hasher);
+            }
         }
     }
 
@@ -875,6 +884,7 @@ impl Simulation {
             house.eva_funds_timer.duration().hash(hasher);
             house.eva_low_power_guard.hash(hasher);
             house.hash_event_notifications(hasher);
+            house.hash_super_weapon_cells(hasher);
             house.repair_delay.to_bits().hash(hasher);
             house.repair_start_latch.hash(hasher);
             i64::from(house.repair_latch_timer.start_frame()).hash(hasher);

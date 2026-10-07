@@ -90,8 +90,9 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
 fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry: u16) {
     let owner = sim.interner.intern("Americans");
     let sw_type_id = sim.interner.intern(name);
+    // Charged on a running timer: ClickFire refuses a stopped one.
     let mut instance = SuperWeaponInstance::new(sw_type_id, owner);
-    instance.is_active = true;
+    instance.activate(1, sim.session.binary_frame);
     instance.is_ready = true;
     sim.super_weapons
         .entry(owner)

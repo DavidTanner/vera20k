@@ -75,6 +75,24 @@ where
     Ok(command)
 }
 
+/// The observed House's Supers in interned-id order: the id a profile's
+/// `LaunchSuperWeapon` names and the state the sidebar reads.
+fn super_weapon_rows(sim: &crate::sim::world::Simulation, owner: &str) -> Value {
+    let frame = sim.session.binary_frame as i32;
+    sim.interner
+        .get(owner)
+        .and_then(|id| sim.super_weapons.get(&id))
+        .into_iter()
+        .flatten()
+        .map(|(&type_id, inst)| {
+            json!({"type": sim.interner.resolve(type_id), "interned_id": type_id.index(),
+                "granted": inst.is_active, "ready": inst.is_ready, "on_hold": inst.is_suspended,
+                "charge_start": inst.charge_start_tick, "charge_duration": inst.charge_duration,
+                "remaining": inst.charge_remaining(frame)})
+        })
+        .collect()
+}
+
 fn deserialize_present<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -146,6 +164,15 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     terrain_cells: Option<Vec<[u16; 2]>>,
+    // Opt-in Super rows on each observed House: the interned type id a
+    // `LaunchSuperWeapon` command names, grant, readiness, hold and the
+    // charge timer. Historical profiles and their rows stay unchanged.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_super_weapons: Option<bool>,
 }
 
 impl MapCaptureProfile {
@@ -176,7 +203,8 @@ impl MapCaptureProfile {
                     && self.observe_action_line_inputs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
-                    && self.terrain_cells.is_none(),
+                    && self.terrain_cells.is_none()
+                    && self.observe_super_weapons.is_none(),
                 "map observation profile v1 cannot declare v2 extension fields"
             );
         }
@@ -226,6 +254,7 @@ impl MapCaptureProfile {
                         | Command::UnloadPassengers { .. }
                         | Command::RepairAtDepot { .. }
                         | Command::SellBuilding { .. }
+                        | Command::LaunchSuperWeapon { .. }
                 ),
                 "command is outside the map observation's ordinary order coverage"
             );
@@ -557,6 +586,11 @@ impl MapObservation {
                 })
             })
             .and_then(|count| count.checked_add(frame.houses.len()))
+            .and_then(|count| {
+                frame.houses.iter().try_fold(count, |count, house| {
+                    count.checked_add(house["super_weapons"].as_array().map_or(0, Vec::len))
+                })
+            })
             .and_then(|count| count.checked_add(frame.missing_actor_ids.len()))
             .and_then(|count| count.checked_add(frame.terrain.len()))
             .and_then(|count| {
@@ -1346,7 +1380,11 @@ impl TacticalCaptureSession {
                 .map(|house| &house.economy);
                 // Missing Houses stay explicit rather than inventing a zero
                 // balance. Economy is the same immutable wallet used by play.
-                json!({"owner": owner, "economy": economy})
+                let mut row = json!({"owner": owner, "economy": economy});
+                if profile.observe_super_weapons == Some(true) {
+                    row["super_weapons"] = super_weapon_rows(sim, owner);
+                }
+                row
             })
             .collect();
         let terrain = profile.terrain_cells().iter().map(|&[rx, ry]| {
@@ -1742,15 +1780,21 @@ mod tests {
         let mut legacy = example();
         legacy.gestures = Some(Vec::new());
         assert!(legacy.validate().is_err());
+        let mut legacy = example();
+        legacy.observe_super_weapons = Some(false);
+        assert!(legacy.validate().is_err());
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
-            "payload": {"DeployMcv": {"entity_id": 1}}}]);
+            "payload": {"DeployMcv": {"entity_id": 1}}},
+            {"issue_after_step": 0, "owner": "Computer1", "payload": {"LaunchSuperWeapon":
+                {"sw_type_id": 5, "target_rx": 3, "target_ry": 4}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
         modern["observe_types"] = json!(["CLEG"]);
         modern["observe_action_line_inputs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
+        modern["observe_super_weapons"] = json!(true);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(serde_json::to_value(profile).unwrap(), modern);
@@ -1763,6 +1807,7 @@ mod tests {
             "camera_cell",
             "cursor_position",
             "terrain_cells",
+            "observe_super_weapons",
         ] {
             let mut invalid = modern.clone();
             invalid[key] = Value::Null;
@@ -2301,6 +2346,30 @@ mod tests {
                 .all(|command| !matches!(command.payload, Command::SetRally { .. })),
             "the default route exercises the constructor-empty Archive path"
         );
+    }
+
+    #[test]
+    fn nuclear_missile_example_launches_the_charged_silo_at_the_neutral_tanks() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.nuclear-missile.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The silo's Super charges for 9000 frames from the first step; the
+        // id is the one its `observe_super_weapons` row reports.
+        let [command] = profile.commands() else {
+            panic!("one launch");
+        };
+        assert_eq!(command.issue_after_step, 9010);
+        assert!(matches!(
+            command.payload,
+            Command::LaunchSuperWeapon {
+                target_rx: 41,
+                target_ry: 63,
+                ..
+            }
+        ));
     }
 
     #[test]

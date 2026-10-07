@@ -2346,6 +2346,12 @@ impl Simulation {
         if !represented {
             return false;
         }
+        if self.classify_object(stable_id) == Some(ObjectKind::Projectile) {
+            // `ObjectClass::UnInit @ 0x005F65F0` broadcasts the bullet's
+            // expiry before it leaves Logic; an anim riding it ends
+            // (`AnimClass::PointerExpired @ 0x00425150`, `+0x17C`).
+            self.expire_anim_attached_bullet(stable_id, None);
+        }
         let _ = self.unregister_non_entity_object(stable_id);
         self.substrate.pending_delete.push(stable_id);
         #[cfg(test)]

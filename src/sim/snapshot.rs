@@ -830,7 +830,11 @@ use crate::sim::world::Simulation;
 // These Cells affect synchronous Jumpjet callbacks and lockstep continuation;
 // neither can be reconstructed from position, phase or Cell+E0. Prior bincode
 // records lack the Cells and cannot resume the callback chain.
-const SNAPSHOT_VERSION: u32 = 290;
+// 290 -> 291: the nuclear missile saves Anim+17C/+180 (attached Bullet, owner
+// House), Building+5F8 (the Super a Missile mission fires), the House's
+// NukeTarget, PreferredDefensiveCell and its frame, and Bullet+114 (the
+// FirersPalette House). Prior records lack them.
+const SNAPSHOT_VERSION: u32 = 291;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3834,7 +3838,9 @@ mod tests {
         // 287 -> 288: complete Drive/Ship instance-owned retained state.
         // 288 -> 289: Factory publication and shared Foot idle latch.
         // 289 -> 290: independent Foot air tracker/slot Cells and callbacks.
-        assert_eq!(super::SNAPSHOT_VERSION, 290);
+        // 290 -> 291: the nuclear missile's Anim, Building, House and Bullet
+        // fields.
+        assert_eq!(super::SNAPSHOT_VERSION, 291);
     }
 
     #[test]

@@ -229,6 +229,8 @@ pub(crate) fn build_anim_class_instances(
         .rules()
         .and_then(|rules| rules.general.parachute_shp.as_deref())
         .and_then(|name| sim.interner.get(name));
+    let local_owner = crate::app::input::commands::preferred_local_owner_name(state)
+        .and_then(|name| sim.interner.get(&name));
     for &stable_id in sim.display_layers().ordered_ids() {
         let Some(anim) = sim.anim(stable_id) else {
             continue;
@@ -260,7 +262,16 @@ pub(crate) fn build_anim_class_instances(
                     .match_presentation
                     .in_game_options
                     .detail_level as i32,
-                hidden: anim.draw_runtime.hidden,
+                // `AnimClass::AI` rewrites a PsiWarning anim's hidden byte
+                // every frame from the local player's detection.
+                hidden: match (
+                    config.is_some_and(|config| config.psi_warning),
+                    state.rules(),
+                ) {
+                    (true, Some(rules)) => !local_owner
+                        .is_some_and(|viewer| sim.psi_warning_detected_by(viewer, anim, rules)),
+                    _ => anim.draw_runtime.hidden,
+                },
                 special_hidden: anim.draw_runtime.special_hidden,
                 // The native special-hide type bit remains an explicit residual.
                 type_special_hide: false,

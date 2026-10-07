@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "nuclear missile launch chain: ClickFire admission/refusal/recharge writes, the computer launch alert (distance, draw, stores), Mission_Missile by status with its anims, bullet and velocity bits, NukeMaker's payload bullet and velocity bits, and both SuperAnim blocks",
+  "assumptions": [
+    "fresh emulator per case; fixture Super/House/Building/Bullet layouts from live disassembly",
+    "x87 control word 0x0E7F (53-bit chop) at each entry",
+    "ClickFire: no charge drain, no one-time grant, CustomChargeTime -1",
+    "the opening block starts with EDI -1, as OnConstructionComplete sets it at 0x445FCB"
+  ],
+  "substitutions": [
+    "Launch 0x6CC390, LightningStorm::HasDeferment 0x53A0E0 and PrintMessage 0x53AE00, PsyDom::Active 0x53B400 (false) are recorded stubs",
+    "MapClass::operator[] 0x5657A0 answers one fixture cell; its GetCoords vt+0x48 answers the centre raised 104 leptons per supplied level",
+    "object GetCoords vt+0x48, the silo GetFLH vt+0xB0 and the yard GetCoords answer supplied coordinates",
+    "Begin_Mode 0x447780, Queue_Mission vt+0x1E8, the anim constructor 0x421EA0 and its setters 0x424C90/0x424CA0, CreateBullet 0x46B050, SetWeaponType 0x46B260, CoCreateInstance, BulletClass::Construct 0x4664C0, Limbo vt+0xD4, Fire vt+0x1F0 and the bullet/anim deletes are recorded stubs; the type finders 0x427CB0 and 0x773030 answer fixture indexes",
+    "RandomRanged 0x65C7E0 answers from the row; MissionControl 0x5B3A00 answers a one-minute Rate row",
+    "PlayAnim 0x451890, GetCurrentMission vt+0x184 and the occupant count vt+0x408 are recorded/supplied stubs"
+  ],
+  "entry_points": {
+    "ClickFire": "0x006CB920",
+    "defense_alert": "0x004FAF00",
+    "Mission_Missile": "0x0044C980",
+    "NukeMaker": "0x0046B310",
+    "UpdateAnimation_super_anim": "0x00450F9E",
+    "OnConstructionComplete_super_anim": "0x004463F0"
+  },
+  "source_normalized_lf_sha256": {
+    "superweapon_oracle": "fe398f977923dc23f4eea32d3825efc3202c662c7a7eab820bc75182ceae4003",
+    "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
+  },
+  "payload_sha256": "0b6988cb04473349ec93765ee8a44842026e303ef5c722ed7262658b0598ef24"
+}
