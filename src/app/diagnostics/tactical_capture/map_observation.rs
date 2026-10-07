@@ -2397,6 +2397,21 @@ mod tests {
     }
 
     #[test]
+    fn computer_team_superweapon_examples_leave_the_launch_to_the_computer() {
+        for path in [
+            "tools/map_observation.ai-iron-curtain.example.json",
+            "tools/map_observation.ai-chronosphere.example.json",
+        ] {
+            let profile: MapCaptureProfile =
+                serde_json::from_str(crate::test_fixture::text(path)).unwrap();
+            profile.validate().unwrap();
+            assert_eq!(profile.observe_super_weapons, Some(true));
+            // A computer team's script fires the charged Super.
+            assert!(profile.commands().is_empty());
+        }
+    }
+
+    #[test]
     fn chronosphere_example_warps_the_source_block_with_a_tactical_click() {
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.chronosphere.example.json",

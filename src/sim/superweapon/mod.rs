@@ -43,6 +43,7 @@ use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{SimSoundEvent, Simulation};
+use crate::util::native_x87::{NativeF32Bits, X87Chop53, X87Ordering};
 
 /// Leptons `SuperClass::Launch` raises an invoke animation above its cell.
 const INVOKE_ANIM_Z_LIFT_LEPTONS: i32 = 5;
@@ -344,6 +345,80 @@ impl SuperWeaponInstance {
     }
 }
 
+/// The `[SuperWeaponTypes]` entries whose `Type=` value (`+0xB4`) is
+/// `type_value`, in the order of a house's Supers (`HouseClass+0x258`),
+/// which hold one Super per entry from the house's constructor
+/// (`0x004F620E..0x004F6290`).
+pub(crate) fn super_types_with_type(
+    rules: &RuleSet,
+    type_value: i32,
+) -> impl Iterator<Item = &str> {
+    rules
+        .super_weapon_order
+        .iter()
+        .filter(move |name| {
+            rules
+                .super_weapon(name)
+                .is_some_and(|sw| sw.kind.native_index() == type_value)
+        })
+        .map(String::as_str)
+}
+
+/// `owner`'s Super of `type_name` is granted (`+0x6D`) and, in PC53/chop, its
+/// remaining charge over its recharge time is not above `1.0f - [General]
+/// AIMinorSuperReadyPercent=` (`FCOMPP`, `TEST AH,0x1`, so an unordered
+/// compare fails it): the AI trigger conditions 5 and 6 (`0x0041F0D0`,
+/// `0x0041F180`) and the wait test of team script actions 55 and 57
+/// (`0x006EFDC9..0x006EFE4F`, `0x006F032B..0x006F039C`). A Super the house
+/// was never granted is not.
+///
+/// RESIDUAL: the recharge time is the type's `RechargeTime=`; the per-Super
+/// override (`SuperClass+0x24`, read by `GetRechargeTime @ 0x006CC260`) is
+/// not kept. Trigger: a map trigger that changes a super weapon's charge
+/// time.
+pub(crate) fn super_nearly_ready(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    type_name: &str,
+) -> bool {
+    let Some(instance) = sim.interner.get(type_name).and_then(|type_id| {
+        sim.super_weapons
+            .get(&owner)
+            .and_then(|weapons| weapons.get(&type_id))
+    }) else {
+        return false;
+    };
+    if !instance.is_active {
+        return false;
+    }
+    let remaining = instance.charge_remaining(sim.session.binary_frame as i32);
+    let recharge = rules
+        .super_weapon(type_name)
+        .map_or(0, |sw| sw.recharge_time_frames);
+    charge_nearly_full(
+        remaining,
+        recharge,
+        rules.general.ai_minor_super_ready_percent,
+    )
+}
+
+/// `1.0f` (`[0x007E2AC8]`).
+const ONE_F32: NativeF32Bits = NativeF32Bits::from_bits(0x3F80_0000);
+
+/// `0x0041F148..0x0041F167`: in PC53/chop, `remaining / recharge` is not
+/// above `1.0f - percent` (`FCOMPP`, `TEST AH,0x1`); a zero recharge gives
+/// +inf or NaN, which fail, or -inf, which passes.
+pub(crate) fn charge_nearly_full(remaining: i32, recharge: i32, percent: NativeF32Bits) -> bool {
+    type X = X87Chop53;
+    let Ok(ratio) = X::div(X::load_i32(remaining), X::load_i32(recharge)) else {
+        return remaining < 0;
+    };
+    let percent = X::load_f32(percent).expect("AIMinorSuperReadyPercent is finite");
+    let threshold = X::sub(X::load_f32(ONE_F32).expect("1.0f is finite"), percent);
+    X::compare(threshold, ratio) != X87Ordering::Less
+}
+
 /// The charge each of `owner`'s Supers with `Type=` value `kind_index` has
 /// left, in the house's Supers order (`SuperWeaponTypeClass` array order).
 ///
@@ -361,12 +436,8 @@ pub(crate) fn supers_of_kind_remaining(
 ) -> Vec<i32> {
     let frame = sim.session.binary_frame as i32;
     let weapons = sim.super_weapons.get(&owner);
-    rules
-        .super_weapon_order
-        .iter()
-        .filter_map(|name| rules.super_weapon(name).map(|sw| (name, sw)))
-        .filter(|(_, sw)| sw.kind.native_index() == kind_index)
-        .map(|(name, _)| {
+    super_types_with_type(rules, kind_index)
+        .map(|name| {
             sim.interner
                 .get(name)
                 .and_then(|id| weapons?.get(&id))

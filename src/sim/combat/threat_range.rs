@@ -188,10 +188,11 @@ pub enum ScanMission {
     /// object array. [`super::greatest_threat`] owns that branch; this variant
     /// only names which mask the caller pushed.
     Hunt,
-    /// Team script action 0, Attack quarry (`TeamClass @ 0x006ED090`): the
-    /// quarry's mask (`0x00645BB0`) and the TeamType's
-    /// `OnlyTargetHouseEnemy=` (`+0xF7`), pushed as `Greatest_Threat`'s arg3
-    /// (`0x006ED14C..0x006ED15E`). No quarry mask carries bit 0 or 1, so it
+    /// Team script actions 0, Attack quarry (`TeamClass @ 0x006ED090`), and
+    /// 57, the Chronosphere's (`0x006F0130`): the quarry's mask
+    /// (`0x00645BB0`) and the TeamType's `OnlyTargetHouseEnemy=` (`+0xF7`),
+    /// pushed as `Greatest_Threat`'s arg3 (`0x006ED14C..0x006ED15E`,
+    /// `0x006F0244..0x006F0253`). No quarry mask carries bit 0 or 1, so it
     /// takes Hunt's flat walk, measured from the leader's own Coords.
     TeamQuarry {
         mask: u32,
@@ -212,7 +213,7 @@ impl ScanMission {
         }
     }
 
-    /// `Greatest_Threat`'s arg3, which only team action 0 sets.
+    /// `Greatest_Threat`'s arg3, which only team actions 0 and 57 set.
     pub(crate) const fn only_target_house_enemy(self) -> bool {
         matches!(
             self,
