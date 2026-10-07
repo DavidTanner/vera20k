@@ -2930,7 +2930,12 @@ impl Simulation {
             .is_some_and(|entity| entity.spawn_manager.is_some())
         {
             crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
-            crate::sim::spawn_manager::clear_all_spawn_targets(self, stable_id);
+            crate::sim::spawn_manager::clear_all_spawn_targets(
+                self,
+                stable_id,
+                context.rules(),
+                context.registry(),
+            );
         }
     }
 
@@ -3011,7 +3016,12 @@ impl Simulation {
         }
         crate::sim::radio::broadcast_break(self, stable_id, None);
         crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
-        crate::sim::spawn_manager::clear_all_spawn_targets(self, stable_id);
+        crate::sim::spawn_manager::clear_all_spawn_targets(
+            self,
+            stable_id,
+            context.rules(),
+            context.registry(),
+        );
         // Unit737E58 repeats Stun after restoring Health1/+3CD. Its
         // Techno6FCD9B Detach_All(1) cannot use the Health0 elision above:
         // self and other pointer-expiry callbacks observe the restored hull.
@@ -3414,7 +3424,13 @@ impl Simulation {
                 registry,
             );
             // Techno707B24 forwards this manager independently of control.
-            crate::sim::spawn_manager::notify_pointer_expired(self, listener_id, hut_id);
+            crate::sim::spawn_manager::notify_pointer_expired(
+                self,
+                listener_id,
+                hut_id,
+                Some(rules),
+                registry,
+            );
         }
     }
 
@@ -3983,7 +3999,13 @@ impl Simulation {
                 // destroyed wing target, so without it a Carrier keeps sending
                 // its Hornets at a corpse. The forward sits OUTSIDE the control
                 // test, so it runs on a cloak dive as well as on UnInit.
-                crate::sim::spawn_manager::notify_pointer_expired(self, listener_id, expired_id);
+                crate::sim::spawn_manager::notify_pointer_expired(
+                    self,
+                    listener_id,
+                    expired_id,
+                    context.rules(),
+                    context.registry(),
+                );
                 // The CaptureManager forward — `0x00707B14 CALL 0x00471F90` —
                 // sits inside the `if (control != 0)` block opened at
                 // `0x00707AE7`, so a dive leaves mind-control links alone while
@@ -4101,6 +4123,10 @@ impl Simulation {
                 }
             }
         }
+        // The kamikaze tracker's Remove (`0x00725972`) follows the listeners
+        // and the BombList; a SpawnManager's slot guard reads the membership
+        // before it.
+        self.kamikaze.remove(expired_id);
     }
 
     /// ObjectClass::UnInit represented ordering.  Physical removal is deferred.

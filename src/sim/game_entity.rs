@@ -31,7 +31,6 @@ use crate::sim::intern::InternedId;
 use crate::sim::miner::Miner;
 use crate::sim::mission::{MissionCom, MissionLeafState, MissionTimer, MissionType};
 use crate::sim::movement::locomotor::LocomotorState;
-use crate::sim::movement::rocket_movement::RocketState;
 use crate::sim::movement::tube_movement::LowBridgeTubeMovementState;
 use crate::sim::passenger::PassengerRole;
 use crate::sim::radio::Contacts;
@@ -882,8 +881,6 @@ pub struct GameEntity {
     /// read it; cleared when the parent releases the child.
     #[serde(default)]
     pub spawn_owner_id: Option<u64>,
-    /// Rocket/missile flight state machine (launch/ascend/terminal/detonate).
-    pub rocket_state: Option<RocketState>,
     /// Parachute descent state. `Some` while a paradropped unit is descending
     /// under a parachute, `None` otherwise. Set by
     /// `parachute_descent::begin_parachute_descent`, cleared on landing. It
@@ -1712,7 +1709,6 @@ impl GameEntity {
             capture_manager: None,
             spawn_manager: None,
             spawn_owner_id: None,
-            rocket_state: None,
             parachute_state: None,
             invulnerability: None,
             mind_control: Default::default(),

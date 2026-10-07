@@ -2432,113 +2432,6 @@ pub(crate) fn commit_projectiles(
     }
 }
 
-fn emit_missile_detonations(
-    world: &mut Simulation,
-    rules: &RuleSet,
-    overlay_registry: Option<&OverlayTypeRegistry>,
-    detonations: &[crate::sim::spawn_manager::MissileDetonation],
-    out: &mut CombatEmit,
-) {
-    for det in detonations {
-        let warhead_name = world.interner.resolve(det.warhead).to_string();
-        let Some(warhead) = rules.warhead(&warhead_name) else {
-            continue;
-        };
-        let wh_iid = world.interner.intern(&warhead.id);
-        // A missile that exploded in flight carries its own coordinate; an
-        // arrival detonates on the ground of its target cell's centre.
-        let (rx, ry, sub_x, sub_y, impact_z, air_impact) = match det.impact {
-            Some(impact) => {
-                let (rx, ry, sub_x, sub_y, z_leptons) = projectile_impact_cell(impact);
-                let air_impact = combat_aoe::AoEAirImpact {
-                    sub_x,
-                    sub_y,
-                    z_leptons,
-                };
-                let impact_z = z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32);
-                (rx, ry, sub_x, sub_y, impact_z, Some(air_impact))
-            }
-            None => {
-                let impact_z = combat_aoe::bridge_adjusted_impact_z(
-                    world.resolved_terrain.as_ref(),
-                    det.rx,
-                    det.ry,
-                );
-                let air_impact = combat_aoe::air_impact_from_layer_z(
-                    world.resolved_terrain.as_ref(),
-                    det.rx,
-                    det.ry,
-                    crate::util::lepton::CELL_CENTER_LEPTON,
-                    crate::util::lepton::CELL_CENTER_LEPTON,
-                    impact_z,
-                );
-                (
-                    det.rx,
-                    det.ry,
-                    crate::util::lepton::CELL_CENTER_LEPTON,
-                    crate::util::lepton::CELL_CENTER_LEPTON,
-                    impact_z,
-                    air_impact,
-                )
-            }
-        };
-        let world_z_leptons = air_impact
-            .map(|impact| impact.z_leptons)
-            .unwrap_or_else(|| impact_z.wrapping_mul(LEPTONS_PER_LEVEL as i32));
-        // Rocket66327D selects on its computed crash coordinate and current
-        // Cell land; constructor66328A precedes light and area damage.
-        let coordinate = ProjectileCoord::new(
-            i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-            i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-            world_z_leptons,
-        );
-        let land = detonation_anim::land_at(world, coordinate);
-        if let Some(effect) = detonation_anim::effect(
-            world, rules, warhead, det.damage, land, coordinate, coordinate,
-        ) {
-            crate::sim::world::damage_consequences::admit_explosion_effect(world, rules, effect);
-        }
-        // `RocketLocomotion::Detonate` lights every impact after its anim and
-        // before the area damage (`0x006632AF`: damage, warhead, the impact
-        // coordinate, not forced, no CLDisable flags) — no `Bright=` gate.
-        out.effects.combat_light_requests.push(CombatLightRequest {
-            target_id: None,
-            damage: det.damage,
-            warhead_ref: wh_iid,
-            coord: ProjectileCoord::new(
-                i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-                i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-                world_z_leptons,
-            ),
-            force_create: false,
-            flags: 0,
-        });
-        let aoe = {
-            let collected = collect_area(
-                world,
-                rules,
-                overlay_registry,
-                (rx, ry),
-                det.damage,
-                warhead,
-                (det.firer_id, Some(det.owner), wh_iid),
-                air_impact,
-                impact_z,
-            );
-            append_fixture_tiberium(world, &mut out.effects.tiberium_reduction_requests);
-            collected
-        };
-        #[cfg(test)]
-        out.effects.wall_mutations.extend(aoe.wall_mutations);
-
-        #[cfg(test)]
-        out.effects
-            .cell_target_detaches
-            .extend(aoe.cell_target_detaches);
-        out.damage_events.extend(aoe.receivers);
-    }
-}
-
 /// Returns the GetFireError code the class acted on, when the fire routine
 /// reached GetFireError at all.
 pub(super) fn resolve_attacker_fire(
@@ -4521,7 +4414,6 @@ pub(crate) fn tick_combat(
             .is_none_or(|fixture| fixture.fog_enabled)
     });
     let active_wave_owners: BTreeSet<_> = world.active_wave_links.keys().copied().collect();
-    let missile_detonations = std::mem::take(&mut world.pending_missile_detonations);
 
     if tick_ms == 0 {
         return CombatTickResult {
@@ -4553,25 +4445,6 @@ pub(crate) fn tick_combat(
         &mut emit,
         &mut under_attack_events,
     );
-    for detonation in &missile_detonations {
-        let damage_start = emit.damage_events.len();
-        emit_missile_detonations(
-            world,
-            rules,
-            overlay_registry,
-            std::slice::from_ref(detonation),
-            &mut emit,
-        );
-        let (inline_death, mut pings) = commit_area(
-            world,
-            run,
-            &emit.damage_events[damage_start..],
-            rules,
-            overlay_registry,
-        );
-        emit.effects.append(inline_death);
-        under_attack_events.append(&mut pings);
-    }
 
     // Pre-scan: collect entities whose attack routine does not run.
     let fire_blocked = combat_fire_gate::collect_fire_blocked_entities(&world.substrate.entities);

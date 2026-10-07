@@ -27,8 +27,8 @@ pub(super) fn entity_layer(
 ) -> DisplayLayer {
     let kind = entity.locomotor.as_ref().map(|l| l.active_kind());
     if entity.category != EntityCategory::Structure {
-        if kind == Some(LocomotorKind::Rocket) || (kind.is_none() && entity.rocket_state.is_some())
-        {
+        // Rocket In_Which_Layer (`0x00663460`) answers the Air layer.
+        if kind == Some(LocomotorKind::Rocket) {
             return DisplayLayer::AIR;
         }
         if !matches!(kind, Some(LocomotorKind::Fly | LocomotorKind::Jumpjet)) {

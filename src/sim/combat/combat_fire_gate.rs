@@ -30,7 +30,9 @@ pub fn collect_fire_blocked_entities(entities: &EntityStore) -> BTreeSet<u64> {
 /// The same owner predicate at an individual object's live fire slot.
 pub(crate) fn fire_blocked(entity: &crate::sim::game_entity::GameEntity) -> bool {
     // Rockets are projectiles, not weapon-bearing units — never fire.
-    if entity.rocket_state.is_some() {
+    if entity.locomotor.as_ref().is_some_and(|locomotor| {
+        locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Rocket
+    }) {
         return true;
     }
 
