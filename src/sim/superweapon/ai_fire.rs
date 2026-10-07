@@ -27,13 +27,6 @@
 //!   aims by its own pickers. `AI_FindTeamTarget @ 0x0050D170`, which another
 //!   preferred type selects (its first team's leader's Greatest_Threat), is
 //!   therefore not ported.
-//! - Launch's case 8 is not ported: a computer's charged Spy Plane takes its
-//!   arm but stops before the cell search, as Fire_SW would refuse the click,
-//!   and the Super stays charged. Trigger: every computer house with a Soviet
-//!   radar (`NARADR` grants `SpyPlaneSpecial`), from its first charge (four
-//!   minutes). Effect: natively the plane flies over the enemy base, revealing
-//!   it, every four minutes; the search's cell lookups and the flight are
-//!   missing.
 //! - A building's cloak stage (`BuildingClass+0x6ED`): a stage of 15 also
 //!   draws in AI_FindBestRallyTarget (`0x0050CF99..0x0050CFA8`); VERA has no
 //!   writer of the stage, so only CloakState 2 draws.
@@ -187,10 +180,6 @@ pub(crate) fn try_fire(
             AiFireArm::GroundRallyPoint | AiFireArm::PsychicDominator | AiFireArm::GeneticMutator
         ) {
             observe(AiFireEvent::TailArm(arm, sw_type_id));
-        }
-        // Fire_SW would refuse the click (module RESIDUALS).
-        if !super::fire::launch_ported(sw.kind) {
-            continue;
         }
         let cell = match arm {
             AiFireArm::MultiMissile => rally_target(sim, rules, owner),

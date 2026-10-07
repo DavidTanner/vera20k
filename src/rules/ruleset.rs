@@ -921,6 +921,20 @@ pub struct GeneralRules {
     /// `0x006CD7BF CALL VocClass::PlayAtCoord @ 0x00750E20`. This case plays
     /// no EVA line.
     pub psychic_reveal_activate_sound: Option<String>,
+    /// `[AudioVisual] SpyPlaneCamera=` (stock `SpyPlaneSnapshot`), the sound
+    /// index at `Rules+0x280` (constructor -1, no sound, at `0x006659EE`):
+    /// ReadString128 then `VocClass::FindIndex @ 0x007514D0`, keeping the
+    /// prior index for a missing, empty or unknown name
+    /// (`0x0066A295..0x0066A2C2`); [`RuleSet::bind_type_sound_references`]
+    /// resolves it. `AircraftClass::Mission_SpyplaneApproach @ 0x004155F0`
+    /// plays it at the plane through `VocClass::PlayAt @ 0x007509E0`
+    /// (`0x004156FB`) on each camera snapshot.
+    pub spy_plane_camera: Option<String>,
+    /// `[AudioVisual] SpyPlaneCameraFrames=` (`Rules+0x290`, ReadInteger at
+    /// `0x0066A39A` with the field as its default; constructor 16 at
+    /// `0x00665A06`): the frames Mission_SpyplaneApproach returns, its
+    /// mission timer (`0x0041578D`, `0x004157A0`, `0x004157B3`).
+    pub spy_plane_camera_frames: i32,
     /// SFX played when a paradropped passenger successfully deploys a parachute.
     /// Parsed from [AudioVisual] ChuteSound (stock "ParachuteDrop").
     /// None = no sound configured. Resolved at app layer to a sound.ini entry.
@@ -1871,6 +1885,8 @@ impl Default for GeneralRules {
             psychic_dominator_activate_sound: None,
             genetic_mutator_activate_sound: None,
             psychic_reveal_activate_sound: None,
+            spy_plane_camera: None,
+            spy_plane_camera_frames: 16,
             chute_sound: None,
             gui_main_button_sound: None,
             gui_move_in_sound: None,
@@ -2710,6 +2726,10 @@ impl GeneralRules {
             psychic_reveal_activate_sound: audio_visual
                 .read_name("PsychicRevealActivateSound", 0x80)
                 .map(str::to_owned),
+            // Constructor -1 until the fixed SOUNDMD catalog resolves it.
+            spy_plane_camera: None,
+            spy_plane_camera_frames: audio_visual
+                .read_int("SpyPlaneCameraFrames", defaults.spy_plane_camera_frames),
             chute_sound: audio_visual
                 .read_name("ChuteSound", 0x80)
                 .map(str::to_owned),
@@ -3448,6 +3468,9 @@ impl RuleSet {
         self.general.building_repaired_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "BuildingRepairedSound"));
+        self.general.spy_plane_camera = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "SpyPlaneCamera"));
         for object in &mut self.object_list {
             let section = ini.section(&object.id);
             if object.category == crate::rules::object_type::ObjectCategory::Building {
@@ -7059,6 +7082,38 @@ StormSound=
         assert_eq!(absent.psychic_reveal_activate_sound, None);
         assert_eq!(absent.dig_sound, None, "an empty value is silence");
         assert_eq!(absent.storm_sound, None);
+    }
+
+    /// The Spy Plane's camera keys: the sound (`Rules+0x280`, constructor -1
+    /// at `0x006659EE`), resolved against SOUNDMD with the prior index kept
+    /// for a missing, empty or unknown name (`0x0066A295..0x0066A2C2`), and
+    /// the frames (`Rules+0x290`, constructor 16 at `0x00665A06`, read with
+    /// the field as its default at `0x0066A39A`).
+    #[test]
+    fn spy_plane_camera_keys_read_audio_visual_over_the_constructor() {
+        let sounds = crate::rules::sound_ini::SoundRegistry::from_ini(&IniFile::from_str(
+            "[SoundList]\n0=SpyPlaneSnapshot\n",
+        ));
+        let read = |audio_visual: &str| {
+            let ini = IniFile::from_str(&format!(
+                "[General]\nFlightLevel=500\n[AudioVisual]\n{audio_visual}"
+            ));
+            let mut rules = RuleSet::from_ini(&ini).unwrap();
+            assert_eq!(
+                rules.general.spy_plane_camera, None,
+                "unbound: the constructor's -1"
+            );
+            rules.bind_type_sound_references(&ini, &sounds);
+            rules.general
+        };
+        let stock = read("SpyPlaneCamera=SpyPlaneSnapshot\nSpyPlaneCameraFrames=12\n");
+        assert_eq!(stock.spy_plane_camera.as_deref(), Some("SpyPlaneSnapshot"));
+        assert_eq!(stock.spy_plane_camera_frames, 12);
+        for silent in ["SpyPlaneCamera=\n", "SpyPlaneCamera=NoSuchSound\n", ""] {
+            let general = read(silent);
+            assert_eq!(general.spy_plane_camera, None, "{silent:?} keeps -1");
+            assert_eq!(general.spy_plane_camera_frames, 16);
+        }
     }
 
     /// `LightningPrintText` is absent from stock `rulesmd.ini`, so the gate on

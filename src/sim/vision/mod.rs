@@ -1614,6 +1614,7 @@ pub(crate) fn reveal_entity_vision(
         interner,
         false,
         None,
+        None,
     );
 }
 
@@ -1636,6 +1637,39 @@ pub(crate) fn force_refresh_entity_vision(
         interner,
         true,
         None,
+        None,
+    );
+}
+
+/// `TechnoClass::ReReveal @ 0x0070B1D0` then `TechnoClass::UpdateReveal @
+/// 0x0070AF50` with its radius argument (`param_5`): a nonzero radius
+/// replaces the object's elevation- and veterancy-scaled sight
+/// (`0x0070B0A6..0x0070B0AF`), so even an object with no `Sight=` reveals;
+/// zero keeps that sight. The Spy Plane's camera passes its weapon's
+/// `Damage=` (`aircraft::spyplane_mission`). A negative radius (no retail
+/// weapon) reveals nothing here; native hands it to `0x005678E0`
+/// unverified. The caller owns both functions' gates (the stored playfield
+/// byte `+0x3D5`, a MultiplayPassive house).
+pub(crate) fn force_refresh_entity_vision_at_radius(
+    fog: &mut FogState,
+    entity: &crate::sim::game_entity::GameEntity,
+    config: &VisionConfig,
+    height_grid: Option<&[u8]>,
+    sight_ability: bool,
+    interner: &StringInterner,
+    radius: i32,
+) {
+    let radius_override = (radius != 0).then(|| radius.clamp(0, i32::from(u16::MAX)) as u16);
+    update_entity_sight_admission(
+        fog,
+        entity,
+        config,
+        height_grid,
+        sight_ability,
+        interner,
+        true,
+        None,
+        radius_override,
     );
 }
 
@@ -1657,6 +1691,7 @@ pub(crate) fn refresh_entity_vision_for_viewer(
         interner,
         true,
         Some(viewer),
+        None,
     );
 }
 
@@ -1669,6 +1704,7 @@ fn update_entity_sight_admission(
     interner: &StringInterner,
     force_refresh: bool,
     only_viewer: Option<InternedId>,
+    radius_override: Option<u16>,
 ) {
     let width = fog.width;
     let height = fog.height;
@@ -1696,7 +1732,9 @@ fn update_entity_sight_admission(
         sight_ability,
         config.veteran_sight,
     );
-    let effective: u16 = (with_veterancy.max(0) as u16).min(MAX_SIGHT_RANGE);
+    let effective: u16 = radius_override
+        .unwrap_or(with_veterancy.max(0) as u16)
+        .min(MAX_SIGHT_RANGE);
     let cells = collect_reveal_cells(
         entity.position.rx,
         entity.position.ry,

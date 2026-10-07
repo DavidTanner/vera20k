@@ -3849,14 +3849,7 @@ impl Simulation {
         // virtual (`0x0070ADC0`), only for human-owned live nonlimbo mobiles;
         // Buildings are explicitly excluded. Rust's owned equivalent commits
         // the sight reveal immediately, before this action returns.
-        let reveal_config = crate::sim::vision::VisionConfig {
-            require_playfield_membership: true,
-            veteran_sight: rules.map_or(0.0, |rules| rules.general.veteran_sight),
-            leptons_per_sight_increase: rules
-                .map_or(0, |rules| rules.general.leptons_per_sight_increase),
-            reveal_by_height: rules.is_none_or(|rules| rules.general.reveal_by_height),
-            fog_of_war: self.session.game_options.fog_of_war,
-        };
+        let reveal_config = self.sight_reveal_config(rules);
         let height_grid = reveal_config
             .reveal_by_height
             .then(|| {
