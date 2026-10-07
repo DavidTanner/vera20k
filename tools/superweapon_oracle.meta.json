@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "nuclear missile launch chain: ClickFire admission/refusal/recharge writes, the computer launch alert (distance, draw, stores), Mission_Missile by status with its anims, bullet and velocity bits, NukeMaker's payload bullet and velocity bits, and both SuperAnim blocks; the computer's superweapon use: AI_TryFireSW's gates, arms and Force Shield timing, AI_FindBestRallyTarget's values, draws and pick, AI_GroundRallyPoint's cell, and AI_Fire_GenMutator's and AI_Fire_PsyDom's counts and picks; the Chrono Warp's Teleport states, owner bytes, timers and end frame, unblocked, blocked once or twice and with a stale ChronoDelay; Update_Position's placement, kills, blocks and blocked retarget; Launch case 4's destinations; the Psychic Dominator's ClickFire refusal, Process statuses and firing stages, Start's writes, UpdateLighting's targets and RecalcLighting arguments, the ambient fade's intervals, clamp and step, the map's Dominator lighting defaults and conversions, and the Ground/Level a full cell relight adds in each lighting state; the Spy Plane's launch case, SendSpyPlanes' calls and writes, both Spy Plane missions' branches, reveals, sound, queued missions, destinations and frames, and the aircraft off-map removal and its predicate; script actions 55 and 57: the leader, the Super checked, the power and charge gates, the threat call's arguments, the Fire_SW indexes and cells, the mission target and the step; the Iron Curtain's tint stage: IronCurtain's writes and UpdateIronTint's stages, timers and Scenario draws over a curtain's life; the NUKE warhead's impact: its warhead test, ground clamp, flash, radar event, NUKEBALL arguments, holder list and committed cell, the wait at the AI's head, the flash's statuses, timers and relights, and the map's NukeAmbientChangeRate",
+  "scope": "nuclear missile launch chain: ClickFire admission/refusal/recharge writes, the computer launch alert (distance, draw, stores), Mission_Missile by status with its anims, bullet and velocity bits, NukeMaker's payload bullet and velocity bits, and both SuperAnim blocks; the computer's superweapon use: AI_TryFireSW's gates, arms and Force Shield timing, AI_FindBestRallyTarget's values, draws and pick, AI_GroundRallyPoint's cell, and AI_Fire_GenMutator's and AI_Fire_PsyDom's counts and picks; the Chrono Warp's Teleport states, owner bytes, timers and end frame, unblocked, blocked once or twice and with a stale ChronoDelay; Update_Position's placement, kills, blocks and blocked retarget; Launch case 4's destinations; the Psychic Dominator's ClickFire refusal, Process statuses and firing stages, Start's writes, UpdateLighting's targets and RecalcLighting arguments, the ambient fade's intervals, clamp and step, the map's Dominator lighting defaults and conversions, and the Ground/Level a full cell relight adds in each lighting state; the Spy Plane's launch case, SendSpyPlanes' calls and writes, both Spy Plane missions' branches, reveals, sound, queued missions, destinations and frames, and the aircraft off-map removal and its predicate; script actions 55 and 57: the leader, the Super checked, the power and charge gates, the threat call's arguments, the Fire_SW indexes and cells, the mission target and the step; the Iron Curtain's tint stage: IronCurtain's writes and UpdateIronTint's stages, timers and Scenario draws over a curtain's life, GetEffectTintIntensity over every stage and time left, and the intensity and colour word DrawVoxelBody's curtain block hands the composite blit; the NUKE warhead's impact: its warhead test, ground clamp, flash, radar event, NUKEBALL arguments, holder list and committed cell, the wait at the AI's head, the flash's statuses, timers and relights, and the map's NukeAmbientChangeRate",
   "assumptions": [
     "fresh emulator per case; fixture Super/House/Building/Bullet layouts from live disassembly",
     "x87 control word 0x0E7F (53-bit chop) at each entry",
@@ -39,6 +39,8 @@
     "aircraft_leave_map: the slice runs on a fixture frame with ESI the plane; Map Size is PLAYFIELD's width by 46; the team call 0x6EC300 answers the row; UnInit vt+0xF8 is a recorded stub",
     "team_super_actions: member GetTechnoType vt+0x84 answers a type holding the row's LeadershipRating (+0x5FC), WhatAmI vt+0x2C the row's kind; the centre's and target's GetCoords vt+0x48 answer the row; Greatest_Threat vt+0x3C4 answers the row's target or NULL; Fire_SW 0x4FAE50 and Assign_Mission_Target 0x6E9050 are recorded stubs",
     "iron_tint: the Techno is a fixture holding its vtable (slot +0x160 the native IsIronCurtained), both timers and the stage; nothing is stubbed",
+    "effect_tint_intensity: one emulator for every row (the function only reads); the fixture Techno holds the stage and tint timer, its airstrike tint at stage 0 with both timers stopped; nothing is stubbed",
+    "curtain_draw_arm: the slice starts with EBP the unit (vtable slots +0x464 and +0x160 the native 0x70D190 and 0x41BF40) and [ESP+0x1E0]/[ESP+0x1E4] the intensity and colour word; Rules hold the retail [ColorAdd] and the row's indexes; the pixel format 0x8205D0 is the row's (retail RGB565 is 2); the high half of the colour word holds stale ECX bits from the fixture Rules address; nothing is stubbed",
     "nuke_impact: the slice starts with EBP the bullet (vtable slots +0x1C8/+0x1CC/+0x1B8 the native GetHeight, SetHeight and GetMapCoords; Mark +0x124 and UnInit +0xF8 recorded stubs), [ESP+0x18] the impact flag and [ESP+0x24] the committed candidate; the floor height 0x578080 answers the row's ground; AnimTypeClass::Array holds the row's types; ScreenNukeFlash 0x53AB70, CreateRadarEvent 0x65FA70, the anim constructor 0x421EA0 and the handoff 0x468D80 are recorded stubs; the holder list 0xB0F5B8 has room for four; the deck height 0xAC13BC holds 416",
     "nuke_wait: ObjectClass::AI 0x5F3E70, the holder list's Find vt+0x10, the handoff 0x468D80 and UnInit vt+0xF8 are recorded or supplied stubs",
     "nuke_flash: the Scenario holds Set_Defaults' lighting block; the flash starts reset as SuperWeaponEffects::ResetAll 0x539760 leaves it; RecalcLighting 0x53AD00, UpdateLighting 0x53C280 and the redraw 0x4F42F0 are recorded stubs; status 3 has no writer but the save stream (0x53993E)",
@@ -75,6 +77,8 @@
     "TeamClass::script_action_57": "0x006F0130",
     "TechnoClass::IronCurtain": "0x0070E2B0",
     "TechnoClass::UpdateIronTint": "0x0070E5A0",
+    "TechnoClass::GetEffectTintIntensity": "0x0070E360",
+    "UnitClass::DrawVoxelBody_curtain_block": "0x0073BF7B",
     "BulletClass::AI_nuke_impact": "0x00467E53",
     "BulletClass::AI_head": "0x004666F2",
     "ScreenNukeFlash": "0x0053AB70",
@@ -82,8 +86,8 @@
     "ScenarioClass::Read_INI_Basic_nuke_rate": "0x0068AAD5"
   },
   "source_normalized_lf_sha256": {
-    "superweapon_oracle": "60ad1ad869c4efa8540061e2db2cf04300bcc3b783c0e26e1965b3caeddacac0",
+    "superweapon_oracle": "8392532c429877d83fa2b7494466149b34e5a4d2a566f2ab51b70c20730e6754",
     "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
   },
-  "payload_sha256": "c55cedf79533bf45c3c7bb869c05f0841baf6ad6dd4ca2ff6d777e60b5a125d7"
+  "payload_sha256": "6e060ce89c1f98dacbaa3588cc8403de738decbb028d861ecf47a64ee7fdb7e1"
 }

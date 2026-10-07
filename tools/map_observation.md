@@ -740,8 +740,18 @@ The 8000-step run ends with state hash `14395597863552765605` and BGRA SHA-256
 `04134b470752b79a8cbdb41144210b6367884c3e2b42399190866925eac92704`. A copy that ends at
 7530 with `camera_cell` (51,51) shows the team at its gathering point among the
 curtain's anims (state hash `3678630503708879027`, BGRA SHA-256
-`2d549f944794aef1a46bfcd70448e4adf4e896eebc49bb211e2c53a8e73d33c2`); the units' own
-tint is not drawn yet (the superweapons checkpoint's next chains).
+`2d549f944794aef1a46bfcd70448e4adf4e896eebc49bb211e2c53a8e73d33c2`).
+
+With release binary SHA-256
+`31784beaed31329ca8d320cd64bfea7dcc55ae9c220c30658de91bb93fe5449e`
+(31,966,848 bytes), copies with `camera_cell` (51,51) show the curtained HTNK
+drawn at their tint (UnitClass::DrawVoxelBody's curtain arm). At 7511, before
+the curtain, they draw at their cell's light (state hash `2002945357488284095`, BGRA
+`bce9edd0039a620a3d1c2594d6c8b91cee0f463e2335fc62f12d15746fa8ebbb`); at 7520 they
+draw washed bright, in tint stage 2's double intensity (`14596100042634130443`,
+`29561032b9f077b98fbdefc17785b3c834a1917e657b4c07185badc89f8250fb`); at 7560,
+moving off in the pulsing stages 4 and 5, they draw dark (`4673479376561202833`,
+`bbf3a258e2c1d021d85d7ee75e7c61712874f781599c2f088a3352560333fca4`).
 
 ## Computer Chronosphere observation
 

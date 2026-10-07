@@ -1,7 +1,7 @@
 //! Per-object tactical draw state shared by SHP and voxel instance builders.
 //!
-//! The YR draw path resolves visibility, translucency selection, effect brightness,
-//! and house remap before choosing an SHP or voxel rasterizer. Keep that decision in
+//! The YR draw path resolves visibility, translucency selection and house remap
+//! before choosing an SHP or voxel rasterizer. Keep that decision in
 //! one CPU descriptor so the two atlas paths cannot disagree.
 
 use crate::sim::game_entity::GameEntity;
@@ -18,7 +18,6 @@ pub struct ObserverDrawContext {
 pub const FX_CLOAK: u32 = 1 << 0;
 /// Explicit residual: no dedicated YR EMP material mutation is proven.
 pub const FX_EMP: u32 = 1 << 1;
-pub const FX_INVULNERABILITY: u32 = 1 << 2;
 pub const FX_WARP: u32 = 1 << 3;
 /// Explicit residual: no dedicated YR mirror material mutation is proven.
 pub const FX_MIRROR: u32 = 1 << 4;
@@ -27,8 +26,8 @@ pub const FX_DISGUISE: u32 = 1 << 5;
 /// sprite shader ignores the palette and darkens whatever is beneath, the way
 /// the native shadow blitter (`Blitter_selector(0x2001)`) does.
 pub const FX_SHADOW: u32 = 1 << 6;
-/// Voxel body waterline clip. `effect_tint.w` carries Techno+3CA's retained
-/// world row; RGB brightness and ordinary alpha remain in their own lanes.
+/// Voxel body waterline clip. `sinking_row` carries Techno+3CA's retained
+/// world row; ordinary alpha remains in its own lane.
 pub(crate) const FX_SINKING_CLIP: u32 = 1 << 7;
 
 /// Native cloak state values consumed by YR draw selection.
@@ -62,16 +61,6 @@ pub struct DisguiseDrawInput {
     pub start_frame: u32,
 }
 
-/// The YR invulnerability state consumed by
-/// `TechnoClass::GetInvulnerabilityTintIntensity`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InvulnerabilityTintInput {
-    pub mode: u8,
-    pub elapsed_ticks: u32,
-    /// Current object/cell brightness in the native 0..2000 scale.
-    pub intensity: u32,
-}
-
 /// Producer-owned inputs to the common YR object draw resolver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DrawStateInput {
@@ -79,7 +68,6 @@ pub struct DrawStateInput {
     pub disguise: Option<DisguiseDrawInput>,
     pub warp_out: bool,
     pub warp_in: bool,
-    pub invulnerability: Option<InvulnerabilityTintInput>,
 }
 
 /// CPU draw admission plus the GPU-ready material state.
@@ -94,23 +82,23 @@ pub struct DrawDecision {
 ///
 /// `remap_row` is the palette-ramp selection. `fx_params.x` is the final alpha
 /// multiplier selected by the native translucency bits; `fx_params.y` preserves
-/// those selector bits for diagnostics; `fx_params.z` is the 0..2 brightness scalar;
+/// those selector bits for diagnostics; `fx_params.z` is unused (1.0);
 /// `fx_params.w` optionally overrides the zdepth-atlas scale, with zero retaining
 /// the terrain default.
 /// For voxel unit bodies carrying the composite bridge-split flag instead,
 /// `fx_params.w` carries the tactical scissor height in world pixels (zero
 /// means full viewport). This shader-specific transport does not alter effects.
-/// `effect_tint` carries the scalar as RGB so SHP and voxel shaders apply the same
-/// native brightness channel after their normal palette/light work. The layout is
-/// part of `SpriteInstance`'s vertex ABI. Its W lane is unused by tinting;
-/// voxel draws with FX_SINKING_CLIP carry a retained world row there.
+/// `sinking_row` is the retained world row a voxel draw with FX_SINKING_CLIP
+/// clips at. An effect that changes an object's light, such as the Iron
+/// Curtain's tint, scales the intensity its `PaletteLight` carries, as the
+/// native draws scale theirs.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawState {
     pub remap_row: u32,
     pub fx_flags: u32,
     pub fx_params: [f32; 4],
-    pub effect_tint: [f32; 4],
+    pub sinking_row: f32,
 }
 
 impl Default for DrawState {
@@ -119,7 +107,7 @@ impl Default for DrawState {
             remap_row: 0,
             fx_flags: 0,
             fx_params: [1.0, 0.0, 1.0, 0.0],
-            effect_tint: [1.0, 1.0, 1.0, 1.0],
+            sinking_row: 0.0,
         }
     }
 }
@@ -127,14 +115,11 @@ impl Default for DrawState {
 impl DrawState {
     /// Resolve YR object draw state without inferring any producer-owned gameplay state.
     ///
-    /// Original locations: `TechnoClass::DrawVoxel @ 0x00706640`,
-    /// `TechnoClass::GetInvulnerabilityTintIntensity @ 0x0070e380`, and
+    /// Original locations: `TechnoClass::DrawVoxel @ 0x00706640` and
     /// `TeleportLocomotionClass::ILocomotion::Process @ 0x007192f0`.
     pub fn resolve(input: DrawStateInput, current_frame: u32, remap_row: u32) -> DrawDecision {
         let mut state = Self {
             remap_row,
-            fx_params: [1.0, 0.0, 1.0, 0.0],
-            effect_tint: [1.0, 1.0, 1.0, 1.0],
             ..Self::default()
         };
 
@@ -173,18 +158,6 @@ impl DrawState {
         let selector_bits = cloak_selector | warp_selector | disguise_selector;
         state.fx_params[0] = opacity_for_selector_bits(selector_bits);
         state.fx_params[1] = selector_bits as f32;
-
-        if let Some(invulnerability) = input.invulnerability {
-            state.fx_flags |= FX_INVULNERABILITY;
-            let brightness = invulnerability_tint_intensity(
-                invulnerability.mode,
-                invulnerability.elapsed_ticks,
-                invulnerability.intensity,
-            ) as f32
-                / 1000.0;
-            state.fx_params[2] = brightness;
-            state.effect_tint = [brightness, brightness, brightness, 1.0];
-        }
 
         DrawDecision {
             visible: true,
@@ -230,15 +203,6 @@ impl DrawState {
                 }),
                 warp_out,
                 warp_in,
-                // RESIDUAL: the curtain's tint stage (+0x1A4) is kept by
-                // `sim::superweapon::invulnerability`, but no draw reads it yet:
-                // DrawVoxelBody's intensity scale and IronCurtainColor add
-                // (0x0073BF9C..0x0073C07A) and the other draws are unported, and
-                // `invulnerability_tint_intensity` reads elapsed time where
-                // 0x0070E380 reads time left, divides stage 3 by 10 (native 20)
-                // and floors at 0 (native only caps at 2000).
-                invulnerability: None,
-                ..DrawStateInput::default()
             },
             current_frame,
             remap_row,
@@ -249,26 +213,6 @@ impl DrawState {
 const TRANSLUCENCY_25: u8 = 0b010;
 const TRANSLUCENCY_50: u8 = 0b100;
 const TRANSLUCENCY_75: u8 = TRANSLUCENCY_25 | TRANSLUCENCY_50;
-
-/// `GetInvulnerabilityTintIntensity @ 0x0070e380`.
-pub fn invulnerability_tint_intensity(mode: u8, elapsed_ticks: u32, intensity: u32) -> u32 {
-    let t = elapsed_ticks as i64;
-    let scale = match mode {
-        1 => (12 - t) * 256 / 6,
-        2 | 8 => 512,
-        // Modes 3..5 are retained from the closed formula but are not asserted as
-        // exact across every native call path because the RE evidence records minor
-        // divider variance there.
-        3 => (461 * t + 1020) / 10,
-        4 => (1024 - 77 * t) / 8,
-        5 => (77 * t + 816) / 16,
-        6 => 51,
-        7 => (3072 - 461 * t) / 6,
-        9 => (t + 20) * 256 / 20,
-        _ => return intensity,
-    };
-    ((intensity as i64 * scale) >> 8).min(2000).max(0) as u32
-}
 
 /// `GetDisguiseFlags @ 0x0070ed80`'s 256-frame shimmer leaf.
 pub fn disguise_phase_percent(phase: u32) -> u8 {
@@ -353,7 +297,6 @@ mod tests {
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::InternedId;
     use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
-    use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
 
     fn entity() -> GameEntity {
         GameEntity::new_at_frame_zero_for_test(
@@ -370,16 +313,6 @@ mod tests {
             1,
             true,
         )
-    }
-
-    #[test]
-    fn invulnerability_formula_matches_locked_yr_vectors() {
-        assert_eq!(invulnerability_tint_intensity(6, 0, 1000), 199);
-        assert_eq!(invulnerability_tint_intensity(2, 5, 1000), 2000);
-        assert_eq!(invulnerability_tint_intensity(7, 2, 1000), 1398);
-        assert_eq!(invulnerability_tint_intensity(1, 0, 1000), 2000);
-        assert_eq!(invulnerability_tint_intensity(9, 0, 1000), 1000);
-        assert_eq!(invulnerability_tint_intensity(0, 0, 777), 777);
     }
 
     #[test]
@@ -451,11 +384,6 @@ mod tests {
                     start_frame: 0,
                 }),
                 warp_out: true,
-                invulnerability: Some(InvulnerabilityTintInput {
-                    mode: 6,
-                    elapsed_ticks: 0,
-                    intensity: 1000,
-                }),
                 ..DrawStateInput::default()
             },
             0,
@@ -464,13 +392,9 @@ mod tests {
 
         assert!(decision.visible);
         assert_eq!(decision.state.remap_row, 7);
-        assert_eq!(
-            decision.state.fx_flags,
-            FX_CLOAK | FX_WARP | FX_DISGUISE | FX_INVULNERABILITY
-        );
+        assert_eq!(decision.state.fx_flags, FX_CLOAK | FX_WARP | FX_DISGUISE);
         assert_eq!(decision.state.fx_params[0], 0.25);
         assert_eq!(decision.state.fx_params[1], 6.0);
-        assert_eq!(decision.state.effect_tint, [0.199, 0.199, 0.199, 1.0]);
     }
 
     #[test]
@@ -485,31 +409,6 @@ mod tests {
         let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
         assert_eq!(state.fx_flags, FX_WARP);
         assert_eq!(state.fx_params[0], 0.5);
-    }
-
-    #[test]
-    fn invulnerability_without_native_mode_remains_an_explicit_residual() {
-        let mut entity = entity();
-        entity.invulnerability = Some(InvulnerabilityState::new(
-            crate::sim::timer::CdTimer::started(40, 20),
-            InvulnKind::IronCurtain,
-        ));
-        let state = DrawState::for_entity(&entity, 45, 3, ObserverDrawContext::default()).state;
-        assert_eq!(state.fx_flags, 0);
-        assert_eq!(state.fx_params, [1.0, 0.0, 1.0, 0.0]);
-        assert_eq!(state.effect_tint, [1.0; 4]);
-    }
-
-    #[test]
-    fn expired_invulnerability_keeps_normal_draw_state() {
-        let mut entity = entity();
-        entity.invulnerability = Some(InvulnerabilityState::new(
-            crate::sim::timer::CdTimer::started(40, 5),
-            InvulnKind::ForceShield,
-        ));
-        let state = DrawState::for_entity(&entity, 45, 2, ObserverDrawContext::default()).state;
-        assert_eq!(state.fx_flags, 0);
-        assert_eq!(state.effect_tint, [1.0; 4]);
     }
 
     #[test]

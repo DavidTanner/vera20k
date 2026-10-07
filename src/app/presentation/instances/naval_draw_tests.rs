@@ -100,7 +100,7 @@ fn offscreen_first_sinking_draw_survives_descent_camera_pan_and_save_load() {
         );
         if native_clips {
             assert_eq!(
-                draw.effect_tint[3] - native_camera(input)[1],
+                draw.sinking_row - native_camera(input)[1],
                 step["output"]["clip"][3].as_i64().unwrap() as f32
             );
         }

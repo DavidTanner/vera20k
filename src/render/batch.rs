@@ -127,88 +127,39 @@ mod tests {
 }
 
 /// Number of vertex attributes in SpriteInstance: 7 base + 4 DrawState fields
-/// + 3 native-Z fields (z_adjust, z_gradient, zshape_origin / voxel z_rect).
+/// + 3 native-Z fields (z_adjust, z_gradient, zshape_origin / voxel z_rect)
+/// + the PaletteLight.
 const INSTANCE_ATTRIBUTE_COUNT: usize = 15;
 
+macro_rules! instance_attribute {
+    ($location:expr, $format:ident, $($field:tt)+) => {
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::$format,
+            offset: std::mem::offset_of!(SpriteInstance, $($field)+) as u64,
+            shader_location: $location,
+        }
+    };
+}
+
 pub(crate) const SPRITE_INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; INSTANCE_ATTRIBUTE_COUNT] = [
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x2,
-        offset: 0,
-        shader_location: 0,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x2,
-        offset: 8,
-        shader_location: 1,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x2,
-        offset: 16,
-        shader_location: 2,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x2,
-        offset: 24,
-        shader_location: 3,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32,
-        offset: 32,
-        shader_location: 4,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x3,
-        offset: 36,
-        shader_location: 5,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32,
-        offset: 48,
-        shader_location: 6,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Uint32,
-        offset: 52,
-        shader_location: 7,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Uint32,
-        offset: 56,
-        shader_location: 8,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x4,
-        offset: 60,
-        shader_location: 9,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x4,
-        offset: 76,
-        shader_location: 10,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32,
-        offset: 92,
-        shader_location: 11,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Uint32,
-        offset: 96,
-        shader_location: 12,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Float32x2,
-        offset: 100,
-        shader_location: 13,
-    },
-    wgpu::VertexAttribute {
-        format: wgpu::VertexFormat::Uint32x4,
-        offset: std::mem::offset_of!(SpriteInstance, palette_light) as u64,
-        shader_location: 14,
-    },
+    instance_attribute!(0, Float32x2, position),
+    instance_attribute!(1, Float32x2, size),
+    instance_attribute!(2, Float32x2, uv_origin),
+    instance_attribute!(3, Float32x2, uv_size),
+    instance_attribute!(4, Float32, depth),
+    instance_attribute!(5, Float32x3, tint),
+    instance_attribute!(6, Float32, alpha),
+    instance_attribute!(7, Uint32, draw_state.remap_row),
+    instance_attribute!(8, Uint32, draw_state.fx_flags),
+    instance_attribute!(9, Float32x4, draw_state.fx_params),
+    instance_attribute!(10, Float32, draw_state.sinking_row),
+    instance_attribute!(11, Float32, z_adjust),
+    instance_attribute!(12, Uint32, z_gradient),
+    instance_attribute!(13, Float32x2, zshape_origin),
+    instance_attribute!(14, Uint32x4, palette_light),
 ];
 
-/// Size of one SpriteInstance in bytes (4 × vec2f = 32 bytes).
+/// Size of one SpriteInstance in bytes.
 const INSTANCE_STRIDE: u64 = std::mem::size_of::<SpriteInstance>() as u64;
 
 /// Camera uniform data sent to the GPU vertex shader.
@@ -703,18 +654,8 @@ impl BatchRenderer {
             &neutral_a_uniform,
         );
 
-        // Instance buffer vertex layout (matches SpriteInstance memory layout):
-        //   position(8) + size(8) + uv_origin(8) + uv_size(8) = 32 → loc 0-3
-        //   depth(4) + tint(12) + alpha(4) = 20 → loc 4-6 (offsets 32, 36, 48)
-        //   DrawState::remap_row(4) at offset 52 → loc 7 (Uint32)
-        //   DrawState::fx_flags(4) at offset 56 → loc 8 (Uint32)
-        //   DrawState::fx_params(16) at offset 60 → loc 9 (Float32x4)
-        //   DrawState::effect_tint(16) at offset 76 → loc 10 (Float32x4)
-        //   z_adjust(4) at offset 92 → loc 11 (Float32)
-        //   z_gradient(4) at offset 96 → loc 12 (Uint32)
-        //   zshape_origin(8) at offset 100 → loc 13 (Float32x2)
-        // PaletteLight(16) at offset 108 -> loc 14 (Uint32x4).
-        // Total stride: 124 bytes.
+        // Instance buffer vertex layout: SPRITE_INSTANCE_ATTRIBUTES, one
+        // attribute per SpriteInstance field at its offset_of.
         let instance_attrs = SPRITE_INSTANCE_ATTRIBUTES;
 
         let pipeline_layout: wgpu::PipelineLayout =

@@ -29,14 +29,13 @@ fn native_palette_word(rgb: vec3u, index: u32, light: vec4u, a: u32) -> u32 {
     if (light.y & 0x40000000u) != 0u { lit = min((rgb * scale) >> vec3u(16u), vec3u(255u)); }
     return ((lit.r >> 3u) << 11u) | ((lit.g >> 2u) << 5u) | (lit.b >> 3u);
 }
-fn resolve_palette(rgb_linear: vec3f, tint: vec3f, effect: vec3f,
-                   light: vec4u, index: u32, a: u32) -> vec3f {
-    if light.x >> 24u == 0u || any(effect != vec3f(1.0)) {
+fn resolve_palette(rgb_linear: vec3f, tint: vec3f, light: vec4u, index: u32, a: u32) -> vec3f {
+    if light.x >> 24u == 0u {
         // Precomposed RGBA, alpha and FX lack native palette/packed-composition
         // metadata. Retain their compatibility source shading, now at the
         // source store rather than multiplying previously drawn surface lines.
         // Surface/UI bindings supply neutral A. This is not native alpha parity.
-        return palette_light(rgb_linear, tint * effect) * (f32(a) / 127.0);
+        return palette_light(rgb_linear, tint) * (f32(a) / 127.0);
     }
     let rgb = vec3u(round(clamp(srgb_encode(rgb_linear), vec3f(0.0), vec3f(1.0)) * 255.0));
     // 493E52/494BDD/4991F4 read A only after source-hole/Z admission. A=0

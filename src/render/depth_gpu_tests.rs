@@ -12,7 +12,7 @@
 //! Run explicitly on a machine with a wgpu adapter:
 //! `cargo test -p vera20k --lib render::depth_gpu_tests:: -- --ignored`
 
-use std::mem::{offset_of, size_of};
+use std::mem::size_of;
 use std::time::Duration;
 
 use wgpu::util::DeviceExt;
@@ -216,7 +216,7 @@ impl Gpu {
                         buffers: &[wgpu::VertexBufferLayout {
                             array_stride: size_of::<SpriteInstance>() as u64,
                             step_mode: wgpu::VertexStepMode::Instance,
-                            attributes: &INSTANCE_ATTRIBUTES,
+                            attributes: &crate::render::batch::SPRITE_INSTANCE_ATTRIBUTES,
                         }],
                         compilation_options: Default::default(),
                     },
@@ -465,36 +465,6 @@ fn color_descriptor(size: [u32; 2]) -> wgpu::TextureDescriptor<'static> {
         view_formats: &[],
     }
 }
-
-// Derive offsets from the actual repr(C) structs, including nested DrawState.
-// Locations/formats are the existing production vertex ABI in batch.rs.
-macro_rules! attribute {
-    ($location:expr, $format:ident, $($field:tt)+) => {
-        wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::$format,
-            offset: offset_of!(SpriteInstance, $($field)+) as u64,
-            shader_location: $location,
-        }
-    };
-}
-
-const INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; 15] = [
-    attribute!(0, Float32x2, position),
-    attribute!(1, Float32x2, size),
-    attribute!(2, Float32x2, uv_origin),
-    attribute!(3, Float32x2, uv_size),
-    attribute!(4, Float32, depth),
-    attribute!(5, Float32x3, tint),
-    attribute!(6, Float32, alpha),
-    attribute!(7, Uint32, draw_state.remap_row),
-    attribute!(8, Uint32, draw_state.fx_flags),
-    attribute!(9, Float32x4, draw_state.fx_params),
-    attribute!(10, Float32x4, draw_state.effect_tint),
-    attribute!(11, Float32, z_adjust),
-    attribute!(12, Uint32, z_gradient),
-    attribute!(13, Float32x2, zshape_origin),
-    attribute!(14, Uint32x4, palette_light),
-];
 
 fn cliff_depth_lanes() -> Layer {
     let mut terrain = Layer::solid(Shader::Terrain, RED, -31.0);
@@ -1205,7 +1175,6 @@ fn depth_sprite_preserves_batch_tint_and_opacity() {
     ordinary.instance.tint = [0.5, 1.3, 0.75];
     ordinary.instance.alpha = 0.75;
     ordinary.instance.draw_state = DrawState {
-        effect_tint: [1.4, 0.65, 1.1, 1.0],
         fx_params: [0.6, 0.0, 1.0, 0.0],
         ..Default::default()
     };

@@ -88,6 +88,53 @@ fn vxl_body_tint(
     }
 }
 
+/// UnitClass::DrawVoxelBody's curtain arm (`0x0073BF9C..0x0073BFB8`): while
+/// time is left on the curtain (`IsIronCurtained @ 0x0041BF40`, vt+0x160),
+/// the intensity of the hull, turret and barrel composite goes through
+/// GetEffectTintIntensity, and the composite's blit (vt+0x55C, `0x0073C1A5`)
+/// picks its LightConvert row from it. The parts are drawn into the
+/// composite's 8-bit surface (`0x0073B547`; a 256x256 surface of one byte per
+/// pixel, `0x007473FA..0x0074741C`), where TechnoClass::Draw's own curtain arm
+/// lights nothing. The draw reads the frame Main_Tick renders under; its
+/// render (`0x0055DBBE`) precedes the logic (`0x0055DC9E`) and the increment
+/// (`0x0055DE81`), so that is `sim`'s committed `binary_frame`. VERA's
+/// compatibility tint, for translucent and effect draws, is linear in the
+/// intensity and takes the same ratio. The harvest overlay keeps the unscaled
+/// light: UnitClass::Draw blits it with its own intensity (`0x0073D283`).
+///
+/// RESIDUAL: the rest of DrawVoxelBody's block (`0x0073BF7B..0x0073C15F`).
+/// The flash arm ahead of the curtain's (vt+0x464, `0x0070D190`) reads
+/// TechnoClass+0xF0 (GSI-08.12 in `sim/game_entity.rs`). The curtain ORs the
+/// `IronCurtainColor=` `[ColorAdd]` colour, and a Berzerk unit the
+/// `BerserkColor=` one, into the colour word the blit ORs into each pixel;
+/// VERA draws no colour word. A Deactivated unit (`+0x1C8`, `0x0070FBD0`)
+/// draws at half the intensity. Retail IronCurtainColor=0 selects None,
+/// whose OR is zero.
+fn curtained_body_light(
+    entity: &crate::sim::game_entity::GameEntity,
+    tint: [f32; 3],
+    light: crate::render::palette_light::PaletteLight,
+    sim: &crate::sim::world::Simulation,
+) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
+    let frame = sim.session.binary_frame;
+    let Some(curtain) = entity.invulnerability.as_ref().filter(|curtain| {
+        crate::sim::superweapon::invulnerability::is_invulnerable(Some(curtain), frame)
+    }) else {
+        return (tint, light);
+    };
+    let intensity = light.brightness();
+    let tinted = curtain.effect_tint_intensity(intensity, frame as i32);
+    let ratio = if intensity == 0 {
+        1.0
+    } else {
+        tinted as f32 / intensity as f32
+    };
+    (
+        tint.map(|channel| channel * ratio),
+        light.with_brightness(tinted),
+    )
+}
+
 /// The active `NoSpawnAlt` art id for one Unit draw, if any.
 ///
 /// `UnitClass` reads `NoSpawnAlt`, calls
@@ -388,6 +435,13 @@ pub(crate) fn build_unit_instances(
             state.rules().map_or(0, |r| r.general.extra_unit_light),
             state.rules().map_or(0, |r| r.general.extra_infantry_light),
         );
+        // Voxel aircraft draw through TechnoClass::Draw's arm instead (a
+        // residual in `sim/superweapon/invulnerability.rs`).
+        let (body_tint, body_light) = if entity.category == EntityCategory::Unit {
+            curtained_body_light(entity, tint, palette_light, sim)
+        } else {
+            (tint, palette_light)
+        };
         let center_x: f32 = sx;
         let center_y: f32 = sy;
 
@@ -450,8 +504,8 @@ pub(crate) fn build_unit_instances(
                 tilt,
                 [center_x, center_y],
                 interp_z,
-                tint,
-                palette_light,
+                body_tint,
+                body_light,
                 draw_state,
             );
         } else if let BodyDraw::Turret {
@@ -474,8 +528,8 @@ pub(crate) fn build_unit_instances(
                 center_y,
                 state,
                 interp_z,
-                tint,
-                palette_light,
+                body_tint,
+                body_light,
                 alpha,
                 draw_state,
                 anim_frame,
@@ -547,8 +601,8 @@ pub(crate) fn build_unit_instances(
                     uv_origin: entry.uv_origin,
                     uv_size: entry.uv_size,
                     depth,
-                    tint,
-                    palette_light,
+                    tint: body_tint,
+                    palette_light: body_light,
                     alpha,
                     draw_state: body_draw_state,
                     z_adjust: voxel_adjust,
@@ -1701,6 +1755,81 @@ mod tests {
     };
     use crate::sim::timer::CdTimer;
     use crate::sim::world::Simulation;
+
+    /// Each `curtain_draw_arm` row (DrawVoxelBody `0x0073BF7B..0x0073C166`
+    /// run natively) whose other arms are idle: no flash count, not Berzerk
+    /// or Deactivated, no caller colour word and retail's IronCurtainColor=0
+    /// in the active RGB565 format. The intensity the composite takes, at the
+    /// row's frame as the committed `binary_frame`, is the brightness
+    /// [`curtained_body_light`] gives the body, and the colour word VERA does
+    /// not draw has no bit in its 16-bit pixel lane (above it the conversion
+    /// leaves stale ECX bits, `0x0073BFFD`). VERA's compatibility tint takes
+    /// the intensity's ratio. The other rows are the block's residuals (on
+    /// `curtained_body_light`).
+    #[test]
+    fn the_curtain_arm_matches_native() {
+        let oracle: serde_json::Value =
+            serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
+                .unwrap();
+        let rows = oracle["curtain_draw_arm"].as_array().unwrap();
+        assert_eq!(rows.len(), 55);
+        let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+        let mut sim = Simulation::new();
+        let tint = [0.6, 0.9, 1.2];
+        let mut compared = 0;
+        for row in rows {
+            if int(&row["flash"]) != 0
+                || row["berzerk"].as_bool().unwrap()
+                || row["deactivated"].as_bool().unwrap()
+                || int(&row["word"]) != 0
+                || int(&row["iron_color"]) != 0
+                || int(&row["pixel_format"]) != 2
+            {
+                continue;
+            }
+            let mut unit = GameEntity::test_default(1, "HTNK", "Russians", 10, 10);
+            unit.invulnerability = Some(
+                crate::sim::superweapon::invulnerability::InvulnerabilityState::with_tint(
+                    CdTimer::from_raw(int(&row["curtain"][0]), int(&row["curtain"][1])),
+                    crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain,
+                    u8::try_from(int(&row["stage"])).unwrap(),
+                    CdTimer::from_raw(int(&row["tint"][0]), int(&row["tint"][1])),
+                ),
+            );
+            let intensity = int(&row["intensity"]);
+            let light =
+                crate::render::palette_light::PaletteLight::color_scheme([1000; 3], intensity);
+            sim.session.binary_frame = int(&row["frame"]) as u32;
+            let (lit_tint, lit) = curtained_body_light(&unit, tint, light, &sim);
+            let out = int(&row["out_intensity"]);
+            assert_eq!(lit.brightness(), out, "{row}");
+            assert_eq!(lit.rows(), light.rows(), "{row}");
+            let ratio = out as f32 / intensity as f32;
+            assert_eq!(lit_tint, tint.map(|channel| channel * ratio), "{row}");
+            assert_eq!(row["out_word"].as_u64().unwrap() & 0xFFFF, 0, "{row}");
+            compared += 1;
+        }
+        assert_eq!(compared, 38);
+    }
+
+    /// Retail `[AudioVisual] IronCurtainColor=0;4` reads 0 through ReadInt
+    /// (`0x0066B84C`; the INI loader drops the `;` comment), and `[ColorAdd]`'s
+    /// first entry, None, is black: the curtain ORs nothing into a retail
+    /// unit's pixels.
+    #[test]
+    fn retail_curtain_colour_adds_nothing() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let index = ini
+            .section("AudioVisual")
+            .unwrap()
+            .read_int("IronCurtainColor", i32::MIN);
+        assert_eq!(index, 0);
+        let colors = crate::rules::color_add::ColorAddTable::from_ini(&ini);
+        assert_eq!(colors.slots[0].name.as_deref(), Some("None"));
+        assert_eq!(colors.slots[0].rgb, [0, 0, 0]);
+    }
 
     #[test]
     fn vehicle_shadow_active_locomotor_selects_native_or_legacy_companion() {
