@@ -759,8 +759,9 @@ impl Simulation {
     }
 }
 
-/// A team leader's `Greatest_Threat` for script action 0 (`0x006ED15E`):
-/// its `+0x3C4` override with the quarry's mask, directly.
+/// A team leader's `Greatest_Threat` for script actions 0 and 57
+/// (`0x006ED15E`, `0x006F0253`): its `+0x3C4` override with the quarry's
+/// mask, directly.
 pub(crate) fn team_leader_greatest_threat(
     sim: &mut Simulation,
     rules: &RuleSet,

@@ -672,6 +672,72 @@ production observations: the chain's native comparisons are the
 `tools.superweapon_oracle` rows named above and the `ai_*` rows, and no whole-run
 timing or pixel equivalence with gamemd is claimed.
 
+## Computer Iron Curtain observation
+
+[`map_observation.ai-iron-curtain.example.json`](map_observation.ai-iron-curtain.example.json)
+starts Russia/Battle against a Russia computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_iron_curtain.map): the
+computer's pre-placed NAIRON at (55,62), NAPOWR at (66,56) and (66,52), NAWEAP at (56,56)
+and six HTNK at (50..52,58..59) near its start (62,62); the observer's NACNST at (32,33)
+near its start (37,37); no commands. The HTNK lines end `1,1`, the two recruit flags
+(`Techno+0x421`/`+0x422`): with `0,0` no Autocreate team may take them. The observer's
+yard stands far from the computer's tanks, because the AI triggers' zone test reads the
+enemy's base centre, which a house without buildings lacks. `observe_super_weapons` adds
+the Super rows; HTNK and NAIRON are the observed types. The loader looks a relative map
+name up in the retail root: run a profile copy whose `launch.selected_map_file` is the
+tracked map's absolute path.
+
+With release binary SHA-256
+`f4d3c441feda523f49a3ec30ef47dbc7f68611d9abc4bce76153ee6465360428`
+(31,967,584 bytes) and map SHA-256
+`2db0b369a31466407936ed3a887be7cc9dfc2068b0ff9ddee732f215ad17b97c`, the computer's
+IronCurtainSpecial is granted on the first step (charge start 0, 4500 frames) and is
+ready from step 4501. Its first team pass with an enemy, at frame 3675, creates the
+base-defense team `UseMinDefenseRule=` asks for; the next, at frame 7175, creates the
+Soviet Iron Curtain Team (`0ACDAEFC-G`, six HTNK, AI trigger condition 5). The six leave
+at steps 7183..7185 for (51,51), 20 cells (`AISafeDistance=`) from the observer's base
+towards the computer's (script action 53), guard (action 5), and at frame 7512 the house
+fires its Iron Curtain at the team's centre (action 55; the charge restarts there). The
+team then attacks the observer's yard under the curtain. The 8000-step run ends with
+state hash `16084261659391202685` and BGRA SHA-256
+`6fc3701bc6d8bb9600dc3cf6a540c70265b69deec4b590ee816005b7d52792c6`. A copy that ends at
+7530 with `camera_cell` (51,51) shows the team at its gathering point among the
+curtain's anims (state hash `8556636916486512679`, BGRA SHA-256
+`2d549f944794aef1a46bfcd70448e4adf4e896eebc49bb211e2c53a8e73d33c2`); the units' own
+tint and its stage machine (`TechnoClass::UpdateIronTint` `0x70E5A0`) are not ported
+(the superweapons checkpoint's next chains).
+
+## Computer Chronosphere observation
+
+[`map_observation.ai-chronosphere.example.json`](map_observation.ai-chronosphere.example.json)
+starts America/Battle against an America computer opponent (`Computer1`, Easy) on an
+[authored map](map_observation/examples/ai_chronosphere.map) laid out as the Iron Curtain
+one: the computer's GACSPH at (55,62), GAPOWR at (66,56) and (66,52), GAWEAP at (56,56)
+and three recruitable MTNK at (50..52,58); the observer's GACNST at (32,33), GAPOWR at
+(38,31) and a GAPILE at (66,30) that keeps it in the game. MTNK is the observed type.
+
+With the same binary and map SHA-256
+`561e0c682f54e8e84d621cd7683cf87e40cd1bb3137a22ecff550db2ed0171ac`, the computer's
+ChronoSphereSpecial is granted on the first step (6300 frames) and is ready from step
+6301. The team pass at frame 7175 creates the Allied Chrono Unit Easy team
+(`0D2701DC-G`, three MTNK, condition 6). It regroups 20 cells from the computer's base
+towards the observer's (action 54), and at frame 7340 the house fires its Chronosphere at
+the team's centre and its Chrono Warp, which no building grants, at the observer's
+GAPOWR (action 57, quarry 9). The two MTNK in the 3x3 block appear at (39,33), under the
+power plant, at steps 7402 and 7403; the third, outside the block, drives after them. The
+two share one spot until they move off: the second's own landing cell, (39,32), lies
+under the plant, and the warp's blocked search moves it to the cell where the first had
+landed (read from `movement/teleport_chrono.rs`, not compared with gamemd). The team then
+destroys the observer's yard and moves on to its barracks. The 9000-step run
+ends with state hash `9628039434125704489` and BGRA SHA-256
+`dc0794bbf93373d106354519149a88a068751905eb0f13834d08fe536b44a409`; a copy that ends at
+7405 with `camera_cell` (41,36) shows the arrival (state hash `5285862740273670136`,
+BGRA SHA-256 `62ad0af511ef1c65ab607fad0e7f1ac878a9daf65a7cf979eff24a31707390a6`). The
+same binary loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300
+steps (state hash `17265848597308621850`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `team_super_actions` rows,
+and no whole-run timing or pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

@@ -10,8 +10,9 @@ src/sim/superweapon/ai_fire_tests.rs (the ai_* sections),
 src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections) and
 src/sim/superweapon/psychic_dominator_tests.rs (psydom_*, update_lighting,
 ambient_step), src/sim/superweapon/spy_plane_tests.rs (spy_plane_launch,
-send_spy_planes, spyplane_missions) and src/sim/aircraft/leave_map_tests.rs
-(aircraft_leave_map).
+send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
+(aircraft_leave_map) and src/sim/team_script_vm/super_actions_tests.rs
+(team_super_actions).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -99,6 +100,12 @@ fixture machinery):
 - aircraft_leave_map: AircraftClass::AI's removal block 0x414F47..0x414FDF as
   a slice, with GetMapCoords 0x41BEA0, IsCellInPlayfield 0x578460, In_Bounds
   0x568300, the predicate 0x41B890 and Get_Mission 0x5B3040 run natively.
+- team_super_actions: TeamClass::AI's script actions 55 (0x6EFC70, Iron
+  Curtain) and 57 (0x6F0130, Chronosphere): the leader loop with the live
+  test 0x6EF9E0, the Supers search (first of Type= 1; last of 3 and of 4),
+  GetPowerRatio 0x4FCE30, the RechargeTimer read, GetRechargeTime 0x6CC260,
+  the wait test and Quarry_To_Threat 0x645BB0, with the threat scan,
+  Fire_SW and Assign_Mission_Target recorded.
 """
 from pathlib import Path
 import math
@@ -2867,6 +2874,241 @@ def aircraft_leave_map():
     return rows
 
 
+# ---------------------------------------------------------------- team actions
+
+TEAM_ACTION_ENTRIES = {55: 0x6EFC70, 57: 0x6F0130}
+TEAM_SW = BASE + 0x3C0000
+TEAM_SW_TEAM = TEAM_SW
+TEAM_SW_TEAM_TYPE = TEAM_SW + 0x1000
+TEAM_SW_CENTRE = TEAM_SW + 0x2000
+TEAM_SW_TARGET = TEAM_SW + 0x2100
+TEAM_SW_NODE = TEAM_SW + 0x2200
+TEAM_SW_VT = TEAM_SW + 0x3000
+TEAM_SW_TYPES = TEAM_SW + 0x8000
+TEAM_SW_MEMBERS = TEAM_SW + 0x20000
+TEAM_SW_STRIDE = 0x1000
+# The fixture members' Location: the coordinate Greatest_Threat searches from.
+# The rows' cells fit the Rust replay's 32-cell arena.
+TEAM_SW_LOCATION = (10 * 256 + 100, 11 * 256 + 20, 208)
+TEAM_SW_CENTRE_COORDS = (12 * 256 + 128, 13 * 256 + 128, 0)
+TEAM_SW_TARGET_COORDS = (20 * 256 + 128, 21 * 256 + 128, 0)
+
+STUB_TEAM_SW_TYPE = STUBS + 0x800
+STUB_TEAM_SW_WHAT = STUBS + 0x810
+STUB_TEAM_SW_COORDS = STUBS + 0x820
+STUB_TEAM_SW_THREAT = STUBS + 0x830
+
+
+def team_sw(kind, *, charged=False, granted=True, start=-1, left=0, custom=-1, recharge=900):
+    """A Super of `Type=` `kind`: `+0x6F`, `+0x6D`, its RechargeTimer (`+0x30`
+    start, `+0x38` time left), `+0x24` (CustomChargeTime) and its type's
+    RechargeTime (`+0xB0`, frames)."""
+    return dict(kind=kind, charged=charged, granted=granted, start=start, left=left,
+                custom=custom, recharge=recharge)
+
+
+def team_member(*, rating=0, live=True, joined=True, aircraft=False):
+    return dict(rating=rating, live=live, joined=joined, aircraft=aircraft)
+
+
+def team_super_row(*, action, supers, members=(team_member(),), output=100, drain=50,
+                   percent=0.7, frame=5000, centre=TEAM_SW_CENTRE_COORDS, argument=9,
+                   only_enemy=False, target=None):
+    """TeamClass::AI's script action 55 (0x6EFC70) or 57 (0x6F0130), called as
+    the jump table calls it (0x6E9D95, 0x6E9DC7: the {action, argument} node and
+    the first-frame flag): the leader loop with the live test 0x6EF9E0, the
+    Supers search, GetPowerRatio 0x4FCE30, the RechargeTimer read,
+    GetRechargeTime 0x6CC260 and Quarry_To_Threat 0x645BB0 run natively; the
+    house is the computer house holding the row's Supers."""
+    emu = Emu()
+    install_supers(emu, [(sw['kind'], sw['charged']) for sw in supers])
+    for index, sw in enumerate(supers):
+        this = AI_SUPERS + index * 0x100
+        write8(emu, this + 0x6D, sw['granted'])
+        emu.write32(this + 0x24, sw['custom'])
+        emu.write32(this + 0x30, sw['start'])
+        emu.write32(this + 0x38, sw['left'])
+        emu.write32(AI_SW_TYPES + index * 0x100 + 0xB0, sw['recharge'])
+    emu.write32(HOUSE + 0x53A4, output)
+    emu.write32(HOUSE + 0x53A8, drain)
+    emu.write32(RULES + 0xD70, f32_bits(percent))
+    emu.write32(FRAME, frame)
+    emu.write32(SCENARIO_INIT, 0)
+
+    team = TEAM_SW_TEAM
+    emu.write32(team + 0x24, TEAM_SW_TEAM_TYPE)
+    write8(emu, TEAM_SW_TEAM_TYPE + 0xF7, only_enemy)
+    emu.write32(team + 0x34, TEAM_SW_CENTRE)
+    write8(emu, team + 0x80, 0)
+    emu.write32(TEAM_SW_CENTRE, TEAM_SW_VT)
+    emu.write32(TEAM_SW_TARGET, TEAM_SW_VT)
+    emu.write32(TEAM_SW_NODE, action)
+    emu.write32(TEAM_SW_NODE + 4, argument)
+    pointers = [TEAM_SW_MEMBERS + index * TEAM_SW_STRIDE for index in range(len(members))]
+    emu.write32(team + 0x54, pointers[0] if pointers else 0)
+    for index, (this, member) in enumerate(zip(pointers, members)):
+        emu.write32(this, TEAM_SW_VT)
+        emu.write32(this + 0x5D8, pointers[index + 1] if index + 1 < len(pointers) else 0)
+        emu.write32(TEAM_SW_TYPES + index * TEAM_SW_STRIDE + 0x5FC, member['rating'])
+        write8(emu, this + 0x90, member['live'])
+        emu.write32(this + 0x6C, 100)
+        write8(emu, this + 0x81, 0)
+        write8(emu, this + 0x689, member['joined'])
+        emu.write32(this + 0x21C, HOUSE)
+        write_coord(emu, this + 0x9C, TEAM_SW_LOCATION)
+    for slot, stub in ((0x84, STUB_TEAM_SW_TYPE), (0x2C, STUB_TEAM_SW_WHAT),
+                       (0x48, STUB_TEAM_SW_COORDS), (0x3C4, STUB_TEAM_SW_THREAT)):
+        emu.write32(TEAM_SW_VT + slot, stub)
+
+    def member_index(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        if this not in pointers:
+            raise OracleError(f'a member call on {this:#x}')
+        return pointers.index(this)
+
+    def coords(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        answer = {TEAM_SW_CENTRE: centre, TEAM_SW_TARGET: target}.get(this)
+        if answer is None:
+            raise OracleError(f'GetCoords on {this:#x}')
+        write_coord(e, e.arg(0), answer)
+        return e.arg(0)
+
+    def threat(e):
+        e.events.append(['threat', member_index(e), i32(e.arg(0)), read_coord(e, e.arg(1)),
+                         e.arg(2) & 0xFF])
+        return TEAM_SW_TARGET if target is not None else 0
+
+    def assign(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != team:
+            raise OracleError('Assign_Mission_Target on another team')
+        if e.arg(0) != TEAM_SW_TARGET:
+            raise OracleError('Assign_Mission_Target of another target')
+        e.events.append(['assign'])
+
+    emu.hook(STUB_TEAM_SW_TYPE,
+             lambda e: TEAM_SW_TYPES + member_index(e) * TEAM_SW_STRIDE, 0)
+    emu.hook(STUB_TEAM_SW_WHAT,
+             lambda e: WHAT['aircraft' if members[member_index(e)]['aircraft'] else 'unit'], 0)
+    emu.hook(STUB_TEAM_SW_COORDS, coords, 4)
+    emu.hook(STUB_TEAM_SW_THREAT, threat, 0xC)
+    emu.hook(0x6E9050, assign, 4)
+    record_fire(emu)
+    emu.invoke(TEAM_ACTION_ENTRIES[action], ecx=team, args=[TEAM_SW_NODE, 0])
+    return dict(action=action, argument=argument, supers=list(supers), members=list(members),
+                output=output, drain=drain, percent=f32_bits(percent), frame=frame,
+                centre=list(centre), only_enemy=only_enemy,
+                target=None if target is None else list(target),
+                location=list(TEAM_SW_LOCATION), events=emu.events,
+                complete=read8(emu, team + 0x80))
+
+
+def team_super_actions():
+    rows = []
+    frame = 5000
+
+    def charging(remaining, recharge=900):
+        """A granted Super `remaining` frames from charged."""
+        return dict(start=frame - (recharge - remaining), left=recharge, recharge=recharge)
+
+    expired = dict(start=frame - 900, left=900)
+    for action, own in ((55, 1), (57, 3)):
+        def retail(sw):
+            """Retail's [SuperWeaponTypes] kinds 0..4 with the action's own
+            Super at its own index, so its Type= value fires itself."""
+            supers = [team_sw(kind) for kind in range(5)]
+            supers[own] = sw
+            return supers
+
+        def row(supers, **kwargs):
+            rows.append(team_super_row(action=action, supers=supers, frame=frame, **kwargs))
+
+        # Charged with full power: fire (57 asks for a target first; NULL
+        # here). Power ratios at and around one.
+        for output, drain in ((100, 50), (50, 50), (0, 0), (5, 0), (0, 10), (49, 50),
+                              (-10, -5), (-5, -10), (1, 2)):
+            row(retail(team_sw(own, charged=True, **expired)), output=output, drain=drain)
+        # Not charged: wait while the charge is nearly full, else move on.
+        for remaining in (0, 1, 269, 270, 271, 300, 899, 900):
+            row(retail(team_sw(own, **charging(remaining))))
+        for remaining in (0, 270, 271):
+            row(retail(team_sw(own, granted=False, **charging(remaining))))
+        for left in (0, 200, 270, 271, 500, -5):
+            row(retail(team_sw(own, start=-1, left=left)))
+        row(retail(team_sw(own, start=frame - 2000, left=900)))
+        row(retail(team_sw(own, start=frame + 10, left=900)))
+        for start, left, recharge in ((-1, 0, 0), (-1, 5, 0), (-1, -5, 0), (frame, 5, -900)):
+            row(retail(team_sw(own, start=start, left=left, recharge=recharge)))
+        for percent in (0.0, 0.5, 1.0, 0.25, -0.5, 1.5):
+            for remaining in (0, 225, 226, 450, 451, 900):
+                row(retail(team_sw(own, **charging(remaining))), percent=percent)
+        # A per-Super CustomChargeTime (+0x24) replaces the type's.
+        row(retail(team_sw(own, custom=1000, **charging(280))))
+        row(retail(team_sw(own, custom=800, **charging(250))))
+        # Charged without full power: the wait test on an expired timer.
+        row(retail(team_sw(own, charged=True, **expired)), output=10, drain=50)
+        row(retail(team_sw(own, charged=True, granted=False, **expired)), output=10, drain=50)
+        # No members: done at once.
+        row(retail(team_sw(own, charged=True, **expired)), members=())
+        # The centre's cell, rounding toward zero.
+        for centre in ((0, 0, 0), (255, 256, 0), (-1, -255, 0), (-256, -257, 0),
+                       (-513, 513, 0), (12 * 256 + 255, 13 * 256, 999)):
+            row(retail(team_sw(own, charged=True, **expired)), centre=centre)
+
+    # Which Super: action 55 checks the first of Type= 1, 57 the last of
+    # Type= 3 and of Type= 4; each fires the index its Super's Type= value
+    # names.
+    def iron(supers, **kwargs):
+        rows.append(team_super_row(action=55, supers=supers, frame=frame, **kwargs))
+
+    def chrono(supers=None, **kwargs):
+        if supers is None:
+            supers = [team_sw(0), team_sw(1), team_sw(2), team_sw(3, charged=True, **expired),
+                      team_sw(4)]
+        rows.append(team_super_row(action=57, supers=supers, frame=frame, **kwargs))
+
+    target = TEAM_SW_TARGET_COORDS
+    iron([team_sw(0), team_sw(3, charged=True, **expired), team_sw(2), team_sw(3), team_sw(4)])
+    iron([team_sw(0), team_sw(1, **charging(800)), team_sw(1, charged=True, **expired),
+          team_sw(3), team_sw(4)])
+    iron([team_sw(0), team_sw(1, charged=True, **expired), team_sw(1, **charging(800)),
+          team_sw(3), team_sw(4)])
+    iron([team_sw(1, charged=True, **expired), team_sw(5), team_sw(2), team_sw(3),
+          team_sw(4)])
+    chrono([team_sw(0), team_sw(1), team_sw(3, charged=True, **expired),
+            team_sw(3, **charging(800)), team_sw(4)], target=target)
+    chrono([team_sw(0), team_sw(1), team_sw(3, **charging(800)),
+            team_sw(3, charged=True, **expired), team_sw(4)], target=target)
+    chrono([team_sw(0), team_sw(1), team_sw(2), team_sw(1), team_sw(4)], target=target)
+    chrono([team_sw(0), team_sw(1), team_sw(2), team_sw(3, charged=True, **expired),
+            team_sw(0)], target=target)
+    chrono([team_sw(4), team_sw(1), team_sw(2), team_sw(3, charged=True, **expired),
+            team_sw(0)], target=target)
+    chrono([team_sw(0), team_sw(1), team_sw(2), team_sw(3, charged=True, **expired),
+            team_sw(4, granted=False)], target=target)
+    # Action 57 with a target: both fires, then the mission target.
+    chrono(target=target)
+    chrono(target=target, only_enemy=True)
+    for argument in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, -1):
+        chrono(target=target, argument=argument)
+    for coords in ((0, 0, 0), (-1, -257, 0), (255, 256, 0), (20 * 256 + 255, 21 * 256, 77)):
+        chrono(target=coords)
+    chrono(target=target, output=10, drain=50)
+    # The leader: the highest LeadershipRating= among live members that have
+    # joined (+0x689) or are aircraft, the first on a tie, else the head.
+    for members in (
+            (team_member(rating=9, live=False), team_member(rating=3),
+             team_member(rating=7, joined=False),
+             team_member(rating=5, joined=False, aircraft=True)),
+            (team_member(rating=4), team_member(rating=4)),
+            (team_member(rating=4, joined=False), team_member(rating=2, live=False)),
+            (team_member(rating=-5), team_member(rating=0)),
+            (team_member(rating=-5), team_member(rating=-1)),
+            (team_member(rating=1, live=False, aircraft=True), team_member(rating=0))):
+        chrono(target=target, members=members)
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -2889,6 +3131,7 @@ def generate():
             'send_spy_planes': send_spy_planes(),
             'spyplane_missions': spyplane_missions(),
             'aircraft_leave_map': aircraft_leave_map(),
+            'team_super_actions': team_super_actions(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -2918,7 +3161,10 @@ if __name__ == '__main__':
                'full cell relight adds in each lighting state; the Spy Plane\'s launch '
                'case, SendSpyPlanes\' calls and writes, both Spy Plane missions\' '
                'branches, reveals, sound, queued missions, destinations and frames, '
-               'and the aircraft off-map removal and its predicate'),
+               'and the aircraft off-map removal and its predicate; script actions '
+               '55 and 57: the leader, the Super checked, the power and charge gates, '
+               'the threat call\'s arguments, the Fire_SW indexes and cells, the '
+               'mission target and the step'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -3020,7 +3266,13 @@ if __name__ == '__main__':
                        'a fixture cell',
                        'aircraft_leave_map: the slice runs on a fixture frame with ESI '
                        'the plane; Map Size is PLAYFIELD\'s width by 46; the team call '
-                       '0x6EC300 answers the row; UnInit vt+0xF8 is a recorded stub'],
+                       '0x6EC300 answers the row; UnInit vt+0xF8 is a recorded stub',
+                       'team_super_actions: member GetTechnoType vt+0x84 answers a type '
+                       'holding the row\'s LeadershipRating (+0x5FC), WhatAmI vt+0x2C the '
+                       'row\'s kind; the centre\'s and target\'s GetCoords vt+0x48 answer '
+                       'the row; Greatest_Threat vt+0x3C4 answers the row\'s target or '
+                       'NULL; Fire_SW 0x4FAE50 and Assign_Mission_Target 0x6E9050 are '
+                       'recorded stubs'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -3041,4 +3293,6 @@ if __name__ == '__main__':
                       'HouseClass::SendSpyPlanes': 0x65EAB0,
                       'AircraftClass::Mission_SpyplaneApproach': 0x4155F0,
                       'AircraftClass::Mission_SpyplaneOverfly': 0x4157C0,
-                      'AircraftClass::AI_leave_map': 0x414F47}))
+                      'AircraftClass::AI_leave_map': 0x414F47,
+                      'TeamClass::script_action_55': 0x6EFC70,
+                      'TeamClass::script_action_57': 0x6F0130}))
