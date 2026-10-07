@@ -1,6 +1,8 @@
-//! Aircraft FindFireLocation4197C0 and IsCellFree419B00. Search reads live
-//! objects/reservations; only a successful cell search consumes Scenario RNG.
-//! Executable witnesses: tools/spatial_oracle/aircraft_fire_location.{py,json}.
+//! Aircraft FindFireLocation4197C0 and Is_Cell_Free_For_Landing419B00. Search
+//! reads live objects/reservations; only a successful cell search consumes
+//! Scenario RNG. Executable witnesses:
+//! tools/spatial_oracle/aircraft_fire_location.{py,json} and, for
+//! Find_Attack_Cell's `include_self = false`, aircraft_move.{py,json}.
 
 use super::Simulation;
 use crate::map::entities::EntityCategory;
@@ -18,9 +20,10 @@ mod tests;
 mod approach_tests;
 
 /// Live occupants and Cell NavCom reservations read once per search.
-/// IsCellFree419B00 is an any-match over live objects, so one pass answers
-/// every candidate of one FindFireLocation call; nothing mutates between them.
-struct FireCellClaims {
+/// Is_Cell_Free_For_Landing419B00 is an any-match over live objects, so one
+/// pass answers every candidate of one search; nothing mutates between them.
+/// One search passes one `include_self`, which the pass already applied.
+pub(super) struct LandingCellClaims {
     occupied: std::collections::BTreeSet<(i16, i16)>,
     /// Reserved fixed-cell identities (`None` = the shared Dummy), or raw
     /// reserved coordinates when no terrain is loaded.
@@ -129,7 +132,7 @@ impl Simulation {
                         continue;
                     }
                 }
-                if !self.aircraft_fire_cell_free(id, cell, rules, &mut claims) {
+                if !self.aircraft_cell_free_for_landing(id, cell, true, rules, &mut claims) {
                     continue;
                 }
                 let distance = crate::util::native_x87::distance_3d_leptons(
@@ -157,14 +160,22 @@ impl Simulation {
         None
     }
 
-    /// 419B00 with includeSelf=true, as passed by FindFireLocation. The outer
-    /// search already admitted the playfield; native repeats that query here.
-    fn aircraft_fire_cell_free(
+    /// `AircraftClass::Is_Cell_Free_For_Landing @ 0x00419B00`. Free without
+    /// looking at objects for a cell outside the playfield, a spawned
+    /// aircraft over a spawner or a spawned object, and an AirportBound
+    /// aircraft (`0x00419B8A`). `include_self` is its second argument:
+    /// FindFireLocation and Mission_Move pass true, so this aircraft's own
+    /// cell and Cell NavCom count against `cell` (past those early answers a
+    /// Cell NavCom claims its own cell); Find_Attack_Cell passes false. The
+    /// outer searches already admitted the playfield; native repeats that
+    /// query here.
+    pub(super) fn aircraft_cell_free_for_landing(
         &self,
         id: u64,
         cell: (i16, i16),
+        include_self: bool,
         rules: &RuleSet,
-        claims: &mut Option<FireCellClaims>,
+        claims: &mut Option<LandingCellClaims>,
     ) -> bool {
         if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
             (i32::from(cell.0), i32::from(cell.1)),
@@ -223,7 +234,8 @@ impl Simulation {
             .resolved_terrain
             .as_ref()
             .map(|t| t.native_cell_identity(cell));
-        let claims = claims.get_or_insert_with(|| self.fire_cell_claims(skip));
+        let own = (!include_self).then_some(id);
+        let claims = claims.get_or_insert_with(|| self.landing_cell_claims(skip, own));
         if claims.occupied.contains(&cell) {
             return false;
         }
@@ -234,14 +246,17 @@ impl Simulation {
     }
 
     /// Do not use occupancy: air, limbo and Cell NavCom are distinct here.
-    fn fire_cell_claims(&self, skip: Option<u64>) -> FireCellClaims {
-        let mut claims = FireCellClaims {
+    /// `carried` is a Carryall's Unit NavCom (`0x00419BF1`), `own` the
+    /// aircraft itself when the call excludes it (`0x00419C05`).
+    fn landing_cell_claims(&self, carried: Option<u64>, own: Option<u64>) -> LandingCellClaims {
+        let mut claims = LandingCellClaims {
             occupied: Default::default(),
             reserved: Default::default(),
             reserved_cells: Default::default(),
         };
         for other in self.substrate.entities.values() {
-            if skip == Some(other.stable_id())
+            if carried == Some(other.stable_id())
+                || own == Some(other.stable_id())
                 || !other.lifecycle.object_alive
                 || other.lifecycle.in_limbo
                 || !matches!(

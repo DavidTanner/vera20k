@@ -1941,6 +1941,11 @@ impl Simulation {
         }
         let after = self.entity_display_layer(id, rules);
         if before != after {
+            // `0x004CD3B6` asks about the cell under the aircraft (MapAtCoord).
+            let coord = crate::sim::movement::ground_pose::position_world_coord(
+                &self.substrate.entities.get(id).unwrap().position,
+            );
+            let below = NavTargetRef::cell((coord.x / 256) as u16, (coord.y / 256) as u16);
             if after == Some(super::display_layers::DisplayLayer::GROUND)
                 && !self
                     .substrate
@@ -1949,7 +1954,7 @@ impl Simulation {
                     .and_then(|e| e.locomotor.as_ref())
                     .and_then(|l| l.fly_runtime())
                     .is_some_and(|s| s.taking_off())
-                && !self.fly_landing_cell_admitted(id, rules)
+                && !self.foot_land_zone_clear(id, below, rules)
             {
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     entity

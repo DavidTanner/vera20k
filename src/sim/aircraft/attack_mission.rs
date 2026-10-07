@@ -352,18 +352,3 @@ pub(crate) fn exit_visit(facts: &ExitFacts, host: &mut impl ExitHost) -> Visit {
         latch: Some(false),
     }
 }
-
-/// `0x00418D1D`, the delay of states 1, 2 and 5:
-/// `ftol(MissionControl[mission].Rate * 900)` plus one Scenario
-/// `RandomRanged(0, 2)`. Mission_Attack runs as the Attack mission's handler,
-/// so its callers pass Attack; the table is indexed by the current mission.
-pub(crate) fn mission_epilogue(
-    rules: &crate::rules::ruleset::RuleSet,
-    mission: crate::sim::mission::MissionType,
-    rng: &mut crate::sim::rng::SimRng,
-) -> i32 {
-    rules
-        .mission_control
-        .rate_frames(mission)
-        .wrapping_add(rng.next_range_i32_inclusive(0, 2))
-}

@@ -633,27 +633,34 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                let result = if info.loco_layer == MovementLayer::Air {
+                let aircraft = self
+                    .substrate
+                    .entities
+                    .get(*entity_id)
+                    .is_some_and(|e| e.category == EntityCategory::Aircraft);
+                let result = if let Some(rules) = rules.filter(|_| aircraft) {
+                    // Event4C747C's virtual+480 is Aircraft41AA80: the NavCom
+                    // and the locomotor's Move_To. Mission_Move flies it from
+                    // there (`aircraft::move_mission`).
+                    self.assign_aircraft_destination(
+                        *entity_id,
+                        Some(crate::sim::components::NavTargetRef::cell(
+                            *target_rx, *target_ry,
+                        )),
+                        rules,
+                    );
+                    if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
+                        crate::sim::aircraft::queue_move_state(e);
+                    }
+                    true
+                } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines — no A* pathfinding needed.
-                    let ok = self.issue_air_cell_destination(
+                    self.issue_air_cell_destination(
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
                         rules,
-                    );
-                    // Set Move mission so the aircraft flies to destination
-                    // before the Idle handler can redirect it to RTB.
-                    if ok {
-                        if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                            if e.aircraft_mission.is_some() {
-                                e.aircraft_mission =
-                                    Some(crate::sim::aircraft::AircraftMission::Move {
-                                        sub_state: 0,
-                                    });
-                            }
-                        }
-                    }
-                    ok
+                    )
                 } else if !*queue
                     && let Some(rules) = rules
                     && self.unit_setter_receiver(*entity_id, Some(rules))
@@ -981,25 +988,39 @@ impl Simulation {
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
                     return false;
                 };
-                let issued = if info.loco_layer == MovementLayer::Air {
+                let aircraft = self
+                    .substrate
+                    .entities
+                    .get(*entity_id)
+                    .is_some_and(|e| e.category == EntityCategory::Aircraft);
+                let issued = if let Some(rules) = rules.filter(|_| aircraft) {
+                    // Event4C747C's virtual+480 (Aircraft41AA80) takes the
+                    // ordered cell, so Mission_Move, until the Commence ends
+                    // it, steers there too. The original sends mission 29 to
+                    // Mission_Sleep (`0x005B34C4`); VERA's stand-in flies in
+                    // `AircraftMission::Move` and ends on arrival.
+                    self.assign_aircraft_destination(
+                        *entity_id,
+                        Some(crate::sim::components::NavTargetRef::cell(
+                            *target_rx, *target_ry,
+                        )),
+                        rules,
+                    );
+                    if let Some(e) = self.substrate.entities.get_mut(*entity_id)
+                        && e.aircraft_mission.is_some()
+                    {
+                        e.aircraft_mission =
+                            Some(crate::sim::aircraft::AircraftMission::Move { sub_state: 0 });
+                    }
+                    true
+                } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
-                    let ok = self.issue_air_cell_destination(
+                    self.issue_air_cell_destination(
                         *entity_id,
                         (*target_rx, *target_ry),
                         info.speed,
                         rules,
-                    );
-                    if ok {
-                        if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                            if e.aircraft_mission.is_some() {
-                                e.aircraft_mission =
-                                    Some(crate::sim::aircraft::AircraftMission::Move {
-                                        sub_state: 0,
-                                    });
-                            }
-                        }
-                    }
-                    ok
+                    )
                 } else {
                     self.issue_ground_move(
                         GroundMove {

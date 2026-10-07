@@ -45,7 +45,7 @@ impl Simulation {
         let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
         let state = if target.is_some() && ammo != 0 {
             let destination = self.aircraft_find_fire_location(id, target, rules);
-            self.assign_aircraft_attack_destination(id, destination, rules);
+            self.assign_aircraft_destination(id, destination, rules);
             if self
                 .substrate
                 .entities
@@ -64,11 +64,7 @@ impl Simulation {
         };
         //418D1D: the Attack dispatch reads MissionControl Rate, then draws even
         // when there was no target/ammo or when the destination was refused.
-        let delay = crate::sim::aircraft::attack_mission::mission_epilogue(
-            rules,
-            MissionType::Attack,
-            &mut self.scenario_rng,
-        );
+        let delay = self.mission_rate_epilogue(rules, MissionType::Attack);
         self.aircraft_attack_visit(id, state, delay)
     }
 
@@ -116,7 +112,7 @@ impl Simulation {
             if distance < weapon.range_leptons {
                 return 4;
             }
-            self.assign_aircraft_attack_destination(id, Some(target.into()), rules);
+            self.assign_aircraft_destination(id, Some(target.into()), rules);
         } else if object.fighter
             || !crate::sim::movement::motion_query::is_moving_now(
                 entity,
@@ -178,7 +174,7 @@ impl Simulation {
             .unwrap()
             .set(facing, self.session.binary_frame);
         if distance < 16 {
-            self.assign_aircraft_attack_destination(id, None, rules);
+            self.assign_aircraft_destination(id, None, rules);
             4
         } else {
             3
@@ -296,11 +292,7 @@ impl attack_mission::ExitHost for WorldExit<'_> {
         // RESIDUAL: with no playfield (headless fixtures) there is no edge to
         // pick and no draw; every loaded map has one.
         if let Some((rx, ry)) = cell {
-            sim.assign_aircraft_attack_destination(
-                self.id,
-                Some(NavTargetRef::cell(rx, ry)),
-                self.rules,
-            );
+            sim.assign_aircraft_destination(self.id, Some(NavTargetRef::cell(rx, ry)), self.rules);
         }
     }
 

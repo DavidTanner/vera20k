@@ -43,6 +43,7 @@ pub(crate) use infantry_terminal::InfantryDeathSequence;
 pub(crate) use infantry_terminal::{InfantryDeathPostlude, InfantryTerminal};
 mod aircraft_attack;
 mod aircraft_fire_location;
+mod aircraft_move;
 pub(crate) mod damage_consequences;
 pub(crate) mod display_layers;
 mod display_registry;

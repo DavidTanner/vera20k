@@ -376,7 +376,7 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
     .unwrap();
     if flag(row, "nav_com") {
         let nav = NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1);
-        sim.assign_aircraft_attack_destination(id, Some(nav), rules);
+        sim.assign_aircraft_destination(id, Some(nav), rules);
     }
     let mission = if row["mission"] == "approach" {
         MissionType::SpyplaneApproach

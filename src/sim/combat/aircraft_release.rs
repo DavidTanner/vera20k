@@ -359,7 +359,7 @@ impl StrikeHost for CombatStrike<'_, '_> {
                 TargetKind::Cell(rx, ry) => crate::sim::components::NavTargetRef::cell(rx, ry),
             };
             self.world
-                .assign_aircraft_attack_destination(id, Some(destination), self.rules);
+                .assign_aircraft_destination(id, Some(destination), self.rules);
         }
     }
 
@@ -369,10 +369,7 @@ impl StrikeHost for CombatStrike<'_, '_> {
     }
 
     fn epilogue(&mut self) -> i32 {
-        attack_mission::mission_epilogue(
-            self.rules,
-            crate::sim::mission::MissionType::Attack,
-            &mut self.world.scenario_rng,
-        )
+        self.world
+            .mission_rate_epilogue(self.rules, crate::sim::mission::MissionType::Attack)
     }
 }
