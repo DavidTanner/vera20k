@@ -30,6 +30,9 @@ mod nuke_tests;
 pub mod paradrop;
 #[cfg(test)]
 mod paradrop_tests;
+pub(crate) mod psychic_dominator;
+#[cfg(test)]
+mod psychic_dominator_tests;
 pub mod psychic_reveal;
 
 use crate::rules::ruleset::RuleSet;
@@ -77,9 +80,6 @@ pub(super) fn spawn_cell_anim(
     ry: u16,
     on_bridge_deck: bool,
 ) {
-    if anim_name.trim().is_empty() {
-        return;
-    }
     let level = sim.resolved_terrain.as_ref().map_or(0, |terrain| {
         let flagged = on_bridge_deck
             && terrain.native_cell_flags(terrain.native_cell_identity((rx as i16, ry as i16)))
@@ -93,22 +93,6 @@ pub(super) fn spawn_cell_anim(
             }
         })
     });
-    let type_name = sim.interner.intern(&anim_name.trim().to_ascii_uppercase());
-    let descriptor = crate::sim::components::AnimClassSpawnDescriptor {
-        delay: 0,
-        loop_count: 1,
-        draw_flags: INVOKE_ANIM_DRAW_FLAGS,
-        z_adjust: 0,
-        reverse: false,
-        ..crate::sim::components::AnimClassSpawnDescriptor::new(
-            type_name,
-            rx,
-            ry,
-            crate::util::lepton::CELL_CENTER_LEPTON,
-            crate::util::lepton::CELL_CENTER_LEPTON,
-            level,
-        )
-    };
     let mut world = crate::sim::anim_class::AnimWorldCoord::from_cell_sub_z(
         rx,
         ry,
@@ -121,9 +105,44 @@ pub(super) fn spawn_cell_anim(
         // `Get_Center_Coords` does not.
         world.z = world.z.wrapping_add(INVOKE_ANIM_Z_LIFT_LEPTONS);
     }
-    if let Err(error) = sim.spawn_anim_at_world(rules, descriptor, world) {
-        // An art type that never bound draws nothing natively either.
-        log::debug!("superweapon invoke anim [{anim_name}] did not construct: {error}");
+    spawn_super_anim(sim, rules, anim_name, [world.x, world.y, world.z]);
+}
+
+/// `AnimClass::AnimClass @ 0x00421EA0` with the superweapons' row `(type,
+/// &coord, delay 0, loopCount 1, drawFlags 0x600, zAdjust 0, reverse 0)` at
+/// a world coordinate (leptons) its caller computed: the cell anims above,
+/// the Chronosphere's (`0x006CB431`, `0x006CC5C5..0x006CC674`) and the
+/// Psychic Dominator's (`0x0053AEE5`, `0x0053B139`). An empty name or an art
+/// type that never bound constructs nothing, as natively.
+pub(super) fn spawn_super_anim(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    anim_name: &str,
+    [x, y, z]: [i32; 3],
+) -> Option<crate::sim::anim_class::AnimId> {
+    let name = anim_name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let world = crate::sim::anim_class::AnimWorldCoord { x, y, z };
+    let (rx, ry, sub_x, sub_y, level) = world.to_cell_sub_z();
+    let type_id = sim.interner.intern(&name.to_ascii_uppercase());
+    let descriptor = crate::sim::components::AnimClassSpawnDescriptor {
+        delay: 0,
+        loop_count: 1,
+        draw_flags: INVOKE_ANIM_DRAW_FLAGS,
+        z_adjust: 0,
+        reverse: false,
+        ..crate::sim::components::AnimClassSpawnDescriptor::new(
+            type_id, rx, ry, sub_x, sub_y, level,
+        )
+    };
+    match sim.spawn_anim_at_world(rules, descriptor, world) {
+        Ok(anim) => Some(anim),
+        Err(error) => {
+            log::debug!("superweapon anim [{name}] did not construct: {error}");
+            None
+        }
     }
 }
 
@@ -482,13 +501,17 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
 }
 
 /// Tick already-active global superweapon effects in their native pre-object
-/// scheduler slot.
+/// scheduler slot: `LightningStorm::Process @ 0x0053A6C0` runs the Psychic
+/// Dominator's Process (`0x0053A742`) before the storm's own work. Returns
+/// whether a bridge changed.
 pub fn tick_active_superweapon_effects(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
-) {
+) -> bool {
+    let bridge_changed = psychic_dominator::process(sim, rules, overlay_registry);
     lightning_storm::process(sim, rules, overlay_registry);
+    bridge_changed
 }
 
 /// Refresh superweapon grants for a specific owner by scanning their buildings.

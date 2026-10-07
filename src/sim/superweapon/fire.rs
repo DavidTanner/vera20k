@@ -20,20 +20,18 @@
 //! first grant or click ([`super_instance`]).
 //!
 //! RESIDUALS:
-//! - Launch's cases 7 and 8 (Psychic Dominator, Spy Plane) are not ported:
-//!   a click on one of those does nothing and keeps its charge, where native
-//!   launches and recharges.
+//! - Launch's case 8 (Spy Plane) is not ported: a click on one does nothing
+//!   and keeps its charge, where native launches and recharges.
 //! - A `PostClick=` type whose `PreDependent=` is unset or past the list
 //!   (constructor -1) reads outside the Supers vector natively; VERA pairs
 //!   nothing. Dormant in retail.
-//! - The Psychic Dominator chain: ClickFire's refusal while one is active
-//!   (`PsyDom::Active @ 0x0053B400`, `0x006CB99A`).
 //! - Dormant in retail data: ClickFire's charge-drain arm
 //!   (`0x006CBB8E..0x006CBCA0`; no retail type sets `UseChargeDrain=`) and
 //!   its one-time arm (`0x006CBB3B..0x006CBB8A`; VERA grants no one-time
 //!   Super).
-//! - Presentation: a refused Lightning Storm's message for the player
-//!   (`LightningStorm::PrintMessage @ 0x0053AE00`).
+//! - Presentation: the player's message for a refused Lightning Storm
+//!   (`LightningStorm::PrintMessage @ 0x0053AE00`) or Psychic Dominator
+//!   (`PsyDom::PrintMessage @ 0x0053B410`).
 
 #[cfg(test)]
 #[path = "fire_tests.rs"]
@@ -87,8 +85,9 @@ impl Simulation {
 
 /// `SuperClass::ClickFire @ 0x006CB920` without charge drain: an admitted
 /// Super launches unless a Lightning Storm finds one raging or counting
-/// down (`0x006CB963`); then readiness and recharge as
-/// [`super::SuperWeaponInstance::finish_click_fire`].
+/// down (`0x006CB963`) or a Psychic Dominator finds one active
+/// (`0x006CBAD6`), refusals that keep the charge; then readiness and
+/// recharge as [`super::SuperWeaponInstance::finish_click_fire`].
 fn click_fire(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -110,6 +109,9 @@ fn click_fire(
         return false;
     }
     if sw.kind == SuperWeaponKind::LightningStorm && super::lightning_storm::has_deferment(sim) {
+        return false;
+    }
+    if sw.kind == SuperWeaponKind::PsychicDominator && super::psychic_dominator::active(sim) {
         return false;
     }
     let launched = launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
@@ -189,18 +191,18 @@ fn launch(
             (rx, ry),
             overlay_registry,
         ),
+        SuperWeaponKind::PsychicDominator => {
+            super::psychic_dominator::launch(sim, rules, owner, sw_type_id, (rx, ry))
+        }
         // Refused before ClickFire ([`launch_ported`]).
-        SuperWeaponKind::PsychicDominator | SuperWeaponKind::SpyPlane => false,
+        SuperWeaponKind::SpyPlane => false,
     }
 }
 
 /// Whether [`launch`] ports the type's Launch case; ClickFire is not run for
 /// the others, so their charge survives the click.
 pub(super) const fn launch_ported(kind: SuperWeaponKind) -> bool {
-    !matches!(
-        kind,
-        SuperWeaponKind::PsychicDominator | SuperWeaponKind::SpyPlane
-    )
+    !matches!(kind, SuperWeaponKind::SpyPlane)
 }
 
 /// `owner`'s Super of `sw_type`, created inactive on first use: native

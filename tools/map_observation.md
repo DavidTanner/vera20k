@@ -546,6 +546,41 @@ loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 step
 chain's native comparisons are the `tools.superweapon_oracle` `chrono_*` rows, and no
 whole-run timing or pixel equivalence with gamemd is claimed.
 
+## Psychic Dominator observation
+
+[`map_observation.psychic-dominator.example.json`](map_observation.psychic-dominator.example.json)
+starts America/Battle against a Yuri computer opponent (Easy) with stock rules and
+assets on an [authored map](map_observation/examples/psychic_dominator.map): the
+Chronosphere fixture's terrain with the observer's YAPPET at (46,42) and two GAPOWR, its
+MTNK at (43,53), a Neutral HTNK at (44,54), a Neutral E1 at (45,55), a Neutral HTNK at
+(40,54) and a Neutral GAPOWR at (46,54). `observe_super_weapons` adds the Super rows:
+PsychicDominatorSpecial is granted on the first step (interned id 32, charge start 0,
+9000 frames) and is ready from step 9001. An ordinary `LaunchSuperWeapon` at step 9010
+aims it at (44,54). The loader looks a relative map name up in the retail root: run a
+profile copy whose `launch.selected_map_file` is the tracked map's absolute path.
+
+With release binary SHA-256
+`e9af53f1ab23f251bfa5f9fe54a4ac195132d3280e930035c5f48505560e6cab`
+(31,986,528 bytes) and map SHA-256
+`df5895378341e5c89fa97a215037ee14bf0acfe4d9db6eaeb30657f00e11d99e`, the charge restarts
+at tick 9010. At step 9048, 38 frames later, the strike lands: the Neutral HTNK and E1
+in the 3x3 block (`DominatorCaptureRange=1`) become the observer's, and the observer's
+own MTNK in the block stays its own. The Neutral HTNK three cells off stays Neutral. A
+copy that ends at 9060 shows the Dominator tint, the head over the target and the
+strike on the cell (state hash `3819314389922297142`, BGRA SHA-256
+`43f40774b0ec72121450645a22bec90d51c3a044788e93bc1c134f3834419911`). The 9200-step run
+ends under the ordinary lighting, with the captives still the observer's, ringed, and
+the Neutral GAPOWR in rubble (state hash `16683750687468866032`, BGRA SHA-256
+`18ba69648a0fdda1052dfac0e97de7cd6c13aa1c108ece577f035c51cc0d10c6`). The map is flat,
+so these frames don't show a full relight's NukeLevel top, which only raised cells
+reach. Before the head and ring anims were binder roots, the same run struck at step
+9013. The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `17265848597308621850`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `psydom_*`,
+`update_lighting`, `ambient_step`, `dominator_lighting_read` and `relight` rows, and no
+whole-run timing or pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

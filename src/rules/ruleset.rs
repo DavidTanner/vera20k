@@ -1423,6 +1423,29 @@ pub struct GeneralRules {
     /// Warp's anim over the destination cell (`0x006CC61A`). Retail
     /// `CHRONOTG`.
     pub chrono_blast_dest_anim: String,
+    /// `[General] DominatorWarhead=` (`RulesClass+0x2F8`, ReadString 0x80
+    /// then the warhead lookup at `0x0066DF72`; empty keeps the
+    /// constructor's null warhead): the Psychic Dominator's area damage
+    /// warhead (`PsyDom::MindControlArea @ 0x0053B080`). Retail `DominatorWH`.
+    pub dominator_warhead: String,
+    /// `[General] DominatorFirstAnim=` (`+0x2FC`, `0x0066DFB1`): the anim
+    /// `PsyDom::Start @ 0x0053AE50` raises over the target. Start does
+    /// nothing unless both Dominator anims are set. Retail `PDFXCLD`.
+    pub dominator_first_anim: String,
+    /// `[General] DominatorSecondAnim=` (`+0x300`, `0x0066DFEF`): the anim
+    /// MindControlArea places on the target cell. Retail `PDFXLOC`.
+    pub dominator_second_anim: String,
+    /// `[General] DominatorFireAtPercentage=` (`+0x304`, ReadInt at
+    /// `0x0066E020`, constructor 50): the share of the first anim's frames
+    /// after which the Dominator strikes (`PsychicDominator::Process
+    /// @ 0x0053AF40`).
+    pub dominator_fire_at_percentage: i32,
+    /// `[General] DominatorCaptureRange=` (`+0x308`, `0x0066E040`,
+    /// constructor 2): MindControlArea's cell-spread radius, capped at 10.
+    pub dominator_capture_range: i32,
+    /// `[General] DominatorDamage=` (`+0x30C`, `0x0066E05F`, constructor
+    /// 50): MindControlArea's area damage.
+    pub dominator_damage: i32,
     /// `[General] IonBlast=` (`RulesClass+0x298`), the animation the Genetic
     /// Mutator launch constructs (`SuperClass::Launch 0x006CD8A5`). Retail
     /// `RING1`. The constructor default is a null type: no key, no animation.
@@ -1977,6 +2000,13 @@ impl Default for GeneralRules {
             chrono_placement_anim: String::new(),
             chrono_blast_anim: String::new(),
             chrono_blast_dest_anim: String::new(),
+            dominator_warhead: String::new(),
+            dominator_first_anim: String::new(),
+            dominator_second_anim: String::new(),
+            // RulesClass constructor (`0x00665A91..0x00665AB8`).
+            dominator_fire_at_percentage: 50,
+            dominator_capture_range: 2,
+            dominator_damage: 50,
             ion_blast_anim: String::new(),
             force_shield_radius: 4,
             force_shield_duration: 500,
@@ -2229,6 +2259,15 @@ const VETERAN_RATIO_DEFAULT: f64 = 3.0;
 /// [`VETERAN_RATIO_DEFAULT`]; stock supplies `2`.
 const VETERAN_CAP_DEFAULT: f64 = 2.0;
 
+/// `[General] AmbientChangeRate=` and `AmbientChangeStep=` (Rules `+0x1668`,
+/// `+0x1670`) as `LogicClass::PerTickUpdate`'s ambient fade reads them:
+/// whether the rate is nonzero (`0x0055B351..0x0055B362`), the interval
+/// `ftol(rate * 900)` (`0x0055B3D8..0x0055B3E4`) and the step
+/// `ftol(step * 100)` (`0x0055B447..0x0055B453`).
+pub(crate) fn ambient_change_terms(rate: f64, step: f64) -> (bool, i32, i32) {
+    (rate != 0.0, (rate * 900.0) as i32, (step * 100.0) as i32)
+}
+
 impl GeneralRules {
     /// Drive4B3A65, Ship6A30B4 and Foot/Walk's timer producers retain the
     /// configured double until FLD/FMUL900/ftol7C5F00. In particular, authored
@@ -2349,8 +2388,11 @@ impl GeneralRules {
             general.read_double("ConditionYellowSparkingProbability", 0.01);
         // These are ReadDouble values (single-precision parse widened to f64)
         // and the consumer's ftol boundary chops toward zero.
-        let ambient_change_rate = general.read_double("AmbientChangeRate", 0.2);
-        let ambient_change_step = general.read_double("AmbientChangeStep", 0.2);
+        let (ambient_change_rate_nonzero, ambient_change_interval_frames, ambient_change_step) =
+            ambient_change_terms(
+                general.read_double("AmbientChangeRate", 0.2),
+                general.read_double("AmbientChangeStep", 0.2),
+            );
         Self {
             deploy_dir,
             scroll_multiplier: audio_visual
@@ -2926,9 +2968,9 @@ impl GeneralRules {
             lightning_warhead: general.read_string("LightningWarhead", "", 128),
             weather_con_bolt_explosion: general.read_string("WeatherConBoltExplosion", "", 128),
             weapon_nullify_anim: general.read_string("WeaponNullifyAnim", "", 128),
-            ambient_change_rate_nonzero: ambient_change_rate != 0.0,
-            ambient_change_interval_frames: (ambient_change_rate * 900.0) as i32,
-            ambient_change_step: (ambient_change_step * 100.0) as i32,
+            ambient_change_rate_nonzero,
+            ambient_change_interval_frames,
+            ambient_change_step,
             iron_curtain_duration: combat_damage.read_int("IronCurtainDuration", 750),
             iron_curtain_invoke_anim: general.read_string(
                 "IronCurtainInvokeAnim",
@@ -2938,6 +2980,12 @@ impl GeneralRules {
             chrono_placement_anim: general.read_string("ChronoPlacement", "", 0x80),
             chrono_blast_anim: general.read_string("ChronoBlast", "", 0x80),
             chrono_blast_dest_anim: general.read_string("ChronoBlastDest", "", 0x80),
+            dominator_warhead: general.read_string("DominatorWarhead", "", 0x80),
+            dominator_first_anim: general.read_string("DominatorFirstAnim", "", 0x80),
+            dominator_second_anim: general.read_string("DominatorSecondAnim", "", 0x80),
+            dominator_fire_at_percentage: general.read_int("DominatorFireAtPercentage", 50),
+            dominator_capture_range: general.read_int("DominatorCaptureRange", 2),
+            dominator_damage: general.read_int("DominatorDamage", 50),
             ion_blast_anim: general.read_string("IonBlast", "", 0x80),
             force_shield_radius: general.read_int("ForceShieldRadius", 4) as u32,
             force_shield_duration: general.read_int("ForceShieldDuration", 500),

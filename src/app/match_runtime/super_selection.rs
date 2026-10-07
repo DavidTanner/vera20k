@@ -35,10 +35,11 @@ pub(crate) fn chrono_warp_selected(targeting: Option<&TargetingMode>, rules: &Ru
 }
 
 /// The selection writes of the local player's Supers: Launch case 3 selects
-/// the Chrono Warp (`0x006CC46E`), case 4 clears the selection
-/// (`0x006CCD1C`), and the revoke/suspend pass clears it when the selected
-/// Super's hold changes or it is lost (`HouseClass @ 0x0050AF10`,
-/// `0x0050B181..0x0050B190`). Other houses' Supers leave it alone.
+/// the Chrono Warp (`0x006CC46E`), cases 4 and 7 clear the selection
+/// (`0x006CCD1C`, `0x006CCE41`), and the revoke/suspend pass clears it when
+/// the selected Super's hold changes or it is lost (`HouseClass @
+/// 0x0050AF10`, `0x0050B181..0x0050B190`). Other houses' Supers leave it
+/// alone.
 pub(super) fn follow_selection_writes(
     targeting: &mut Option<TargetingMode>,
     events: &[SimSoundEvent],
@@ -74,7 +75,9 @@ pub(super) fn follow_selection_writes(
                 *targeting = chrono_warp_selection(rules)
                     .map(|name| TargetingMode::SuperWeapon(name.to_string()));
             }
-            Some(SuperWeaponKind::ChronoWarp) if selected.is_some() => {
+            Some(SuperWeaponKind::ChronoWarp | SuperWeaponKind::PsychicDominator)
+                if selected.is_some() =>
+            {
                 *targeting = None;
             }
             _ => {}
@@ -187,6 +190,45 @@ mod tests {
             Some("Americans"),
         );
         assert!(placing.is_some());
+    }
+
+    /// Case 7 clears the local player's Super selection (`0x006CCE41`);
+    /// another house's Dominator leaves it.
+    #[test]
+    fn the_local_dominator_launch_clears_the_selection() {
+        let Some((rules, mut sim, local)) = retail_world() else {
+            return;
+        };
+        let remote = sim.interner.intern("Russians");
+        let dominator = sim.interner.intern("PsychicDominatorSpecial");
+        let launched = |owner| SimSoundEvent::SuperWeaponLaunched {
+            owner,
+            sw_type: dominator,
+            rx: 21,
+            ry: 21,
+        };
+        let selected = || {
+            Some(TargetingMode::SuperWeapon(
+                "PsychicDominatorSpecial".to_string(),
+            ))
+        };
+        let mut targeting = selected();
+        follow_selection_writes(
+            &mut targeting,
+            &[launched(remote)],
+            &sim,
+            &rules,
+            Some("Americans"),
+        );
+        assert_eq!(targeting, selected());
+        follow_selection_writes(
+            &mut targeting,
+            &[launched(local)],
+            &sim,
+            &rules,
+            Some("Americans"),
+        );
+        assert_eq!(targeting, None);
     }
 
     /// The revoke/suspend pass drops the player's selection when the selected

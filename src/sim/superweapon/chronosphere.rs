@@ -57,7 +57,7 @@ use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::anim_class::{AnimId, AnimWorldCoord};
+use crate::sim::anim_class::AnimId;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
@@ -136,47 +136,13 @@ fn create_chrono_anim(
 ) {
     sim.release_super_anim(owner, sw_type);
     let coords = [x, y, z.wrapping_add(CHRONO_ANIM_Z_LIFT)];
-    let anim = spawn_chrono_anim(sim, rules, &rules.general.chrono_placement_anim, coords);
+    let anim = super::spawn_super_anim(sim, rules, &rules.general.chrono_placement_anim, coords);
     if let Some(instance) = sim
         .super_weapons
         .get_mut(&owner)
         .and_then(|weapons| weapons.get_mut(&sw_type))
     {
         instance.placement_anim = anim;
-    }
-}
-
-/// `AnimClass::AnimClass @ 0x00421EA0` with the Chronosphere's row at a
-/// world coordinate its caller raised.
-fn spawn_chrono_anim(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    anim_name: &str,
-    [x, y, z]: [i32; 3],
-) -> Option<AnimId> {
-    let name = anim_name.trim();
-    if name.is_empty() {
-        return None;
-    }
-    let world = AnimWorldCoord { x, y, z };
-    let (rx, ry, sub_x, sub_y, level) = world.to_cell_sub_z();
-    let type_id = sim.interner.intern(&name.to_ascii_uppercase());
-    let descriptor = crate::sim::components::AnimClassSpawnDescriptor {
-        delay: 0,
-        loop_count: 1,
-        draw_flags: super::INVOKE_ANIM_DRAW_FLAGS,
-        z_adjust: 0,
-        reverse: false,
-        ..crate::sim::components::AnimClassSpawnDescriptor::new(
-            type_id, rx, ry, sub_x, sub_y, level,
-        )
-    };
-    match sim.spawn_anim_at_world(rules, descriptor, world) {
-        Ok(anim) => Some(anim),
-        Err(error) => {
-            log::debug!("chronosphere anim [{name}] did not construct: {error}");
-            None
-        }
     }
 }
 
@@ -255,13 +221,13 @@ pub(super) fn launch_warp(
     let [dx, dy, dz] = deck_coords(sim, target);
     let [sx, sy, sz] = deck_coords(sim, source);
     sim.release_super_anim(owner, sw_type);
-    spawn_chrono_anim(
+    super::spawn_super_anim(
         sim,
         rules,
         &rules.general.chrono_blast_dest_anim,
         [dx, dy, dz.wrapping_add(CHRONO_ANIM_Z_LIFT)],
     );
-    spawn_chrono_anim(
+    super::spawn_super_anim(
         sim,
         rules,
         &rules.general.chrono_blast_anim,

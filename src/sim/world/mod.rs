@@ -1298,6 +1298,9 @@ pub struct Simulation {
     /// Active lightning storm state (global — only one at a time).
     pub(crate) lightning_storm:
         Option<crate::sim::superweapon::lightning_storm::LightningStormState>,
+    /// The Psychic Dominator's globals (one at a time).
+    pub(crate) psychic_dominator:
+        crate::sim::superweapon::psychic_dominator::PsychicDominatorState,
     /// Whether superweapon grants have been initialized from map-placed buildings.
     pub(crate) super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend).
@@ -3173,6 +3176,7 @@ impl Simulation {
             power_states: BTreeMap::new(),
             super_weapons: BTreeMap::new(),
             lightning_storm: None,
+            psychic_dominator: Default::default(),
             super_weapons_initialized: false,
             terrain_speed_config: terrain_speed::TerrainSpeedConfig::default(),
             debug_event_logging: false,
@@ -3606,11 +3610,21 @@ impl Simulation {
 
     /// Advance the global ambient scalar before ore and active superweapons.
     /// A storm selecting Ion later in this frame can first move it next frame.
-    fn tick_scenario_lighting_transition(&mut self, rules: &RuleSet) {
+    /// `LogicClass::PerTickUpdate` (`0x0055B33D..0x0055B4D7`) restarts the
+    /// fade timer with `DominatorAmbientChangeRate=` while the Psychic
+    /// Dominator is active (`PsyDom::Active`, `0x0055B3A4`), else with
+    /// `AmbientChangeRate=`; its NukeFlash and chrono screen arm
+    /// (`NukeAmbientChangeRate=`) is not modelled.
+    pub(crate) fn tick_scenario_lighting_transition(&mut self, rules: &RuleSet) {
+        let interval_frames = if crate::sim::superweapon::psychic_dominator::active(self) {
+            self.session.lighting.dominator_change_rate
+        } else {
+            rules.general.ambient_change_interval_frames
+        };
         if self.session.lighting.advance_transition_if_due(
             self.session.binary_frame,
             rules.general.ambient_change_rate_nonzero,
-            rules.general.ambient_change_interval_frames,
+            interval_frames,
             rules.general.ambient_change_step,
         ) {
             self.publish_global_lighting();
@@ -6315,7 +6329,7 @@ impl Simulation {
             // `BombListClass::UpdateAll` follows growth and spread (0x0055B4E1).
             self.bomb_list_update(rules);
             if self.session.game_options.super_weapons {
-                crate::sim::superweapon::tick_active_superweapon_effects(
+                bridge_state_changed |= crate::sim::superweapon::tick_active_superweapon_effects(
                     self,
                     rules,
                     overlay_registry,

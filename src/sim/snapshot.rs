@@ -834,7 +834,12 @@ use crate::sim::world::Simulation;
 // House), Building+5F8 (the Super a Missile mission fires), the House's
 // NukeTarget, PreferredDefensiveCell and its frame, and Bullet+114 (the
 // FirersPalette House). Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 291;
+// 291 -> 292: the Chronosphere's Super saves its source cell and placement
+// anim (+0x62/+0x68) and the Teleport its Chronosphere warp state (both
+// added without a bump at 291); the Psychic Dominator's globals, the
+// Techno's permanent-control byte (+0x2C4) and the map's Dominator lighting
+// profile are added. Prior records lack them.
+const SNAPSHOT_VERSION: u32 = 292;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3840,7 +3845,9 @@ mod tests {
         // 289 -> 290: independent Foot air tracker/slot Cells and callbacks.
         // 290 -> 291: the nuclear missile's Anim, Building, House and Bullet
         // fields.
-        assert_eq!(super::SNAPSHOT_VERSION, 291);
+        // 291 -> 292: the Chronosphere's Super and Teleport state, the Psychic
+        // Dominator's globals, permanent control and Dominator lighting.
+        assert_eq!(super::SNAPSHOT_VERSION, 292);
     }
 
     #[test]

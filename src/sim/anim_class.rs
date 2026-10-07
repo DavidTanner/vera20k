@@ -2252,42 +2252,16 @@ impl Simulation {
         let warhead_ref = self.interner.intern(warhead_name);
         let impact =
             crate::sim::projectile::ProjectileCoord::new(position.x, position.y, position.z);
-        let (rx, ry, sub_x, sub_y, z_leptons) = crate::sim::combat::projectile_impact_cell(impact);
-        let routed_wall = crate::sim::combat::world_receiver::area_routes_to_wall(
-            self,
-            overlay_registry,
-            (rx, ry),
-            warhead,
-        );
-        let aoe = crate::sim::combat::world_receiver::collect_area(
+        // Anim's Apply_area_damage call at0x423EAB completes its bridge
+        // continuation before the combat-light call at0x423EF8.
+        let bridge_state_changed = crate::sim::combat::world_receiver::apply_area_damage(
             self,
             rules,
             overlay_registry,
-            (rx, ry),
+            impact,
             damage,
             warhead,
             (crate::sim::combat::RAD_NO_ATTACKER, None, warhead_ref),
-            Some(crate::sim::combat::combat_aoe::AoEAirImpact {
-                sub_x,
-                sub_y,
-                z_leptons,
-            }),
-            z_leptons.div_euclid(crate::util::lepton::LEPTONS_PER_LEVEL as i32),
-        );
-        let receipt = self.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
-        let mut bridge_state_changed = receipt.bridge_state_changed;
-        // Anim's Apply_area_damage call at0x423EAB completes its bridge
-        // continuation before the combat-light call at0x423EF8.
-        bridge_state_changed |= crate::sim::combat::world_receiver::continue_area_bridge_damage(
-            self,
-            rules,
-            overlay_registry,
-            (rx, ry),
-            damage,
-            warhead_ref,
-            z_leptons,
-            routed_wall,
-            receipt.area_result.expect("area receiver receipt"),
         );
         self.combat_light_requests
             .push(crate::sim::combat::CombatLightRequest {

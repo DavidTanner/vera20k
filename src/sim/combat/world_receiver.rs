@@ -123,6 +123,53 @@ pub(crate) fn collect_area(
     )
 }
 
+/// `Apply_area_damage @ 0x00489280` outside a damage transaction (an
+/// anim's landing at `0x00423EAB`, the Psychic Dominator at `0x0053B16B`):
+/// the area's receivers around `impact` committed in order, then its bridge
+/// continuation (`0x00489E87`). `origin` is the source object, the source
+/// house and the warhead's id. Returns whether a bridge changed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_area_damage(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    impact: ProjectileCoord,
+    damage: i32,
+    warhead: &WarheadType,
+    origin: (u64, Option<InternedId>, InternedId),
+) -> bool {
+    let (rx, ry, sub_x, sub_y, z_leptons) = projectile_impact_cell(impact);
+    let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), warhead);
+    let aoe = collect_area(
+        world,
+        rules,
+        overlay_registry,
+        (rx, ry),
+        damage,
+        warhead,
+        origin,
+        Some(combat_aoe::AoEAirImpact {
+            sub_x,
+            sub_y,
+            z_leptons,
+        }),
+        z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32),
+    );
+    let receipt = world.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
+    let bridge_continued = continue_area_bridge_damage(
+        world,
+        rules,
+        overlay_registry,
+        (rx, ry),
+        damage,
+        origin.2,
+        z_leptons,
+        routed_wall,
+        receipt.area_result.expect("area receiver receipt"),
+    );
+    receipt.bridge_state_changed || bridge_continued
+}
+
 fn commit_smudges(
     world: &mut Simulation,
     rules: &RuleSet,

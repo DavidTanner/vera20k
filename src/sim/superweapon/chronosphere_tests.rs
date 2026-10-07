@@ -28,21 +28,41 @@ pub(crate) const SOURCE: (u16, u16) = (21, 21);
 const TARGET: (u16, u16) = (40, 40);
 
 fn retail_rules() -> Option<RuleSet> {
+    retail_rules_binding(&[
+        ("CHRONOAR", 20),
+        ("CHRONOTG", 20),
+        ("CHRONOFD", 20),
+        ("WARPOUT", 20),
+        ("CHRONOSK", 20),
+    ])
+}
+
+/// Retail rules with `anims`' SHP frame counts bound: the lib suite loads no
+/// SHP.
+pub(crate) fn retail_rules_binding(anims: &[(&str, i32)]) -> Option<RuleSet> {
     let (rules_ini, art_ini) = crate::rules::retail_ini_fixture::retail_rules_and_art()?;
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
-    // The lib suite loads no SHP: bind the chain's anims' frame counts.
-    for name in ["CHRONOAR", "CHRONOTG", "CHRONOFD", "WARPOUT", "CHRONOSK"] {
-        rules.bind_anim_frame_count_for_test(name, 20);
+    for &(name, frames) in anims {
+        rules.bind_anim_frame_count_for_test(name, frames);
     }
     Some(rules)
 }
 
-/// Retail rules and a flat 64x64 map with its zones, Map Size and path
-/// grid: Americans (human) and Russians, in a campaign-mode session (no
-/// multiplayer defeat gate: neither house holds a building).
+/// Retail rules and a flat 64x64 map ([`world_with`]).
 pub(crate) fn retail_world() -> Option<(RuleSet, Simulation, InternedId)> {
-    let rules = retail_rules()?;
+    Some(world_with(retail_rules()?, 64, &[]))
+}
+
+/// `rules` and a `size`-square map, flat but for `levels`, with its zones,
+/// Map Size and path grid: Americans (human) and Russians, in a
+/// campaign-mode session (no multiplayer defeat gate: neither house holds a
+/// building).
+pub(crate) fn world_with(
+    rules: RuleSet,
+    size: u16,
+    levels: &[((u16, u16), u8)],
+) -> (RuleSet, Simulation, InternedId) {
     let mut sim = Simulation::with_seed(17);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
@@ -54,11 +74,19 @@ pub(crate) fn retail_world() -> Option<(RuleSet, Simulation, InternedId)> {
         sim.session.house_order.push(id);
     }
     sim.session.game_options.super_weapons = true;
-    sim.session.map_width = 64;
-    sim.session.map_height = 64;
-    sim.resolved_terrain = Some(test_grid(64, 64, test_terrain_cell));
+    sim.session.map_width = size;
+    sim.session.map_height = size;
+    sim.resolved_terrain = Some(test_grid(size, size, |x, y| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            level: levels
+                .iter()
+                .find(|(at, _)| *at == (x, y))
+                .map_or(0, |&(_, level)| level),
+            ..test_terrain_cell(x, y)
+        }
+    }));
     crate::sim::arena_fixture::supply_native_map(&mut sim);
-    Some((rules, sim, americans))
+    (rules, sim, americans)
 }
 
 fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, at: (u16, u16)) -> u64 {
@@ -73,16 +101,22 @@ pub(crate) fn step(sim: &mut Simulation, rules: &RuleSet) {
 
 /// A charged Chronosphere for `owner`: its recharge timer has run out.
 pub(crate) fn charge_chronosphere(sim: &mut Simulation, owner: InternedId) -> InternedId {
-    let sphere = sim.interner.intern("ChronoSphereSpecial");
-    let mut instance = SuperWeaponInstance::new(sphere, owner);
+    charge_super(sim, owner, "ChronoSphereSpecial")
+}
+
+/// A charged Super of type `name` for `owner`, replacing any it has: its
+/// recharge timer has run out.
+pub(crate) fn charge_super(sim: &mut Simulation, owner: InternedId, name: &str) -> InternedId {
+    let sw_type = sim.interner.intern(name);
+    let mut instance = SuperWeaponInstance::new(sw_type, owner);
     instance.activate(6300, sim.session.binary_frame);
     instance.charge_start_tick -= 6300;
     instance.is_ready = true;
     sim.super_weapons
         .entry(owner)
         .or_default()
-        .insert(sphere, instance);
-    sphere
+        .insert(sw_type, instance);
+    sw_type
 }
 
 /// One click as its SPECIAL_PLACE event, run at the next frame's tail.

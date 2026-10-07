@@ -330,17 +330,17 @@ pub(super) fn dispatch_sim_sound_events(
                         eva_event,
                     }
                 });
-                // Case 4's tail for the player (`0x006CCD17..0x006CCD2D`):
-                // after its line, the `EVA_ChronosphereReady` the
-                // Chronosphere's re-readying queued is dropped.
-                if sw.kind == crate::rules::superweapon_type::SuperWeaponKind::ChronoWarp
+                // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`)
+                // and 7 (`0x006CCE3C..0x006CCE52`): after the case's line,
+                // the queued Ready line is dropped.
+                if let Some(ready) = launch_drops_ready_line(sw.kind)
                     && owner_is_local(&sim.interner, owner, local_owner_name)
                 {
                     if let Some(activated) = activated {
                         output.push(activated);
                     }
                     output.push(GameSoundEvent::EvaRemove {
-                        event: "EVA_ChronosphereReady".to_string(),
+                        event: ready.to_string(),
                     });
                     continue;
                 }
@@ -984,6 +984,21 @@ fn base_under_attack_siren(
     })
 }
 
+/// The Ready line `VoxClass::RemoveFromQueues @ 0x00752A40` drops after the
+/// local player's launch: the Chrono Warp's case 4 drops the Chronosphere's
+/// (`0x006CCD2D`, `EVA_ChronosphereReady`), the Psychic Dominator's case 7
+/// its own (`0x006CCE52`, `EVA_PsychicDominatorReady`).
+fn launch_drops_ready_line(
+    kind: crate::rules::superweapon_type::SuperWeaponKind,
+) -> Option<&'static str> {
+    use crate::rules::superweapon_type::SuperWeaponKind as K;
+    match kind {
+        K::ChronoWarp => Some("EVA_ChronosphereReady"),
+        K::PsychicDominator => Some("EVA_PsychicDominatorReady"),
+        _ => None,
+    }
+}
+
 /// `HouseClass::IsHumanPlayer @ 0x0050B6F0` as the EVA sites use it: in a
 /// multiplayer game it is `this == PlayerPtr`, the local player. The sim
 /// carries house identity; the app holds the local name.
@@ -1544,23 +1559,41 @@ mod tests {
     /// launching player only `RemoveFromQueues(EVA_ChronosphereReady)`; its
     /// two radar events reach the client's radar and play nothing.
     #[test]
-    fn chrono_warp_launch_drops_the_ready_line_for_its_player_only() {
+    fn launch_drops_the_ready_line_for_its_player_only() {
+        for (name, activated, ready) in [
+            (
+                "ChronoWarpSpecial",
+                "EVA_ChronosphereActivated",
+                "EVA_ChronosphereReady",
+            ),
+            (
+                "PsychicDominatorSpecial",
+                "EVA_PsychicDominatorActivated",
+                "EVA_PsychicDominatorReady",
+            ),
+        ] {
+            launch_drops_the_ready_line(name, activated, ready);
+        }
+    }
+
+    fn launch_drops_the_ready_line(name: &str, activated: &str, ready: &str) {
         use crate::sim::radar::{RadarEventRequest, RadarEventType};
 
         let rules =
             crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
                 "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
                  [BuildingTypes]\n[SuperWeaponTypes]\n0=ChronoWarpSpecial\n\
-                 [ChronoWarpSpecial]\nType=ChronoWarp\n",
+                 1=PsychicDominatorSpecial\n[ChronoWarpSpecial]\nType=ChronoWarp\n\
+                 [PsychicDominatorSpecial]\nType=PsychicDominator\n",
             ))
             .unwrap();
         let mut sim = Simulation::new();
         let local = sim.interner.intern("Local");
         let remote = sim.interner.intern("Remote");
-        let warp = sim.interner.intern("ChronoWarpSpecial");
+        let sw_type = sim.interner.intern(name);
         let launched = |owner| SimSoundEvent::SuperWeaponLaunched {
             owner,
-            sw_type: warp,
+            sw_type,
             rx: 40,
             ry: 40,
         };
@@ -1595,9 +1628,9 @@ mod tests {
                     GameSoundEvent::SuperWeaponActivated { eva_event: Some(remote_line), .. },
                     GameSoundEvent::SuperWeaponActivated { eva_event: Some(local_line), .. },
                     GameSoundEvent::EvaRemove { event },
-                ] if remote_line == "EVA_ChronosphereActivated"
-                    && local_line == "EVA_ChronosphereActivated"
-                    && event == "EVA_ChronosphereReady"
+                ] if remote_line == activated
+                    && local_line == activated
+                    && event == ready
             ),
             "{emitted:?}"
         );

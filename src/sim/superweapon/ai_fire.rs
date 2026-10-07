@@ -27,9 +27,9 @@
 //!   aims by its own pickers. `AI_FindTeamTarget @ 0x0050D170`, which another
 //!   preferred type selects (its first team's leader's Greatest_Threat), is
 //!   therefore not ported.
-//! - The Psychic Dominator arm (`AI_Fire_PsyDom @ 0x0050A150`) is not ported,
-//!   nor is Launch's case 7: a computer house never fires its Dominator. The
-//!   arm draws no random numbers.
+//! - The Psychic Dominator arm (`AI_Fire_PsyDom @ 0x0050A150`) is not
+//!   ported: a computer house never fires its Dominator. The arm draws no
+//!   random numbers.
 //! - Launch's case 8 is not ported: a computer's charged Spy Plane takes its
 //!   arm but stops before the cell search, as Fire_SW would refuse the click,
 //!   and the Super stays charged. Trigger: every computer house with a Soviet

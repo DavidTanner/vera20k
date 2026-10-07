@@ -43,8 +43,12 @@
 //!   house whose refinery or harvesters are gone (`0x004F6540`); natively it
 //!   sells, abandons and rechooses production to rebuild them, drawing in
 //!   AI_Choose_Building; VERA's keeps its queue.
-//! - All_To_Hunt's Psychic Dominator arm (`+0x2C4`, `sim::capture_manager`'s
-//!   residual) never applies; an occupied building's release with Hunt
+//! - All_To_Hunt's Psychic Dominator arm (`0x0050144B..0x005014AA`: a
+//!   permanently controlled `Insignificant=` object of a house that is not
+//!   human takes its type's `Strength=` as C4 damage instead of hunting) is
+//!   not ported: a computer house owns such an object only after its own
+//!   Dominator strikes, and `AI_Fire_PsyDom` is not ported.
+//! - All_To_Hunt's release of an occupied building with Hunt
 //!   (`0x00457DE0(1, 0)`, whose occupants also leave their teams at
 //!   `0x0045812B`) is not ported: no VERA computer house garrisons a
 //!   building, as no garrison script action is ported.
