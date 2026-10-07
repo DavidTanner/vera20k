@@ -1079,6 +1079,13 @@ impl Simulation {
                 return Ok(outcome);
             }
         }
+        // AircraftClass::AI after FootClass::AI: past the map's edge the
+        // aircraft may be removed (`0x00414F47..0x00414FDE`), ending its AI.
+        if let Some(rules) = rules
+            && sim.remove_aircraft_off_map(stable_id, rules, overlay_registry)
+        {
+            return Ok(outcome);
+        }
         // UnitClass::AI after FootClass::AI, before its second Ready/Commence.
         crate::sim::miner::miner_system::unit_ai_clear_harvesting(sim, stable_id);
         // Unit7365E1 Fire_At_Target then7365E8 Facing_Update precede

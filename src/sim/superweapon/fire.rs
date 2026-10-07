@@ -20,8 +20,6 @@
 //! first grant or click ([`super_instance`]).
 //!
 //! RESIDUALS:
-//! - Launch's case 8 (Spy Plane) is not ported: a click on one does nothing
-//!   and keeps its charge, where native launches and recharges.
 //! - A `PostClick=` type whose `PreDependent=` is unset or past the list
 //!   (constructor -1) reads outside the Supers vector natively; VERA pairs
 //!   nothing. Dormant in retail.
@@ -98,10 +96,6 @@ fn click_fire(
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
     if sw.use_charge_drain {
-        return false;
-    }
-    if !launch_ported(sw.kind) {
-        log::warn!("SuperWeapon kind {:?} not yet implemented", sw.kind);
         return false;
     }
     let instance = super_instance(sim, owner, sw_type_id);
@@ -194,15 +188,10 @@ fn launch(
         SuperWeaponKind::PsychicDominator => {
             super::psychic_dominator::launch(sim, rules, owner, sw_type_id, (rx, ry))
         }
-        // Refused before ClickFire ([`launch_ported`]).
-        SuperWeaponKind::SpyPlane => false,
+        SuperWeaponKind::SpyPlane => {
+            super::spy_plane::launch(sim, rules, owner, sw_type_id, (rx, ry))
+        }
     }
-}
-
-/// Whether [`launch`] ports the type's Launch case; ClickFire is not run for
-/// the others, so their charge survives the click.
-pub(super) const fn launch_ported(kind: SuperWeaponKind) -> bool {
-    !matches!(kind, SuperWeaponKind::SpyPlane)
 }
 
 /// `owner`'s Super of `sw_type`, created inactive on first use: native

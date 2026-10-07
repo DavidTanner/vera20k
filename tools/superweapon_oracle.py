@@ -9,7 +9,9 @@ src/sim/projectile/launch.rs (both velocities), src/sim/combat/nuke_maker_tests.
 src/sim/superweapon/ai_fire_tests.rs (the ai_* sections),
 src/sim/superweapon/chronosphere_tests.rs (the chrono_* sections) and
 src/sim/superweapon/psychic_dominator_tests.rs (psydom_*, update_lighting,
-ambient_step).
+ambient_step), src/sim/superweapon/spy_plane_tests.rs (spy_plane_launch,
+send_spy_planes, spyplane_missions) and src/sim/aircraft/leave_map_tests.rs
+(aircraft_leave_map).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -82,6 +84,21 @@ fixture machinery):
 - relight: CellClass::ProcessColourComponents 0x484180's Ground/Level arms
   (0x48445F..0x4845A2) for each storm, Dominator and NukeFlash state: the
   Dominator's top scalar reads NukeLevel (+0x3574), its bottom DominatorLevel.
+- spy_plane_launch: Launch 0x6CC390 from its entry for a Type= 8 Super, case
+  8 (0x6CD66F..0x6CD70B): the charge gate, the SPYP lookup, the cell and its
+  dummy, the AllyParaDrop length test and loop, and the player's EVA tail.
+- send_spy_planes: HouseClass::SendSpyPlanes 0x65EAB0 with case 8's
+  arguments: the ScenarioInit bracket, the mission-only byte, the edge
+  (+0x1E0, else GetEdge 0x50DA80, run natively), the call order, the Unlimbo
+  coordinate and the failure paths.
+- spyplane_missions: Mission_SpyplaneApproach 0x4155F0 and
+  Mission_SpyplaneOverfly 0x4157C0 with ReReveal 0x70B1D0, UpdateReveal
+  0x70AF50 and GetOppositeEdge 0x50DAC0 run natively: the branches by Target,
+  NavCom and distance, the reveal radius and latch, the sound, the queued
+  missions, +0x6D2, the edge cell (and the empty cell) and the frames.
+- aircraft_leave_map: AircraftClass::AI's removal block 0x414F47..0x414FDF as
+  a slice, with GetMapCoords 0x41BEA0, IsCellInPlayfield 0x578460, In_Bounds
+  0x568300, the predicate 0x41B890 and Get_Mission 0x5B3040 run natively.
 """
 from pathlib import Path
 import math
@@ -2482,6 +2499,374 @@ def relight():
     return rows
 
 
+# ---------------------------------------------------------------- spy plane
+
+TYPE_SPY_PLANE = 8
+AIRCRAFT_TYPE_ITEMS = 0xA8B21C
+SCENARIO_INIT = 0xA8E7AC
+# The local client's selected Super (VERA: `super_selection`); the player's
+# Launch tails write -1 to it.
+SELECTED_SUPER = 0x8809A0
+DUMMY_CELL = 0xABDC50
+SPY = BASE + 0x390000
+SPY_CELL = SPY
+SPY_TARGET = SPY + 0x100
+SPY_NAV_COM = SPY + 0x200
+SPY_DESTINATION_CELL = SPY + 0x300
+SPY_TEAM = SPY + 0x400
+SPY_TYPE = SPY + 0x1000
+SPY_TYPE_VT = SPY + 0x2000
+SPY_TYPE_ITEMS = SPY + 0x3000
+SPY_PLANE_VT = SPY + 0x4000
+SPY_WEAPON = SPY + 0x5000
+SPY_WEAPON_TYPE = SPY + 0x6000
+SPY_PLANES = SPY + 0x10000
+SPY_PLANE_STRIDE = 0x1000
+SPY_TYPE_INDEX = 5
+# The fixture plane's Location (and so its cell, 40, 40) for the missions.
+SPY_LOCATION = (40 * 256 + 128, 40 * 256 + 128, 1500)
+# The removal rows' Map Size height (MapClass+0xF8), with PLAYFIELD's width.
+SPY_SIZE_HEIGHT = 46
+
+STUB_SPY_CREATE = STUBS + 0x700
+STUB_SPY_QUEUE = STUBS + 0x710
+STUB_SPY_DESTINATION = STUBS + 0x720
+STUB_SPY_TARGET = STUBS + 0x730
+STUB_SPY_UNLIMBO = STUBS + 0x740
+STUB_SPY_COMMENCE = STUBS + 0x750
+STUB_SPY_DELETE = STUBS + 0x760
+STUB_SPY_WEAPON = STUBS + 0x770
+STUB_SPY_TECHNO_TYPE = STUBS + 0x780
+STUB_SPY_UNINIT = STUBS + 0x790
+
+
+def spy_name(address):
+    names = {0: 'null', SPY_TARGET: 'target', SPY_DESTINATION_CELL: 'edge_cell',
+             DUMMY_CELL: 'dummy'}
+    return names.get(address, hex(address))
+
+
+def spy_plane_launch_row(*, charged=True, type_index=SPY_TYPE_INDEX, cell='real',
+                         counts=(1, 1), player=True):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 8:
+    case 8 (0x6CD66F..0x6CD70B), the player's selection write (0x6CD6F8) and
+    the shared EVA tail (0x6CD51E)."""
+    emu = Emu()
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, HOUSE)
+    emu.write32(SW_TYPE + 0xB4, TYPE_SPY_PLANE)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.uc.mem_write(SPY_CELL, struct.pack('<hh', 40, 40))
+    emu.write32(RULES + 0xC4C, counts[0])
+    emu.write32(RULES + 0xC68, counts[1])
+    emu.write32(SELECTED_SUPER, 9)
+    found = {'null': 0, 'dummy': DUMMY_CELL, 'real': SPY_TARGET}[cell]
+
+    def find_type(e):
+        e.events.append(['find_aircraft_type',
+                         read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return type_index
+
+    def lookup(e):
+        e.events.append(['map_cell', read_cell(e, e.arg(0))])
+        return found
+
+    def send(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != HOUSE:
+            raise OracleError('SendSpyPlanes on another house')
+        e.events.append(['send_spy_planes', i32(e.uc.reg_read(UC_X86_REG_EDX)), e.arg(0),
+                         e.arg(1), spy_name(e.arg(2)), spy_name(e.arg(3))])
+        return 1
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.hook(0x41CAA0, find_type, 0)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(0x65EAB0, send, 0x10)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[SPY_CELL, int(player)])
+    return dict(charged=charged, type_index=type_index, cell=cell, counts=list(counts),
+                player=player, events=emu.events,
+                selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def spy_plane_launch():
+    rows = [spy_plane_launch_row(charged=False)]
+    for cell in ('null', 'dummy', 'real'):
+        for type_index in (-1, SPY_TYPE_INDEX):
+            for player in (False, True):
+                rows.append(spy_plane_launch_row(cell=cell, type_index=type_index,
+                                                 player=player))
+    for counts in ((0, 0), (1, 2), (2, 1), (2, 2), (3, 3)):
+        rows.append(spy_plane_launch_row(counts=counts, player=False))
+    return rows
+
+
+def send_spy_planes_row(*, count=1, edge=-1, waypoint_edge=0, picks=((30, 1),),
+                        created=None, unlimbo=None):
+    """HouseClass::SendSpyPlanes 0x65EAB0 with case 8's arguments (mission
+    0x1E, the clicked cell as Target, no destination)."""
+    emu = Emu()
+    emu.write32(AIRCRAFT_TYPE_ITEMS, SPY_TYPE_ITEMS)
+    emu.write32(SPY_TYPE_ITEMS + 4 * SPY_TYPE_INDEX, SPY_TYPE)
+    emu.write32(SPY_TYPE, SPY_TYPE_VT)
+    emu.write32(SPY_TYPE_VT + 0x8C, STUB_SPY_CREATE)
+    emu.write32(HOUSE + 0x1E0, edge)
+    emu.write32(HOUSE + 0x577C, waypoint_edge)
+    for slot, stub in ((0x1E8, STUB_SPY_QUEUE), (0x480, STUB_SPY_DESTINATION),
+                       (0x3C8, STUB_SPY_TARGET), (0xD8, STUB_SPY_UNLIMBO),
+                       (0x1EC, STUB_SPY_COMMENCE), (0x20, STUB_SPY_DELETE)):
+        emu.write32(SPY_PLANE_VT + slot, stub)
+    created = list(created if created is not None else [True] * count)
+    unlimbo = list(unlimbo if unlimbo is not None else [True] * count)
+    requested = [list(cell) for cell in picks]
+    picks = list(picks)
+    planes = []
+
+    def plane(e):
+        return planes.index(e.uc.reg_read(UC_X86_REG_ECX))
+
+    def create(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != SPY_TYPE or e.arg(0) != HOUSE:
+            raise OracleError('CreateObject on another type or house')
+        made = created.pop(0)
+        e.events.append(['create', e.read_i32(SCENARIO_INIT), made])
+        if not made:
+            return 0
+        this = SPY_PLANES + SPY_PLANE_STRIDE * len(planes)
+        planes.append(this)
+        e.write32(this, SPY_PLANE_VT)
+        return this
+
+    def pick(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != MAP:
+            raise OracleError('PickCellOnEdge on another map')
+        out = e.arg(0)
+        e.events.append(['pick_cell_on_edge', i32(e.arg(1)), hex(e.arg(2)), hex(e.arg(3)),
+                         e.arg(4), e.arg(5) & 0xFF, e.arg(6) & 0xFF,
+                         [read8(e, this + 0x3D4) for this in planes]])
+        e.uc.mem_write(out, struct.pack('<hh', *picks.pop(0)))
+        return out
+
+    def unlimbo_stub(e):
+        e.events.append(['unlimbo', plane(e), read_coord(e, e.arg(0)), e.arg(1),
+                         e.read_i32(SCENARIO_INIT)])
+        return int(unlimbo.pop(0))
+
+    emu.hook(STUB_SPY_CREATE, create, 4)
+    emu.hook(0x4AA440, pick, 0x1C)
+    emu.hook(STUB_SPY_QUEUE, lambda e: e.events.append(
+        ['queue', plane(e), e.arg(0), e.arg(1)]), 8)
+    emu.hook(STUB_SPY_DESTINATION, lambda e: e.events.append(
+        ['destination', plane(e), spy_name(e.arg(0)), e.arg(1) & 0xFF]), 8)
+    emu.hook(STUB_SPY_TARGET, lambda e: e.events.append(
+        ['target', plane(e), spy_name(e.arg(0))]), 4)
+    emu.hook(STUB_SPY_UNLIMBO, unlimbo_stub, 8)
+    emu.hook(STUB_SPY_COMMENCE, lambda e: e.events.append(['commence', plane(e)]), 0)
+    emu.hook(STUB_SPY_DELETE, lambda e: e.events.append(
+        ['delete', plane(e), e.arg(0) & 0xFF]), 4)
+    sent = emu.invoke(0x65EAB0, ecx=HOUSE, edx=SPY_TYPE_INDEX,
+                      args=[count, 0x1E, SPY_TARGET, 0])
+    return dict(count=count, edge=edge, waypoint_edge=waypoint_edge,
+                picks=requested, returned=i32(sent),
+                mission_only=[read8(emu, this + 0x3D4) for this in planes],
+                scenario_init=emu.read_i32(SCENARIO_INIT), events=emu.events)
+
+
+def send_spy_planes():
+    rows = [send_spy_planes_row(waypoint_edge=edge) for edge in (0, 1, 2, 3, -1, 4)]
+    rows += [send_spy_planes_row(edge=2), send_spy_planes_row(edge=4, waypoint_edge=3),
+             send_spy_planes_row(created=[False]), send_spy_planes_row(unlimbo=[False]),
+             send_spy_planes_row(picks=((70, 45),))]
+    return rows
+
+
+def spyplane_mission_row(*, mission, target=True, nav_com=True, distance=0, weapon_range=5120,
+                         damage=6, waypoint_edge=0, pick=(30, 1), in_playfield=True,
+                         passive=False, latched=False, camera=17, frames=12):
+    """Mission_SpyplaneApproach 0x4155F0 or Mission_SpyplaneOverfly 0x4157C0
+    on a fixture plane at SPY_LOCATION, ReReveal 0x70B1D0 and UpdateReveal
+    0x70AF50 run natively (Sight=0, no veterancy, Location 1500 leptons up)."""
+    emu = Emu()
+    plane = SPY_PLANES
+    emu.write32(plane, SPY_PLANE_VT)
+    emu.write32(plane + 0x21C, HOUSE)
+    emu.write32(HOUSE + 0x34, HOUSE_TYPE)
+    write8(emu, HOUSE_TYPE + 0x1A6, passive)
+    emu.write32(HOUSE + 0x577C, waypoint_edge)
+    emu.write32(plane + 0x2B4, SPY_TARGET if target else 0)
+    emu.write32(plane + 0x5A4, SPY_NAV_COM if nav_com else 0)
+    write_coord(emu, plane + 0x9C, SPY_LOCATION)
+    write8(emu, plane + 0x3D5, in_playfield)
+    write8(emu, plane + 0x250, latched)
+    write_coord(emu, plane + 0x254, (30 * 256 + 128, 40 * 256 + 128, 1500))
+    emu.write32(plane + 0x260, 4)
+    emu.write32(SPY_TYPE + 0x5E8, 0)
+    emu.write32(RULES + 0x16BC, 2000)
+    emu.write32(RULES + 0x280, camera)
+    emu.write32(RULES + 0x290, frames)
+    emu.write32(SPY_WEAPON, SPY_WEAPON_TYPE)
+    emu.write32(SPY_WEAPON_TYPE + 0xB4, weapon_range)
+    emu.write32(SPY_WEAPON_TYPE + 0xA4, damage)
+    for slot, stub in ((0x84, STUB_SPY_TECHNO_TYPE), (0x3F8, STUB_SPY_WEAPON),
+                       (0x480, STUB_SPY_DESTINATION), (0x1E8, STUB_SPY_QUEUE),
+                       (0x48C, 0x70B1D0), (0x488, 0x70AF50)):
+        emu.write32(SPY_PLANE_VT + slot, stub)
+
+    def distance_to(e):
+        e.events.append(['distance_to', spy_name(e.arg(0))])
+        return distance if e.arg(0) else 0
+
+    def weapon(e):
+        if e.arg(0) != 0:
+            raise OracleError('GetWeapon for a secondary weapon')
+        return SPY_WEAPON
+
+    def pick_stub(e):
+        e.events.append(['pick_cell_on_edge', i32(e.arg(1)), hex(e.arg(2)), hex(e.arg(3)),
+                         e.arg(4), e.arg(5) & 0xFF, e.arg(6) & 0xFF])
+        e.uc.mem_write(e.arg(0), struct.pack('<hh', *pick))
+        return e.arg(0)
+
+    def lookup(e):
+        e.events.append(['map_cell', read_cell(e, e.arg(0))])
+        return SPY_DESTINATION_CELL
+
+    def reveal(e):
+        e.events.append(['reveal', read_coord(e, e.arg(0)), i32(e.arg(1)),
+                         spy_name(e.arg(2)) if e.arg(2) != HOUSE else 'owner',
+                         e.arg(3) & 0xFF, e.arg(4) & 0xFF, e.arg(5) & 0xFF,
+                         e.arg(6) & 0xFF, e.arg(7) & 0xFF])
+
+    def fog_border(e):
+        e.events.append(['fog_border', read_coord(e, e.arg(0)), e.arg(1) & 0xFF,
+                         i32(e.arg(2)), e.arg(3) & 0xFF])
+
+    def play_at(e):
+        e.events.append(['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+                         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), e.arg(0)])
+
+    emu.hook(STUB_SPY_TECHNO_TYPE, lambda _e: SPY_TYPE, 0)
+    emu.hook(STUB_SPY_WEAPON, weapon, 4)
+    emu.hook(STUB_SPY_DESTINATION, lambda e: e.events.append(
+        ['destination', spy_name(e.arg(0)), e.arg(1) & 0xFF]), 8)
+    emu.hook(STUB_SPY_QUEUE, lambda e: e.events.append(['queue', e.arg(0), e.arg(1)]), 8)
+    emu.hook(0x5F6440, distance_to, 4)
+    emu.hook(0x4AA440, pick_stub, 0x1C)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(0x5678E0, reveal, 0x20)
+    emu.hook(0x567DA0, fog_border, 0x10)
+    emu.hook(0x7509E0, play_at, 4)
+    entry = {'approach': 0x4155F0, 'overfly': 0x4157C0}[mission]
+    frames_out = emu.invoke(entry, ecx=plane)
+    return dict(mission=mission, target=target, nav_com=nav_com, distance=distance,
+                weapon_range=weapon_range, damage=damage, waypoint_edge=waypoint_edge,
+                pick=list(pick), in_playfield=in_playfield, passive=passive,
+                latched=latched, camera=camera, frames=frames,
+                returned=i32(frames_out), events=emu.events,
+                action_latch=read8(emu, plane + 0x6D2),
+                reveal_latch=read8(emu, plane + 0x250),
+                reveal_radius=emu.read_i32(plane + 0x260),
+                reveal_coord=read_coord(emu, plane + 0x254))
+
+
+def spyplane_missions():
+    rows = []
+    for mission in ('approach', 'overfly'):
+        def row(**kwargs):
+            rows.append(spyplane_mission_row(mission=mission, **kwargs))
+        for distance in (0, 1, 0x2FF, 0x300, 0x301, 5119, 5120, 5121, 9000):
+            row(distance=distance)
+        for distance in (0x200, 4000, 9000):
+            row(distance=distance, nav_com=False)
+        row(target=False)
+        row(target=False, nav_com=False)
+        for waypoint_edge in (1, 2, 3, -1, 4):
+            row(distance=0x200, nav_com=False, waypoint_edge=waypoint_edge)
+        row(distance=0x200, nav_com=False, pick=(0, 0))
+        row(distance=0x200, nav_com=False, pick=(0, 7))
+        row(distance=100, passive=True)
+        row(distance=100, in_playfield=False)
+        row(distance=100, latched=True)
+        row(distance=100, camera=-1)
+        row(distance=100, damage=0)
+        row(distance=100, damage=11)
+        row(distance=100, weapon_range=0)
+        row(distance=100, frames=0)
+    return rows
+
+
+def aircraft_leave_map_row(*, cell, fly_by=False, fly_back=False, target=False,
+                           current=0x1F, queued=-1, in_playfield=True, team=None,
+                           mission_only=True):
+    """AircraftClass::AI's removal block 0x414F47..0x414FDF run as a slice on
+    a fixture frame (ESI the plane), with GetMapCoords 0x41BEA0, In_Bounds
+    0x568300, IsCellInPlayfield 0x578460 (mode one; every cell lookup misses),
+    the predicate 0x41B890 and Get_Mission 0x5B3040 run natively."""
+    emu = Emu()
+    install_playfield(emu)
+    emu.write32(MAP + 0xF8, SPY_SIZE_HEIGHT)
+    plane = SPY_PLANES
+    emu.write32(plane, SPY_PLANE_VT)
+    emu.write32(plane + 0x6C4, SPY_TYPE)
+    write8(emu, SPY_TYPE + 0xE0B, fly_by)
+    write8(emu, SPY_TYPE + 0xE0C, fly_back)
+    write_coord(emu, plane + 0x9C, (cell[0] * 256 + 128, cell[1] * 256 + 128, 1500))
+    emu.write32(plane + 0x2B4, SPY_TARGET if target else 0)
+    emu.write32(plane + 0xAC, current)
+    emu.write32(plane + 0xB4, queued)
+    write8(emu, plane + 0x3D5, in_playfield)
+    write8(emu, plane + 0x3D4, mission_only)
+    emu.write32(plane + 0x5D4, SPY_TEAM if team is not None else 0)
+    for slot, stub in ((0x1B8, 0x41BEA0), (0x4DC, 0x41B890), (0x184, 0x5B3040),
+                       (0xF8, STUB_SPY_UNINIT)):
+        emu.write32(SPY_PLANE_VT + slot, stub)
+
+    def team_stub(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != SPY_TEAM:
+            raise OracleError('the team call on another object')
+        e.events.append(['team'])
+        return int(team)
+
+    emu.hook(0x6EC300, team_stub, 0)
+    emu.hook(STUB_SPY_UNINIT, lambda e: e.events.append(['uninit']), 0)
+    emu.mark(0x568300, ['in_bounds'])
+    emu.mark(0x578460, ['in_playfield'])
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ESI, plane)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    end = run_checked(uc, 0x414F47, (0x414F99, 0x414FD7, 0x414FDF), count=100_000)
+    return dict(cell=list(cell), fly_by=fly_by, fly_back=fly_back, target=target,
+                current=current, queued=queued, in_playfield=in_playfield, team=team,
+                mission_only=mission_only, playfield=PLAYFIELD,
+                size_height=SPY_SIZE_HEIGHT, removed=end != 0x414FDF, events=emu.events)
+
+
+def aircraft_leave_map():
+    rows = []
+    # Inside the playfield; outside it but in the Size diamond (low sum, a
+    # wide difference); outside the diamond on each of its four sides.
+    cells = ((30, 30), (22, 22), (60, 30), (19, 19), (90, 45), (61, 20), (20, 61))
+    for cell in cells:
+        for fly_by, fly_back in ((False, False), (True, False), (False, True)):
+            rows.append(aircraft_leave_map_row(cell=cell, fly_by=fly_by, fly_back=fly_back))
+    for cell in ((22, 22), (19, 19)):
+        for case in (dict(target=True), dict(target=True, current=0x1E),
+                     dict(in_playfield=False), dict(current=0x1A), dict(current=0x1B),
+                     dict(current=-1, queued=0x1A), dict(current=-1, queued=0x1B),
+                     dict(current=-1, queued=-1), dict(current=4),
+                     dict(mission_only=False), dict(team=False), dict(team=True),
+                     dict(team=False, mission_only=False)):
+            rows.append(aircraft_leave_map_row(cell=cell, **case))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -2500,6 +2885,10 @@ def generate():
             'ambient_step': ambient_step(),
             'dominator_lighting_read': dominator_lighting_read(),
             'relight': relight(),
+            'spy_plane_launch': spy_plane_launch(),
+            'send_spy_planes': send_spy_planes(),
+            'spyplane_missions': spyplane_missions(),
+            'aircraft_leave_map': aircraft_leave_map(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -2526,7 +2915,10 @@ if __name__ == '__main__':
                'stages, Start\'s writes, UpdateLighting\'s targets and RecalcLighting '
                'arguments, the ambient fade\'s intervals, clamp and step, the map\'s '
                'Dominator lighting defaults and conversions, and the Ground/Level a '
-               'full cell relight adds in each lighting state'),
+               'full cell relight adds in each lighting state; the Spy Plane\'s launch '
+               'case, SendSpyPlanes\' calls and writes, both Spy Plane missions\' '
+               'branches, reveals, sound, queued missions, destinations and frames, '
+               'and the aircraft off-map removal and its predicate'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -2608,7 +3000,27 @@ if __name__ == '__main__':
                        'scalars, [ESP+0x44] at the gathered additive and EDI at a fixture '
                        'cell holding only its level; the '
                        'Scenario comes from Set_Defaults\' block as in '
-                       'dominator_lighting_read, with authored Ground/Level stand-ins'],
+                       'dominator_lighting_read, with authored Ground/Level stand-ins',
+                       'spy_plane_launch: AircraftTypeClass::FindIndex 0x41CAA0 answers '
+                       'the row\'s index; MapClass::operator[] 0x5657A0 answers NULL, the '
+                       'dummy 0xABDC50 or a fixture cell; SendSpyPlanes 0x65EAB0 and the '
+                       'EVA calls 0x753250/0x752A40 are recorded stubs',
+                       'send_spy_planes: CreateObject (type vt+0x8C) answers a fixture '
+                       'plane or NULL; PickCellOnEdge 0x4AA440 answers the row\'s cell '
+                       '(its draws are tools/spatial_oracle/aircraft_states.py\'s); the '
+                       'plane\'s Queue_Mission, Assign_Destination, SetTarget, Unlimbo '
+                       '(answering the row), vt+0x1EC and the delete are recorded stubs',
+                       'spyplane_missions: Distance_To 0x5F6440 answers the row\'s '
+                       'distance, and 0 for a NULL target as its head does; GetWeapon '
+                       'vt+0x3F8 a fixture weapon with the row\'s Range and Damage; '
+                       'GetTechnoType vt+0x84 a type with Sight=0; the reveal 0x5678E0, '
+                       'the fog border 0x567DA0, VocClass::PlayAt 0x7509E0, '
+                       'Queue_Mission and Assign_Destination are recorded stubs; '
+                       'PickCellOnEdge answers the row\'s cell and MapClass::operator[] '
+                       'a fixture cell',
+                       'aircraft_leave_map: the slice runs on a fixture frame with ESI '
+                       'the plane; Map Size is PLAYFIELD\'s width by 46; the team call '
+                       '0x6EC300 answers the row; UnInit vt+0xF8 is a recorded stub'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -2624,4 +3036,9 @@ if __name__ == '__main__':
                       'LogicClass::PerTickUpdate_ambient_fade': 0x55B33D,
                       'ScenarioClass::Set_Defaults_lighting': 0x683915,
                       'ScenarioClass::Read_INI_Basic_dominator': 0x68AAFD,
-                      'CellClass::ProcessColourComponents_profile_arms': 0x48445F}))
+                      'CellClass::ProcessColourComponents_profile_arms': 0x48445F,
+                      'SuperClass::Launch_case8': 0x6CC390,
+                      'HouseClass::SendSpyPlanes': 0x65EAB0,
+                      'AircraftClass::Mission_SpyplaneApproach': 0x4155F0,
+                      'AircraftClass::Mission_SpyplaneOverfly': 0x4157C0,
+                      'AircraftClass::AI_leave_map': 0x414F47}))

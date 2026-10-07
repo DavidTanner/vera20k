@@ -784,7 +784,7 @@ impl From<crate::sim::components::NavTargetRef> for TargetKind {
 }
 
 impl From<TargetKind> for crate::sim::components::NavTargetRef {
-    /// A target as a NavCom: its cell, or the object it names.
+    /// A target as a destination (a Target handed to `Assign_Destination`).
     fn from(target: TargetKind) -> Self {
         match target {
             TargetKind::Entity(id) => Self::Entity { id },

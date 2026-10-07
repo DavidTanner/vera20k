@@ -2,9 +2,9 @@
 //!
 //! Each player has a set of `SuperWeaponInstance`s, one per superweapon type
 //! granted by their buildings. The system ticks after power (for suspend/resume)
-//! and before combat. `fire::launch_ported` lists the `SuperClass::Launch`
-//! arms not yet ported; a click on one of those keeps its charge. A computer
-//! house fires its charged ones from its Strategy tick (`ai_fire`).
+//! and before combat. `fire` dispatches a launch to its `SuperClass::Launch`
+//! case. A computer house fires its charged ones from its Strategy tick
+//! (`ai_fire`).
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
@@ -34,6 +34,9 @@ pub(crate) mod psychic_dominator;
 #[cfg(test)]
 mod psychic_dominator_tests;
 pub mod psychic_reveal;
+mod spy_plane;
+#[cfg(test)]
+mod spy_plane_tests;
 
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};

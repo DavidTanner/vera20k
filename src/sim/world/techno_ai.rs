@@ -758,17 +758,12 @@ fn techno_ai_shell(
             }
             drop_unsensed_cloaked_target_step(sim, id);
             mission_counter_step(sim, id);
-            // The Aircraft Unload slot `0x004151E0` (vtable `+0x23C`), the one
-            // aircraft mission handler absorbed so far; timer-gated inside.
+            // The aircraft mission handlers absorbed so far: Unload and the
+            // Spy Plane's two, behind MissionClass::AI's timer gate.
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
             {
-                crate::sim::transport_unload::dispatch_aircraft_unload(
-                    sim,
-                    id,
-                    rules,
-                    ctx.overlay_registry,
-                );
+                crate::sim::aircraft::dispatch_native_mission(sim, id, rules, ctx.overlay_registry);
                 // The remaining aircraft missions dispatch here too, inside
                 // this slot and before Fly Process (FootClass::AI4DA530).
                 if crate::sim::aircraft::dispatch_aircraft_mission(

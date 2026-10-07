@@ -116,7 +116,7 @@ impl Simulation {
             if distance < weapon.range_leptons {
                 return 4;
             }
-            self.assign_aircraft_attack_destination(id, Some(NavTargetRef::from(target)), rules);
+            self.assign_aircraft_attack_destination(id, Some(target.into()), rules);
         } else if object.fighter
             || !crate::sim::movement::motion_query::is_moving_now(
                 entity,
