@@ -24,11 +24,12 @@
 //! [`LocomotorRuntimePayload::Rocket`]: super::locomotion::piggyback::LocomotorRuntimePayload
 //! [`MissileSpawnRules::rocket_block`]: crate::rules::missile_spawn::MissileSpawnRules::rocket_block
 
-use crate::map::retail_trig::{AtanTable, TrigTable};
+use crate::map::retail_trig::TrigTable;
 use crate::rules::effect_asset_catalog::{ROCKET_TAKEOFF_ANIM, ROCKET_TRAIL_ANIM};
 use crate::rules::missile_spawn::MissileSpawnParams;
 use crate::sim::components::DriveCoord;
 use crate::sim::timer::CdTimer;
+use crate::util::direction_tables::{facing16_between, native_atan_from_table};
 use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, lepton_to_cell_packed};
 use crate::util::native_trig::facing_step_world_xy;
 use crate::util::native_x87::{
@@ -44,6 +45,10 @@ const STATE_CLIMB: i32 = 3;
 const STATE_CRUISE: i32 = 4;
 const STATE_DIVE: i32 = 5;
 const STATE_RAISE: i32 = 6;
+
+/// `PUSH 0x600`: the AnimClass draw flags of every rocket puff, Process's and
+/// the spawn manager's Boomer launch alike.
+pub(crate) const PUFF_DRAW_FLAGS: u32 = 0x600;
 
 /// `0x007E2820`, binary64 pi/2: the quarter-turn scale of the pitch keys.
 const HALF_PI: NativeF64Bits = NativeF64Bits::from_bits(0x3FF9_21FB_5444_2D18);
@@ -169,7 +174,6 @@ pub(crate) trait RocketHost {
     /// `[0x00A8ED84]`, the frame the timers count from.
     fn binary_frame(&self) -> u32;
     fn trig(&self) -> &TrigTable;
-    fn atan(&self) -> &AtanTable;
     /// Owner `+0x2D4` SpawnOwner is set and `VeterancyStruct::IsElite @
     /// 0x00750010` holds for its `+0x150`.
     fn spawn_owner_is_elite(&self) -> bool;
@@ -432,7 +436,7 @@ fn cruise(
             X87Chop53::load_i32(rocket.cruise_start_distance),
         )
         .expect("the lazy curve runs with a nonzero start distance");
-        let angle = target_angle(destination, host.location(), host.atan());
+        let angle = target_angle(destination, host.location());
         let rest = X87Chop53::sub(f64_value(NativeF64Bits::ONE), share);
         let toward_final = X87Chop53::mul(
             X87Chop53::mul(f32_value(block.pitch_final), share),
@@ -442,9 +446,7 @@ fn cruise(
     }
     // 0x00662C3A: steer the body at the destination.
     let coords = host.location();
-    let facing = host
-        .atan()
-        .facing_toward([coords[0], coords[1]], [destination.x, destination.y]);
+    let facing = facing16_between([coords[0], coords[1]], [destination.x, destination.y]);
     host.set_facing(facing);
     true
 }
@@ -452,7 +454,7 @@ fn cruise(
 /// State 5 (`0x00662CBF..0x0066300A`) after the impact prediction: turn the
 /// pitch toward the target angle by at most TurnRate.
 fn dive(rocket: &mut RocketRuntime, block: &MissileSpawnParams, host: &mut impl RocketHost) {
-    let angle = target_angle(rocket.destination, host.location(), host.atan());
+    let angle = target_angle(rocket.destination, host.location());
     let zero = X87Chop53::load_i32(0);
     let pitch = rocket.pitch_value();
     let turn = f32_value(block.turn_rate);
@@ -614,7 +616,7 @@ fn along_nose(rocket: &RocketRuntime, host: &impl RocketHost, length: X87Value) 
 /// 0x00662B2E`) and the dive (`0x00662CBF..0x00662D2E`): the horizontal
 /// distance squares and sums in int32, and nothing left to cover is straight
 /// down.
-fn target_angle(destination: DriveCoord, here: [i32; 3], atan: &AtanTable) -> X87Value {
+fn target_angle(destination: DriveCoord, here: [i32; 3]) -> X87Value {
     let dx = destination.x.wrapping_sub(here[0]);
     let dy = destination.y.wrapping_sub(here[1]);
     let dz = destination.z.wrapping_sub(here[2]);
@@ -625,7 +627,7 @@ fn target_angle(destination: DriveCoord, here: [i32; 3], atan: &AtanTable) -> X8
     if X87Chop53::compare(distance, X87Chop53::load_i32(0)) != X87Ordering::Greater {
         return f64_value(NEG_HALF_PI);
     }
-    atan.atan_from_table(
+    native_atan_from_table(
         X87Chop53::div(X87Chop53::load_i32(dz), distance).expect("the distance is positive"),
     )
 }
@@ -673,7 +675,7 @@ fn store_f64(value: X87Value) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::retail_trig::{required_atan_table, required_math_tables};
+    use crate::map::retail_trig::required_math_tables;
     use crate::rules::missile_spawn::MissileSpawnRules;
     use crate::sim::movement::facing_class::FacingClass;
     use serde_json::{Value, json};
@@ -684,7 +686,6 @@ mod tests {
         input: &'a Value,
         frame: u32,
         trig: &'a TrigTable,
-        atan: &'a AtanTable,
         location: [i32; 3],
         facing: FacingClass,
         health: i32,
@@ -707,9 +708,6 @@ mod tests {
         }
         fn trig(&self) -> &TrigTable {
             self.trig
-        }
-        fn atan(&self) -> &AtanTable {
-            self.atan
         }
         fn spawn_owner_is_elite(&self) -> bool {
             // VeterancyStruct::IsElite: Veterancy >= [0x007E37B4] (2.0f).
@@ -900,11 +898,10 @@ mod tests {
     #[test]
     fn flights_match_the_native_move_to_process_and_detonate_corpus() {
         let (trig, _) = required_math_tables();
-        let atan = required_atan_table();
-        if !trig.matches_retail() || !atan.matches_retail() {
+        if !trig.matches_retail() {
             assert!(
                 std::env::var_os("RA2_DIR").is_none(),
-                "RA2_DIR is set but the retail sine or atan table does not match"
+                "RA2_DIR is set but the retail sine table does not match"
             );
             eprintln!("skipped: set RA2_DIR to the retail install to run this");
             return;
@@ -926,7 +923,6 @@ mod tests {
                 input,
                 frame: first_frame,
                 trig,
-                atan,
                 location: coord(&input["start"]),
                 facing,
                 health: int(&input["health"]) as i32,

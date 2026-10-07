@@ -1211,6 +1211,20 @@ fn recall_child_to_owner(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, c
 ///   `AircraftClass` `0x0041AA80`), whose Foot setter hands the target's
 ///   coordinate to Rocket Move_To (`rocket_movement::move_to`), and
 ///   `Queue_Mission(Move, 0)` (vt+0x1E8).
+///
+/// RESIDUAL (next chain): the missile's own mission never runs, because the
+/// aircraft mission runner skips non-Fly locomotors. Natively each
+/// `Mission_Move @ 0x004166E0` visit from substate 0 (and each
+/// `Mission_Attack @ 0x00417FE0` epilogue) draws Scenario `RandomRanged(0,2)`,
+/// and the Launching arm's `SpawnRetreat__Push @ 0x0054E3B0` (`0x006B7A37`)
+/// restarts the kamikaze timer (`0x00ABC5F8`) for 2 frames, after which
+/// `Kamikaze__Update @ 0x0054E4D0` gives each missile Ammo 1,
+/// `Assign_Target(cell)` and `Queue_Mission(Attack)` every 30 frames.
+/// Trigger: every launch. Effect: no flight change while Rocket Move_To
+/// holds its destination, but the Scenario RNG stream falls behind native
+/// from the first launch; a missile whose launch dropped a high-flying target
+/// (no destination) stays on its launcher instead of being re-sent at the
+/// target's cell. Risk: RNG parity and that stranded missile.
 fn launch_missile_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, child_id: u64) {
     let boomer_pool = manager_field(sim, owner_id, |m| m.spawn_type).is_some_and(|spawn_type| {
         sim.interner
@@ -1219,11 +1233,16 @@ fn launch_missile_child(sim: &mut Simulation, rules: &RuleSet, owner_id: u64, ch
     });
     if boomer_pool && let Some(child) = sim.substrate.entities.get(child_id) {
         let location = crate::sim::movement::ground_pose::position_world_coord(&child.position);
-        sim.spawn_rocket_anim(
+        sim.spawn_named_anim(
             rules,
             crate::rules::effect_asset_catalog::ROCKET_TAKEOFF_ANIM,
-            [location.x, location.y, location.z],
+            crate::sim::anim_class::AnimWorldCoord {
+                x: location.x,
+                y: location.y,
+                z: location.z,
+            },
             2,
+            crate::sim::movement::rocket_movement::PUFF_DRAW_FLAGS,
             -10,
         );
     }

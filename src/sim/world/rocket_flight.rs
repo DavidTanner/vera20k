@@ -12,24 +12,20 @@ use super::Simulation;
 use super::lifecycle::UninitContext;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
-use crate::map::retail_trig::{AtanTable, TrigTable, required_atan_table, required_math_tables};
+use crate::map::retail_trig::{TrigTable, required_math_tables};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
-use crate::sim::components::{AnimClassSpawnDescriptor, DriveCoord};
+use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::movement::ground_pose::{foot_set_location, position_world_coord};
+use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::movement::rocket_movement::{self, RocketHost};
 use crate::sim::projectile::ProjectileCoord;
-
-/// `AnimClass` draw flags of both rocket puffs (`PUSH 0x600`).
-const ROCKET_ANIM_DRAW_FLAGS: u32 = 0x600;
 
 struct RocketProcessHost<'a> {
     sim: &'a mut Simulation,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
     trig: &'a TrigTable,
-    atan: &'a AtanTable,
     id: u64,
     frame: u32,
     bridge_state_changed: bool,
@@ -69,9 +65,6 @@ impl RocketHost for RocketProcessHost<'_> {
     fn trig(&self) -> &TrigTable {
         self.trig
     }
-    fn atan(&self) -> &AtanTable {
-        self.atan
-    }
     fn spawn_owner_is_elite(&self) -> bool {
         self.owner()
             .spawn_owner_id
@@ -83,16 +76,13 @@ impl RocketHost for RocketProcessHost<'_> {
         [location.x, location.y, location.z]
     }
     fn set_location(&mut self, coord: [i32; 3]) {
-        foot_set_location(
-            &mut self.sim.substrate.entities,
+        // A marked rocket takes 0x004DB810's Mark(UP)/Mark(DOWN) pair.
+        let [x, y, z] = coord;
+        self.sim.foot_set_location_marked(
             self.id,
-            DriveCoord {
-                x: coord[0],
-                y: coord[1],
-                z: coord[2],
-            },
+            DriveCoord { x, y, z },
             Some(self.rules),
-            &self.sim.interner,
+            self.registry,
         );
     }
     fn height(&self) -> i32 {
@@ -151,8 +141,15 @@ impl RocketHost for RocketProcessHost<'_> {
         self.owner_mut().body_facing.set(facing, frame);
     }
     fn anim(&mut self, name: &'static str, coord: [i32; 3], delay: i32, z_adjust: i32) {
-        self.sim
-            .spawn_rocket_anim(self.rules, name, coord, delay, z_adjust);
+        let [x, y, z] = coord;
+        self.sim.spawn_named_anim(
+            self.rules,
+            name,
+            AnimWorldCoord { x, y, z },
+            delay as u16,
+            rocket_movement::PUFF_DRAW_FLAGS,
+            z_adjust,
+        );
     }
     fn aux_sound(&mut self, coord: [i32; 3]) {
         // Both callers pass the owner's Location, which the event records.
@@ -235,36 +232,6 @@ pub(crate) struct RocketProcessOutcome {
 }
 
 impl Simulation {
-    /// `new AnimClass(AnimTypes[FindIndex(name)], &coord, delay, 1, 0x600,
-    /// z_adjust, 0)`, the rocket puffs of Process and of the spawn manager's
-    /// Boomer launch. An art type that never bound constructs nothing.
-    pub(crate) fn spawn_rocket_anim(
-        &mut self,
-        rules: &RuleSet,
-        name: &str,
-        coord: [i32; 3],
-        delay: i32,
-        z_adjust: i32,
-    ) {
-        let world = AnimWorldCoord {
-            x: coord[0],
-            y: coord[1],
-            z: coord[2],
-        };
-        let (rx, ry, sub_x, sub_y, z) = world.to_cell_sub_z();
-        let descriptor = AnimClassSpawnDescriptor {
-            delay: delay as u16,
-            loop_count: 1,
-            draw_flags: ROCKET_ANIM_DRAW_FLAGS,
-            z_adjust,
-            reverse: false,
-            ..AnimClassSpawnDescriptor::new(self.interner.intern(name), rx, ry, sub_x, sub_y, z)
-        };
-        if let Err(error) = self.spawn_anim_at_world(rules, descriptor, world) {
-            log::debug!("rocket anim [{name}] did not construct: {error}");
-        }
-    }
-
     /// Rocket Move_To (`0x006632E0`) for the Foot destination setter's
     /// locomotor dispatch.
     pub(crate) fn rocket_move_to(&mut self, id: u64, to: DriveCoord, rules: &RuleSet) {
@@ -313,7 +280,6 @@ impl Simulation {
             rules,
             registry,
             trig,
-            atan: required_atan_table(),
             id,
             frame,
             bridge_state_changed: false,

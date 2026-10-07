@@ -225,13 +225,6 @@ fn all_retail_tables_can_be_repacked_into_different_sections() {
     let mut sections = Vec::new();
     for (rva, va, entries, prefix, fingerprint) in [
         (
-            0x1000,
-            ATAN_TABLE_VA,
-            ATAN_TABLE_LEN,
-            ATAN_TABLE_PREFIX,
-            ATAN_RETAIL_FNV1A64,
-        ),
-        (
             0x6000,
             ACOS_TABLE_VA,
             ACOS_TABLE_LEN,
@@ -253,11 +246,6 @@ fn all_retail_tables_can_be_repacked_into_different_sections() {
     );
     assert!(
         AcosTable::from_executable(&relocated)
-            .unwrap()
-            .matches_retail()
-    );
-    assert!(
-        AtanTable::from_executable(&relocated)
             .unwrap()
             .matches_retail()
     );

@@ -21,7 +21,7 @@
 
 use std::fmt;
 
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Ordering, X87Value};
+use crate::util::native_x87::{NativeF32Bits, X87Chop53, X87Value};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -67,31 +67,6 @@ const ACOS_TABLE_PREFIX: &[u8] = &[
     0xda, 0x0f, 0xc9, 0xbf, 0xcf, 0x0f, 0xc5, 0xbf, 0x94, 0x67, 0xc3, 0xbf, 0x04, 0x22, 0xc2, 0xbf,
 ];
 
-/// Virtual address and size of `Math::atan2 @ 0x004CAE30`'s arctangent table:
-/// 4097 binary32 entries indexed by `|ftol(y / x / step)|`.
-///
-/// Like the sine table it is not a formula: 4094 of the 4097 entries differ
-/// from `f32(atan(i * step))`, so the bytes come from the player's executable.
-const ATAN_TABLE_VA: u32 = 0x0086_10B4;
-pub const ATAN_TABLE_LEN: usize = 0x1001;
-/// FNV-1a (64-bit) over the table's 16388 raw bytes, read out of the retail
-/// image.
-pub const ATAN_RETAIL_FNV1A64: u64 = 0x4056_c36f_7f1e_ab9c;
-const ATAN_TABLE_PREFIX: &[u8] = &[
-    0x00, 0x00, 0x00, 0x00, 0x58, 0xf4, 0xc7, 0x3c, 0xe3, 0xd5, 0x47, 0x3d, 0x72, 0xba, 0x95, 0x3d,
-];
-/// Index step: the binary32 at `0x008650B8` (`0x3CC7FE84`, just under
-/// 100/4096), so the table spans ratios up to about 100.
-const ATAN_STEP_BITS: u32 = 0x3CC7_FE84;
-/// `0x007E897C`: binary32 pi/2 (`0x007E8980` is its negation).
-const ATAN_HALF_PI_F32_BITS: u32 = 0x3FC9_0FDB;
-/// `0x007E44D0`: binary64 pi.
-const ATAN_PI_F64_BITS: u64 = 0x4009_21FB_5444_2D18;
-/// `0x007E2820`: binary64 pi/2.
-const HALF_PI_F64_BITS: u64 = 0x3FF9_21FB_5444_2D18;
-/// `0x007E2818`: binary64 -65534/2pi, radians to DirStruct units.
-const NEG_FACING_UNITS_PER_RADIAN_F64_BITS: u64 = 0xC0C4_5F07_AF68_ECEF;
-
 /// Something went wrong reading the table out of the executable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrigTableError {
@@ -136,12 +111,6 @@ pub struct TrigTable {
 /// Retail binary32 table consumed by `Acos_lookup @ 0x004CADB0`.
 #[derive(Debug, Clone)]
 pub struct AcosTable {
-    entries: Vec<f32>,
-}
-
-/// Retail binary32 table consumed by `Math::atan2 @ 0x004CAE30`.
-#[derive(Debug, Clone)]
-pub struct AtanTable {
     entries: Vec<f32>,
 }
 
@@ -435,152 +404,6 @@ impl AcosTable {
     }
 }
 
-impl AtanTable {
-    /// Read the arctangent table out of a retail `gamemd.exe` image.
-    pub fn from_executable(image: &[u8]) -> Result<Self, TrigTableError> {
-        let bytes = find_table_bytes(
-            image,
-            ATAN_TABLE_VA,
-            ATAN_TABLE_LEN * 4,
-            ATAN_TABLE_PREFIX,
-            ATAN_RETAIL_FNV1A64,
-        )?;
-        let entries = bytes
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect();
-        Ok(Self { entries })
-    }
-
-    pub fn fnv1a64(&self) -> u64 {
-        let mut hash = crate::util::fnv::FNV1A64_OFFSET_BASIS;
-        for entry in &self.entries {
-            hash = crate::util::fnv::fnv1a64_fold_bytes(hash, &entry.to_le_bytes());
-        }
-        hash
-    }
-
-    pub fn matches_retail(&self) -> bool {
-        self.entries.len() == ATAN_TABLE_LEN && self.fnv1a64() == ATAN_RETAIL_FNV1A64
-    }
-
-    pub fn entry(&self, index: usize) -> f32 {
-        self.entries[index]
-    }
-
-    /// `Math::atan2 @ 0x004CAE30`, evaluated in the process's x87 mode.
-    ///
-    /// gamemd-derived (disassembly read 2026-09-15): both double arguments are
-    /// stored as binary32 first (`FSTP float`). A zero `x` answers 0 or the
-    /// binary32 +/-pi/2 by the sign of `y`. Otherwise the index is
-    /// `|ftol(y32 / x32 / step)|` through `Math::ftol @ 0x007C5F00`; an index of
-    /// 0x1001 or more reads pi/2. A negative `x` reflects through binary64 pi,
-    /// then a negative `y` negates. Every operation and store runs under the
-    /// process control word `0x0E7F` (53-bit precision, round toward zero), which
-    /// `WinMain` installs with `_controlfp(0x300, 0x300)` at `0x006BBFC1`, so the
-    /// arithmetic is [`X87Chop53`], not `f64`.
-    pub fn atan2(&self, y: X87Value, x: X87Value) -> X87Value {
-        let zero = X87Chop53::load_i32(0);
-        let binary32 = |value: X87Value| {
-            X87Chop53::store_f32(value)
-                .and_then(X87Chop53::load_f32)
-                .unwrap_or(zero)
-        };
-        let constant32 =
-            |bits: u32| X87Chop53::load_f32(NativeF32Bits::from_bits(bits)).unwrap_or(zero);
-        let y32 = binary32(y);
-        let x32 = binary32(x);
-        let half_pi = constant32(ATAN_HALF_PI_F32_BITS);
-        if X87Chop53::compare(x32, zero) == X87Ordering::Equal {
-            return match X87Chop53::compare(y32, zero) {
-                X87Ordering::Equal => zero,
-                X87Ordering::Greater => half_pi,
-                X87Ordering::Less => X87Chop53::neg(half_pi),
-            };
-        }
-        // `ftol` returns the low dword of `FISTP qword`; `CDQ/XOR/SUB` takes the
-        // absolute value of that dword.
-        let index = X87Chop53::div(y32, x32)
-            .and_then(|ratio| X87Chop53::div(ratio, constant32(ATAN_STEP_BITS)))
-            .and_then(X87Chop53::ftol_i64)
-            .map_or(0, |value| (value as i32).unsigned_abs() as usize);
-        let mut value = if index < ATAN_TABLE_LEN {
-            constant32(self.entries[index].to_bits())
-        } else {
-            half_pi
-        };
-        if X87Chop53::compare(x32, zero) == X87Ordering::Less {
-            let pi =
-                X87Chop53::load_f64(NativeF64Bits::from_bits(ATAN_PI_F64_BITS)).unwrap_or(zero);
-            value = X87Chop53::sub(pi, value);
-        }
-        if X87Chop53::compare(y32, zero) == X87Ordering::Less {
-            value = X87Chop53::neg(value);
-        }
-        value
-    }
-
-    /// `Math::AtanFromTable @ 0x004CADE0`: the arctangent of one double.
-    ///
-    /// gamemd-derived (disassembly read 2026-10-07): the argument is stored as
-    /// binary32 (`FST float`), but the index divides the full double, still on
-    /// the stack, by the binary32 step (`FDIV float [0x008650B8]`). The index
-    /// is `|ftol(...)|`; 0x1001 or more reads binary32 pi/2 (`0x007E897C`).
-    /// The entry is negated when the binary32 copy is below zero
-    /// (`FCOMP float [0x007E1748]`).
-    pub fn atan_from_table(&self, value: X87Value) -> X87Value {
-        let zero = X87Chop53::load_i32(0);
-        let constant32 =
-            |bits: u32| X87Chop53::load_f32(NativeF32Bits::from_bits(bits)).unwrap_or(zero);
-        let value32 = X87Chop53::store_f32(value)
-            .and_then(X87Chop53::load_f32)
-            .unwrap_or(zero);
-        let index = X87Chop53::div(value, constant32(ATAN_STEP_BITS)).map_or(0, |ratio| {
-            X87Chop53::ftol_i32_low_masked(ratio).unsigned_abs() as usize
-        });
-        let entry = if index < ATAN_TABLE_LEN {
-            constant32(self.entries[index].to_bits())
-        } else {
-            constant32(ATAN_HALF_PI_F32_BITS)
-        };
-        if X87Chop53::compare(value32, zero) == X87Ordering::Less {
-            X87Chop53::neg(entry)
-        } else {
-            entry
-        }
-    }
-
-    /// The DirStruct facing from `from` toward `to`: [`Self::atan2`] of
-    /// (`from.y - to.y`, `to.x - from.x`), less binary64 pi/2, times
-    /// `-65534/2pi`, truncated to its low word. The same instructions run in
-    /// Jumpjet's states 1..3 (`0x0054C081..0x0054C0CD`) and Rocket's cruise
-    /// (`0x00662C3A..0x00662C8B`).
-    pub fn facing_toward(&self, from: [i32; 2], to: [i32; 2]) -> u16 {
-        let double = |bits: u64| {
-            X87Chop53::load_f64(NativeF64Bits::from_bits(bits)).expect("finite constant")
-        };
-        let angle = self.atan2(
-            X87Chop53::sub(X87Chop53::load_i32(from[1]), X87Chop53::load_i32(to[1])),
-            X87Chop53::sub(X87Chop53::load_i32(to[0]), X87Chop53::load_i32(from[0])),
-        );
-        X87Chop53::ftol_i32_low_masked(X87Chop53::mul(
-            X87Chop53::sub(angle, double(HALF_PI_F64_BITS)),
-            double(NEG_FACING_UNITS_PER_RADIAN_F64_BITS),
-        )) as u16
-    }
-
-    /// A shape-compatible table for unit tests without a retail install.
-    #[cfg(test)]
-    pub fn synthetic() -> Self {
-        let step = f64::from(f32::from_bits(ATAN_STEP_BITS));
-        Self {
-            entries: (0..ATAN_TABLE_LEN)
-                .map(|i| (i as f64 * step).atan() as f32)
-                .collect(),
-        }
-    }
-}
-
 /// Fold a caller's angle into the table's index range.
 ///
 /// The mask keeps the sign bit and the low 13 bits, then the odd-looking
@@ -744,56 +567,8 @@ mod tests {
         assert_eq!(acos.entries.len(), ACOS_TABLE_LEN);
         assert_eq!(acos.fnv1a64(), ACOS_RETAIL_FNV1A64);
         assert!(acos.matches_retail());
-        let atan = AtanTable::from_executable(&image).expect("read the atan table");
-        assert_eq!(atan.entries.len(), ATAN_TABLE_LEN);
-        assert_eq!(atan.fnv1a64(), ATAN_RETAIL_FNV1A64);
-        assert!(atan.matches_retail());
-        assert_eq!(atan.entry(0), 0.0, "atan(0) is zero");
-        // Anchors read out of the image: the first step and the last entry.
-        assert_eq!(atan.entry(1).to_bits(), 0x3CC7_F458);
-        assert_eq!(atan.entry(ATAN_TABLE_LEN - 1).to_bits(), 0x3FC7_C820);
     }
 
-    /// The branches of `Math::atan2 @ 0x004CAE30` that do not depend on table
-    /// contents: the zero-denominator answers, the saturated index, and the
-    /// quadrant reflections through binary64 pi.
-    #[test]
-    fn atan2_branches_follow_the_original_quadrant_rules() {
-        let table = AtanTable::synthetic();
-        let value = |x: f64| X87Chop53::load_f64(NativeF64Bits::from_bits(x.to_bits())).unwrap();
-        let atan2 = |y: f64, x: f64| {
-            f64::from_bits(
-                X87Chop53::store_f64(table.atan2(value(y), value(x)))
-                    .unwrap()
-                    .bits(),
-            )
-        };
-        let half_pi = f64::from(f32::from_bits(ATAN_HALF_PI_F32_BITS));
-        let pi = f64::from_bits(ATAN_PI_F64_BITS);
-        assert_eq!(atan2(0.0, 0.0), 0.0);
-        assert_eq!(atan2(5.0, 0.0), half_pi);
-        assert_eq!(atan2(-5.0, 0.0), -half_pi);
-        // |y/x| / step >= 0x1001 saturates to binary32 pi/2 before reflection.
-        assert_eq!(atan2(1000.0, 1.0), half_pi);
-        let reflected = f64::from_bits(
-            X87Chop53::store_f64(X87Chop53::sub(value(pi), value(half_pi)))
-                .unwrap()
-                .bits(),
-        );
-        assert_eq!(atan2(1000.0, -1.0), reflected);
-        assert_eq!(atan2(-1000.0, -1.0), -reflected);
-        // Index 0 in every quadrant: exact zero, pi, and their negations.
-        assert_eq!(atan2(0.0, 7.0), 0.0);
-        assert_eq!(atan2(0.0, -7.0), pi);
-        // A one-step ratio reads entry 1, truncated toward zero for fractions.
-        let step = f64::from(f32::from_bits(ATAN_STEP_BITS));
-        assert_eq!(atan2(step * 1.5, 1.0), f64::from(table.entry(1)));
-        assert_eq!(atan2(-step * 1.5, 1.0), -f64::from(table.entry(1)));
-    }
-
-    /// Anchors that would catch a table read at the wrong offset even if a hash
-    /// somehow agreed, and that pin the identification as *sine*: a cosine table
-    /// would have to start at 1.0.
     #[test]
     fn the_table_has_the_shape_of_a_sine() {
         let Some(image) = retail_executable() else {
@@ -835,7 +610,6 @@ mod tests {
 struct RetailMathTables {
     trig: TrigTable,
     acos: AcosTable,
-    atan: AtanTable,
 }
 
 static TABLES: OnceLock<Option<RetailMathTables>> = OnceLock::new();
@@ -849,10 +623,9 @@ pub fn install_from_dir(ra2_dir: &Path) {
             Ok(image) => match (
                 TrigTable::from_executable(&image),
                 AcosTable::from_executable(&image),
-                AtanTable::from_executable(&image),
             ) {
-                (Ok(trig), Ok(acos), Ok(atan)) => Some(RetailMathTables { trig, acos, atan }),
-                (Err(err), _, _) | (_, Err(err), _) | (_, _, Err(err)) => {
+                (Ok(trig), Ok(acos)) => Some(RetailMathTables { trig, acos }),
+                (Err(err), _) | (_, Err(err)) => {
                     log::warn!(
                         "retail math tables {}: {err}; retail-table consumers will be disabled",
                         path.display()
@@ -886,40 +659,6 @@ pub fn global_acos() -> Option<&'static AcosTable> {
         .get()
         .and_then(|slot| slot.as_ref())
         .map(|tables| &tables.acos)
-}
-
-/// The installed table consumed by `Math::atan2`, if there is one.
-pub fn global_atan() -> Option<&'static AtanTable> {
-    TABLES
-        .get()
-        .and_then(|slot| slot.as_ref())
-        .map(|tables| &tables.atan)
-}
-
-/// Exact production `Math::atan2 @ 0x004CAE30` table access. Headless tests
-/// read the retail executable when `RA2_DIR` names one and otherwise fall back
-/// to a shape-compatible synthetic table; parity fixtures must check
-/// [`AtanTable::matches_retail`] themselves.
-pub(crate) fn required_atan_table() -> &'static AtanTable {
-    if let Some(atan) = global_atan() {
-        return atan;
-    }
-
-    #[cfg(test)]
-    {
-        static TEST_TABLE: OnceLock<AtanTable> = OnceLock::new();
-        return TEST_TABLE.get_or_init(|| {
-            std::env::var_os("RA2_DIR")
-                .and_then(|dir| {
-                    std::fs::read(std::path::PathBuf::from(dir).join("gamemd.exe")).ok()
-                })
-                .and_then(|image| AtanTable::from_executable(&image).ok())
-                .unwrap_or_else(AtanTable::synthetic)
-        });
-    }
-
-    #[cfg(not(test))]
-    panic!("verified gamemd atan table was not installed before native math");
 }
 
 /// Stock Sonic Wave geometry is active, so a match may start only when both

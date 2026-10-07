@@ -169,7 +169,8 @@ pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
 /// This is its unmarked arm; [`Simulation::foot_set_location_marked`] adds
 /// the marked one (`0x004DB83F..0x004DB866`, Mark(UP),
 /// `ObjectClass::SetLocation`, Mark(DOWN) while `+0x74` is set), which the
-/// Chronosphere's warp-in and a hull its PostWarpValidation sank reach. Every
+/// Chronosphere's warp-in, a hull its PostWarpValidation sank and every
+/// Rocket Process move (`0x006622C0`) reach. Every
 /// other native call a Rust caller ports runs it unmarked: Drive,
 /// Hover and Walk Mark(UP) first on a cell change (`0x004B2071`,
 /// `0x005148E3`, `0x0075BD7D`, `0x0075C11E`) and Drive and Hover clear
