@@ -6,7 +6,7 @@
 //   if (byte == 0) discard;
 //   if (16 <= byte < 32) → rgb = house_ramp[house_idx][byte - 16]
 //   else                 → rgb = palette[byte]
-//   color = apply_fx(color, fx_flags, fx_params, effect_tint);
+//   color = apply_fx(color, fx_flags, fx_params);
 //   return palette_light(rgb, tint), alpha;  (tint applied in sRGB byte space)
 //
 // Bind groups:
@@ -184,16 +184,16 @@ fn native_depth(in: VertexOutput) -> f32 {
     return stored_native_depth(z);
 }
 
-fn apply_fx(color: vec4f, _flags: u32, params: vec4f, effect_tint: vec4f) -> vec4f {
+fn apply_fx(color: vec4f, _flags: u32, params: vec4f) -> vec4f {
     // Original location: `RA2-GAME.EXE-IDB` canon,
     // `rendering.drawStateEffects.ra2yr.json`; the same branch exists in the
     // SHP shader so representation does not affect active visual state.
-    // Match the SHP path exactly: selector opacity plus independent YR
-    // invulnerability brightness, with no inferred EMP or mirror styling.
-    // Invulnerability/temporal brightness is folded into the gamma-space
-    // light multiply by the caller (natively 0x0070E380 scales the brightness
-    // argument itself, which selects the same LightConvert row); only opacity
-    // is applied here.
+    // Match the SHP path exactly: selector opacity, with no inferred EMP or
+    // mirror styling. An effect on the object's light, such as the Iron
+    // Curtain's tint, scales the intensity its PaletteLight carries
+    // (natively GetEffectTintIntensity 0x0070E360 scales the intensity
+    // argument, which selects the LightConvert row); only opacity is applied
+    // here.
     return vec4f(color.rgb, color.a * params.x);
 }
 
@@ -260,8 +260,8 @@ fn fs_main(in: VertexOutput) -> FragOutput {
     // The waterline changes geometry admission only. It must not opt an
     // otherwise opaque body out of the native packed-palette conversion.
     let color_flags = in.fx_flags & ~128u;
-    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, in.effect_tint.rgb, opaque_palette(in.palette_light, in.alpha, color_flags), byte, tactical_a_at(in.clip_position.xy)), in.alpha);
-    color = apply_fx(color, in.fx_flags, in.fx_params, in.effect_tint);
+    var color: vec4f = vec4f(resolve_palette(rgb, in.tint, opaque_palette(in.palette_light, in.alpha, color_flags), byte, tactical_a_at(in.clip_position.xy)), in.alpha);
+    color = apply_fx(color, in.fx_flags, in.fx_params);
     out.color = color;
     if (camera.pad1 > 0.5) {
         out.color = debug_depth_color(out.depth);

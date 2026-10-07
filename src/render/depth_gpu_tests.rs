@@ -1205,7 +1205,6 @@ fn depth_sprite_preserves_batch_tint_and_opacity() {
     ordinary.instance.tint = [0.5, 1.3, 0.75];
     ordinary.instance.alpha = 0.75;
     ordinary.instance.draw_state = DrawState {
-        effect_tint: [1.4, 0.65, 1.1, 1.0],
         fx_params: [0.6, 0.0, 1.0, 0.0],
         ..Default::default()
     };

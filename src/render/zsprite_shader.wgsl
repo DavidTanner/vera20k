@@ -40,7 +40,6 @@ struct Instance {
     @location(7) remap_row: u32,
     @location(8) fx_flags: u32,
     @location(9) fx_params: vec4f,
-    @location(10) effect_tint: vec4f,
     @location(11) z_adjust: f32,
     @location(12) z_gradient: u32,
     @location(13) zshape_origin: vec2f,
@@ -54,7 +53,6 @@ struct VertexOutput {
     @location(2) alpha: f32,
     @location(3) @interpolate(flat) fx_flags: u32,
     @location(4) fx_params: vec4f,
-    @location(5) effect_tint: vec4f,
     // World-pixel position of this fragment (unpadded quad).
     @location(6) world_pos: vec2f,
     // Blit rect top row and height in world pixels.
@@ -94,7 +92,6 @@ fn shp_vertex(idx: u32, instance: Instance) -> VertexOutput {
     output.alpha = instance.alpha;
     output.fx_flags = instance.fx_flags;
     output.fx_params = instance.fx_params;
-    output.effect_tint = instance.effect_tint;
     output.world_pos = instance.position + local * instance.size;
     output.rect_top_height = vec2f(instance.position.y, instance.size.y);
     output.z_adjust = instance.z_adjust;
@@ -119,7 +116,7 @@ fn vs_read_only(@builtin(vertex_index) idx: u32, instance: Instance) -> VertexOu
     return output;
 }
 
-fn apply_fx(color: vec4f, _flags: u32, params: vec4f, _effect_tint: vec4f) -> vec4f {
+fn apply_fx(color: vec4f, _flags: u32, params: vec4f) -> vec4f {
     return vec4f(color.rgb, color.a * params.x);
 }
 
@@ -183,10 +180,9 @@ fn fs_main(input: VertexOutput) -> FragOutput {
 
     var output: FragOutput;
     output.color = apply_fx(
-        vec4f(resolve_palette(color.rgb, input.tint, input.effect_tint.rgb, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
+        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
         input.fx_flags,
         input.fx_params,
-        input.effect_tint,
     );
     output.depth = frag_depth;
     if (camera.pad1 > 0.5) {
