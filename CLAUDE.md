@@ -61,9 +61,11 @@ native execution ([Unicorn](tools/native_oracle.md) or capture) and pin the resu
 golden values in its Rust tests. Control flow and ordering may rest on instruction-level
 reading. Each PR states the evidence level each claim reached.
 
-Preserve native comparisons as reproducible harnesses and results, recording binary
-identity and coverage limits. Link them to Rust tests where practical; parity claims
-must cite saved evidence and actual validation results.
+Preserve native comparisons as reproducible harnesses and the corpora a Rust test or
+tool consumes, each with a meta sidecar recording binary identity, command and coverage
+limits. Validation results (test counts, Clippy, captures, critic findings) go in the
+PR description and the checkpoint, not the tree: do not commit receipts, run logs,
+capture screenshots, critic reviews or static disassembly packets.
 
 Each cohesive gamemd-derived Rust behavior carries nearby native identity/address
 and source; sim-behavior commits cite their evidence.
@@ -173,7 +175,8 @@ behavior requires them. Newly discovered prerequisite state, lifecycle transitio
 call chains are in scope. Establish their initialization, updates, ordering and cleanup
 through the proper owners, and revise the implementation plan when evidence demands it.
 Fix missing or wrong prerequisites in the same change; leave a residual only for a large
-separate mechanism, and tell the user.
+separate mechanism, and tell the user. An outside contribution is bounded by its issue's
+stated done-criteria; prerequisites found beyond it become issues, not commits.
 Preserve explicit user exclusions and stop instructions; record unrelated findings as
 follow-ups.
 
@@ -274,8 +277,8 @@ render is not correctness proof.
 
 Tools follow the same one-owner rule as code. Before writing a helper, look for an
 existing tool in `tools/` and `src/bin/`, and extend it instead of copying it. Put
-anything another session would need in the repo, not a scratchpad; one-off
-investigation scripts can stay in scratch.
+tools and fixtures another session would need in the repo; one-off scripts and run
+artifacts stay in scratch.
 
 Check compatibility before dependency changes; document non-obvious decisions near
 their owner. Edit skills in `.agents/skills/`; generate Claude copies with

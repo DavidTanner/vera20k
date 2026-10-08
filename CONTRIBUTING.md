@@ -45,7 +45,8 @@ More build and tool details are in the [tool index](tools/README.md).
 ## Your first pull request
 
 1. **Claim an issue** by commenting. One at a time; a claim with no update for 14 days is free.
-2. **Branch from `main`.** One issue per PR, at most one gameplay mechanism.
+2. **Branch from `main`.** One issue per PR, at most one gameplay mechanism. The issue's
+   stated done-criteria bound the PR; anything you find beyond them becomes a new issue.
 3. **Check it:** `cargo test -p vera20k --lib` and `cargo clippy -p vera20k --lib`. Format only
    the files you changed with `rustfmt --edition 2024 <file>`, not `cargo fmt`.
 4. **Update the README status** if a feature starts or stops working.
@@ -53,7 +54,8 @@ More build and tool details are in the [tool index](tools/README.md).
 
 ## Project rules
 
-The AI agents' full rules are in [`AGENTS.md`](AGENTS.md). For people, these matter:
+[`AGENTS.md`](AGENTS.md) is the contract for the maintainer's own agents; outside contributions
+follow this file and the issue. These rules matter:
 
 1. **The original is the reference.** Cite the native function in a comment:
    `/// gamemd: ClassName::Function @ 0x00XXXXXX`. Don't guess.
@@ -61,12 +63,15 @@ The AI agents' full rules are in [`AGENTS.md`](AGENTS.md). For people, these mat
 3. **Deterministic simulation.** Same inputs, same result on every OS and CPU. Use `SimFixed`
    in `src/sim/`, and keep random draws and same-frame effects in the original's order.
 4. **AI tools are welcome** if the PR says which parts they wrote and you can explain every change.
+   Point your agent at this file and the issue, not at `AGENTS.md`.
 
 ## Evidence
 
 Gameplay claims are "native behavior established" (from the original's code or data), "Rust
 regression tested" (named tests) or "parity demonstrated" (compared with the original running).
 For starter issues the maintainer supplies the evidence; you cite it and add a test.
+Commit only the harness and the corpus a test reads, with its meta sidecar; test results,
+captures and logs go in the PR description.
 
 ## Review and bugs
 
