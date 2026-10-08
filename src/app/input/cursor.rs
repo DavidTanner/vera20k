@@ -865,7 +865,7 @@ fn resolved_unit_in_range(
     // Height predicates execute native map queries. Keep their shared fallback
     // identity local to this input probe, across source/range and both slots.
     let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::isolated);
-    for slot in [obj.primary.as_ref(), obj.secondary.as_ref()] {
+    for slot in [obj.primary(), obj.secondary()] {
         let weapon = match slot.and_then(|w| rules.weapon(w)) {
             Some(w) => w,
             None => continue,
@@ -1033,7 +1033,7 @@ pub(crate) fn select_best_for_action(
             // state.
             let obj = rules.and_then(|r| r.object(sim.interner.resolve(entity.type_ref())));
             let has_weapon = obj.is_some_and(|o| {
-                [o.primary.as_ref(), o.secondary.as_ref()]
+                [o.primary(), o.secondary()]
                     .into_iter()
                     .flatten()
                     .filter_map(|w| rules.and_then(|r| r.weapon(w)))

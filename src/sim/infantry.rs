@@ -456,10 +456,7 @@ impl crate::sim::world::Simulation {
         let object = self
             .object_type(actor.type_ref(), rules)
             .ok_or("Infantry idle action requires its native type")?;
-        let controlled_by_human = self
-            .houses
-            .get(&actor.owner())
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        let controlled_by_human = self.owner_is_human(actor.owner());
         let turn = select_idle_action(
             self.substrate
                 .entities

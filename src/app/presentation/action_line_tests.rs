@@ -551,14 +551,14 @@ fn retail_tank_attack_inputs_match_original_readers() {
     let rules = &retail.rules;
     let object = rules.object("MTNK").unwrap();
     let art = crate::sim::combat::fire_coord::firer_art(rules, object).unwrap();
-    let weapon = rules.weapon(object.primary.as_deref().unwrap()).unwrap();
+    let weapon = rules.weapon(object.primary().unwrap()).unwrap();
     let projectile = rules
         .projectile(weapon.projectile.as_deref().unwrap())
         .unwrap();
     let warhead = rules.warhead(weapon.warhead.as_deref().unwrap()).unwrap();
     assert_eq!(object.image, input["resolved_image"].as_str().unwrap());
     assert_eq!(
-        object.primary.as_deref().unwrap(),
+        object.primary().unwrap(),
         input["primary_name"].as_str().unwrap()
     );
     assert_eq!(serde_json::json!(art.turret_offset), input["turret_offset"]);

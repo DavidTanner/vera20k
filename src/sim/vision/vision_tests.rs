@@ -1690,9 +1690,8 @@ fn an_aircrafts_altitude_moves_its_revealed_disc() {
 }
 
 /// F10: the merged view lives in a nonserialized cache — a bincode round trip
-/// (the snapshot serializer) discards it while the wire shadow survives in the
-/// old `generation` slot, and building for a different owner replaces the
-/// cached owner and bumps only the runtime view generation.
+/// (the snapshot serializer) discards it, and building for a different owner
+/// replaces the cached owner and bumps only the runtime view generation.
 #[test]
 fn fog_view_cache_is_discarded_and_rebuilt_after_load_or_owner_change() {
     let mut store = EntityStore::new();
@@ -1709,9 +1708,8 @@ fn fog_view_cache_is_discarded_and_rebuilt_after_load_or_owner_change() {
     assert!(fog.view_cache.merged.is_some());
     let built_generation = fog.view_generation();
     assert!(built_generation > 0);
-    let shadow_before = fog.generation_wire_shadow;
 
-    // Snapshot-style round trip: the cache is discarded, the shadow survives.
+    // Snapshot-style round trip: the cache is discarded.
     let bytes = bincode::serialize(&fog).expect("fog serializes");
     let restored: FogState = bincode::deserialize(&bytes).expect("fog deserializes");
     assert!(
@@ -1722,10 +1720,6 @@ fn fog_view_cache_is_discarded_and_rebuilt_after_load_or_owner_change() {
         restored.view_generation(),
         0,
         "the runtime view generation restarts after a load"
-    );
-    assert_eq!(
-        restored.generation_wire_shadow, shadow_before,
-        "the v81 wire shadow survives in the old generation slot"
     );
 
     // Rebuild after the load: queries work again through the fast path.

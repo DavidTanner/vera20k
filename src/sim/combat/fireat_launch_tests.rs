@@ -717,7 +717,7 @@ fn retail_cannon_uses_converted_speed_and_arcing_under_gravity_6() {
     assert_eq!(rules.general.gravity, 6);
     for (tank, weapon) in [("MTNK", "105mm"), ("HTNK", "120mm")] {
         let object = rules.object(tank).unwrap();
-        assert_eq!(object.primary.as_deref(), Some(weapon), "{tank}");
+        assert_eq!(object.primary(), Some(weapon), "{tank}");
         // The raw reader converts authored40 to102; ROT0's later postpass
         // replaces it using prior Gravity. That ordered state is compared to
         // original full Process in rules::native_processing::weapon_speed_tests.

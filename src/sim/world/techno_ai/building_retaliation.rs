@@ -127,10 +127,7 @@ impl Simulation {
         {
             return ping;
         }
-        let human = self
-            .houses
-            .get(&building.owner())
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        let human = self.owner_is_human(building.owner());
         if source_entity.category == EntityCategory::Aircraft
             || (human && !rules.general.player_return_fire)
         {

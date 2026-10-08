@@ -1836,7 +1836,7 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             .unwrap();
         let object = rules.object(unit_name).unwrap();
         assert_eq!(
-            object.primary.as_deref(),
+            object.primary(),
             arrival["native_inputs"]["after"]["types"][unit_name]["primary_name"].as_str(),
             "{context}: production Primary reader"
         );

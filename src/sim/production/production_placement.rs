@@ -238,9 +238,8 @@ pub fn place_production_with_overlays(
                 // then4FB600..FB622 truncates XY into packed CellStruct words.
                 // Source: factory_infantry_output native notification controls;
                 // a fallback GI can occupy14,15 while radar6 names15,15.
-                if sim.houses.get(&owner_id).is_some_and(|house| {
-                    house.is_controlled_by_human(sim.session.game_mode_nonzero)
-                }) && let Some(factory_entity) = sim.substrate.entities.get(producer)
+                if sim.owner_is_human(owner_id)
+                    && let Some(factory_entity) = sim.substrate.entities.get(producer)
                 {
                     let coords = crate::sim::movement::ground_pose::object_get_coords(
                         factory_entity,

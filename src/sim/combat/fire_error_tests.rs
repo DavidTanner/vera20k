@@ -319,7 +319,9 @@ fn facts(input: &Value) -> FireFacts {
             bunkered: flag(&t["bunkered"]),
             sinking: flag(&t["sinking"]),
             docked: flag(&t["docked"]),
-            health: int(&t["health"]),
+            health: crate::sim::components::Health {
+                current: int(&t["health"]),
+            },
             parasite_lock_until: int(&t["parasite_lock_until"]),
             deploying: flag(&t["deploying"]) || flag(&t["undeploying"]),
             rocked_by_another: t["rocker_link"].as_str() == Some("other"),

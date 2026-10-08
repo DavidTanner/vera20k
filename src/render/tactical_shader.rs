@@ -10,3 +10,12 @@ pub(crate) fn source(body: &str) -> String {
 pub(crate) fn world_source(body: &str) -> String {
     source(&format!("{}\n{}", include_str!("tactical_a.wgsl"), body))
 }
+
+/// The source page an SHP-family blitter reads, RGBA or palette-indexed.
+pub(crate) const SPRITE_SOURCE: &str = include_str!("sprite_source.wgsl");
+
+/// World blitters that read a source page: the batch and Z-tested SHP shaders
+/// and the terrain passes built on the SHP projection.
+pub(crate) fn sprite_source(body: &str) -> String {
+    world_source(&format!("{SPRITE_SOURCE}\n{body}"))
+}

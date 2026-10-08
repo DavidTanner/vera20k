@@ -193,9 +193,9 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
                 reversed: true,
                 residual: 123,
             };
-            assert!(progress.select_fresh(
+            progress.select_fresh(drive_track::fresh_turn_index(
                 integer(&input["first"]) as u8,
-                integer(&input["second"]) as u8
+                integer(&input["second"]) as u8,
             ));
             assert_progress(&progress, &output["selected"]);
             progress.accept_fresh();

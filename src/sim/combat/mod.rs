@@ -148,7 +148,6 @@ use crate::sim::terrain_object::TerrainAreaReceiveResult;
 #[cfg(test)]
 use crate::sim::terrain_object::TerrainAreaState;
 use crate::sim::vision::FogState;
-use crate::sim::wave::WaveDamageEvent;
 use crate::sim::world::{FireOriginSnapshot, SimFireEvent, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
@@ -156,8 +155,8 @@ use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
 use super::game_entity::GameEntity;
 use super::occupancy::OccupancyGrid;
-use crate::rules::foundation::foundation_dimensions;
 use crate::rules::animation_sequence::SequenceSet;
+use crate::rules::foundation::foundation_dimensions;
 
 /// One Unit's post-Foot Facing slot output for this tick — the write half of
 /// `UnitClass::Facing_Update @ 0x00736990` plus the `Fire_At_Target @
@@ -322,7 +321,7 @@ fn classify_projectile_delivery(
         arm_frames: projectile.arm,
         tracks_target: projectile.rot > 0,
         collision: ProjectileCollisionPolicy {
-            level_non_water: projectile.level,
+            level: projectile.level,
             subject_to_walls: projectile.subject_to_walls,
             native_cell_collision: projectile.rot <= 0 && !projectile.vertical,
             dropping: projectile.dropping,
@@ -353,10 +352,7 @@ fn classify_projectile_delivery(
             course_lock_duration: projectile.course_lock_duration,
             course_frames: 0,
             course_locked: true,
-            airburst: projectile.airburst,
-            inaccurate: projectile.inaccurate,
             very_high: projectile.very_high,
-            level: projectile.level,
             max_speed: weapon.speed,
             acceleration: projectile.acceleration,
             // Replaced at construction with the launch-time target coord.
@@ -593,7 +589,7 @@ mod projectile_delivery_tests {
                 arm_frames: 0,
                 tracks_target: false,
                 collision: ProjectileCollisionPolicy {
-                    level_non_water: false,
+                    level: false,
                     subject_to_walls: true,
                     native_cell_collision: true,
                     ..ProjectileCollisionPolicy::NONE
@@ -906,25 +902,6 @@ impl EntityDamageEvent {
             receiver_flags: Some(receiver_flags),
             near_center_ic_isolation_eligible: false,
         }
-    }
-
-    /// `WaveClass::DamageArea` calls the concrete occupant receiver directly,
-    /// at distance zero, while both the wave and firer are still represented.
-    pub(crate) fn from_wave(event: WaveDamageEvent, entities: &EntityStore) -> Self {
-        Self::direct_receiver(
-            event.target_id,
-            event.payload.base_damage,
-            0,
-            event.payload.firer_id,
-            entities
-                .get(event.payload.firer_id)
-                .map(|firer| firer.owner()),
-            event.payload.warhead,
-            ReceiverCallFlags {
-                ignore_defenses: false,
-                arg6: false,
-            },
-        )
     }
 }
 
@@ -2873,7 +2850,7 @@ fn emit_projectile_shrapnel(
             tracks_target: false,
             target_expiry: TargetExpiryPolicy::DetonateAtLastKnown,
             collision: ProjectileCollisionPolicy {
-                level_non_water: child_projectile.level,
+                level: child_projectile.level,
                 subject_to_walls: child_projectile.subject_to_walls,
                 native_cell_collision: child_projectile.rot <= 0,
                 dropping: child_projectile.dropping,

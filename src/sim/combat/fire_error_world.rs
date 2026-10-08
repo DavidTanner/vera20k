@@ -355,7 +355,7 @@ impl FireSubject<'_> {
                         warped_out: entity.is_warped_out(),
                         chrono_warp_latch: entity.chrono_warp_latch(),
                         bunkered: entity.bunker_link.installed_in().is_some(),
-                        health: entity.health.current,
+                        health: entity.health,
                         parasite_lock_until: entity.parasite_launch_lock as i32,
                         deploying: entity.unit_deploying(),
                         ..TargetFacts::default()

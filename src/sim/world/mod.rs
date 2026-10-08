@@ -1913,7 +1913,6 @@ impl Simulation {
         fire_suppressed: &BTreeSet<u64>,
         fire_requests: &crate::sim::combat::FireRequests,
         projectile_detonations: &[crate::sim::projectile::ProjectileDetonation],
-        wave_damage_events: &[crate::sim::wave::WaveDamageEvent],
     ) -> crate::sim::combat::CombatTickResult {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
         let mut result = crate::sim::combat::world_receiver::tick_combat(
@@ -1926,7 +1925,6 @@ impl Simulation {
             fire_suppressed,
             fire_requests,
             projectile_detonations,
-            wave_damage_events,
         );
         result.consequences.finish_navigation(run.finish());
         result
@@ -2786,13 +2784,8 @@ impl Simulation {
         &mut self,
         events: &[crate::sim::combat::UnitLostEvent],
     ) {
-        let game_mode_nonzero = self.session.game_mode_nonzero;
         for event in events {
-            let human = self
-                .houses
-                .get(&event.owner)
-                .is_some_and(|house| house.is_controlled_by_human(game_mode_nonzero));
-            if !human {
+            if !self.owner_is_human(event.owner) {
                 continue;
             }
             self.sound_events.push(SimSoundEvent::UnitLost {
@@ -4329,15 +4322,6 @@ impl Simulation {
             i += 1;
         }
         Ok(())
-    }
-
-    /// Debug-only production asserts: the factory shell
-    /// trace is well-formed (live Structures, strictly-increasing visit order).
-    /// Divergence is surfaced, never equalized.
-    #[cfg(debug_assertions)]
-    pub(crate) fn debug_assert_production_shadow(&self) {
-        self.debug_assert_factory_shell_trace();
-        self.debug_assert_factory_invariants(); // P5b (repurposed from the P5a inversion assert)
     }
 
     /// Debug-only P5b invariants on the now-authoritative registry (repurposed from the
@@ -6472,7 +6456,6 @@ impl Simulation {
                 &fire_suppressed,
                 &fire_requests,
                 &projectile_detonations,
-                &[],
             );
             for projectile in combat_result.projectile_spawns.iter().copied() {
                 let stable_id = self.allocate_stable_id();
@@ -6602,7 +6585,7 @@ impl Simulation {
         #[cfg(debug_assertions)]
         self.debug_assert_lifecycle_consistent();
         #[cfg(debug_assertions)]
-        self.debug_assert_production_shadow();
+        self.debug_assert_factory_invariants();
 
         // Living sprite/voxel/harvest animation state belongs to the committed
         // simulation frame. Keep it inside the authoritative frame transaction

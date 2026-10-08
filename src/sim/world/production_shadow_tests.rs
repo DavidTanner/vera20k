@@ -194,32 +194,6 @@ fn production_authoritative_hash_includes_factory_fields() {
     }
 }
 
-/// FIT (a): the factory shell trace visits live Structures in LogicVector order.
-/// The injected order [3, 1, 2] is NOT entity-id-sorted ([1, 2, 3]) — so an equal
-/// assertion proves the trace follows LogicVector order, not BTreeMap/id order.
-#[test]
-fn factory_shadow_trace_order_matches_logic_vector() {
-    let mut sim = Simulation::new();
-    for id in [3u64, 1, 2] {
-        let e = GameEntity::test_default_of_category(
-            id,
-            "GAPOWR",
-            "Americans",
-            5,
-            5,
-            EntityCategory::Structure,
-        );
-        sim.substrate.entities.insert(e);
-    }
-    sim.set_logic_order_for_test(vec![3, 1, 2]);
-    assert_eq!(
-        sim.factory_shell_trace_order(),
-        vec![3, 1, 2],
-        "trace follows LogicVector order, not entity-id/map order"
-    );
-    sim.debug_assert_factory_shell_trace(); // intrinsic invariants must hold
-}
-
 /// The authority-flip inversion of `snapshot_roundtrip_ignores_shadow`: the registry
 /// is now serialized + hashed, so a mid-build factory survives save->load
 /// bit-identically.

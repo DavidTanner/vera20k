@@ -1038,7 +1038,7 @@ impl Simulation {
                         .get(id)
                         .and_then(|unit| {
                             self.object_type(unit.type_ref(), rules)
-                                .map(|object| !unit.health.is_fully_repaired(object.strength))
+                                .map(|object| !unit.health.is_full(object.strength))
                         })
                         .unwrap_or(false);
                     if damaged {

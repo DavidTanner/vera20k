@@ -269,10 +269,7 @@ pub(crate) fn dispatch_foot_mission(
                     .substrate
                     .entities
                     .get(id)
-                    .and_then(|actor| sim.houses.get(&actor.owner()))
-                    .is_some_and(|house| {
-                        house.is_controlled_by_human(sim.session.game_mode_nonzero)
-                    }) =>
+                    .is_some_and(|actor| sim.owner_is_human(actor.owner())) =>
         {
             //51F4D3's House50B730 gate precedes this deployed arm.
             // Order is load-bearing: `0x0051F500` calls `[vtable+0x428]`
@@ -1998,11 +1995,7 @@ fn foot_type_takes_cadence_band(
     if attacker.category == EntityCategory::Infantry && object.close_range {
         return true;
     }
-    let Some(primary) = object
-        .primary
-        .as_deref()
-        .and_then(|name| rules.weapon(name))
-    else {
+    let Some(primary) = object.primary().and_then(|name| rules.weapon(name)) else {
         return false;
     };
     (primary.range * crate::util::fixed_math::SimFixed::from_num(256)).to_num::<i64>()

@@ -239,10 +239,7 @@ pub(crate) fn enter_idle_mode_for(
             .cargo()
             .is_some_and(|cargo| cargo.count() != 0),
         team: sim.team_script_vm.team_for_member(id).is_some(),
-        human: sim
-            .houses
-            .get(&entity.owner())
-            .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero)),
+        human: sim.owner_is_human(entity.owner()),
         armed: crate::sim::combat::combat_weapon::is_armed(entity, object),
         ammo: entity
             .aircraft_ammo

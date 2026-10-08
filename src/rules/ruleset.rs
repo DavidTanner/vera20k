@@ -3777,8 +3777,8 @@ impl RuleSet {
             object_list[handle.0 as usize].build_const_eligible = true;
         }
 
-        // Step 2: Collect all weapon and warhead IDs referenced by objects.
-        let (mut weapon_ids, warhead_refs) = collect_weapon_refs(&object_list);
+        // Step 2: Collect all weapon IDs referenced by objects.
+        let mut weapon_ids = collect_weapon_refs(&object_list);
         if let Some(default_death_weapon) = ini
             .section_or_empty("CombatDamage")
             .read_name("DeathWeapon", 0x80)
@@ -3805,7 +3805,6 @@ impl RuleSet {
         // explicit registry.
         let mut warhead_ids: HashSet<String> =
             parse_registry(ini, "Warheads").into_iter().collect();
-        warhead_ids.extend(warhead_refs);
 
         for weapon_id in &weapon_ids {
             if let Some(section) = ini.section(weapon_id) {
@@ -5506,26 +5505,11 @@ fn find_or_allocate_side(
     index
 }
 
-/// Collect all weapon and warhead IDs referenced by objects.
-///
-/// Returns (weapon_ids, warhead_ids) as sets (deduplicated).
-fn collect_weapon_refs(objects: &[ObjectType]) -> (HashSet<String>, HashSet<String>) {
+/// Collect all weapon IDs referenced by objects (deduplicated).
+fn collect_weapon_refs(objects: &[ObjectType]) -> HashSet<String> {
     let mut weapon_ids: HashSet<String> = HashSet::new();
-    let warhead_ids: HashSet<String> = HashSet::new();
 
     for obj in objects.iter() {
-        if let Some(ref w) = obj.primary {
-            weapon_ids.insert(w.clone());
-        }
-        if let Some(ref w) = obj.secondary {
-            weapon_ids.insert(w.clone());
-        }
-        if let Some(ref w) = obj.elite_primary {
-            weapon_ids.insert(w.clone());
-        }
-        if let Some(ref w) = obj.elite_secondary {
-            weapon_ids.insert(w.clone());
-        }
         if let Some(ref w) = obj.occupy_weapon {
             weapon_ids.insert(w.clone());
         }
@@ -5539,7 +5523,7 @@ fn collect_weapon_refs(objects: &[ObjectType]) -> (HashSet<String>, HashSet<Stri
         weapon_ids.extend(obj.elite_weapon_list.iter().flatten().cloned());
     }
 
-    (weapon_ids, warhead_ids)
+    weapon_ids
 }
 
 /// Parse prerequisite alias groups from [General] PrerequisiteXxx keys.
@@ -6583,7 +6567,7 @@ MutateWarhead=MyMutate\n\
         assert_eq!(e1.cost, 200);
         assert_eq!(e1.strength, 125);
         assert_eq!(e1.category, ObjectCategory::Infantry);
-        assert_eq!(e1.primary, Some("M60".to_string()));
+        assert_eq!(e1.primary(), Some("M60"));
         assert_eq!(
             e1.build_time_multiplier,
             NativeF32Bits::from_bits(1.15_f32.to_bits())
@@ -6592,7 +6576,7 @@ MutateWarhead=MyMutate\n\
         let mtnk: &ObjectType = rules.object("MTNK").expect("MTNK exists");
         assert_eq!(mtnk.cost, 700);
         assert_eq!(mtnk.category, ObjectCategory::Vehicle);
-        assert_eq!(mtnk.secondary, Some("MachGun".to_string()));
+        assert_eq!(mtnk.secondary(), Some("MachGun"));
 
         let gapowr: &ObjectType = rules.object("GAPOWR").expect("GAPOWR exists");
         assert_eq!(gapowr.power, 200);

@@ -95,6 +95,10 @@ pub struct SpriteInstance {
     pub zshape_origin: [f32; 2],
     /// Selected native palette conversion; default preserves precomposed RGBA.
     pub palette_light: crate::render::palette_light::PaletteLight,
+    /// For a palette-indexed SHP atlas page, the palette row its indices
+    /// resolve through, plus one (`ShpSpriteEntry::source_palette`); 0 samples
+    /// an RGBA page.
+    pub source_palette: u32,
 }
 
 #[cfg(test)]
@@ -126,10 +130,10 @@ mod tests {
     }
 }
 
-/// Number of vertex attributes in SpriteInstance: 7 base + 4 DrawState fields
-/// + 3 native-Z fields (z_adjust, z_gradient, zshape_origin / voxel z_rect)
-/// + the PaletteLight.
-const INSTANCE_ATTRIBUTE_COUNT: usize = 15;
+/// Number of vertex attributes in SpriteInstance: 7 base, 4 DrawState fields,
+/// 3 native-Z fields (z_adjust, z_gradient, zshape_origin / voxel z_rect), the
+/// PaletteLight and the source palette row: the WebGPU default limit of 16.
+const INSTANCE_ATTRIBUTE_COUNT: usize = 16;
 
 macro_rules! instance_attribute {
     ($location:expr, $format:ident, $($field:tt)+) => {
@@ -157,6 +161,7 @@ pub(crate) const SPRITE_INSTANCE_ATTRIBUTES: [wgpu::VertexAttribute; INSTANCE_AT
     instance_attribute!(12, Uint32, z_gradient),
     instance_attribute!(13, Float32x2, zshape_origin),
     instance_attribute!(14, Uint32x4, palette_light),
+    instance_attribute!(15, Uint32, source_palette),
 ];
 
 /// Size of one SpriteInstance in bytes.
@@ -285,6 +290,8 @@ pub struct BatchTexture {
     /// Bind group containing texture view + sampler.
     pub bind_group: wgpu::BindGroup,
     /// Raw texture view — exposed for use by the Z-depth pipeline bind group.
+    /// A palette-indexed SHP atlas page (`create_indexed_page`) has no colour
+    /// texture: this is its R8Uint index view.
     pub view: wgpu::TextureView,
     /// Texture width in pixels.
     pub width: u32,
@@ -531,7 +538,7 @@ impl BatchRenderer {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("Batch Shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    crate::render::tactical_shader::world_source(BATCH_SHADER).into(),
+                    crate::render::tactical_shader::sprite_source(BATCH_SHADER).into(),
                 ),
             });
 
@@ -1067,7 +1074,7 @@ impl BatchRenderer {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("ZSprite Shader"),
                 source: wgpu::ShaderSource::Wgsl(
-                    crate::render::tactical_shader::world_source(ZSPRITE_SHADER).into(),
+                    crate::render::tactical_shader::sprite_source(ZSPRITE_SHADER).into(),
                 ),
             });
         let zsprite_pipeline_layout: wgpu::PipelineLayout =
@@ -1405,44 +1412,43 @@ impl BatchRenderer {
         self.batch_texture(device, &texture, source_indices, width, height)
     }
 
-    /// A zeroed RGBA texture and its palette-index companion, both writable
-    /// with `Queue::write_texture`, for atlas pages that receive sprites after
-    /// they are created. The index texture is returned so the owner can write
-    /// it; the bind group only holds a view.
-    pub(crate) fn create_blank_texture_with_indices(
+    /// A zeroed palette-index page for the SHP atlas, writable with
+    /// `Queue::write_texture`. Its pixels are only the R8 indices: `palette`,
+    /// the atlas's palette rows, takes the colour binding, and each instance's
+    /// `source_palette` selects the row its indices resolve through. The index
+    /// texture is returned so the owner can write it; the page's `view` is its
+    /// view.
+    pub(crate) fn create_indexed_page(
         &self,
         device: &wgpu::Device,
         width: u32,
         height: u32,
+        palette: &wgpu::TextureView,
     ) -> (BatchTexture, wgpu::Texture) {
-        let blank = |label: &str, format: wgpu::TextureFormat| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            })
-        };
-        let texture = blank(
-            "Batch Writable Texture",
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-        );
-        let source_indices = blank(
-            "SHP writable source palette indices",
-            wgpu::TextureFormat::R8Uint,
-        );
-        let indices_view = source_indices.create_view(&Default::default());
+        let indices = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("SHP atlas palette indices"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Uint,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = indices.create_view(&Default::default());
+        let bind_group = self.source_bind_group(device, palette, &view);
         (
-            self.batch_texture(device, &texture, &indices_view, width, height),
-            source_indices,
+            BatchTexture {
+                bind_group,
+                view,
+                width,
+                height,
+            },
+            indices,
         )
     }
 
@@ -1455,20 +1461,36 @@ impl BatchRenderer {
         height: u32,
     ) -> BatchTexture {
         let view: wgpu::TextureView = texture.create_view(&Default::default());
+        let bind_group = self.source_bind_group(device, &view, source_indices);
+        BatchTexture {
+            bind_group,
+            view,
+            width,
+            height,
+        }
+    }
+
+    /// A source page's bind group: `color` (an RGBA page, or the SHP atlas's
+    /// palette rows) with a nearest sampler, and the palette-index plane.
+    fn source_bind_group(
+        &self,
+        device: &wgpu::Device,
+        color: &wgpu::TextureView,
+        source_indices: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
         let sampler: wgpu::Sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Batch Sampler (Nearest)"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-
-        let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Batch Texture BG"),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
+                    resource: wgpu::BindingResource::TextureView(color),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -1479,14 +1501,7 @@ impl BatchRenderer {
                     resource: wgpu::BindingResource::TextureView(source_indices),
                 },
             ],
-        });
-
-        BatchTexture {
-            bind_group,
-            view,
-            width,
-            height,
-        }
+        })
     }
 
     /// Select the authoritative A source once after its frame rebuild. A

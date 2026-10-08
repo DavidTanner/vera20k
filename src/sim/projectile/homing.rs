@@ -4,7 +4,10 @@
 //! Executed controls: tools/projectile_oracle/guided_step.py.
 
 use super::native_math::*;
-use super::{ProjectileCoord as Coord, ProjectileGuidance, ProjectileVelocity as Velocity};
+use super::{
+    ProjectileCollisionPolicy, ProjectileCoord as Coord, ProjectileGuidance,
+    ProjectileVelocity as Velocity,
+};
 use crate::map::retail_trig::TrigTable;
 use crate::util::native_x87::{NativeF64Bits as D, X87Chop53 as X, X87Ordering, X87Value};
 
@@ -169,6 +172,7 @@ pub(super) fn track(
     target: Coord,
     turn: u16,
     g: &ProjectileGuidance,
+    kind: &ProjectileCollisionPolicy,
     target_is_aircraft: bool,
     mut floor_with_bridge: impl FnMut(Coord) -> i32,
     trig: &TrigTable,
@@ -205,16 +209,16 @@ pub(super) fn track(
     let mut new_pitch = current_pitch;
     let quantum = (((u32::from(turn) >> 7) + 1) >> 1) & 0xff;
     if !target_is_aircraft
-        && (g.airburst || horizontal > if g.very_high { 1536 } else { 768 })
+        && (kind.airburst || horizontal > if g.very_high { 1536 } else { 768 })
         && quantum > 1
     {
         let floor = floor_with_bridge(advance(candidate, velocity, 6));
-        let levels = if g.airburst || g.very_high {
+        let levels = if kind.airburst || g.very_high {
             10
         } else {
             (distance3 / 256).min(5)
         };
-        if !g.level {
+        if !kind.level {
             let error = candidate
                 .z
                 .wrapping_sub(levels.wrapping_mul(104))
@@ -233,7 +237,7 @@ pub(super) fn track(
             };
             new_pitch = clamp(current_pitch, desired, ((turn as i16) / 2) as u16);
         }
-    } else if !g.level {
+    } else if !kind.level {
         let desired = pitch(Velocity::new(difference.x, difference.y, difference.z));
         new_pitch = clamp(
             current_pitch,
@@ -243,7 +247,7 @@ pub(super) fn track(
     }
     velocity = apply_pitch(velocity, new_pitch, [2, 0, 1], trig);
     // The pre-clearance target delta is retained for HomingTrack's return.
-    difference.z = if g.airburst { 0 } else { difference.z / 4 };
+    difference.z = if kind.airburst { 0 } else { difference.z / 4 };
     TrackResult {
         candidate,
         velocity,
@@ -255,6 +259,7 @@ pub(super) fn track(
 /// store; preserve the separate signed warmup counter and lock latch.
 pub(super) fn closing(
     g: &mut ProjectileGuidance,
+    airburst: bool,
     old: Coord,
     candidate: Coord,
     target: Coord,
@@ -275,7 +280,7 @@ pub(super) fn closing(
             X::load_i32(delta),
         );
         g.closing_accumulator_bits = store(value).bits();
-        !less(value, X::load_i32(0)) && less(value, X::load_i32(60)) && !g.airburst && !g.very_high
+        !less(value, X::load_i32(0)) && less(value, X::load_i32(60)) && !airburst && !g.very_high
     }
 }
 
@@ -297,6 +302,7 @@ pub(super) fn step(
     shared_cell_dummy: &crate::map::resolved_terrain::SharedCellDummy,
 ) -> StepResult {
     let mut guidance = projectile.guidance.expect("guided branch");
+    let kind = projectile.collision;
     let previous_position = projectile.position;
     let mut impact_flag = false;
     let mut impact_reason = super::ProjectileDetonationReason::Collision;
@@ -316,6 +322,7 @@ pub(super) fn step(
         target_position,
         turn,
         &guidance,
+        &kind,
         target_is_aircraft,
         |coord| {
             let floor = super::projectile_ground_z(terrain, shared_cell_dummy, coord);
@@ -351,7 +358,7 @@ pub(super) fn step(
         tracked.reached_distance,
         projectile.velocity,
         old_height,
-        guidance.airburst,
+        kind.airburst,
         target_position != Coord::new(0, 0, 0),
     );
     if admit {
@@ -369,7 +376,13 @@ pub(super) fn step(
     if target_position == Coord::new(0, 0, 0) && old_height >= safety_altitude {
         impact_flag = true;
     }
-    if closing(&mut guidance, previous_position, candidate, target_position) {
+    if closing(
+        &mut guidance,
+        kind.airburst,
+        previous_position,
+        candidate,
+        target_position,
+    ) {
         impact_flag = true;
         impact_reason = super::ProjectileDetonationReason::ReachedTarget;
     }
@@ -424,10 +437,7 @@ mod tests {
             course_lock_duration: 0,
             course_frames: 0,
             course_locked: true,
-            airburst: false,
-            inaccurate: false,
             very_high: false,
-            level: false,
             max_speed: 102,
             acceleration: 3,
             fuse_reference: Coord::new(0, 0, 0),
@@ -491,6 +501,8 @@ mod tests {
             shot.origin = old;
             shot.velocity = velocity;
             shot.initial_target_position = target;
+            shot.collision.airburst = prepared["airburst"].as_bool().unwrap();
+            shot.collision.level = prepared["level_flight"].as_bool().unwrap();
             shot.guidance = Some(ProjectileGuidance {
                 rot: 60,
                 missile_rot_var: D::from_bits(
@@ -501,10 +513,7 @@ mod tests {
                 course_lock_duration: prepared["course_lock_duration"].as_i64().unwrap() as i32,
                 course_frames: input["counter"].as_i64().unwrap_or(0) as i32,
                 course_locked: input["locked"].as_bool().unwrap_or(false),
-                airburst: prepared["airburst"].as_bool().unwrap(),
-                inaccurate: false,
                 very_high: prepared["very_high"].as_bool().unwrap(),
-                level: prepared["level_flight"].as_bool().unwrap(),
                 max_speed: prepared["maximum_speed"].as_i64().unwrap() as i32,
                 acceleration: prepared["acceleration"].as_i64().unwrap() as i32,
                 fuse_reference: target,
@@ -640,16 +649,16 @@ mod tests {
             shot.tracks_target = true;
             shot.ranged_fuse = true;
             shot.arm_frames = kind.arm;
+            shot.collision.airburst = kind.airburst;
+            shot.collision.inaccurate = kind.inaccurate;
+            shot.collision.level = kind.level;
             shot.guidance = Some(ProjectileGuidance {
                 rot: kind.rot,
                 missile_rot_var: D::from_bits(rules.general.missile_rot_var.to_bits()),
                 course_lock_duration: kind.course_lock_duration,
                 course_frames: 0,
                 course_locked: true,
-                airburst: kind.airburst,
-                inaccurate: kind.inaccurate,
                 very_high: kind.very_high,
-                level: kind.level,
                 max_speed: weapon.speed,
                 acceleration: kind.acceleration,
                 fuse_reference: target,
@@ -760,10 +769,7 @@ mod tests {
                 course_lock_duration: 0,
                 course_frames: 0,
                 course_locked: true,
-                airburst: false,
-                inaccurate: false,
                 very_high: false,
-                level: false,
                 max_speed: 102,
                 acceleration: 3,
                 fuse_reference: target,
@@ -791,6 +797,7 @@ mod tests {
                 target,
                 turn,
                 &g,
+                &super::super::ProjectileCollisionPolicy::NONE,
                 false,
                 |p| 624 + if bridge(p.x, p.y) { 416 } else { 0 },
                 trig,
@@ -805,7 +812,7 @@ mod tests {
                 bits(&row["velocity"]["bits"]),
                 "{name} steered velocity"
             );
-            closing(&mut g, old, tracked.candidate, target);
+            closing(&mut g, false, old, tracked.candidate, target);
             assert_eq!(
                 g.closing_accumulator_bits,
                 row["closing_accum"].as_f64().unwrap().to_bits(),

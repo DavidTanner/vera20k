@@ -150,6 +150,12 @@ fn strafe_poll(facts: &StrikeFacts) -> Visit {
     }
 }
 
+/// The Target test each strike state (4..9) opens with: no Target leaves for
+/// state 10, and state 4 (`0x004182A3`) also leaves on Ammo 0.
+pub(crate) fn strike_leaves(state: u8, target: bool, ammo: i32) -> bool {
+    !target || (state == 4 && ammo == 0)
+}
+
 /// States 4..9 (`0x004182A3`, `0x0041858C`, `0x0041879D`, `0x004188AC`,
 /// `0x004189BB`, `0x00418ACA`). The GetFireError switches are
 /// `0x00418D98`/`0x00418DB8`/`0x00418DD0`/`0x00418DE8`/`0x00418E00`/
@@ -159,8 +165,7 @@ fn strafe_poll(facts: &StrikeFacts) -> Visit {
 /// the rest.
 pub(crate) fn strike_visit(facts: &StrikeFacts, host: &mut impl StrikeHost) -> Visit {
     use FireError::{Cloaked, Facing, Ok, Range, Rearm};
-    // `0x004182A3`: state 4 also leaves on Ammo 0; 5..9 test Target only.
-    if !facts.target || (facts.state == 4 && facts.ammo == 0) {
+    if strike_leaves(facts.state, facts.target, facts.ammo) {
         return Visit::to(10, 1);
     }
     match facts.state {

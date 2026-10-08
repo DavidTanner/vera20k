@@ -631,7 +631,6 @@ RoughConnectTo=14
         assert_eq!(center_result(1000, [1114, 1314, 1221, 1000], pave), 1017);
 
         let (lookup, config) = fixture(FULL_GENERAL, &COUNTS);
-        assert!(lookup.is_water(163));
         let mut water = center_cells(35, [163, 35, 35, 35]);
         apply_lat(&mut water, &config, &lookup);
         assert_eq!(water[0].tile_index, 37, "generic water is not exempt");

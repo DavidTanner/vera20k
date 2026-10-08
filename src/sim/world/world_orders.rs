@@ -192,13 +192,9 @@ impl Simulation {
             }
             //ConditionGreen is the native forced1.0, not an authored key.
             if object.hospital
-                && matches!(
-                    actor
-                        .health
-                        .compare_ratio(self.object_type(actor.type_ref(), rules)?.strength, 1.0,),
-                    crate::util::native_x87::MaskedX87Ordering::Less
-                        | crate::util::native_x87::MaskedX87Ordering::Unordered
-                )
+                && !actor
+                    .health
+                    .is_full(self.object_type(actor.type_ref(), rules)?.strength)
             {
                 return Some(EngineerBuildingAction::EnterHospital);
             }
@@ -453,13 +449,7 @@ impl Simulation {
         if old_owner == new_owner {
             return;
         }
-        let game_mode_nonzero = self.session.game_mode_nonzero;
-        let human = |sim: &Self, house: InternedId| {
-            sim.houses
-                .get(&house)
-                .is_some_and(|h| h.is_controlled_by_human(game_mode_nonzero))
-        };
-        if !(human(self, old_owner) || human(self, new_owner)) {
+        if !(self.owner_is_human(old_owner) || self.owner_is_human(new_owner)) {
             return;
         }
         if self

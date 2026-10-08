@@ -62,7 +62,7 @@ pub(super) fn select_fresh_progress(
     let family = TrackFamily::from_kind(loco.kind)?;
     loco.ensure_installed_track_state();
     let mut progress = loco.track_progress(family)?;
-    assert!(progress.select_fresh((turn_index / 8) as u8, (turn_index % 8) as u8));
+    progress.select_fresh(turn_index);
     loco.store_track_progress(family, progress);
     Some(progress)
 }

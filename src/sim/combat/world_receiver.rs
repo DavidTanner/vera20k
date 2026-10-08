@@ -3002,7 +3002,7 @@ fn heal_weapon_drops_target(
     let strength = rules
         .object(world.interner.resolve(target.type_ref()))
         .map_or(0, |object| object.strength);
-    fire_error::health_ratio_full(target.health.current, strength)
+    target.health.is_full(strength)
 }
 
 /// StartUncloaking (vt+0x45C) from a building's Mission_Attack CLOAKED arm
@@ -3122,10 +3122,7 @@ fn retaliation_reaches(
         garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     }
     .in_range();
-    let human = world
-        .houses
-        .get(&victim.owner())
-        .is_some_and(|house| house.is_controlled_by_human(world.session.game_mode_nonzero));
+    let human = world.owner_is_human(victim.owner());
     if in_range || !human {
         return true;
     }
@@ -3318,11 +3315,7 @@ fn reveal_on_fire(world: &mut Simulation, rules: &RuleSet, firer_id: u64, target
     else {
         return;
     };
-    if !world
-        .houses
-        .get(&house)
-        .is_some_and(|state| state.is_controlled_by_human(world.session.game_mode_nonzero))
-    {
+    if !world.owner_is_human(house) {
         return;
     }
     let Some(firer) = world.substrate.entities.get(firer_id) else {
@@ -4426,7 +4419,6 @@ pub(crate) fn tick_combat(
     fire_suppressed: &BTreeSet<u64>,
     fire_requests: &super::FireRequests,
     projectile_detonations: &[ProjectileDetonation],
-    wave_damage_events: &[WaveDamageEvent],
 ) -> CombatTickResult {
     let radiation_enabled = radiation_enabled(world);
 
@@ -4884,16 +4876,8 @@ pub(crate) fn tick_combat(
         }
     }
     // Every projectile, missile, and live-order attack damage event emitted so
-    // far is already committed. WaveClass::DamageArea is consumed below in its
-    // native wave -> recorded-cell -> selected Cell-list order, followed by
-    // periodic radiation in live-victim order.
+    // far is already committed; periodic radiation follows in live-victim order.
     let committed_damage_event_count = emit.damage_events.len();
-    for event in wave_damage_events {
-        emit.damage_events
-            .push(combat_aoe::AreaDamageReceiver::Entity(
-                EntityDamageEvent::from_wave(*event, &mut world.substrate.entities),
-            ));
-    }
     // Destructure back into the named locals for post-fire state updates.
     let CombatEmit {
         mut effects,

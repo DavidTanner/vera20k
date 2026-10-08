@@ -610,12 +610,6 @@ pub struct FogState {
     /// The merged local-owner view (F10): nonserialized presentation cache.
     #[serde(skip)]
     pub(crate) view_cache: FogViewCache,
-    /// Version-81 wire-compatibility shadow (F10): the exact serialized `u64`
-    /// slot the pre-split view generation occupied, still updated in lockstep
-    /// with the cache so round-trip bytes stay identical. Render consumes
-    /// `view_generation()`, never this field. Do not bump SNAPSHOT_VERSION
-    /// for this; retiring the slot waits for the next planned bump.
-    pub generation_wire_shadow: u64,
     /// Native CellClass::FoggedObjects vectors, keyed by viewer and cell. IDs
     /// may be shared across every cell in one building footprint.
     #[serde(default)]
@@ -1123,8 +1117,8 @@ impl FogState {
     }
 
     /// Cache the selected viewer's already-resolved knowledge. The historical
-    /// method/cache name is retained for callers and serialized generation shadow;
-    /// this does not merge another viewer's derived knowledge or visibility.
+    /// method/cache name is retained for callers; this does not merge another
+    /// viewer's derived knowledge or visibility.
     /// Fresh Techno/Psychic writers own direct-alliance publication at5678E0.
     pub fn build_merged_for(&mut self, owner: InternedId, _interner: &StringInterner) {
         // Reuse existing buffer if dimensions match; otherwise allocate.
@@ -1154,8 +1148,6 @@ impl FogState {
         }
         self.view_cache.merged = Some((owner, merged));
         self.view_cache.generation = self.view_cache.generation.wrapping_add(1);
-        // Kept in lockstep purely for v81 byte compatibility (see field doc).
-        self.generation_wire_shadow = self.generation_wire_shadow.wrapping_add(1);
     }
 
     /// The runtime view-cache generation render dirty-gates on (F10). Resets

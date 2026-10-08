@@ -597,11 +597,6 @@ impl DisguiseRuntime {
         self.disguised_as_house = house;
     }
 
-    /// `TechnoClass::ClearDisguise` clears only the active bit.
-    pub fn clear_techno(&mut self) {
-        self.disguised = false;
-    }
-
     /// `UnitClass::ClearDisguise` additionally clears type and house.
     pub fn clear_unit(&mut self) {
         self.disguised = false;
@@ -613,27 +608,6 @@ impl DisguiseRuntime {
     pub fn reveal_blocks(&self, current_frame: u32) -> bool {
         !self.reveal.timer.expired(current_frame as i32)
     }
-}
-
-pub fn can_open_still_disguise_gate(
-    blocked_by_self_state: bool,
-    blocked_by_linked_object_state: bool,
-    disguise_when_still: bool,
-    tracked_slot0_present: bool,
-) -> bool {
-    !blocked_by_self_state
-        && !blocked_by_linked_object_state
-        && disguise_when_still
-        && !tracked_slot0_present
-}
-
-#[cfg(test)]
-pub fn choose_default_mirage_disguise<T: Copy>(pool: &[Option<T>], random_index: i32) -> Option<T> {
-    if pool.is_empty() {
-        return None;
-    }
-    let index = random_index.clamp(0, pool.len().saturating_sub(1) as i32) as usize;
-    pool[index]
 }
 
 #[cfg(test)]
@@ -794,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    fn reveal_tuple_and_choice_vectors() {
+    fn reveal_tuple_blocks_until_expiry() {
         let mut state = DisguiseRuntime::default();
         assert!(!state.reveal_blocks(0));
         state.reveal = DisguiseRevealTuple {
@@ -803,10 +777,6 @@ mod tests {
         };
         assert!(state.reveal_blocks(109));
         assert!(!state.reveal_blocks(110));
-        assert_eq!(
-            choose_default_mirage_disguise(&[Some(7), Some(11), Some(13)], 99),
-            Some(13)
-        );
     }
 
     #[test]

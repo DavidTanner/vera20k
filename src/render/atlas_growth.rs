@@ -142,26 +142,31 @@ pub(crate) fn place_on_growth_pages<T>(
     (placed, unplaced)
 }
 
-/// Rectangles `(origin, size, texels)` gathered into the band of rows they
-/// span, from column 0 to the rightmost texel: returns the band's origin, size
-/// and tightly packed texels. Texels no rectangle covers are zero.
-pub(crate) fn gather_band(
-    rects: &[([u32; 2], [u32; 2], &[u8])],
+/// Rectangles `(origin, size)` gathered into the band of rows they span, from
+/// column 0 to the rightmost texel: returns the band's origin, size and
+/// tightly packed texels. `texels(i)` gives rectangle `i`'s tightly packed
+/// texels as it is copied in, so a caller can produce them one at a time.
+/// Texels no rectangle covers are zero.
+pub(crate) fn gather_band<T: AsRef<[u8]>>(
+    rects: &[([u32; 2], [u32; 2])],
     bytes_per_texel: u32,
+    mut texels: impl FnMut(usize) -> T,
 ) -> Option<([u32; 2], [u32; 2], Vec<u8>)> {
-    let top = rects.iter().map(|(origin, _, _)| origin[1]).min()?;
+    let top = rects.iter().map(|(origin, _)| origin[1]).min()?;
     let bottom = rects
         .iter()
-        .map(|(origin, size, _)| origin[1] + size[1])
+        .map(|(origin, size)| origin[1] + size[1])
         .max()?;
     let right = rects
         .iter()
-        .map(|(origin, size, _)| origin[0] + size[0])
+        .map(|(origin, size)| origin[0] + size[0])
         .max()?;
     let texel = bytes_per_texel as usize;
     let stride = right as usize * texel;
     let mut band = vec![0u8; stride * (bottom - top) as usize];
-    for (origin, size, texels) in rects {
+    for (i, (origin, size)) in rects.iter().enumerate() {
+        let texels = texels(i);
+        let texels = texels.as_ref();
         let row = size[0] as usize * texel;
         for y in 0..size[1] as usize {
             let start =
@@ -175,13 +180,14 @@ pub(crate) fn gather_band(
 /// Upload rectangles placed on rows no resident sprite occupies (a fresh
 /// shelf, see [`ShelfCursor::start_new_shelf`]) with one write, however many
 /// there are; per-rectangle writes cost a staging allocation each.
-pub(crate) fn write_band(
+pub(crate) fn write_band<T: AsRef<[u8]>>(
     queue: &wgpu::Queue,
     texture: &wgpu::Texture,
     bytes_per_texel: u32,
-    rects: &[([u32; 2], [u32; 2], &[u8])],
+    rects: &[([u32; 2], [u32; 2])],
+    texels: impl FnMut(usize) -> T,
 ) {
-    if let Some((origin, size, band)) = gather_band(rects, bytes_per_texel) {
+    if let Some((origin, size, band)) = gather_band(rects, bytes_per_texel, texels) {
         write_texels(queue, texture, origin, size, bytes_per_texel, &band);
     }
 }
@@ -272,11 +278,10 @@ mod tests {
     fn a_band_gathers_rectangles_into_the_rows_they_span() {
         let tall = [1u8, 2, 3, 4, 5, 6];
         let wide = [7u8, 8, 9];
-        let (origin, size, band) = gather_band(
-            &[([0, 4], [2, 3], &tall[..]), ([3, 4], [3, 1], &wide[..])],
-            1,
-        )
-        .expect("two rectangles");
+        let texels = [&tall[..], &wide[..]];
+        let (origin, size, band) =
+            gather_band(&[([0, 4], [2, 3]), ([3, 4], [3, 1])], 1, |i| texels[i])
+                .expect("two rectangles");
         assert_eq!((origin, size), ([0, 4], [6, 3]));
         #[rustfmt::skip]
         assert_eq!(band, vec![
@@ -284,7 +289,7 @@ mod tests {
             3, 4, 0, 0, 0, 0,
             5, 6, 0, 0, 0, 0,
         ]);
-        assert!(gather_band(&[], 4).is_none());
+        assert!(gather_band(&[], 4, |_| [0u8; 0]).is_none());
     }
 
     fn bottom(placed: &[PagePlacements<[u32; 2]>]) -> u32 {

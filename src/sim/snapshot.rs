@@ -867,7 +867,12 @@ use crate::sim::world::Simulation;
 // draws and hashes an infantry death anim with the impact's arguments, and one
 // taken while a GENDEATH plays already holds its Brute while the ownerless
 // anim would add a civilian one.
-const SNAPSHOT_VERSION: u32 = 300;
+// 300 -> 301: a guided bullet's guidance no longer copies its BulletType's
+// Airburst=, Inaccurate= and Level=; it reads the collision policy's, which
+// held the same values. Prior records cannot resume.
+// 301 -> 302: FogState drops the version-81 wire shadow of the view-cache
+// generation, which nothing read. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 302;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2033,12 +2038,6 @@ fn restore_object_references(
     // object graph has passed validation.
     sim.production.retain_primary_factory_links(&entity_ids);
     sim.production.airfield_docks.cleanup_dead(&entity_ids);
-
-    // The produced-object link was validated above, so this legacy helper is
-    // intentionally a no-op for every admitted snapshot.
-    sim.production
-        .factory_shadow
-        .fixup_object_references(&entity_ids);
 
     Ok(())
 }
@@ -3890,7 +3889,10 @@ mod tests {
         // AircraftMission states.
         // 299 -> 300: infantry death anims with the death producers'
         // arguments and the killing house; a GENDEATH's end makes its Brute.
-        assert_eq!(super::SNAPSHOT_VERSION, 300);
+        // 300 -> 301: guidance reads Airburst/Inaccurate/Level from the
+        // collision policy instead of keeping copies.
+        // 301 -> 302: FogState drops its unread v81 generation wire shadow.
+        assert_eq!(super::SNAPSHOT_VERSION, 302);
     }
 
     #[test]

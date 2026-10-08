@@ -106,22 +106,6 @@ pub struct WaveDamageRequest {
     pub wave_z: i32,
 }
 
-/// Compatibility record used by direct receiver helpers. WaveClass itself no
-/// longer stores one: DamageArea resolves GetWeapon(0) once per cell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct WaveDamagePayload {
-    pub firer_id: u64,
-    pub base_damage: i32,
-    pub warhead: crate::sim::intern::InternedId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WaveDamageEvent {
-    pub wave_id: u64,
-    pub target_id: u64,
-    pub payload: WaveDamagePayload,
-}
-
 pub const WAVE_DISPLAY_REGISTRATION_BUCKET: u8 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]

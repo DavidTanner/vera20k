@@ -77,14 +77,41 @@ impl Gpu {
         origin: [u32; 2],
         size: [u32; 2],
     ) -> Vec<u8> {
+        self.load_texels(view, origin, size, "texture_2d<u32>", "")
+            .chunks_exact(4)
+            .map(|texel| texel[0] as u8)
+            .collect()
+    }
+    /// Read back one rectangle of a float texture as the values `textureLoad`
+    /// returns (linear for sRGB formats).
+    pub(crate) fn read_float_texels(
+        &self,
+        view: &wgpu::TextureView,
+        origin: [u32; 2],
+        size: [u32; 2],
+    ) -> Vec<[f32; 4]> {
+        self.load_texels(view, origin, size, "texture_2d<f32>", "bitcast<vec4<u32>>")
+            .chunks_exact(4)
+            .map(|texel| std::array::from_fn(|channel| f32::from_bits(texel[channel])))
+            .collect()
+    }
+    /// Each texel's four `textureLoad` channels, as `words` converts them.
+    fn load_texels(
+        &self,
+        view: &wgpu::TextureView,
+        origin: [u32; 2],
+        size: [u32; 2],
+        texture: &str,
+        words: &str,
+    ) -> Vec<u32> {
         let ([x, y], [width, height]) = (origin, size);
         let source = format!(
-            "@group(0) @binding(0) var t:texture_2d<u32>; @group(0) @binding(1) var<storage,read_write> output:array<u32>; @compute @workgroup_size(8,8) fn main(@builtin(global_invocation_id) p:vec3<u32>) {{ if p.x<{width}u && p.y<{height}u {{ output[p.y*{width}u+p.x]=textureLoad(t,vec2<i32>(i32(p.x+{x}u),i32(p.y+{y}u)),0).r; }} }}"
+            "@group(0) @binding(0) var t:{texture}; @group(0) @binding(1) var<storage,read_write> output:array<vec4<u32>>; @compute @workgroup_size(8,8) fn main(@builtin(global_invocation_id) p:vec3<u32>) {{ if p.x<{width}u && p.y<{height}u {{ output[p.y*{width}u+p.x]={words}(textureLoad(t,vec2<i32>(i32(p.x+{x}u),i32(p.y+{y}u)),0)); }} }}"
         );
         let shader = self
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("uint texel readback"),
+                label: Some("texel readback"),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             });
         let pipeline = self
@@ -99,7 +126,7 @@ impl Gpu {
             });
         let out = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: u64::from(width * height * 4),
+            size: u64::from(width * height * 16),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -141,7 +168,7 @@ impl Gpu {
         rx.recv().unwrap().unwrap();
         let data = read.slice(..).get_mapped_range();
         data.chunks_exact(4)
-            .map(|texel| u32::from_le_bytes(texel.try_into().unwrap()) as u8)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
             .collect()
     }
 

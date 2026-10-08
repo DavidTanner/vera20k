@@ -706,7 +706,7 @@ impl Simulation {
             projectile.last_distance_half.hash(hasher);
             projectile.tracks_target.hash(hasher);
             projectile.target_expiry.hash(hasher);
-            projectile.collision.level_non_water.hash(hasher);
+            projectile.collision.level.hash(hasher);
             projectile.collision.subject_to_walls.hash(hasher);
             projectile.collision.native_cell_collision.hash(hasher);
             projectile.collision.dropping.hash(hasher);

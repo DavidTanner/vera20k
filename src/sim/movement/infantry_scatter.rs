@@ -32,7 +32,8 @@ fn represented_infantry_destination(
             })
 }
 
-/// The Doing values of the deploy family (`0x0051D0E3..0x0051D0F5`).
+/// The Doing values of the deploy family, as Scatter (`0x0051D0E3..0x0051D0F5`)
+/// and the Infantry setter (`0x0051AA60..0x0051AA7E`) test them.
 const DEPLOY_DOINGS: std::ops::RangeInclusive<i32> = 0x1B..=0x1E;
 /// Undeploy, the action the forced no-kidding deploy arm requests.
 const DO_UNDEPLOY: i32 = 0x1F;
@@ -114,10 +115,7 @@ impl Simulation {
             .as_infantry()
             .ok_or("Scatter requires an Infantry Doing")?
             .doing();
-        let human = self
-            .houses
-            .get(&infantry.owner())
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        let human = self.owner_is_human(infantry.owner());
         if DEPLOY_DOINGS.contains(&doing) {
             if flags.forced && flags.no_kidding {
                 self.infantry_do_action(id, DO_UNDEPLOY, false, rules)?;
@@ -463,6 +461,17 @@ pub(crate) mod answered_process {
 }
 
 impl Simulation {
+    /// The Infantry setter's first test (`0x0051AA49..0x0051AA7E`): a human
+    /// owner's (`0x0050B730`) infantryman whose Doing is in the deploy family
+    /// refuses the destination before any write.
+    fn infantry_setter_refuses(&self, actor: &crate::sim::game_entity::GameEntity) -> bool {
+        self.owner_is_human(actor.owner())
+            && actor
+                .mission_leaf
+                .as_infantry()
+                .is_some_and(|leaf| DEPLOY_DOINGS.contains(&leaf.doing()))
+    }
+
     /// Whether the non-null Infantry51AA40 destination owner represents this
     /// receiver and target. This checks port coverage, not native admission.
     pub(crate) fn infantry_setter_receiver(
@@ -499,14 +508,10 @@ impl Simulation {
         if !represented_infantry_destination(actor, object, requested) || actor.infantry.is_none() {
             return false;
         }
-        let Some(leaf) = actor.mission_leaf.as_infantry() else {
+        if actor.mission_leaf.as_infantry().is_none() {
             return false;
-        };
-        let human = self
-            .houses
-            .get(&actor.owner())
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
-        if human && (27..=30).contains(&leaf.doing()) {
+        }
+        if self.infantry_setter_refuses(actor) {
             return true;
         }
         // Non-cell +4C projections read retained state only. The shared Foot
@@ -643,18 +648,10 @@ impl Simulation {
             NavTargetRef::Cell { rx, ry } => Some((rx, ry)),
             _ => None,
         };
-        let human = self
-            .houses
-            .get(&actor.owner())
-            .is_some_and(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
-        if human
-            && actor
-                .mission_leaf
-                .as_infantry()
-                .is_some_and(|l| (27..=30).contains(&l.doing()))
-        {
+        if self.infantry_setter_refuses(actor) {
             return Ok(true);
         }
+        let human = self.owner_is_human(actor.owner());
         if !self.infantry_destination_inputs_available(id, requested, rules, registry) {
             return Err("Infantry destination requires available class inputs".into());
         }
@@ -774,16 +771,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        let human = self
-            .houses
-            .get(&actor.owner())
-            .is_some_and(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
-        if human
-            && actor
-                .mission_leaf
-                .as_infantry()
-                .is_some_and(|leaf| (27..=30).contains(&leaf.doing()))
-        {
+        if self.infantry_setter_refuses(actor) {
             return false;
         }
         super::movement_commands::clear_destination_path_head(
