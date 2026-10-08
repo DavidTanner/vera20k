@@ -6211,7 +6211,6 @@ impl Simulation {
             tick,
             admitted_commands,
         } = frame;
-        self.flush_radiation_lighting();
         let lighting_events = std::mem::take(&mut self.lighting_sources.pending);
         let trigger_effects = std::mem::take(&mut self.trigger_effects);
         // Preserve the established terminal-frame gate: these are committed
@@ -6340,6 +6339,7 @@ impl Simulation {
                 self.session.binary_frame,
                 &rules.radiation,
                 self.resolved_terrain.as_ref(),
+                &mut self.lighting_sources.pending,
             );
         }
         // Native TeamClass AI precedes the main LogicClass object vector. In

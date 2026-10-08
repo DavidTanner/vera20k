@@ -51,7 +51,6 @@ impl Simulation {
     /// outgoing timeline. Native lazy post-load reconstruction remains open.
     pub(crate) fn rebuild_lighting_sources_after_load(&mut self, rules: &RuleSet) {
         self.lighting_sources = LightingSources::default();
-        self.radiation.take_lighting_events();
         let ids: Vec<_> = self
             .entities()
             .values()
@@ -71,7 +70,6 @@ impl Simulation {
     }
 
     pub(crate) fn discard_lighting_events(&mut self) {
-        self.radiation.take_lighting_events();
         self.lighting_sources.pending.clear();
     }
 
@@ -104,7 +102,6 @@ impl Simulation {
         ) else {
             return;
         };
-        self.flush_radiation_lighting();
         self.lighting_sources.buildings.insert(id, source.clone());
         self.lighting_sources.pending.push(LightingEvent::Building {
             id,
@@ -123,7 +120,6 @@ impl Simulation {
         }
         source.active = active;
         let source = source.clone();
-        self.flush_radiation_lighting();
         self.lighting_sources.pending.push(LightingEvent::Building {
             id,
             source: Some(source),
@@ -134,26 +130,15 @@ impl Simulation {
     /// Limbo is deliberately not used as an invented source-disable callback.
     pub(crate) fn destroy_building_light(&mut self, id: u64) {
         if self.lighting_sources.buildings.remove(&id).is_some() {
-            self.flush_radiation_lighting();
             self.lighting_sources
                 .pending
                 .push(LightingEvent::Building { id, source: None });
         }
     }
 
-    pub(crate) fn flush_radiation_lighting(&mut self) {
-        self.lighting_sources.pending.extend(
-            self.radiation
-                .take_lighting_events()
-                .into_iter()
-                .map(|(center, source)| LightingEvent::Radiation { center, source }),
-        );
-    }
-
     /// Logic55B4C6 and profile53C280->53AD00 must remain in order with source
     /// invalidations. A final-frame fingerprint cannot recover that history.
     pub(crate) fn publish_global_lighting(&mut self) {
-        self.flush_radiation_lighting();
         let cell_profile = self.lighting_cell_profile();
         self.lighting_sources.pending.push(LightingEvent::Global {
             state: self.session.lighting,
@@ -164,7 +149,6 @@ impl Simulation {
     /// Publish [`LightingEvent::RelightProfile`] after a change of
     /// [`Self::lighting_cell_profile`] that refreshes no cell.
     pub(crate) fn publish_relight_profile(&mut self) {
-        self.flush_radiation_lighting();
         let cell_profile = self.lighting_cell_profile();
         self.lighting_sources
             .pending

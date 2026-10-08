@@ -168,6 +168,7 @@ impl DamageConsequences {
                 world.session.binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut world.lighting_sources.pending,
             );
         }
 
