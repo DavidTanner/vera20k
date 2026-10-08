@@ -168,8 +168,9 @@ fixture machinery):
 - super_fade: SuperClass::AI 0x6CBCA0's head (0x6CBCA8..0x6CBCD4) called once
   a frame: the countdown, the frame SpecialSound plays and where.
 - storm_start: LightningStorm::Start 0x539EB0: the retarget, the
-  countdown's minimum and duration, the empty cell's draws until the usable
-  area (0x568300, a fixture rectangle) holds the cell, and the start: radar
+  countdown's minimum and duration, the empty cell's draws over MapRect
+  (MapClass+0x12C/+0x130) until In_Bounds 0x568300 holds the cell, and the
+  start: radar
   event 13, each house's CreateRadarOutage 0x50BCD0 (IsAlliedWith 0x4F9A50
   run natively) unless the owner counts it an ally, it is defeated (+0x1F5)
   or 0xA8B538 is set, PlayerPtr+0x5779, UpdateLighting, and StormSound and
@@ -177,7 +178,9 @@ fixture machinery):
 - storm_cloud: CreateCloudBolt 0x53A140: the cloud's coordinate (level,
   bridge bit and the first bolt image's half height through 0x6D2120), the
   Scenario draw that picks the cloud, the anim and both lists.
-- storm_pixel_heights: 0x6D2120 over pixel counts after its initializers.
+- storm_pixel_heights: 0x6D2120 over sample pixel counts after its
+  initializers, and over every half SHP height (-16384..=16383) as a digest
+  checked against the exact product under three control words.
 - storm_strike: GroundStrike 0x53A300: the bolt (Get_Center_Coords 0x480A30
   natively over a fixture floor) and its draw, the strike coordinate, the
   LightningSounds draw and PlayAt, the explosion (its selector 0x48A4F0
@@ -201,7 +204,7 @@ from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBP, UC_X86_REG_EBX,
                                UC_X86_REG_ESI, UC_X86_REG_ESP, UC_X86_REG_FPCW)
 
 from tools.ai_base_building_oracle import FAKE, RULES, SCENARIO, STUBS, Emu, u32
-from tools.native_oracle import (NATIVE_FPCW, STACK_BASE, STACK_SIZE, OracleError,
+from tools.native_oracle import (NATIVE_FPCW, RET_MAGIC, STACK_BASE, STACK_SIZE, OracleError,
                                  finish_vectors, provenance, run_checked)
 
 FRAME = 0xA8ED84
@@ -4375,7 +4378,11 @@ STORM_LISTS = (('present', 0xA9F9D0), ('manifesting', 0xA9FA60), ('bolts', 0xA9F
 PLAYER_PTR = 0xA83D4C
 HOUSE_COUNT = 0xA80238
 MUTE_LAUNCHES = 0xA8B538
-MAP_RIGHT, MAP_BOTTOM = 0x87F914, 0x87F918
+# MapClass+0xF4/+0xF8, the map Size In_Bounds 0x568300 reads, and MapRect
+# (+0x124..+0x130: left, top, width, height), which MapClass::Resize 0x565C10
+# writes as (1, 1, W + H - 1, W + H - 1).
+MAP_SIZE = MAP + 0xF4
+MAP_RECT = MAP + 0x124
 # The storm translation unit's CRT initializers (0x813560..0x8135A8, in table
 # order): its copies of the level height (0xA9FA90) and bridge height
 # (0xA9FA84), the empty cell (0xA9F9F8) and the zero coordinate (0xA9FA30).
@@ -4423,7 +4430,7 @@ class StormFixture:
 
     def __init__(self, *, seed=7, frame=1000, rules=STORM_RETAIL, clouds=STORM_CLOUDS,
                  bolts=STORM_BOLTS, debris=STORM_DEBRIS, sounds=STORM_SOUNDS, print_text=True,
-                 cells=None, bounds=(1, 1, 62, 62), houses=((1, False),), player=0,
+                 cells=None, size=(60, 60), houses=((1, False),), player=0,
                  explosion='WCBOLTX', mute=0):
         self.emu = emu = Emu()
         for initializer in STORM_INITIALIZERS + PIXEL_HEIGHT_INITIALIZERS:
@@ -4475,7 +4482,6 @@ class StormFixture:
         self.anims = {}
         self.cells = {}
         self.cell_specs = cells or {}
-        self.bounds = bounds
         self.houses = []
         for index, (bits, defeated) in enumerate(houses):
             this = storm_alloc(emu, 0x16100)
@@ -4491,8 +4497,11 @@ class StormFixture:
         emu.write32(HOUSE_COUNT, len(self.houses))
         emu.write32(PLAYER_PTR, 0 if player is None else self.houses[player])
         emu.write32(MUTE_LAUNCHES, mute)
-        emu.write32(MAP_RIGHT, bounds[2])
-        emu.write32(MAP_BOTTOM, bounds[3])
+        emu.write32(MAP_SIZE, size[0])
+        emu.write32(MAP_SIZE + 4, size[1])
+        extent = size[0] + size[1] - 1
+        for index, value in enumerate((1, 1, extent, extent)):
+            emu.write32(MAP_RECT + 4 * index, value)
         self.install_hooks()
 
     # -- fixture objects
@@ -4579,11 +4588,6 @@ class StormFixture:
             e.events.append(['floor', list(struct.unpack('<ii', bytes(e.uc.mem_read(e.arg(0), 8))))])
             return spec['floor'] if spec['floor'] is not None else spec['level'] * LEVEL_LEPTONS
 
-        def usable(e):
-            x, y = struct.unpack('<hh', bytes(e.uc.mem_read(e.arg(0), 4)))
-            left, top, right, bottom = self.bounds
-            return int(left <= x <= right and top <= y <= bottom)
-
         def anim_ctor(e):
             this = e.uc.reg_read(UC_X86_REG_ECX)
             kind = e.arg(0)
@@ -4637,7 +4641,6 @@ class StormFixture:
         emu.hook(0x47B3A0, floor, 4)
         emu.hook(0x47C520, lambda e: e.read32(e.uc.reg_read(UC_X86_REG_ECX) + 0x1F0), 0)
         emu.hook(0x47C3D0, lambda e: e.read32(e.uc.reg_read(UC_X86_REG_ECX) + 0x1F4), 0xC)
-        emu.hook(0x568300, usable, 4)
         emu.hook(0x421EA0, anim_ctor, 0x1C)
         emu.hook(STUB_STORM_ANIM_TYPE, lambda e: e.read32(e.uc.reg_read(UC_X86_REG_ECX) + 0x1C0), 0)
         emu.hook(STUB_STORM_ANIM_COORDS, anim_coords, 4)
@@ -4695,12 +4698,12 @@ class StormFixture:
 
 def storm_start_row(*, duration=180, deferment=250, cell=(40, 40), owner=0, active=False,
                     current_deferment=0, current_duration=77, houses=((1, False),), player=0,
-                    print_text=True, mute=0, bounds=(1, 1, 62, 62), seed=7, frame=1000):
+                    print_text=True, mute=0, size=(60, 60), seed=7, frame=1000):
     """LightningStorm::Start 0x539EB0 (ECX duration, EDX deferment, cell,
-    owner) over the given storm, houses (ally bits, defeated) and usable
-    area."""
+    owner) over the given storm, houses (ally bits, defeated) and map
+    Size."""
     fx = StormFixture(seed=seed, frame=frame, houses=houses, player=player,
-                      print_text=print_text, mute=mute, bounds=bounds)
+                      print_text=print_text, mute=mute, size=size)
     fx.set_storm(active=active, deferment=current_deferment, duration=current_duration,
                  start=frame - 500, coords=(7, 8), owner=None)
     record_draws(fx.emu)
@@ -4710,7 +4713,7 @@ def storm_start_row(*, duration=180, deferment=250, cell=(40, 40), owner=0, acti
     return dict(duration=duration, deferment=deferment, cell=list(cell), owner=owner,
                 active=active, current_deferment=current_deferment,
                 current_duration=current_duration, houses=[list(h) for h in houses],
-                player=player, print_text=print_text, mute=mute, bounds=list(bounds), seed=seed,
+                player=player, print_text=print_text, mute=mute, size=list(size), seed=seed,
                 frame=frame, events=fx.emu.events, storm=fx.storm(),
                 house_states=fx.house_states(),
                 rng_after=rng_state(fx.emu))
@@ -4732,12 +4735,13 @@ def storm_start():
             storm_start_row(deferment=0, active=True, houses=allied),
             storm_start_row(deferment=250, active=True),
             storm_start_row(deferment=0, duration=-1, houses=allied),
-            # The empty cell: kept when the usable area holds it, else drawn
-            # until a drawn cell lies in it.
-            storm_start_row(cell=(0, 0), bounds=(0, 0, 62, 62)),
-            storm_start_row(cell=(0, 0), bounds=(20, 30, 40, 50), seed=3),
-            storm_start_row(deferment=0, cell=(0, 0), bounds=(5, 5, 9, 9), seed=11,
-                            houses=allied)]
+            # The empty cell, never inside In_Bounds' diamond, is drawn again
+            # over MapRect until a drawn cell lies in it; any other cell is
+            # kept, in bounds or not.
+            storm_start_row(cell=(0, 0)),
+            storm_start_row(cell=(0, 0), size=(8, 8), seed=3),
+            storm_start_row(deferment=0, cell=(0, 0), size=(4, 6), seed=11, houses=allied),
+            storm_start_row(cell=(70, 70))]
     return rows
 
 
@@ -4771,16 +4775,68 @@ def storm_cloud():
     return rows
 
 
+# Every half SHP height CreateCloudBolt can pass (a signed word halved).
+PIXEL_HEIGHT_DOMAIN = (-16384, 16383)
+# Control words the domain runs under: the oracle's 53-bit chop, the startup
+# 53-bit nearest and 64-bit nearest.
+PIXEL_HEIGHT_FPCWS = (NATIVE_FPCW, 0x027F, 0x037F)
+# The scale's significand: [0xB0CDD8] = PIXEL_SCALE_SIGNIFICAND * 2**-50.
+PIXEL_SCALE_SIGNIFICAND = 0x1BDFB59E463B4E
+
+
+def pixel_height_under(emu, pixels, fpcw):
+    """0x6D2120 (ECX the pixel count) under `fpcw`."""
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1004
+    uc.mem_write(sp, u32(RET_MAGIC))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_FPCW, fpcw)
+    uc.reg_write(UC_X86_REG_ECX, pixels & 0xFFFFFFFF)
+    run_checked(uc, 0x6D2120, RET_MAGIC)
+    return i32(uc.reg_read(UC_X86_REG_EAX))
+
+
+def fnv1a64_i32(values):
+    digest = 0xCBF29CE484222325
+    for value in values:
+        for byte in struct.pack('<i', value):
+            digest = ((digest ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return digest
+
+
 def storm_pixel_heights():
-    """0x6D2120 for each pixel count 0..=600 and a few beyond: ftol((pixels -
-    0.5) * [0xB0CDD8]) after its initializers."""
+    """0x6D2120, ftol((pixels - 0.5) * [0xB0CDD8]) after its initializers,
+    for sample pixel counts, and as an FNV-1a digest of the i32 results over
+    the whole half-height domain. Under each control word every result
+    equals the exact product (2 * pixels - 1) * significand * 2**-51
+    truncated toward zero; the generator stops otherwise."""
     emu = Emu()
     for initializer in PIXEL_HEIGHT_INITIALIZERS:
         emu.invoke(initializer)
-    pixels = list(range(0, 601)) + [1000, 2047, 4095, 32767, -1, -2, -100]
     scale = bytes(emu.uc.mem_read(0xB0CDD8, 8))
+    bits = int.from_bytes(scale, 'little')
+    if (bits & ((1 << 52) - 1)) | (1 << 52) != PIXEL_SCALE_SIGNIFICAND or bits >> 52 != 0x401:
+        raise OracleError(f'pixel scale 0x{bits:016X} moved')
+    pixels = list(range(0, 601)) + [1000, 2047, 4095, 16383, 32767, -1, -2, -100, -16384,
+                                    1 << 28, 0x7FFFFFFF, -0x80000000]
+    first, last = PIXEL_HEIGHT_DOMAIN
+    domain = range(first, last + 1)
+    digests = []
+    for fpcw in PIXEL_HEIGHT_FPCWS:
+        heights = [pixel_height_under(emu, px, fpcw) for px in domain]
+        for px, height in zip(domain, heights):
+            product = (2 * px - 1) * PIXEL_SCALE_SIGNIFICAND
+            exact = abs(product) >> 51
+            if height != (exact if product >= 0 else -exact):
+                raise OracleError(f'0x6D2120({px}) under 0x{fpcw:04X} is {height}')
+        digests.append(fnv1a64_i32(heights))
+    if len(set(digests)) != 1:
+        raise OracleError('0x6D2120 differs between control words')
     return dict(scale_bits=scale[::-1].hex(),
-                heights=[[px, i32(emu.invoke(0x6D2120, ecx=px & 0xFFFFFFFF))] for px in pixels])
+                heights=[[px, pixel_height_under(emu, px, NATIVE_FPCW)] for px in pixels],
+                domain=list(PIXEL_HEIGHT_DOMAIN),
+                fpcws=[f'0x{fpcw:04X}' for fpcw in PIXEL_HEIGHT_FPCWS],
+                fnv1a64=f'0x{digests[0]:016x}')
 
 
 def storm_strike_row(*, coords=(40 * 256 + 128, 40 * 256 + 128, 900), cell=None, sounds=STORM_SOUNDS,
@@ -4841,14 +4897,14 @@ def storm_strike():
 
 
 def storm_process_row(*, frame, storm, anims=(), present=(), manifesting=(), bolts=(), seed=7,
-                      rules=STORM_RETAIL, print_text=True, cells=None, bounds=(1, 1, 62, 62),
+                      rules=STORM_RETAIL, print_text=True, cells=None, size=(60, 60),
                       houses=((1, False), (2, False))):
     """LightningStorm::Process 0x53A6C0 once at `frame` (the nuke flash
     idle; PsychicDominator::Process 0x53AF40 and 0x53B560 stubbed) over the
     given storm and lists of fixture anims ((type, coordinate, stage) each),
     with CreateCloudBolt, GroundStrike and Start run natively."""
     fx = StormFixture(seed=seed, frame=frame, rules=rules, print_text=print_text, cells=cells,
-                      bounds=bounds, houses=houses)
+                      size=size, houses=houses)
     fx.set_storm(**storm)
     made = [fx.anim(name, coords, stage) for name, coords, stage in anims]
     for name, indexes in (('present', present), ('manifesting', manifesting), ('bolts', bolts)):
@@ -4859,7 +4915,7 @@ def storm_process_row(*, frame, storm, anims=(), present=(), manifesting=(), bol
         [name, list(coords), stage] for name, coords, stage in anims],
         present=list(present), manifesting=list(manifesting), bolts=list(bolts), seed=seed,
         rules=dict(rules), print_text=print_text, cells=storm_cells_json(cells or {}),
-        bounds=list(bounds), houses=[list(h) for h in houses], events=fx.emu.events,
+        size=list(size), houses=[list(h) for h in houses], events=fx.emu.events,
         storm=fx.storm(), anims=fx.anim_table(), house_states=fx.house_states(),
         rng_after=rng_state(fx.emu))
 
@@ -4920,9 +4976,9 @@ def storm_process():
             anims=(cloud_at(40, 40),), present=(0,)),
         row(frame=1005, storm=raging, rules=dict(STORM_RETAIL, separation=0),
             anims=(cloud_at(40, 40),), present=(0,)),
-        row(frame=1005, storm=raging, bounds=(40, 40, 41, 41)),
-        row(frame=1005, storm=raging, bounds=(44, 44, 50, 50), seed=9),
-        row(frame=1005, storm=dict(raging, coords=(1, 1)), seed=5),
+        row(frame=1005, storm=dict(raging, coords=(2, 2))),
+        row(frame=1005, storm=dict(raging, coords=(31, 31)), seed=9),
+        row(frame=1005, storm=dict(raging, coords=(88, 88)), seed=5),
         # The lists: a manifesting cloud strikes once its stage passes half
         # its frames, last first; a present cloud leaves at its last frame; a
         # bolt leaves at half its frames.
@@ -5266,8 +5322,9 @@ if __name__ == '__main__':
                        'coordinate 0x565730 answer fixture cells (+0x24 cell, +0x11B level, '
                        '+0x140 bridge bit, +0xEC land), whose floor 0x47B3A0, building '
                        '0x47C520 and nearest object 0x47C3D0 answer the row (the damage stub '
-                       'applies the row\'s after-state); 0x568300 tests a fixture '
-                       'rectangle; the anim constructor 0x421EA0, the selector 0x48A4F0, the '
+                       'applies the row\'s after-state); In_Bounds 0x568300 runs over the '
+                       'row\'s Size (+0xF4/+0xF8) beside MapRect (1, 1, W+H-1, W+H-1); the '
+                       'anim constructor 0x421EA0, the selector 0x48A4F0, the '
                        'flash 0x48A620, Apply_area_damage 0x489280, PlayAt 0x7509E0, '
                        'PlayAtPos 0x750920, PlayEVA 0x752700, LoadString 0x734E60, '
                        'Add_Message 0x5D3BA0, CreateRadarEvent 0x65FA70, UpdateLighting '

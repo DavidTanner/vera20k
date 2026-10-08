@@ -78043,6 +78043,16 @@
     }
   ],
   "storm_pixel_heights": {
+    "domain": [
+      -16384,
+      16383
+    ],
+    "fnv1a64": "0x19ce27f9af4aabcc",
+    "fpcws": [
+      "0x0E7F",
+      "0x027F",
+      "0x037F"
+    ],
     "heights": [
       [
         0,
@@ -80461,6 +80471,10 @@
         28532
       ],
       [
+        16383,
+        114160
+      ],
+      [
         32767,
         228332
       ],
@@ -80475,6 +80489,22 @@
       [
         -100,
         -700
+      ],
+      [
+        -16384,
+        -114174
+      ],
+      [
+        268435456,
+        1870583413
+      ],
+      [
+        2147483647,
+        2079765438
+      ],
+      [
+        -2147483648,
+        -2079765452
       ]
     ],
     "scale_bits": "401bdfb59e463b4e"
@@ -80484,12 +80514,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1001,
@@ -80529,6 +80553,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -80560,12 +80588,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -80618,6 +80640,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -80649,12 +80675,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -80707,6 +80727,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -80738,12 +80762,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1001,
@@ -80783,6 +80801,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -80814,12 +80836,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -80884,6 +80900,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -80915,12 +80935,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -80985,6 +80999,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81016,12 +81034,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1001,
@@ -81061,6 +81073,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -81092,12 +81108,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1001,
@@ -81137,6 +81147,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -81189,12 +81203,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -81281,6 +81289,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81330,12 +81342,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -81405,6 +81411,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81441,12 +81451,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1003,
@@ -81486,6 +81490,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81539,12 +81547,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -81631,6 +81633,10 @@
         "spread": 10
       },
       "seed": 3,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81690,12 +81696,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -81782,6 +81782,10 @@
         "spread": 10
       },
       "seed": 4,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81841,12 +81845,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -81933,6 +81931,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -81971,12 +81973,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1081,
@@ -82016,6 +82012,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82069,12 +82069,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82161,6 +82155,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82210,12 +82208,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82273,6 +82265,10 @@
         "spread": 7
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82320,12 +82316,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82419,6 +82409,10 @@
         "spread": 0
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82466,12 +82460,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82565,6 +82553,10 @@
         "spread": 1
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82670,12 +82662,6 @@
         ]
       ],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82749,6 +82735,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82809,12 +82799,6 @@
         ]
       ],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -82893,6 +82877,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -82958,12 +82946,6 @@
         ]
       ],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -83035,6 +83017,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -83072,12 +83058,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        40,
-        40,
-        41,
-        41
-      ],
       "cells": [],
       "events": [
         [
@@ -83154,125 +83134,15 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
-          40,
-          40
-        ],
-        "deferment": 0,
-        "duration": 180,
-        "lists": {
-          "bolts": [],
-          "manifesting": [],
-          "present": []
-        },
-        "owner": 0,
-        "start": 900,
-        "time_to_end": false
-      },
-      "storm_before": {
-        "active": true,
-        "coords": [
-          40,
-          40
-        ],
-        "duration": 180,
-        "owner": 0,
-        "start": 900
-      }
-    },
-    {
-      "anims": [],
-      "anims_before": [],
-      "bolts": [],
-      "bounds": [
-        44,
-        44,
-        50,
-        50
-      ],
-      "cells": [],
-      "events": [
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ],
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ],
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ],
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ],
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ],
-        [
-          "draw",
-          536,
-          -5,
-          5
-        ]
-      ],
-      "frame": 1005,
-      "house_states": [
-        [
-          0,
-          0,
-          0
-        ],
-        [
-          0,
-          0,
-          0
-        ]
-      ],
-      "houses": [
-        [
-          1,
-          false
-        ],
-        [
           2,
-          false
-        ]
-      ],
-      "manifesting": [],
-      "present": [],
-      "print_text": true,
-      "rng_after": "00000000080000006f0000000b7c284f2cc969bacacfdae236b30c8a0912345d640f0af0f70db6fdaac2812e397ccd8261aa1238f290a3eab375b0aa4284a00fa649cf9a844b18b04e26f588c718f3b224bea68b2a93d280bcf81c6266aa6902633c5380cc90abd29c3e59adeb84c7a41e2bca6fde3923126127bfef67372f176e4ec5baccb41ed6f63fcbde96e174f003e20bcc1caa0e161b564c770c6614a2bc5e6b8f1c24e8d2fa113fd3641869de1273d9bc6b168d0f43122af11335f93ba7239b9654eff93768564f2b28a759f2b0cc83d47fb8679e14ab436adcbb3c91a5f13128652882baae2696dd3f0c2f5b3f5850db226fb608f86588ed0b40c4cfd8bd9c0ba7b9a00a3530bcbb1f2403c35bc621310a040d4f2558f4d764c4ab36095a60294472b142ae9f91b5696b6f14c70163f230e75bcd3cb2c90d6d5a05c5fed79c326c4793246acbe4d4276c0bb174e5e9a1b972084198bd80282cc37015453f1348a7d3df6b687a4e23a1996a43b4bb72569b154eff40637aeae431ca44bca20c916afa69968da11bd2f4681054e5cb90c45a7f28b8b766da5fd80339e71d53ebbe39c063cd66c3837d51fa612fa513f732954b6b7823f1e6827e1cb09c2ba80c05b525f5d7167c67cdd1833aa75c5e1061754e0d0d44c29d93b6a00382b53d478eb546fe5b2447e855b47c38e17564667eb024f7a8ce237a7b907656a6ee2ca774f5ce33a24fd4a52443a54797a2e7064d56f97887e244a05986df0880c03154b16f579ce81f3d4bb0aaad23b5f69526545a04fefe75d22cf6336e3fbc2c3ce7a156d3d0ea284beb9cd81b4928b3dc39cb7bc2ae7557dd2d868207ae1f9287a591d376956528c5b111c6b74398a304023efb20a4de5115c07210009459779767bc467d00bb703a11babd4c70e2f006f4d8a9b506239677b990c5517bbf78e2e320c9b63d8b02ffce90f2aabdfd5d4ad94023aa68cc1d9ad881805753a8fe8b063ff9c44951ce2756649f199b96e559e8cfa59d32cb181599619deb43766b707429179da587afc36aa40342de36564f33ae222dbed59385b56a322aecb8ad87402f5c747dbd284da0f622b7c88a370756d0f4e5dae3b21eca09fa3e6ef05b642aa293328ddad4dea0f54381cea436835efa53d93aa806e019426ad0c184fd448148c679d34c7eb5a29e3a2525ff42d7c40faa975abd30386e17775397c4a57213a33cdbba87028c6a99a40f41bc52f933e6e197d2aecb7f965de2f068e355dbd71bdeed41ca6caffe90b07fa1f475f997d6da297fa653c71327be1b4b64c0ef5ee55a2991357a274382a403adde9cdfb34107ecc0a52f9287d0be3cfa8e0f2427a11a0fc840563fb72c9abbb95eade6b421bd954efedaedf67219e6fc3205da8a24c2eea91347dafb6a6b81f106081f6a16",
-      "rules": {
-        "damage": 250,
-        "deferment": 250,
-        "duration": 180,
-        "hit_delay": 10,
-        "scatter_delay": 5,
-        "separation": 3,
-        "spread": 10
-      },
-      "seed": 9,
-      "storm": {
-        "active": true,
-        "coords": [
-          40,
-          40
+          2
         ],
         "deferment": 0,
         "duration": 180,
@@ -83288,8 +83158,8 @@
       "storm_before": {
         "active": true,
         "coords": [
-          40,
-          40
+          2,
+          2
         ],
         "duration": 180,
         "owner": 0,
@@ -83302,8 +83172,8 @@
           0,
           "WCCLOUD2",
           [
-            1408,
-            1408,
+            9344,
+            8320,
             1320
           ],
           0
@@ -83311,12 +83181,6 @@
       ],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -83336,8 +83200,8 @@
           0,
           "WCCLOUD2",
           [
-            1408,
-            1408,
+            9344,
+            8320,
             1320
           ],
           [
@@ -83375,7 +83239,7 @@
       "manifesting": [],
       "present": [],
       "print_text": true,
-      "rng_after": "00000000050000006c0000006e8ddc974985a00c2e3cf4cf19c2ca910926f2cf52b2d7f8ecc74c43efe87cf31ead1d880ceaca9f2f36898b18e322e60b13b5364aea863596e189f033e1c86a420268d42a1c1f24573194697ea77735145c6252a21800aab516c41804254159e15fbd4597b5327f43ecfc20219fa8396caa3d3f6460230b46d44bf48fa3e7fa5db1f5fa359025d12af9a4c9e65d93bfcbe7360221a12583bb76442358a794937af5cb0668e260a6cfeecfaab3d9f1888a66b0db83a8bd570a32f1e1a868fb8c7a7d7d3713873c07d9b8683af400122703e935d3314012dd60c0efba469f3edeb24846ce0c65c99bf8baa4058ce60542144ba3a1c07bde8af1c903a63fe7a1e46e87c6cc7ee683bd6a08e2a387708493559269f60412ed3a3171a196216e1ad117dbeb0086f24b942c63a3408e216a62fb3d6395350b86244396c2024a01adb6cc171a787fd33369c774e84c5bc93caf081f8e70f5f9df1d899cc37cab3f9eee37c6404478e9b0a01ee2924f7dada22d564aab28969bf61588499df0222d3134820f29a09ecae85ac794f348febcd3bc5df0417fb8beac7afc64e4d8bb53aa17ce72fbc95bda005c146497b1d32301abb7d8e6dfaff22081365a2088cd1942848cdd1da9f9e75b58ecda669ca40e7acabdd3c8dec986b93fbbd91983ea2fd1887be17901a69adeb0502ec4e3e76fece46501cba0fc81a7b52e46630dce8170b6701c3f4c159b5cdbe84511b7ca3f95d59746e68069af81ae7e88f6b48ef9e3a8cf6f24c8b0dffdf21b6687abfc66f342931b1901cb4371cf30aa7dba0fac066b5c110c851ceaf391c7010deff4491156868ce37052811686cd4d65bc3875129b52840bc51d7a55dc9367a9e508bd52b506ee744d9517818f05660789a5be4cc31813f7b96b923348df97ac68a3dcefb11b8e634f50eacc717814cdbf1ba873ba80af18999c0ff380998fa42aed0010d9a862e33fa89a16d04c80c8fcef8833a6d6311f03b8c3327951b37a6c656a5c498a971bf6243cd4ef4f3407d1de659e67f3c12ae839985f5103831e8c2f5e779dd2ce424026503ed1918064495ea34e8e6d98d7937424925c4ec5cfd320fc954f494afa1e38b42cb0570246e27fb764b534d771bdc1375aa66af741fb86a73bdb86985019f75b1f2fffe1815353134a952b15ea6fb33fc39674ef46922990e4fa46335cfb5d89632101f5590ecb485e283b01aa0f12c302db29c1729934b3d7cebd66b1e33a687c8db05ea3429b9e4d81c356aa3342c3abd3b3bf7a39080f669383f36dfffe436ede95f5f2855211b7416f206ce0e87a2c6444d4841021b9542f0bd09c6724436ddb357b2ae3ad1ffc2791c5bd4120d7b9d28fb4486e4f362143c84acc062508c38e6b088089d93959a27d18bd9ca05e9354",
+      "rng_after": "00000000050000006c0000000b7c284f2cc969bacacfdae236b30c8a0912345d1a13ba6cdca5baf81fe774f9397ccd8261aa1238f290a3eab375b0aa4284a00fa649cf9a844b18b04e26f588c718f3b224bea68b2a93d280bcf81c6266aa6902633c5380cc90abd29c3e59adeb84c7a41e2bca6fde3923126127bfef67372f176e4ec5baccb41ed6f63fcbde96e174f003e20bcc1caa0e161b564c770c6614a2bc5e6b8f1c24e8d2fa113fd3641869de1273d9bc6b168d0f43122af11335f93ba7239b9654eff93768564f2b28a759f2b0cc83d47fb8679e14ab436adcbb3c91a5f13128652882baae2696dd3f0c2f5b3f5850db226fb608f86588ed0b40c4cfd8bd9c0ba7b9a00a3530bcbb1f2403c35bc621310a040d4f2558f4d764c4ab36095a60294472b142ae9f91b5696b6f14c70163f230e75bcd3cb2c90d6d5a05c5fed79c326c4793246acbe4d4276c0bb174e5e9a1b972084198bd80282cc37015453f1348a7d3df6b687a4e23a1996a43b4bb72569b154eff40637aeae431ca44bca20c916afa69968da11bd2f4681054e5cb90c45a7f28b8b766da5fd80339e71d53ebbe39c063cd66c3837d51fa612fa513f732954b6b7823f1e6827e1cb09c2ba80c05b525f5d7167c67cdd1833aa75c5e1061754e0d0d44c29d93b6a00382b53d478eb546fe5b2447e855b47c38e17564667eb024f7a8ce237a7b907656a6ee2ca774f5ce33a24fd4a52443a54797a2e7064d56f97887e244a05986df0880c03154b16f579ce81f3d4bb0aaad23b5f69526545a04fefe75d22cf6336e3fbc2c3ce7a156d3d0ea284beb9cd81b4928b3dc39cb7bc2ae7557dd2d868207ae1f9287a591d376956528c5b111c6b74398a304023efb20a4de5115c07210009459779767bc467d00bb703a11babd4c70e2f006f4d8a9b506239677b990c5517bbf78e2e320c9b63d8b02ffce90f2aabdfd5d4ad94023aa68cc1d9ad881805753a8fe8b063ff9c44951ce2756649f199b96e559e8cfa59d32cb181599619deb43766b707429179da587afc36aa40342de36564f33ae222dbed59385b56a322aecb8ad87402f5c747dbd284da0f622b7c88a370756d0f4e5dae3b21eca09fa3e6ef05b642aa293328ddad4dea0f54381cea436835efa53d93aa806e019426ad0c184fd448148c679d34c7eb5a29e3a2525ff42d7c40faa975abd30386e17775397c4a57213a33cdbba87028c6a99a40f41bc52f933e6e197d2aecb7f965de2f068e355dbd71bdeed41ca6caffe90b07fa1f475f997d6da297fa653c71327be1b4b64c0ef5ee55a2991357a274382a403adde9cdfb34107ecc0a52f9287d0be3cfa8e0f2427a11a0fc840563fb72c9abbb95eade6b421bd954efedaedf67219e6fc3205da8a24c2eea91347dafb6a6b81f106081f6a16",
       "rules": {
         "damage": 250,
         "deferment": 250,
@@ -83385,12 +83249,16 @@
         "separation": 3,
         "spread": 10
       },
-      "seed": 5,
+      "seed": 9,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
-          1,
-          1
+          31,
+          31
         ],
         "deferment": 0,
         "duration": 180,
@@ -83410,8 +83278,140 @@
       "storm_before": {
         "active": true,
         "coords": [
+          31,
+          31
+        ],
+        "duration": 180,
+        "owner": 0,
+        "start": 900
+      }
+    },
+    {
+      "anims": [
+        [
+          0,
+          "WCCLOUD2",
+          [
+            23680,
+            22656,
+            1320
+          ],
+          0
+        ]
+      ],
+      "anims_before": [],
+      "bolts": [],
+      "cells": [],
+      "events": [
+        [
+          "draw",
+          536,
+          -5,
+          5
+        ],
+        [
+          "draw",
+          536,
+          -5,
+          5
+        ],
+        [
+          "draw",
+          536,
+          -5,
+          5
+        ],
+        [
+          "draw",
+          536,
+          -5,
+          5
+        ],
+        [
+          "anim",
+          0,
+          "WCCLOUD2",
+          [
+            23680,
+            22656,
+            1320
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ]
+      ],
+      "frame": 1005,
+      "house_states": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "houses": [
+        [
           1,
-          1
+          false
+        ],
+        [
+          2,
+          false
+        ]
+      ],
+      "manifesting": [],
+      "present": [],
+      "print_text": true,
+      "rng_after": "00000000070000006e0000006e8ddc974985a00c2e3cf4cf19c2ca910926f2cfe56a312743356cc2efe87cf31ead1d880ceaca9f2f36898b18e322e60b13b5364aea863596e189f033e1c86a420268d42a1c1f24573194697ea77735145c6252a21800aab516c41804254159e15fbd4597b5327f43ecfc20219fa8396caa3d3f6460230b46d44bf48fa3e7fa5db1f5fa359025d12af9a4c9e65d93bfcbe7360221a12583bb76442358a794937af5cb0668e260a6cfeecfaab3d9f1888a66b0db83a8bd570a32f1e1a868fb8c7a7d7d3713873c07d9b8683af400122703e935d3314012dd60c0efba469f3edeb24846ce0c65c99bf8baa4058ce60542144ba3a1c07bde8af1c903a63fe7a1e46e87c6cc7ee683bd6a08e2a387708493559269f60412ed3a3171a196216e1ad117dbeb0086f24b942c63a3408e216a62fb3d6395350b86244396c2024a01adb6cc171a787fd33369c774e84c5bc93caf081f8e70f5f9df1d899cc37cab3f9eee37c6404478e9b0a01ee2924f7dada22d564aab28969bf61588499df0222d3134820f29a09ecae85ac794f348febcd3bc5df0417fb8beac7afc64e4d8bb53aa17ce72fbc95bda005c146497b1d32301abb7d8e6dfaff22081365a2088cd1942848cdd1da9f9e75b58ecda669ca40e7acabdd3c8dec986b93fbbd91983ea2fd1887be17901a69adeb0502ec4e3e76fece46501cba0fc81a7b52e46630dce8170b6701c3f4c159b5cdbe84511b7ca3f95d59746e68069af81ae7e88f6b48ef9e3a8cf6f24c8b0dffdf21b6687abfc66f342931b1901cb4371cf30aa7dba0fac066b5c110c851ceaf391c7010deff4491156868ce37052811686cd4d65bc3875129b52840bc51d7a55dc9367a9e508bd52b506ee744d9517818f05660789a5be4cc31813f7b96b923348df97ac68a3dcefb11b8e634f50eacc717814cdbf1ba873ba80af18999c0ff380998fa42aed0010d9a862e33fa89a16d04c80c8fcef8833a6d6311f03b8c3327951b37a6c656a5c498a971bf6243cd4ef4f3407d1de659e67f3c12ae839985f5103831e8c2f5e779dd2ce424026503ed1918064495ea34e8e6d98d7937424925c4ec5cfd320fc954f494afa1e38b42cb0570246e27fb764b534d771bdc1375aa66af741fb86a73bdb86985019f75b1f2fffe1815353134a952b15ea6fb33fc39674ef46922990e4fa46335cfb5d89632101f5590ecb485e283b01aa0f12c302db29c1729934b3d7cebd66b1e33a687c8db05ea3429b9e4d81c356aa3342c3abd3b3bf7a39080f669383f36dfffe436ede95f5f2855211b7416f206ce0e87a2c6444d4841021b9542f0bd09c6724436ddb357b2ae3ad1ffc2791c5bd4120d7b9d28fb4486e4f362143c84acc062508c38e6b088089d93959a27d18bd9ca05e9354",
+      "rules": {
+        "damage": 250,
+        "deferment": 250,
+        "duration": 180,
+        "hit_delay": 10,
+        "scatter_delay": 5,
+        "separation": 3,
+        "spread": 10
+      },
+      "seed": 5,
+      "size": [
+        60,
+        60
+      ],
+      "storm": {
+        "active": true,
+        "coords": [
+          88,
+          88
+        ],
+        "deferment": 0,
+        "duration": 180,
+        "lists": {
+          "bolts": [],
+          "manifesting": [
+            0
+          ],
+          "present": [
+            0
+          ]
+        },
+        "owner": 0,
+        "start": 900,
+        "time_to_end": false
+      },
+      "storm_before": {
+        "active": true,
+        "coords": [
+          88,
+          88
         ],
         "duration": 180,
         "owner": 0,
@@ -83669,12 +83669,6 @@
       "bolts": [
         5,
         6
-      ],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
       ],
       "cells": [
         [
@@ -84093,6 +84087,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -84157,12 +84155,6 @@
         ]
       ],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1100,
@@ -84206,6 +84198,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -84243,12 +84239,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -84292,6 +84282,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84325,12 +84319,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -84374,6 +84362,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84408,12 +84400,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -84423,20 +84409,32 @@
           "draw",
           536,
           0,
-          62
+          119
         ],
         [
           "draw",
           536,
           0,
-          62
+          119
+        ],
+        [
+          "draw",
+          536,
+          0,
+          119
+        ],
+        [
+          "draw",
+          536,
+          0,
+          119
         ],
         [
           "radar_event",
           13,
           [
-            41,
-            46
+            67,
+            99
           ]
         ],
         [
@@ -84482,7 +84480,7 @@
       "manifesting": [],
       "present": [],
       "print_text": true,
-      "rng_after": "0000000002000000690000006ecdf0a7a9a5488a1ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "rng_after": "00000000040000006b0000006ecdf0a7a9a5488a633945f543351b36b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "rules": {
         "damage": 250,
         "deferment": 250,
@@ -84493,11 +84491,15 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
-          41,
-          46
+          67,
+          99
         ],
         "deferment": 0,
         "duration": 180,
@@ -84527,12 +84529,6 @@
       "anims": [],
       "anims_before": [],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [
         [
@@ -84597,6 +84593,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -84649,12 +84649,6 @@
         ]
       ],
       "bolts": [],
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cells": [],
       "events": [],
       "frame": 1100,
@@ -84696,6 +84690,10 @@
         "spread": 10
       },
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -84732,12 +84730,6 @@
   "storm_start": [
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -84767,6 +84759,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84787,12 +84783,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -84822,6 +84812,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84842,12 +84836,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -84877,6 +84865,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84897,12 +84889,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -84932,6 +84918,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -84952,12 +84942,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -84987,6 +84971,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
@@ -85007,12 +84995,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85103,6 +85085,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85123,12 +85109,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85219,6 +85199,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85239,12 +85223,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85335,6 +85313,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85355,12 +85337,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85451,6 +85427,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85471,12 +85451,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85554,6 +85528,10 @@
       "print_text": false,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85574,12 +85552,6 @@
     },
     {
       "active": true,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85645,6 +85617,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85665,12 +85641,6 @@
     },
     {
       "active": true,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85700,6 +85670,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85720,12 +85694,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        1,
-        1,
-        62,
-        62
-      ],
       "cell": [
         40,
         40
@@ -85816,6 +85784,10 @@
       "print_text": true,
       "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
       "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": true,
         "coords": [
@@ -85836,67 +85808,6 @@
     },
     {
       "active": false,
-      "bounds": [
-        0,
-        0,
-        62,
-        62
-      ],
-      "cell": [
-        0,
-        0
-      ],
-      "current_deferment": 0,
-      "current_duration": 77,
-      "deferment": 250,
-      "duration": 180,
-      "events": [],
-      "frame": 1000,
-      "house_states": [
-        [
-          0,
-          0,
-          0
-        ]
-      ],
-      "houses": [
-        [
-          1,
-          false
-        ]
-      ],
-      "mute": 0,
-      "owner": 0,
-      "player": 0,
-      "print_text": true,
-      "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
-      "seed": 7,
-      "storm": {
-        "active": false,
-        "coords": [
-          0,
-          0
-        ],
-        "deferment": 250,
-        "duration": 180,
-        "lists": {
-          "bolts": [],
-          "manifesting": [],
-          "present": []
-        },
-        "owner": 0,
-        "start": 500,
-        "time_to_end": false
-      }
-    },
-    {
-      "active": false,
-      "bounds": [
-        20,
-        30,
-        40,
-        50
-      ],
       "cell": [
         0,
         0
@@ -85910,37 +85821,25 @@
           "draw",
           536,
           0,
-          50
+          119
         ],
         [
           "draw",
           536,
           0,
-          40
+          119
         ],
         [
           "draw",
           536,
           0,
-          50
+          119
         ],
         [
           "draw",
           536,
           0,
-          40
-        ],
-        [
-          "draw",
-          536,
-          0,
-          50
-        ],
-        [
-          "draw",
-          536,
-          0,
-          40
+          119
         ]
       ],
       "frame": 1000,
@@ -85961,13 +85860,17 @@
       "owner": 0,
       "player": 0,
       "print_text": true,
-      "rng_after": "00000000080000006f000000415014cd22cd53bdf355999a441f9ca266962aa9b6dbdf5fa5f70435e3d0cb6432d547ae5f145dded8f8bc594b43dcc1e05e8905c8a54426ab1a2ee47b0ed23defd4cec2b5e1fc888fedcdb02b60233bdfbab33d25a4e912de5da4b8973d326e3210dfa42eb691783090f1b35afd034481fc36d023c159981a45bb95c29327c4911dbb7eec0ef1cfa8b20efc562c8e71740fd30f92ef1ef964341d8ee61c80144b2f3a732a041d81a91294869ba617fabbf3d3a23a4a6401cfae1f5405e66ef4a8696433fcd21564f8f1bebdf703ca960543da3fcd0a96f407954bb3d3e3014f47187ae5973c3c796e55d937762a3307e2158c2a8c07ece72324081170f15fb2e30bad255f4e8c4178a6e8059034b501d700e56ed1107fb65d6ec52fdc289f1f85f6a19100c33d60408708e9c8a2bbbfd8985727434936b4c3db163b41b9fb3ca86c2ef3fb985805bb1cce1a7b0e17e9bad38babdfbb6bdd81a29ebe9ae4c925cb1fcd7997e7d4826c1833d0470911fc2f40f951f8e37c1db0820f4a5baec15b58022952c8fc8a8bf3e308ae70df338f13facfa5616c30489d85e3d009e12bfa370a21e3ca56195bb9550033b557cabc16b4fafacdbd619dc96ad2b3a4cf62d9f05c14a5974c0214f9200245fe0e5d9be606c5f67d351d8f769b7a5c7015a190d34ef236c31ac6d59797b451cb866babc97dd1034f51ab806676d09dad40def2c963e285150f141531667508badff77fc09cc09c8d536bd35d4c77bbcaa27f4a0d611cb74fb337a3206f36c821e095e2ba18e439f5db439614398d0e4ef0848675c898d0ee301f9996fefce4d1b6eba5b5daf869408398920f960943b8042f46acb74bcb955ec3fc08c9d2bdda83663cfbc81e9b574903882bdcf8a27a70cd0a397cd1f549c8a7d0f22d93814d94173afc34eb436f0728bfd57e18ad09134bd26945b5b8f20114e76d9baf74a86ba433b54451505a9d01f097eb35cc785564a158950e240e438a33cda9c46212540d5bfe385d4e56c7bd037b459f5494c4d59f080183bbf81698b379374be1bc6d89445e8211e71faf06492b2954ccdafda383b36d186bf2af9c34aa37ac8daf1d89fc3fea3b5e126580aa0002c3079c791b4ba2e0d98736e36517ecfd62cf0d37b7b0430acef28e81ecd2a9feb791bdb3addc72d8c46eb4dcdd26154d8c267f5cf498c8caa6c3ddb6ad1f1f3498e3b1717b4b7b13b71ab0ffd5fa5343cbf06b48fc7a868befdb023bc81d3bb44fbd1f4893ad421c1d533ed1a98bb40d48b163e166162982211a68e7a5ffc77b0644f6b5a619d89dae8284e2943c94f2ab71073b9fee4606b757b5fcce6e8ec219051ef3588f94864d3f340c5eaff22abbd2893651bc3a7d677801ca9683382fb6fd83bee9de9e6ae040d85190c5",
-      "seed": 3,
+      "rng_after": "00000000040000006b0000006ecdf0a7a9a5488a633945f543351b36b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "seed": 7,
+      "size": [
+        60,
+        60
+      ],
       "storm": {
         "active": false,
         "coords": [
-          35,
-          37
+          67,
+          99
         ],
         "deferment": 250,
         "duration": 180,
@@ -85983,12 +85886,96 @@
     },
     {
       "active": false,
-      "bounds": [
-        5,
-        5,
-        9,
-        9
+      "cell": [
+        0,
+        0
       ],
+      "current_deferment": 0,
+      "current_duration": 77,
+      "deferment": 250,
+      "duration": 180,
+      "events": [
+        [
+          "draw",
+          536,
+          0,
+          15
+        ],
+        [
+          "draw",
+          536,
+          0,
+          15
+        ],
+        [
+          "draw",
+          536,
+          0,
+          15
+        ],
+        [
+          "draw",
+          536,
+          0,
+          15
+        ],
+        [
+          "draw",
+          536,
+          0,
+          15
+        ],
+        [
+          "draw",
+          536,
+          0,
+          15
+        ]
+      ],
+      "frame": 1000,
+      "house_states": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "houses": [
+        [
+          1,
+          false
+        ]
+      ],
+      "mute": 0,
+      "owner": 0,
+      "player": 0,
+      "print_text": true,
+      "rng_after": "00000000060000006d000000415014cd22cd53bdf355999a441f9ca266962aa9b6dbdf5f684a65a82aba19d732d547ae5f145dded8f8bc594b43dcc1e05e8905c8a54426ab1a2ee47b0ed23defd4cec2b5e1fc888fedcdb02b60233bdfbab33d25a4e912de5da4b8973d326e3210dfa42eb691783090f1b35afd034481fc36d023c159981a45bb95c29327c4911dbb7eec0ef1cfa8b20efc562c8e71740fd30f92ef1ef964341d8ee61c80144b2f3a732a041d81a91294869ba617fabbf3d3a23a4a6401cfae1f5405e66ef4a8696433fcd21564f8f1bebdf703ca960543da3fcd0a96f407954bb3d3e3014f47187ae5973c3c796e55d937762a3307e2158c2a8c07ece72324081170f15fb2e30bad255f4e8c4178a6e8059034b501d700e56ed1107fb65d6ec52fdc289f1f85f6a19100c33d60408708e9c8a2bbbfd8985727434936b4c3db163b41b9fb3ca86c2ef3fb985805bb1cce1a7b0e17e9bad38babdfbb6bdd81a29ebe9ae4c925cb1fcd7997e7d4826c1833d0470911fc2f40f951f8e37c1db0820f4a5baec15b58022952c8fc8a8bf3e308ae70df338f13facfa5616c30489d85e3d009e12bfa370a21e3ca56195bb9550033b557cabc16b4fafacdbd619dc96ad2b3a4cf62d9f05c14a5974c0214f9200245fe0e5d9be606c5f67d351d8f769b7a5c7015a190d34ef236c31ac6d59797b451cb866babc97dd1034f51ab806676d09dad40def2c963e285150f141531667508badff77fc09cc09c8d536bd35d4c77bbcaa27f4a0d611cb74fb337a3206f36c821e095e2ba18e439f5db439614398d0e4ef0848675c898d0ee301f9996fefce4d1b6eba5b5daf869408398920f960943b8042f46acb74bcb955ec3fc08c9d2bdda83663cfbc81e9b574903882bdcf8a27a70cd0a397cd1f549c8a7d0f22d93814d94173afc34eb436f0728bfd57e18ad09134bd26945b5b8f20114e76d9baf74a86ba433b54451505a9d01f097eb35cc785564a158950e240e438a33cda9c46212540d5bfe385d4e56c7bd037b459f5494c4d59f080183bbf81698b379374be1bc6d89445e8211e71faf06492b2954ccdafda383b36d186bf2af9c34aa37ac8daf1d89fc3fea3b5e126580aa0002c3079c791b4ba2e0d98736e36517ecfd62cf0d37b7b0430acef28e81ecd2a9feb791bdb3addc72d8c46eb4dcdd26154d8c267f5cf498c8caa6c3ddb6ad1f1f3498e3b1717b4b7b13b71ab0ffd5fa5343cbf06b48fc7a868befdb023bc81d3bb44fbd1f4893ad421c1d533ed1a98bb40d48b163e166162982211a68e7a5ffc77b0644f6b5a619d89dae8284e2943c94f2ab71073b9fee4606b757b5fcce6e8ec219051ef3588f94864d3f340c5eaff22abbd2893651bc3a7d677801ca9683382fb6fd83bee9de9e6ae040d85190c5",
+      "seed": 3,
+      "size": [
+        8,
+        8
+      ],
+      "storm": {
+        "active": false,
+        "coords": [
+          6,
+          6
+        ],
+        "deferment": 250,
+        "duration": 180,
+        "lists": {
+          "bolts": [],
+          "manifesting": [],
+          "present": []
+        },
+        "owner": 0,
+        "start": 500,
+        "time_to_end": false
+      }
+    },
+    {
+      "active": false,
       "cell": [
         0,
         0
@@ -86035,35 +86022,11 @@
           9
         ],
         [
-          "draw",
-          536,
-          0,
-          9
-        ],
-        [
-          "draw",
-          536,
-          0,
-          9
-        ],
-        [
-          "draw",
-          536,
-          0,
-          9
-        ],
-        [
-          "draw",
-          536,
-          0,
-          9
-        ],
-        [
           "radar_event",
           13,
           [
-            6,
-            7
+            4,
+            4
           ]
         ],
         [
@@ -86137,13 +86100,17 @@
       "owner": 0,
       "player": 0,
       "print_text": true,
-      "rng_after": "000000001000000077000000a85da150e0ff89e9ed4ca67ae7e4aca40280c281f454404d84a0ec26aca9ec2fe4b733af7f9a1db2d42e6027be269d749e8b37aef70a3e788f97e90e2693a6b9663ebdcd3cfc46b0af13eb3341b3f8fed4e7eab2dfc075ed88305cc678aa1da81034c0ac8b0c12448ce7dfbc31924ae8b73e49cf7f7502b1b0611d8ab9a116fe95f126f03739d87604e6668a57c4c38c567bc5c9d753c78eeb1707df948b68b39bd8efa13a46edc678b2e6ef847db3b711c1ec8e0d9c938730439fe1fd294a5fb5bc58ae4b0250139503b8be9e521d7d1ac09e0278221e129c572f142468d9a96ccc71539bbf58fbdc25e3b52f63fd6a7ea77cd282a8f1929233dbc8584a04bf8248afdf9b0d49bf1d2ba3e012cbace36d079d7153aa68d3d035f8f8c12c51405ddfe252b894f39b008ee0ea5cbc99a9610397f7f9f4004cca750ff74394bf6c998f4f7629d6edbe07263914dd0b43f490752175632c77d7f0b32db70ede7bf27a2b6cd7c58a2f3f819cb8efa5bc6e634c442a1d1a8582b908704427a77f75aec436165de74c019858459149d7bffd0e1bfb57ba89c1c8ff28121e4fca1af4dbd177a62e91851a74ea1bb420ac55c279724ba4b8fcf72485e5166dfd201a1c2814266707aa089c7622e7976ded7ea6a2279af530c320137129d434da086a9e5193b7b32e98071e2f6ed90b46867a3cb4aff2fba7c84e9d9282d3255931c6a931084d7945432422e740db9ac87b39f5c9fa6edb38b32937a8919253fd05813db1619057ba99f7d28e7cf56c97b97f76f2d293a6415e782d9e3716ba4096917cd036196fb593c84a6446158831d277a2bd4705e9fd822313a2c98d765ffaae322840b4ce0c864e25ae5395474fcd7a6725c2111a3282737349b8837da3f00be2147de5531594a5ee5457c466a2d6ceb2e19e18bb381ee6b1c68091474c9a9d7d37517a30ea266624cea7bcfbee10b10b0d9ae4631100bb703c14faab2bc947c3e878d774170ffe5f1206f2a9b778ffdec36ae71c9959516f1f8ab78c88bed131f62fca296fef219811937774b72ace79f8f5c5f04ca1691bf2c260788af15215776a2a8a87f518bc50447c5eb5182ca25836de67d024f2a044c5ecfc667cd80c4996c4d3a17eeaa13fc11de4bcbbbfe7c100c37a02f829cb3f9c1e831b80ae9eea0ec8c63dfccedc78432d74883bb3949587d8290ea167bedd23da594ab9a32051b451538cac2e11b24d579422bccc12d0d59801a8bf92f382ddd353f65b597eb90a3ccada9893e4f4738893cf0408d93529ddb76b53f2ace508a863646efb5be8f7123e79c160cf19bae03c4664183428603aa248194c7363092bb89491deffb2ebd3e208164dc1dd1ddfffb8e1c2616ac68e2c6442e4ddbad428f61eb323f5b2df4b34cff4a7fc55",
+      "rng_after": "00000000070000006e000000a85da150e0ff89e9ed4ca67ae7e4aca40280c281f454404d84a0ec2649bf81d2c4ad2f876bbc7ab57e26fc519cc10a1973f5910cd090cb484cb7fa7f0f479263663ebdcd3cfc46b0af13eb3341b3f8fed4e7eab2dfc075ed88305cc678aa1da81034c0ac8b0c12448ce7dfbc31924ae8b73e49cf7f7502b1b0611d8ab9a116fe95f126f03739d87604e6668a57c4c38c567bc5c9d753c78eeb1707df948b68b39bd8efa13a46edc678b2e6ef847db3b711c1ec8e0d9c938730439fe1fd294a5fb5bc58ae4b0250139503b8be9e521d7d1ac09e0278221e129c572f142468d9a96ccc71539bbf58fbdc25e3b52f63fd6a7ea77cd282a8f1929233dbc8584a04bf8248afdf9b0d49bf1d2ba3e012cbace36d079d7153aa68d3d035f8f8c12c51405ddfe252b894f39b008ee0ea5cbc99a9610397f7f9f4004cca750ff74394bf6c998f4f7629d6edbe07263914dd0b43f490752175632c77d7f0b32db70ede7bf27a2b6cd7c58a2f3f819cb8efa5bc6e634c442a1d1a8582b908704427a77f75aec436165de74c019858459149d7bffd0e1bfb57ba89c1c8ff28121e4fca1af4dbd177a62e91851a74ea1bb420ac55c279724ba4b8fcf72485e5166dfd201a1c2814266707aa089c7622e7976ded7ea6a2279af530c320137129d434da086a9e5193b7b32e98071e2f6ed90b46867a3cb4aff2fba7c84e9d9282d3255931c6a931084d7945432422e740db9ac87b39f5c9fa6edb38b32937a8919253fd05813db1619057ba99f7d28e7cf56c97b97f76f2d293a6415e782d9e3716ba4096917cd036196fb593c84a6446158831d277a2bd4705e9fd822313a2c98d765ffaae322840b4ce0c864e25ae5395474fcd7a6725c2111a3282737349b8837da3f00be2147de5531594a5ee5457c466a2d6ceb2e19e18bb381ee6b1c68091474c9a9d7d37517a30ea266624cea7bcfbee10b10b0d9ae4631100bb703c14faab2bc947c3e878d774170ffe5f1206f2a9b778ffdec36ae71c9959516f1f8ab78c88bed131f62fca296fef219811937774b72ace79f8f5c5f04ca1691bf2c260788af15215776a2a8a87f518bc50447c5eb5182ca25836de67d024f2a044c5ecfc667cd80c4996c4d3a17eeaa13fc11de4bcbbbfe7c100c37a02f829cb3f9c1e831b80ae9eea0ec8c63dfccedc78432d74883bb3949587d8290ea167bedd23da594ab9a32051b451538cac2e11b24d579422bccc12d0d59801a8bf92f382ddd353f65b597eb90a3ccada9893e4f4738893cf0408d93529ddb76b53f2ace508a863646efb5be8f7123e79c160cf19bae03c4664183428603aa248194c7363092bb89491deffb2ebd3e208164dc1dd1ddfffb8e1c2616ac68e2c6442e4ddbad428f61eb323f5b2df4b34cff4a7fc55",
       "seed": 11,
+      "size": [
+        4,
+        6
+      ],
       "storm": {
         "active": true,
         "coords": [
-          6,
-          7
+          4,
+          4
         ],
         "deferment": 0,
         "duration": 180,
@@ -86154,6 +86121,59 @@
         },
         "owner": 0,
         "start": 1000,
+        "time_to_end": false
+      }
+    },
+    {
+      "active": false,
+      "cell": [
+        70,
+        70
+      ],
+      "current_deferment": 0,
+      "current_duration": 77,
+      "deferment": 250,
+      "duration": 180,
+      "events": [],
+      "frame": 1000,
+      "house_states": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "houses": [
+        [
+          1,
+          false
+        ]
+      ],
+      "mute": 0,
+      "owner": 0,
+      "player": 0,
+      "print_text": true,
+      "rng_after": "000000000000000067000000ef97752c07a9ad611ab6a23da8a525c9b0434466cb2d82a3ee3e8b6105b74a856a0df3837bf90e2f2c6d5bd167859988ce8fb369a2549c0c3f42b3e25f981383d4d6ec774593e560c50081e9b0514ab2821f419660a16387f5a5dece91823553741c88f3208dd5692ae15c93138e480a74e7d7485bd24c4f1f55f33f99fc2e7e30eecc21e0c5f4869fad379cfff7989063692861dc67aeb435e31be6f0ee462a7292bd2690fec20456ddfb5930305ada086f2e09cc0e2bffe7d3e06dfec227e3cd1b8ac087b30e854499f1756d65f8018386e990179219e5d813ef78b45090f6306b3b5378f9971ca643cf7cee36f3ef801322fd30967cfa6d1ed5ec9b2e4a4bdaf31d5f3ae92f1546d38b356660d0e35532938ca70fd534a674e6a4e7e2b8dad18faf0120b788a04c942cb48435bf85e17dafa09dadd55c57cac3b338e07eaa1c22b5b011395b63fb9f7142f0a15b99426bb4c8ac28f1237597d85a23f919835534ff70cdb1b12be8e6a472e6fda4fe10e50c9f4b502b4ec983f6330159b3d4230b4aa2d22fbf769f5fac30de382eaa50be4ee747caa65730a6dfaa815a858bae0ce5eb798fe7c8eb903eff41e16e8952b1ba429836b7a253a722beb794f001bb575d5062d1f43739cc0103e24e91a883116dd6a0b1f4251be8861b413bcd6362cc0f795d33d2cefb143e64ab95850b0291c29f3a90bf8fc8f0fc65fd1b4b37e49d9fe6665ba20fb823bf6f67211aa4d2ba948ab8249e0491b2dde335be91e74a27b4b8ca1819537727c8500602b655d21c3d117ace24e28349f7a0a8dff3bf0d57a629fd315ae87abfd5e7f2385d81eabaf06667f11c1c1e19dcf70e035de13a96906bd28c0e86ab2bdf84def28947ef81a71090dcc0937431bc348881284eaefd3b32f0f8b943360822bead7ee9145cd53008b8a81d594c1920a096f238d0c4e104616a7f6a78ad7fdc36c94845144965ce9df68aa0b5a566aac8ed7ae8b82981a7a35070e28636f8579f952ea70b2575c2e66ab997e23679ae8367d7b6cd56349791fbc8638816d7aff6b781c9aba120edcb196867f69141770946d58c074b69d4047c07159a695cb24276887fc14cb0c5ca5fc3cdc6de42a9df3063964fb4aaf3c6668255b35a43aae8be038e1b419158c3b3e0749935f1a3449af841b788708e485e1af65baba193efa736d67407687aa08252fddc16243d3c7423a5425af75e9560b320906ed56722308076578c0767e87978312d481ef804529e4151abdb8d17a4b82d29216a33bbbd2634e3688063b4dcb0744089c347c4a022a576c68c9159175b9a4d98907e16d61a868876e64aa5e4c3c3f320976b27d65a4c1c9416b200eb880a4b39a3c50b143d418d075acdca81fbc386e5de77229c183c5b6c5dc34e27988027",
+      "seed": 7,
+      "size": [
+        60,
+        60
+      ],
+      "storm": {
+        "active": false,
+        "coords": [
+          70,
+          70
+        ],
+        "deferment": 250,
+        "duration": 180,
+        "lists": {
+          "bolts": [],
+          "manifesting": [],
+          "present": []
+        },
+        "owner": 0,
+        "start": 500,
         "time_to_end": false
       }
     }

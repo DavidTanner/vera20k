@@ -50,7 +50,7 @@
     "nuke_lighting_read: as dominator_lighting_read, ReadDouble 0x5283D0 is not run",
     "force_shield_launch: MapClass::operator[] 0x5657A0 answers a fixture cell whose GetCoords vt+0x48 answers the row's centre raised 104 leptons per level (or the row's coordinate) and whose +0x140 holds the row's bridge bit; the bridge height 0xB0C07C holds 416 and the sentinels come from their static initializers 0x6CADC0/0x6CADE0; BuildingClass::Array holds fixture buildings whose GetCoords vt+0x48 answers the row and whose IronCurtain vt+0x154 is a recorded stub; houses hold only ArrayIndex (+0x30) and their ally bits (+0x5788); the anim constructor 0x421EA0, VocClass::PlayAt 0x7509E0, the blackout 0x50BC90 and the EVA calls 0x753250/0x752A40 are recorded stubs",
     "super_fade: an ungranted Super (+0x6D clear) holding no anim (+0x68) with no Super selected; VocClass::PlayAt 0x7509E0 is a recorded stub",
-    "storm_*: the storm unit's CRT initializers 0x539220..0x539500 and the pixel scale's 0x6D1830/0x6D18C0/0x6D1BF0 run first; fixture anims hold their stage at +0xAC and answer vt+0x88 (type) and vt+0x48 (coordinate); fixture types answer vt+0x9C with an SHP header (+4 height, +6 frames); MapClass::operator[] 0x5657A0 and by coordinate 0x565730 answer fixture cells (+0x24 cell, +0x11B level, +0x140 bridge bit, +0xEC land), whose floor 0x47B3A0, building 0x47C520 and nearest object 0x47C3D0 answer the row (the damage stub applies the row's after-state); 0x568300 tests a fixture rectangle; the anim constructor 0x421EA0, the selector 0x48A4F0, the flash 0x48A620, Apply_area_damage 0x489280, PlayAt 0x7509E0, PlayAtPos 0x750920, PlayEVA 0x752700, LoadString 0x734E60, Add_Message 0x5D3BA0, CreateRadarEvent 0x65FA70, UpdateLighting 0x53C280, the redraw 0x4F42F0, PsychicDominator::Process 0x53AF40 and 0x53B560 are recorded or silent stubs; the three lists have room for 256",
+    "storm_*: the storm unit's CRT initializers 0x539220..0x539500 and the pixel scale's 0x6D1830/0x6D18C0/0x6D1BF0 run first; fixture anims hold their stage at +0xAC and answer vt+0x88 (type) and vt+0x48 (coordinate); fixture types answer vt+0x9C with an SHP header (+4 height, +6 frames); MapClass::operator[] 0x5657A0 and by coordinate 0x565730 answer fixture cells (+0x24 cell, +0x11B level, +0x140 bridge bit, +0xEC land), whose floor 0x47B3A0, building 0x47C520 and nearest object 0x47C3D0 answer the row (the damage stub applies the row's after-state); In_Bounds 0x568300 runs over the row's Size (+0xF4/+0xF8) beside MapRect (1, 1, W+H-1, W+H-1); the anim constructor 0x421EA0, the selector 0x48A4F0, the flash 0x48A620, Apply_area_damage 0x489280, PlayAt 0x7509E0, PlayAtPos 0x750920, PlayEVA 0x752700, LoadString 0x734E60, Add_Message 0x5D3BA0, CreateRadarEvent 0x65FA70, UpdateLighting 0x53C280, the redraw 0x4F42F0, PsychicDominator::Process 0x53AF40 and 0x53B560 are recorded or silent stubs; the three lists have room for 256",
     "radar_outage: the expiry slice starts with ESI the house; 0x508DF0 runs for PlayerPtr with Scenario+0x34A4 set and 0x656DE0 answering neither value, 0x656DF0 recorded"
   ],
   "entry_points": {
@@ -109,8 +109,8 @@
     "HouseClass::radar_availability": "0x00508DF0"
   },
   "source_normalized_lf_sha256": {
-    "superweapon_oracle": "4625b5cea00d1fb0253d77842bb8436813c645c302c0ac2e00ddf66aa0667396",
+    "superweapon_oracle": "e312e53a7edd360db91562834bd2b09fcaa4fd84d7e4fc1ad6563c0331e9768a",
     "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
   },
-  "payload_sha256": "e57b8df6eb073af56a04e02b6acb1ee49e746d521b70b2662b617a158381c11d"
+  "payload_sha256": "2c85fef22f4c45e27e4754b6ab75451ce367830b012a1db6682a43ebc34c6125"
 }
