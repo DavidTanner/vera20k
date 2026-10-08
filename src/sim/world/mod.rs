@@ -57,10 +57,10 @@ mod logic_vector;
 mod move_cell_input;
 #[cfg(test)]
 mod native_cell_input_test_fixture;
-mod rally_cell_input;
 mod navigation;
-mod rocket_flight;
 mod object_turn;
+mod rally_cell_input;
+mod rocket_flight;
 pub use frame_error::FrameAdvanceError;
 pub(crate) use world_orders::EngineerBuildingAction;
 mod shroud_refresh;
@@ -450,6 +450,11 @@ pub enum SimSoundEvent {
     /// (`0x004C9D3B..0x004C9D5F`): `[AudioVisual] ScoldSound=` when the house
     /// is the local player's.
     ProductionRefused { owner: InternedId },
+    /// The PLACE event's Unlimbo succeeded (`HouseClass @ 0x004FB0E0`,
+    /// `0x004FB236`; a wall's Unlimbo also returns 1 at `0x00440865`):
+    /// `[AudioVisual] BuildingSlam=` centred at full volume when the house is
+    /// the local player's (`0x004FB2CC..0x004FB314`).
+    BuildingPlaced { owner: InternedId },
     /// A chrono teleport happened — play the resolved warp sound at this position.
     /// Sim emits two of these per warp: one at the source cell with the unit's
     /// `ChronoOutSound=`, one at the destination cell with the unit's
@@ -1288,8 +1293,7 @@ pub struct Simulation {
     /// The Lightning Storm's globals (one at a time).
     pub(crate) lightning_storm: crate::sim::superweapon::lightning_storm::LightningStorm,
     /// The Psychic Dominator's globals (one at a time).
-    pub(crate) psychic_dominator:
-        crate::sim::superweapon::psychic_dominator::PsychicDominatorState,
+    pub(crate) psychic_dominator: crate::sim::superweapon::psychic_dominator::PsychicDominatorState,
     /// Whether superweapon grants have been initialized from map-placed buildings.
     pub(crate) super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend).
