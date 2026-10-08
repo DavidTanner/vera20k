@@ -43,8 +43,8 @@ use crate::sim::world::Simulation;
 
 impl Simulation {
     /// `HouseClass::Fire_SW @ 0x004FAE50` for `owner`'s Super of type
-    /// `sw_type_id` at `cell`. Returns whether ClickFire launched (native
-    /// returns 1 either way).
+    /// `sw_type_id` at `cell`. Returns whether ClickFire called Launch, a
+    /// VERA answer: native Fire_SW returns 1 either way.
     pub(crate) fn fire_super_weapon(
         &mut self,
         rules: &RuleSet,
@@ -66,7 +66,7 @@ impl Simulation {
             let cell = super_instance(self, owner, pre_type).chrono_cell();
             super_instance(self, owner, sw_type_id).chrono_cell = cell;
         }
-        let launched = click_fire(self, rules, owner, sw_type_id, sw, cell, overlay_registry);
+        let called_launch = click_fire(self, rules, owner, sw_type_id, sw, cell, overlay_registry);
         if let Some((pre_type, pre_sw)) = paired {
             // `0x004FAEA6..0x004FAEC1`.
             super_instance(self, owner, pre_type).is_ready = false;
@@ -79,7 +79,7 @@ impl Simulation {
         for house in houses {
             alert_super_weapon_defense(self, rules, house, sw, cell);
         }
-        launched
+        called_launch
     }
 }
 
@@ -87,7 +87,9 @@ impl Simulation {
 /// Super launches unless a Lightning Storm finds one raging or counting
 /// down (`0x006CB963`) or a Psychic Dominator finds one active
 /// (`0x006CBAD6`), refusals that keep the charge; then readiness and
-/// recharge as [`super::SuperWeaponInstance::finish_click_fire`].
+/// recharge as [`super::SuperWeaponInstance::finish_click_fire`]. Returns
+/// whether it called Launch, whatever the case then did: VERA's answer, as
+/// native returns 0 after Launch outside its one-time arm (`0x006CBB5A`).
 fn click_fire(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -110,7 +112,7 @@ fn click_fire(
     if sw.kind == SuperWeaponKind::PsychicDominator && super::psychic_dominator::active(sim) {
         return false;
     }
-    let launched = launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
+    launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
     // `0x006CBBDE..0x006CBC34`: a type that is neither pairs no anim.
     if !sw.manual_control && !sw.pre_click && !sw.post_click {
         sim.release_super_anim(owner, sw_type_id);
@@ -123,12 +125,12 @@ fn click_fire(
     {
         instance.finish_click_fire(sw, frame);
     }
-    launched
+    true
 }
 
 /// `SuperClass::Launch @ 0x006CC390`: the case of the type's `Type=`
-/// (`+0xB4`, jump table `0x006CDE44`). Returns whether the case did
-/// anything; native returns nothing.
+/// (`+0xB4`, jump table `0x006CDE44`). Native returns nothing; each case's
+/// own answer serves only its tests.
 fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -137,61 +139,67 @@ fn launch(
     sw: &SuperWeaponType,
     (rx, ry): (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
-) -> bool {
+) {
     use super::paradrop::ParaDropKind;
     match sw.kind {
         SuperWeaponKind::MultiMissile => {
-            super::nuke::launch(sim, rules, owner, sw_type_id, sw, (rx, ry))
+            super::nuke::launch(sim, rules, owner, sw_type_id, sw, (rx, ry));
         }
         SuperWeaponKind::LightningStorm => {
-            super::lightning_storm::launch(sim, rules, owner, sw_type_id, (rx, ry))
+            super::lightning_storm::launch(sim, rules, owner, sw_type_id, (rx, ry));
         }
         SuperWeaponKind::IronCurtain => {
-            super::iron_curtain::launch(sim, rules, owner, rx, ry, sw_type_id, overlay_registry)
+            super::iron_curtain::launch(sim, rules, owner, rx, ry, sw_type_id, overlay_registry);
         }
         SuperWeaponKind::ForceShield => {
-            super::force_shield::launch(sim, rules, owner, rx, ry, sw_type_id)
+            super::force_shield::launch(sim, rules, owner, rx, ry, sw_type_id);
         }
-        SuperWeaponKind::GeneticConverter => super::genetic_converter::launch(
-            sim,
-            rules,
-            owner,
-            rx,
-            ry,
-            sw_type_id,
-            overlay_registry,
-        ),
+        SuperWeaponKind::GeneticConverter => {
+            super::genetic_converter::launch(
+                sim,
+                rules,
+                owner,
+                rx,
+                ry,
+                sw_type_id,
+                overlay_registry,
+            );
+        }
         SuperWeaponKind::PsychicReveal => {
-            super::psychic_reveal::launch(sim, rules, owner, rx, ry, sw_type_id)
+            super::psychic_reveal::launch(sim, rules, owner, rx, ry, sw_type_id);
         }
         SuperWeaponKind::ParaDrop => {
-            super::paradrop::launch(sim, rules, owner, rx, ry, ParaDropKind::Generic, sw_type_id)
+            super::paradrop::launch(sim, rules, owner, rx, ry, ParaDropKind::Generic, sw_type_id);
         }
-        SuperWeaponKind::AmerParaDrop => super::paradrop::launch(
-            sim,
-            rules,
-            owner,
-            rx,
-            ry,
-            ParaDropKind::American,
-            sw_type_id,
-        ),
+        SuperWeaponKind::AmerParaDrop => {
+            super::paradrop::launch(
+                sim,
+                rules,
+                owner,
+                rx,
+                ry,
+                ParaDropKind::American,
+                sw_type_id,
+            );
+        }
         SuperWeaponKind::ChronoSphere => {
-            super::chronosphere::launch_source(sim, rules, owner, sw_type_id, (rx, ry))
+            super::chronosphere::launch_source(sim, rules, owner, sw_type_id, (rx, ry));
         }
-        SuperWeaponKind::ChronoWarp => super::chronosphere::launch_warp(
-            sim,
-            rules,
-            owner,
-            sw_type_id,
-            (rx, ry),
-            overlay_registry,
-        ),
+        SuperWeaponKind::ChronoWarp => {
+            super::chronosphere::launch_warp(
+                sim,
+                rules,
+                owner,
+                sw_type_id,
+                (rx, ry),
+                overlay_registry,
+            );
+        }
         SuperWeaponKind::PsychicDominator => {
-            super::psychic_dominator::launch(sim, rules, owner, sw_type_id, (rx, ry))
+            super::psychic_dominator::launch(sim, rules, owner, sw_type_id, (rx, ry));
         }
         SuperWeaponKind::SpyPlane => {
-            super::spy_plane::launch(sim, rules, owner, sw_type_id, (rx, ry))
+            super::spy_plane::launch(sim, rules, owner, sw_type_id, (rx, ry));
         }
     }
 }

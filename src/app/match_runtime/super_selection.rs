@@ -35,20 +35,14 @@ pub(crate) fn chrono_warp_selected(targeting: Option<&TargetingMode>, rules: &Ru
 }
 
 /// The selection writes of the local player's Supers: Launch case 3 selects
-/// the Chrono Warp (`0x006CC46E`), cases 1, 2, 4, 5, 6, 7, 8, 9, 10 and 11
-/// clear the selection on their player's tail (`0x006CD04F`, `0x006CCD9A`,
-/// `0x006CCD1C`, `0x006CD50F` for both paradrops, `0x006CCE41`,
-/// `0x006CD6F8`, `0x006CDA53`, `0x006CD2CB`, `0x006CD7D3`), and the
-/// revoke/suspend pass clears it when the selected Super's hold changes or
-/// it is lost (`HouseClass @ 0x0050AF10`, `0x0050B181..0x0050B190`). Other
-/// houses' Supers leave it alone.
-///
-/// RESIDUAL: the player's tail of case 0 clears the selection too
-/// (`0x006CDCC3` and `0x006CDE16`), beside its Ready line's drop, which
-/// `sound_dispatch::launch_drops_ready_line` lacks for it as well. Trigger:
-/// the local player's Nuke launching while a Super is selected (the click
-/// drops VERA's own selection, so a later selection before the delayed
-/// launch runs). Effect: that selection stays.
+/// the Chrono Warp (`0x006CC46E`), every other case clears the selection on
+/// its player's tail (`0x006CDE16`, `0x006CD04F`, `0x006CCD9A`, `0x006CCD1C`,
+/// `0x006CD50F` for both paradrops, `0x006CCE41`, `0x006CD6F8`,
+/// `0x006CDA53`, `0x006CD2CB`, `0x006CD7D3`), and the revoke/suspend pass
+/// clears it when the selected Super's hold changes or it is lost
+/// (`HouseClass @ 0x0050AF10`, `0x0050B181..0x0050B190`). Other houses'
+/// Supers leave it alone. Case 0's tail also follows a launch that finds no
+/// silo, which VERA does not report (`superweapon/nuke.rs` RESIDUAL).
 pub(super) fn follow_selection_writes(
     targeting: &mut Option<TargetingMode>,
     events: &[SimSoundEvent],
@@ -85,7 +79,8 @@ pub(super) fn follow_selection_writes(
                     .map(|name| TargetingMode::SuperWeapon(name.to_string()));
             }
             Some(
-                SuperWeaponKind::IronCurtain
+                SuperWeaponKind::MultiMissile
+                | SuperWeaponKind::IronCurtain
                 | SuperWeaponKind::LightningStorm
                 | SuperWeaponKind::ChronoWarp
                 | SuperWeaponKind::ParaDrop
@@ -256,9 +251,11 @@ mod tests {
     /// selection at -1 and every other row leaves it, and VERA's launches
     /// report every charged row once (`iron_curtain_tests`,
     /// `genetic_converter_tests`); so for case 11 (`0x006CD7D3`,
-    /// `psychic_launch`, `psychic_reveal_tests`).
+    /// `psychic_launch`, `psychic_reveal_tests`) and for case 0's launches
+    /// with a silo (`0x006CDE16`, `nuke_launch`, `nuke_tests`). The player's
+    /// charged case 0 rows without one pin the `nuke.rs` RESIDUAL.
     #[test]
-    fn the_local_iron_curtain_genetic_mutator_and_psychic_reveal_launches_clear_the_selection() {
+    fn the_local_launch_tails_of_cases_0_1_9_and_11_clear_the_selection() {
         let Some((rules, mut sim, local)) = retail_world() else {
             return;
         };
@@ -268,6 +265,7 @@ mod tests {
             serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
                 .unwrap();
         for (section, name) in [
+            ("nuke_launch", "NukeSpecial"),
             ("iron_curtain_launch", "IronCurtainSpecial"),
             ("genetic_launch", "GeneticConverterSpecial"),
             ("psychic_launch", "PsychicRevealSpecial"),
@@ -277,8 +275,15 @@ mod tests {
             assert!(rows.len() > 10);
             for row in rows {
                 let owner = if row["player"] == true { local } else { remote };
-                // ClickFire admits only a charged Super: no launch, no report.
-                let events = if row["charged"] == true {
+                let silo = section != "nuke_launch"
+                    || row["events"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|event| event[0] == "queue_mission");
+                // ClickFire admits only a charged Super, and case 0 launches
+                // only with a silo: no launch, no report.
+                let events = if row["charged"] == true && silo {
                     vec![SimSoundEvent::SuperWeaponLaunched {
                         owner,
                         sw_type,
@@ -290,13 +295,19 @@ mod tests {
                 };
                 let mut targeting = selected();
                 follow_selection_writes(&mut targeting, &events, &sim, &rules, Some("Americans"));
-                let expected = if row["selected_super"] == -1 {
+                let native = if row["selected_super"] == -1 {
                     None
                 } else {
                     assert_eq!(row["selected_super"], 9, "{row}");
                     selected()
                 };
-                assert_eq!(targeting, expected, "{section} {row}");
+                if row["charged"] == true && !silo && row["player"] == true {
+                    // nuke.rs RESIDUAL: native's tail clears the selection
+                    // without a silo; VERA reports no launch and keeps it.
+                    assert_eq!((targeting, native), (selected(), None), "{row}");
+                } else {
+                    assert_eq!(targeting, native, "{section} {row}");
+                }
             }
         }
     }

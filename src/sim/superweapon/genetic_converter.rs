@@ -122,12 +122,7 @@ pub fn launch(
     sw_type: InternedId,
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
-    let charged = sim
-        .super_weapons
-        .get(&owner)
-        .and_then(|weapons| weapons.get(&sw_type))
-        .is_some_and(|instance| instance.is_ready);
-    if !charged {
+    if !super::is_charged(sim, owner, sw_type) {
         return false;
     }
     let general = &rules.general;

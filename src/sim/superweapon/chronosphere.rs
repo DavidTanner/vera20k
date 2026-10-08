@@ -149,16 +149,16 @@ pub(super) fn launch_source(
     owner: InternedId,
     sw_type: InternedId,
     cell: (u16, u16),
-) -> bool {
+) {
     let Some(instance) = sim
         .super_weapons
         .get_mut(&owner)
         .and_then(|weapons| weapons.get_mut(&sw_type))
     else {
-        return false;
+        return;
     };
     if !instance.is_ready {
-        return false;
+        return;
     }
     instance.chrono_cell = cell;
     let mut coords = deck_coords(sim, cell);
@@ -170,7 +170,6 @@ pub(super) fn launch_source(
         rx: cell.0,
         ry: cell.1,
     });
-    true
 }
 
 /// Case 4 (`0x006CC4B2..0x006CCD3E`), the Chrono Warp from the source cell
@@ -194,14 +193,14 @@ pub(super) fn launch_warp(
     sw_type: InternedId,
     target: (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
-) -> bool {
+) {
     let Some(source) = sim
         .super_weapons
         .get(&owner)
         .and_then(|weapons| weapons.get(&sw_type))
         .map(super::SuperWeaponInstance::chrono_cell)
     else {
-        return false;
+        return;
     };
     for (rx, ry) in [source, target] {
         sim.sound_events.push(SimSoundEvent::SuperWeaponRadarEvent {
@@ -250,7 +249,6 @@ pub(super) fn launch_warp(
         rx: target.0,
         ry: target.1,
     });
-    true
 }
 
 /// What case 4 hands each object of the source block.

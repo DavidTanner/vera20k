@@ -75698,6 +75698,636 @@
       "warhead": "NUKE"
     }
   ],
+  "nuke_launch": [
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            12928,
+            15488,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            12928,
+            15488,
+            0
+          ],
+          0
+        ],
+        [
+          "eva",
+          "EVA_NuclearMissileLaunched",
+          -1,
+          -1
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        50,
+        60
+      ],
+      "player": false,
+      "recheck": 1,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            12928,
+            15488,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            12928,
+            15488,
+            0
+          ],
+          0
+        ],
+        [
+          "eva",
+          "EVA_NuclearMissileLaunched",
+          -1,
+          -1
+        ],
+        [
+          "vox_find",
+          "EVA_NuclearMissileReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        50,
+        60
+      ],
+      "player": true,
+      "recheck": 1,
+      "selected_super": -1,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": false,
+      "events": [],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": false,
+      "recheck": 0,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": false,
+      "events": [],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": true,
+      "recheck": 0,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ]
+      ],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": false,
+      "recheck": 1,
+      "selected_super": 9,
+      "silo": false,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ],
+        [
+          "vox_find",
+          "EVA_NuclearMissileReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": true,
+      "recheck": 1,
+      "selected_super": -1,
+      "silo": false,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          1,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            12928,
+            15488,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            12928,
+            15488,
+            0
+          ],
+          0
+        ],
+        [
+          "eva",
+          "EVA_NuclearMissileLaunched",
+          -1,
+          -1
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        50,
+        60
+      ],
+      "player": false,
+      "recheck": 1,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          false,
+          3,
+          -1
+        ],
+        [
+          true,
+          -1,
+          3
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          1,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            12928,
+            15488,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            12928,
+            15488,
+            0
+          ],
+          0
+        ],
+        [
+          "eva",
+          "EVA_NuclearMissileLaunched",
+          -1,
+          -1
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        50,
+        60
+      ],
+      "player": false,
+      "recheck": 1,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          1,
+          2
+        ],
+        [
+          true,
+          3,
+          -1
+        ],
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "vox_find",
+          "EVA_NuclearMissileReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": true,
+      "recheck": 1,
+      "selected_super": -1,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          1,
+          2
+        ],
+        [
+          false,
+          3,
+          3
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "vox_find",
+          "EVA_NuclearMissileReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "firing_type": -1,
+      "floor": 0,
+      "mute": false,
+      "nuke_target": [
+        0,
+        0
+      ],
+      "player": true,
+      "recheck": 1,
+      "selected_super": -1,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": []
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            1920,
+            23168,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            1920,
+            23168,
+            416
+          ],
+          0
+        ],
+        [
+          "eva",
+          "EVA_NuclearMissileLaunched",
+          -1,
+          -1
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 416,
+      "mute": false,
+      "nuke_target": [
+        7,
+        90
+      ],
+      "player": false,
+      "recheck": 1,
+      "selected_super": 9,
+      "silo": true,
+      "target": [
+        7,
+        90
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    },
+    {
+      "charged": true,
+      "events": [
+        [
+          "find",
+          true,
+          0,
+          -1
+        ],
+        [
+          "floor",
+          true,
+          [
+            12928,
+            15488,
+            0
+          ]
+        ],
+        [
+          "queue_mission",
+          true,
+          22,
+          0
+        ],
+        [
+          "next_mission",
+          true
+        ],
+        [
+          "play_at",
+          61,
+          [
+            12928,
+            15488,
+            0
+          ],
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_NuclearMissileReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "firing_type": 0,
+      "floor": 0,
+      "mute": true,
+      "nuke_target": [
+        50,
+        60
+      ],
+      "player": true,
+      "recheck": 1,
+      "selected_super": -1,
+      "silo": true,
+      "target": [
+        50,
+        60
+      ],
+      "types": [
+        [
+          true,
+          3,
+          -1
+        ]
+      ]
+    }
+  ],
   "nuke_lighting_read": {
     "authored": [
       [

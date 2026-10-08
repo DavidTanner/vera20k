@@ -18,7 +18,7 @@ send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (drawshp_curtain_arm, building_colour_word, anim_colour_word,
 building_anim_light, blit_pickers, blitters) and
 src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
-nuke_lighting_read) and src/sim/superweapon/force_shield_tests.rs
+nuke_lighting_read, nuke_launch) and src/sim/superweapon/force_shield_tests.rs
 (force_shield_launch, super_fade) and src/sim/superweapon/lightning_storm_tests.rs
 (storm_start, storm_cloud, storm_pixel_heights, storm_strike, storm_process,
 radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
@@ -257,6 +257,12 @@ fixture machinery):
   11 (0x6CD70C..0x6CD7E7): the charge gate, the cell's coordinate, both
   MapClass::RevealArea 0x5678E0 calls' arguments, PlayAtCoord 0x750E20 of
   PsychicRevealActivateSound and the player's tail.
+- nuke_launch: Launch 0x6CC390 from its entry for a Type= 0 Super that is
+  not one-time, case 0 (0x6CDA67, 0x6CDCF0..0x6CDE36): the charge gate, the
+  silo type scan and Find_Building_Of_Type 0x4FD060, the Missile mission,
+  the house's cell (+0x5784), the building's firing type (+0x5F8), DigSound
+  at the floor coordinate, EVA_NuclearMissileLaunched, the player's tail and
+  the house's recheck flag (+0x1FC).
 """
 from pathlib import Path
 import math
@@ -6626,6 +6632,121 @@ def psychic_launch():
     return rows
 
 
+
+# --------------------------------------------------------------- nuke_launch
+
+NUKE_LAUNCH = BASE + 0x310000
+NL_HOUSE = NUKE_LAUNCH
+NL_BUILDING = NUKE_LAUNCH + 0x8000
+NL_BUILDING_VT = NUKE_LAUNCH + 0x9000
+NL_TYPES = NUKE_LAUNCH + 0xA000
+NL_TYPE = NUKE_LAUNCH + 0xB000
+NL_TYPE_STRIDE = 0x2000
+NL_CELL_ARG = NUKE_LAUNCH + 0x18000
+STUB_NL_QUEUE = STUBS + 0xF60
+STUB_NL_NEXT = STUBS + 0xF70
+BUILDING_TYPE_ITEMS = 0xA83C6C
+BUILDING_TYPE_COUNT = 0xA83C78
+
+NL_INDEX = 3
+NL_TARGET = (50, 60)
+NL_SOUND = 61
+
+
+def nuke_launch_row(*, types=((True, NL_INDEX, -1),), silo=True, target=NL_TARGET, floor=0,
+                    charged=True, player=False, mute=False):
+    """Launch 0x6CC390 from its entry for a Type= 0 Super that is not
+    one-time (+0x6E clear): case 0 (0x6CDA67, 0x6CDCF0..0x6CDE36).
+    BuildingTypeClass::Array (items 0xA83C6C, count 0xA83C78) holds one
+    fixture type per `types` entry: (NukeSilo +0x16BA, SuperWeapon +0x16F0,
+    SuperWeapon2 +0x16F4) against the Super type's ArrayIndex (+0x98)
+    NL_INDEX. Find_Building_Of_Type 0x4FD060 answers the fixture building
+    when `silo`, else none; the Map's floor height 0x578080 answers `floor`.
+    The building's vt+0x1E8 (Queue_Mission) and vt+0x1EC, PlayAtCoord
+    0x750E20, PlayEVA 0x752700 and the EVA queue calls are recorded stubs."""
+    emu = Emu()
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, NL_HOUSE)
+    write8(emu, SUPER + 0x6F, charged)
+    write8(emu, SUPER + 0x6E, 0)
+    emu.write32(SW_TYPE + 0xB4, TYPE_MULTI_MISSILE)
+    emu.write32(SW_TYPE + 0x98, NL_INDEX)
+    emu.write32(RULES + 0x174, NL_SOUND)
+    emu.write32(MUTE_LAUNCHES, int(mute))
+    emu.write32(SELECTED_SUPER, 9)
+    emu.write32(NL_BUILDING, NL_BUILDING_VT)
+    emu.write32(NL_BUILDING + 0x5F8, -1)
+    emu.write32(NL_BUILDING_VT + 0x1E8, STUB_NL_QUEUE)
+    emu.write32(NL_BUILDING_VT + 0x1EC, STUB_NL_NEXT)
+    for slot, (nuke_silo, weapon, weapon2) in enumerate(types):
+        address = NL_TYPE + slot * NL_TYPE_STRIDE
+        emu.write32(NL_TYPES + 4 * slot, address)
+        write8(emu, address + 0x16BA, nuke_silo)
+        emu.write32(address + 0x16F0, weapon)
+        emu.write32(address + 0x16F4, weapon2)
+    emu.write32(BUILDING_TYPE_ITEMS, NL_TYPES)
+    emu.write32(BUILDING_TYPE_COUNT, len(types))
+    emu.uc.mem_write(NL_CELL_ARG, struct.pack('<hh', *target))
+
+    def find(e):
+        e.events.append(['find', e.uc.reg_read(UC_X86_REG_ECX) == NL_HOUSE, i32(e.arg(0)),
+                         i32(e.arg(1))])
+        return NL_BUILDING if silo else 0
+
+    def floor_height(e):
+        e.events.append(['floor', e.uc.reg_read(UC_X86_REG_ECX) == MAP, read_coord(e, e.arg(0))])
+        return floor
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.hook(0x4FD060, find, 8)
+    emu.hook(0x578080, floor_height, 4)
+    emu.hook(STUB_NL_QUEUE, lambda e: e.events.append(
+        ['queue_mission', e.uc.reg_read(UC_X86_REG_ECX) == NL_BUILDING, i32(e.arg(0)),
+         i32(e.arg(1))]), 8)
+    emu.hook(STUB_NL_NEXT, lambda e: e.events.append(
+        ['next_mission', e.uc.reg_read(UC_X86_REG_ECX) == NL_BUILDING]), 0)
+    emu.hook(0x750E20, lambda e: e.events.append(
+        ['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0))]), 4)
+    emu.hook(0x752700, lambda e: e.events.append(
+        ['eva', read_name(e, e.uc.reg_read(UC_X86_REG_ECX)), i32(e.uc.reg_read(UC_X86_REG_EDX)),
+         i32(e.arg(0))]), 4)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[NL_CELL_ARG, int(player)])
+    return dict(types=[list(entry) for entry in types], silo=silo, target=list(target),
+                floor=floor, charged=charged, player=player, mute=mute, events=emu.events,
+                nuke_target=list(struct.unpack('<hh', emu.uc.mem_read(NL_HOUSE + 0x5784, 4))),
+                firing_type=emu.read_i32(NL_BUILDING + 0x5F8),
+                recheck=read8(emu, NL_HOUSE + 0x1FC),
+                selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def nuke_launch():
+    rows = []
+    for charged in (True, False):
+        for player in (False, True):
+            rows.append(nuke_launch_row(charged=charged, player=player))
+    # No silo standing: the tail and the recheck run all the same.
+    for player in (False, True):
+        rows.append(nuke_launch_row(silo=False, player=player))
+    # The first NukeSilo type whose SuperWeapon or SuperWeapon2 is the
+    # Super's type is the one asked for; with none, nothing is asked.
+    rows.append(nuke_launch_row(types=((False, NL_INDEX, -1), (True, -1, NL_INDEX))))
+    rows.append(nuke_launch_row(types=((True, 1, 2), (True, NL_INDEX, -1), (True, NL_INDEX, -1))))
+    rows.append(nuke_launch_row(types=((True, 1, 2), (False, NL_INDEX, NL_INDEX)), player=True))
+    rows.append(nuke_launch_row(types=(), player=True))
+    # PlayAtCoord's coordinate carries the cell's floor height; the house
+    # keeps the cell.
+    rows.append(nuke_launch_row(target=(7, 90), floor=416))
+    rows.append(nuke_launch_row(mute=True, player=True))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -6681,6 +6802,7 @@ def generate():
             'infantry_mutate_death': infantry_mutate_death(),
             'make_infantry': make_infantry(),
             'psychic_launch': psychic_launch(),
+            'nuke_launch': nuke_launch(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -6754,7 +6876,9 @@ if __name__ == '__main__':
                'the AnimToInfantry bound, the Civilian-house fallback, CreateObject, '
                'Unlimbo and its retry, the bridge lift and Hunt; the Psychic Reveal: '
                'Launch case 11\'s gate, coordinate, RevealArea arguments, sound and '
-               'the player\'s tail'),
+               'the player\'s tail; the nuclear missile: Launch case 0\'s gate, silo '
+               'type scan and lookup, mission, house cell, firing type, sound, EVA, '
+               'the player\'s tail and the recheck flag'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -7013,7 +7137,13 @@ if __name__ == '__main__':
                        'psychic_launch: MapClass::operator[] 0x5657A0 answers one fixture '
                        'cell (GetCoords the centre raised 104 leptons per level, +0x140 the '
                        'bridge bit); MapClass::RevealArea 0x5678E0, PlayAtCoord 0x750E20 and '
-                       'the EVA queue calls are recorded stubs'],
+                       'the EVA queue calls are recorded stubs',
+                       'nuke_launch: the Super is not one-time (+0x6E clear); '
+                       'BuildingTypeClass::Array 0xA83C6C/0xA83C78 holds the row\'s fixture '
+                       'types (+0x16BA, +0x16F0, +0x16F4); Find_Building_Of_Type 0x4FD060, the '
+                       'floor height 0x578080, the building\'s vt+0x1E8/vt+0x1EC, PlayAtCoord '
+                       '0x750E20, PlayEVA 0x752700 and the EVA queue calls are recorded '
+                       'stubs; 0xA8B538 holds the row\'s mute byte'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -7074,4 +7204,5 @@ if __name__ == '__main__':
                       'SuperClass::Launch_case9': 0x6CC390,
                       'InfantryClass::ReceiveDamage_infdeath9': 0x5188AE,
                       'AnimClass::AI_make_infantry': 0x424932,
-                      'SuperClass::Launch_case11': 0x6CC390}))
+                      'SuperClass::Launch_case11': 0x6CC390,
+                      'SuperClass::Launch_case0': 0x6CC390}))

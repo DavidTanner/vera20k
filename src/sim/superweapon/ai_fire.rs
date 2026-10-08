@@ -167,12 +167,7 @@ pub(crate) fn try_fire(
         let Some(sw_type_id) = sim.interner.get(name) else {
             continue;
         };
-        let charged = sim
-            .super_weapons
-            .get(&owner)
-            .and_then(|weapons| weapons.get(&sw_type_id))
-            .is_some_and(|instance| instance.is_ready);
-        if !charged {
+        if !super::is_charged(sim, owner, sw_type_id) {
             continue;
         }
         let arm = AiFireArm::of(sw.kind);
