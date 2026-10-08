@@ -458,7 +458,9 @@ pub(crate) fn bind_staged_app_scenario_metadata(
     sim.update_voxel_anim_frame_counts(&frame_catalog);
 }
 
-/// Build voxel + SHP sprite atlases for an already-constructed simulation.
+/// Build the voxel and SHP sprite atlases, and the palette set, for a fully
+/// constructed simulation. A load builds them once; sprites the world needs
+/// later go onto the atlases' growth pages.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_presentation_manifest(
     sim: &Simulation,
@@ -473,43 +475,6 @@ pub(crate) fn build_presentation_manifest(
     theater_unit_palette: Option<&Palette>,
     theater_iso_palette: Option<&Palette>,
 ) -> PresentationManifest {
-    let (unit_atlas, sprite_atlas, palette_set) = build_entity_atlases(
-        sim,
-        asset_manager,
-        gpu,
-        batch,
-        theater_ext,
-        theater_name,
-        rules,
-        overlay_registry,
-        house_colors,
-        theater_unit_palette,
-        theater_iso_palette,
-    );
-    PresentationManifest {
-        unit_atlas,
-        sprite_atlas,
-        palette_set,
-    }
-}
-
-pub(crate) fn build_entity_atlases(
-    sim: &Simulation,
-    asset_manager: &AssetManager,
-    gpu: &GpuContext,
-    batch: &BatchRenderer,
-    theater_ext: &str,
-    theater_name: &str,
-    rules: Option<&RuleSet>,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
-    house_colors: &HouseColorMap,
-    theater_unit_palette: Option<&Palette>,
-    theater_iso_palette: Option<&Palette>,
-) -> (
-    Option<UnitAtlas>,
-    Option<SpriteAtlas>,
-    Option<crate::render::palette_textures::PaletteSet>,
-) {
     let art = rules.map(RuleSet::art);
     // Use the theater-specific unit palette if provided, otherwise fall back to search.
     let palette: Option<Palette> = theater_unit_palette.cloned().or_else(|| {
@@ -594,7 +559,11 @@ pub(crate) fn build_entity_atlases(
             active.dedup();
             crate::render::palette_textures::PaletteSet::new(gpu, pal, house_ramps, &active)
         });
-    (unit_atlas, shp_atlas, palette_set)
+    PresentationManifest {
+        unit_atlas,
+        sprite_atlas: shp_atlas,
+        palette_set,
+    }
 }
 
 #[cfg(test)]

@@ -20,9 +20,8 @@ use crate::app::loading::fresh_scenario::{
 #[cfg(test)]
 use crate::app::loading::init_helpers::load_rules_with_merged_ini;
 use crate::app::loading::init_helpers::{
-    build_entity_atlases, build_sidebar_cameo_atlas, build_tile_atlas,
-    log_trigger_graph_diagnostics, parse_debug_spawn_units_env, scheduler_anim_roots,
-    theater_ext_for,
+    build_sidebar_cameo_atlas, build_tile_atlas, log_trigger_graph_diagnostics,
+    parse_debug_spawn_units_env, scheduler_anim_roots, theater_ext_for,
 };
 use crate::match_bootstrap::LoadingStartup;
 use crate::sim::scenario_bootstrap::{
@@ -3042,92 +3041,46 @@ pub(crate) fn load_map_from_initial(
         &asset_manager,
         Some(&rules),
     );
-    // F09 seam: presentation derives from the one staged Simulation and never
-    // feeds state back into it.
-    let manifest = crate::app::loading::init_helpers::build_presentation_manifest(
-        &staged_simulation,
-        &asset_manager,
-        gpu,
-        batch,
-        theater_ext,
-        &map_data.header.theater,
-        Some(&rules),
-        &overlay_registry,
-        &house_color_map,
-        unit_palette.as_ref(),
-        overlay_iso_palette.as_ref(),
-    );
-    let (mut unit_atlas, mut sprite_atlas, mut palette_set) = (
-        manifest.unit_atlas,
-        manifest.sprite_atlas,
-        manifest.palette_set,
-    );
     // Terrain/tiberium + units/infantry/buildings created from the map
     // (gamemd terrain/units/objects/buildings milestones).
     progress.milestone(72);
     progress.milestone(74);
     progress.milestone(76);
     progress.milestone(78);
-    let mut simulation = Some(staged_simulation);
     // Pre-intern all rule type IDs so that build_option_for_owner can resolve
     // InternedIds for types that haven't been spawned yet (e.g. GAPOWR).
     // Without this, sidebar cameo lookups fail because unspawned types get
     // InternedId(0) and resolve to the wrong string.
-    if let Some(sim) = &mut simulation {
-        let ruleset = &rules;
-        sim.intern_rule_type_ids(ruleset);
-        // One-hop type resolution: build the handle table now that every type
-        // id is interned. This also pre-resolves the `[CombatDamage]` bridge
-        // warhead handles combat compares during the bridge-damage path;
-        // resolution must happen before any combat tick.
-        sim.resolve_type_handles(ruleset);
-        sim.install_team_ai_registry(&team_ai_registry, ruleset)
-            .map_err(|refused| {
-                anyhow::anyhow!("active YR aimd.ini failed RuleSet resolution: {refused:?}")
-            })?;
-    }
+    staged_simulation.intern_rule_type_ids(&rules);
+    // One-hop type resolution: build the handle table now that every type
+    // id is interned. This also pre-resolves the `[CombatDamage]` bridge
+    // warhead handles combat compares during the bridge-damage path;
+    // resolution must happen before any combat tick.
+    staged_simulation.resolve_type_handles(&rules);
+    staged_simulation
+        .install_team_ai_registry(&team_ai_registry, &rules)
+        .map_err(|refused| {
+            anyhow::anyhow!("active YR aimd.ini failed RuleSet resolution: {refused:?}")
+        })?;
 
-    let mut initial_local_owner: Option<String> = None;
-    if let Some(sim) = &mut simulation {
-        let ruleset = &rules;
-        let result = apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
-            sim,
+    let initial_local_owner: Option<String> =
+        apply_pre_fill_scenario_prefix_launch_session_with_overlay_registry(
+            &mut staged_simulation,
             &map_data,
             &house_roster,
-            ruleset,
+            &rules,
             &resolved_terrain,
             &match_launch_descriptor,
             &overlay_registry,
             &scenario_prefix_projection,
-        );
-        initial_local_owner = result.local_owner;
-        let should_rebuild_entity_atlases = result.spawned_mcvs > 0;
-
-        if should_rebuild_entity_atlases {
-            let (new_unit_atlas, new_sprite_atlas, new_palette_set) = build_entity_atlases(
-                sim,
-                &asset_manager,
-                gpu,
-                batch,
-                theater_ext,
-                &map_data.header.theater,
-                Some(&rules),
-                &overlay_registry,
-                &house_color_map,
-                unit_palette.as_ref(),
-                overlay_iso_palette.as_ref(),
-            );
-            unit_atlas = new_unit_atlas;
-            sprite_atlas = new_sprite_atlas;
-            palette_set = new_palette_set;
-        }
-    }
+        )
+        .local_owner;
 
     // Optional debug spawn list for render testing.
     // Examples:
     //   RA2_DEBUG_SPAWN_UNITS=1                  -> default list (HTNK,MTNK,E1)
     //   RA2_DEBUG_SPAWN_UNITS=HTNK,MTNK,APOC
-    if let (Some(sim), Some(debug_units)) = (&mut simulation, parse_debug_spawn_units_env()) {
+    if let Some(debug_units) = parse_debug_spawn_units_env() {
         let ruleset = &rules;
         let owner: String = house_color_map
             .keys()
@@ -3167,7 +3120,7 @@ pub(crate) fn load_map_from_initial(
             let (ox, oy) = offsets[i % offsets.len()];
             let rx = (anchor_rx as i32 + ox).max(0) as u16;
             let ry = (anchor_ry as i32 + oy).max(0) as u16;
-            if sim
+            if staged_simulation
                 .spawn_object_with_overlay_registry(
                     type_id,
                     &owner,
@@ -3195,6 +3148,31 @@ pub(crate) fn load_map_from_initial(
             );
         }
     }
+
+    // F09 seam: presentation derives from the one staged Simulation and never
+    // feeds state back into it. The entity atlases are built once, after the
+    // launch session has seeded its starting MCVs and units (and any debug
+    // spawns): one pack then holds what the opening world draws, and later
+    // arrivals grow it.
+    let manifest = crate::app::loading::init_helpers::build_presentation_manifest(
+        &staged_simulation,
+        &asset_manager,
+        gpu,
+        batch,
+        theater_ext,
+        &map_data.header.theater,
+        Some(&rules),
+        &overlay_registry,
+        &house_color_map,
+        unit_palette.as_ref(),
+        overlay_iso_palette.as_ref(),
+    );
+    let (unit_atlas, sprite_atlas, palette_set) = (
+        manifest.unit_atlas,
+        manifest.sprite_atlas,
+        manifest.palette_set,
+    );
+    let mut simulation = Some(staged_simulation);
 
     let (
         overlay_atlas,

@@ -523,21 +523,14 @@ impl SpriteAtlas {
         );
         for group in placed {
             let texture = &self.pages[group.page].texture;
-            let rects = |texels: fn(&RenderedShpSprite) -> &[u8]| {
+            write_sprite_band(
+                queue,
+                texture.view.texture(),
+                &self.growth_indices[&group.page],
                 group
                     .sprites
                     .iter()
-                    .map(|(origin, sprite)| {
-                        (*origin, [sprite.width, sprite.height], texels(sprite))
-                    })
-                    .collect::<Vec<_>>()
-            };
-            atlas_growth::write_band(queue, texture.view.texture(), 4, &rects(|s| &s.rgba));
-            atlas_growth::write_band(
-                queue,
-                &self.growth_indices[&group.page],
-                1,
-                &rects(|s| &s.indices),
+                    .map(|(origin, sprite)| (*origin, sprite)),
             );
             let page_size = [texture.width, texture.height];
             for (origin, sprite) in group.sprites {
@@ -1718,7 +1711,7 @@ pub fn build_sprite_atlas(
             return None;
         }
         None => {
-            let mut atlas = pack_sprites(device, queue, batch, &rendered);
+            let mut atlas = pack_sprites(device, queue, batch, rendered);
             atlas.effects = registered_effects;
             atlas
         }
@@ -2106,35 +2099,27 @@ fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedSh
     sprites
 }
 
-/// Shelf-pack rendered SHP sprites into a multi-page GPU texture atlas.
-///
-/// Sprites are packed into pages of at most `max_texture_dim × max_texture_dim`
-/// pixels each. Most maps fit in a single page; pages are added only when the
-/// total sprite area exceeds what one GPU texture can hold.
-fn blit_sprite_pixels(
-    sprite: &RenderedShpSprite,
-    position: [u32; 2],
-    page_width: u32,
-    rgba: &mut [u8],
-    indices: &mut [u8],
-) {
-    for y in 0..sprite.height {
-        let src = (y * sprite.width) as usize;
-        let dst = ((position[1] + y) * page_width + position[0]) as usize;
-        let width = sprite.width as usize;
-        rgba[dst * 4..(dst + width) * 4].copy_from_slice(&sprite.rgba[src * 4..(src + width) * 4]);
-        indices[dst..dst + width].copy_from_slice(&sprite.indices[src..src + width]);
-    }
-}
-
 #[cfg(test)]
 pub(crate) use tests::native_palette_probe_page;
 
+/// RGBA bytes of rows at which a map-load upload band closes. A band holds
+/// whole shelves, so it exceeds this by less than its last shelf.
+const PACK_BAND_BYTES: u64 = 64 << 20;
+
+/// How long a map-load upload band waits for the GPU to retire its staging copy.
+const PACK_BAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Shelf-pack rendered SHP sprites into a multi-page GPU texture atlas.
+///
+/// Sprites are packed into pages of at most `max_texture_dim × max_texture_dim`
+/// pixels each; a page is added when the shelves outgrow the GPU texture limit.
+/// Each page is created blank and filled by [`upload_shelves`], so the pack
+/// never holds a whole page of texels or its staging copy.
 fn pack_sprites(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     batch: &BatchRenderer,
-    sprites: &[RenderedShpSprite],
+    mut sprites: Vec<RenderedShpSprite>,
 ) -> SpriteAtlas {
     // Sort by height descending for shelf packing efficiency.
     let mut indices: Vec<usize> = (0..sprites.len()).collect();
@@ -2153,7 +2138,7 @@ fn pack_sprites(
 
     // Try widening atlas to fit everything in a single page.
     loop {
-        let trial_height: u32 = simulate_shelf_height(&indices, sprites, atlas_width);
+        let trial_height: u32 = simulate_shelf_height(&indices, &sprites, atlas_width);
         if trial_height <= max_texture_dim || atlas_width >= max_texture_dim {
             break;
         }
@@ -2201,60 +2186,142 @@ fn pack_sprites(
     }
 
     let num_pages: usize = current_page as usize + 1;
-    if num_pages > 1 {
-        log::info!(
-            "Sprite atlas split into {} pages (GPU texture limit {})",
-            num_pages,
-            max_texture_dim,
-        );
-    }
 
     // Build each page's GPU texture.
     let mut pages: Vec<SpriteAtlasPage> = Vec::with_capacity(num_pages);
     let mut entries: HashMap<ShpSpriteKey, ShpSpriteEntry> =
         HashMap::with_capacity(placements.len());
     for page_idx in 0..num_pages as u8 {
-        let page_height: u32 = placements
+        // Placements run shelf by shelf, top to bottom, as `upload_shelves` needs.
+        let placed: Vec<(usize, [u32; 2])> = placements
             .iter()
             .filter(|p| p.page == page_idx)
-            .map(|p| p.py + sprites[p.idx].height)
+            .map(|p| (p.idx, [p.px, p.py]))
+            .collect();
+        let page_height: u32 = placed
+            .iter()
+            .map(|&(idx, [_, y])| y + sprites[idx].height)
             .max()
             .unwrap_or(1);
-
-        let mut rgba: Vec<u8> = vec![0u8; (atlas_width * page_height * 4) as usize];
-        let mut source_indices = vec![0u8; (atlas_width * page_height) as usize];
-
-        for p in placements.iter().filter(|p| p.page == page_idx) {
-            let rs: &RenderedShpSprite = &sprites[p.idx];
-            blit_sprite_pixels(
-                rs,
-                [p.px, p.py],
-                atlas_width,
-                &mut rgba,
-                &mut source_indices,
-            );
+        let (texture, source_indices) =
+            batch.create_blank_texture_with_indices(device, atlas_width, page_height);
+        for &(idx, origin) in &placed {
+            let sprite = &sprites[idx];
             if let Some(entry) = atlas_entry(
-                rs,
-                [p.px, p.py],
+                sprite,
+                origin,
                 usize::from(page_idx),
                 [atlas_width, page_height],
             ) {
-                entries.insert(rs.key.clone(), entry);
+                entries.insert(sprite.key.clone(), entry);
             }
         }
-
-        let texture: BatchTexture = batch.create_texture_on_device(
+        upload_shelves(
             device,
             queue,
-            &rgba,
-            atlas_width,
-            page_height,
-            Some(&source_indices),
+            texture.view.texture(),
+            &source_indices,
+            &mut sprites,
+            &placed,
+            PACK_BAND_BYTES,
         );
         pages.push(SpriteAtlasPage { texture });
     }
 
+    // RGBA plus the palette-index companion: five bytes a texel.
+    let texels: u64 = pages
+        .iter()
+        .map(|page| u64::from(page.texture.width) * u64::from(page.texture.height))
+        .sum();
+    let sizes: Vec<String> = pages
+        .iter()
+        .map(|page| format!("{}x{}", page.texture.width, page.texture.height))
+        .collect();
+    log::info!(
+        "Sprite atlas packed into {} page(s) of at most {max_texture_dim} px: {} ({:.0} MiB)",
+        pages.len(),
+        sizes.join(", "),
+        (texels * 5) as f64 / (1024.0 * 1024.0),
+    );
     SpriteAtlas::new(pages, entries)
+}
+
+/// Upload the sprites `placed` on a blank page (sprite index and origin, shelf
+/// by shelf from the top) in bands of whole shelves. A band takes shelves
+/// until its rows reach `band_bytes` of RGBA, so it holds at least one shelf.
+/// Bands share no row, as [`atlas_growth::write_band`] requires. Each band's
+/// sprites give up their pixels once written, and the band's staging copy is
+/// retired before the next band is gathered, so the upload holds one band
+/// beside the sprites still to go.
+fn upload_shelves(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    rgba: &wgpu::Texture,
+    indices: &wgpu::Texture,
+    sprites: &mut [RenderedShpSprite],
+    placed: &[(usize, [u32; 2])],
+    band_bytes: u64,
+) {
+    debug_assert!(
+        placed.windows(2).all(|pair| pair[0].1[1] <= pair[1].1[1]),
+        "placements must run shelf by shelf from the top"
+    );
+    let row_bytes = u64::from(rgba.width()) * 4;
+    let mut rest = placed;
+    while let Some(&(_, [_, top])) = rest.first() {
+        // Whole shelves (runs of one row origin) until the band's rows reach `band_bytes`.
+        let (mut len, mut bottom) = (0, top);
+        loop {
+            let shelf_y = rest[len].1[1];
+            while len < rest.len() && rest[len].1[1] == shelf_y {
+                let (idx, [_, y]) = rest[len];
+                bottom = bottom.max(y + sprites[idx].height);
+                len += 1;
+            }
+            if len == rest.len() || u64::from(bottom - top) * row_bytes >= band_bytes {
+                break;
+            }
+        }
+        let (band, tail) = rest.split_at(len);
+        write_sprite_band(
+            queue,
+            rgba,
+            indices,
+            band.iter().map(|&(idx, origin)| (origin, &sprites[idx])),
+        );
+        for &(idx, _) in band {
+            let sprite = &mut sprites[idx];
+            sprite.rgba = Vec::new();
+            sprite.indices = Vec::new();
+        }
+        let submission_index = queue.submit(std::iter::empty());
+        if let Err(error) = device.poll(wgpu::PollType::Wait {
+            submission_index: Some(submission_index),
+            timeout: Some(PACK_BAND_TIMEOUT),
+        }) {
+            log::warn!("Sprite atlas upload could not wait for the GPU: {error}");
+        }
+        rest = tail;
+    }
+}
+
+/// Upload sprites placed on rows of a page that hold no other sprite: one
+/// [`atlas_growth::write_band`] each for the RGBA texture and its palette-index
+/// companion.
+fn write_sprite_band<'a>(
+    queue: &wgpu::Queue,
+    rgba: &wgpu::Texture,
+    indices: &wgpu::Texture,
+    sprites: impl Iterator<Item = ([u32; 2], &'a RenderedShpSprite)> + Clone,
+) {
+    let rects = |texels: fn(&RenderedShpSprite) -> &[u8]| {
+        sprites
+            .clone()
+            .map(|(origin, sprite)| (origin, [sprite.width, sprite.height], texels(sprite)))
+            .collect::<Vec<_>>()
+    };
+    atlas_growth::write_band(queue, rgba, 4, &rects(|s| &s.rgba));
+    atlas_growth::write_band(queue, indices, 1, &rects(|s| &s.indices));
 }
 
 /// Simulate shelf-packing to determine total height without allocating buffers.

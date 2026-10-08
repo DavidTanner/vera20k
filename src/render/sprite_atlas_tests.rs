@@ -1032,7 +1032,7 @@ fn collect_effect_names_includes_weapon_anim_entries() {
     assert!(names.iter().any(|name| name == "UCFLASH"));
 }
 
-/// Real loose SHP decoding, palette application and production atlas page copy.
+/// Real loose SHP decoding and palette application, laid out on an atlas page.
 pub(crate) fn native_palette_probe_page() -> (Vec<u8>, Vec<u8>, [u32; 2]) {
     let directory = StoredFrameTestDirectory::new();
     let mut bytes = Vec::new();
@@ -1081,7 +1081,10 @@ pub(crate) fn native_palette_probe_page() -> (Vec<u8>, Vec<u8>, [u32; 2]) {
     let size = [262, 3];
     let mut rgba = vec![0; size[0] * size[1] * 4];
     let mut indices = vec![0; size[0] * size[1]];
-    blit_sprite_pixels(&sprite, [3, 1], size[0] as u32, &mut rgba, &mut indices);
+    // The 256x1 frame sits at (3, 1).
+    let start = size[0] + 3;
+    rgba[start * 4..(start + 256) * 4].copy_from_slice(&sprite.rgba);
+    indices[start..start + 256].copy_from_slice(&sprite.indices);
     assert_eq!(&indices[265..521], (0..=255u8).collect::<Vec<_>>());
     (rgba, indices, size.map(|v| v as u32))
 }
@@ -1313,7 +1316,7 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         &gpu.device,
         &gpu.queue,
         &batch,
-        &[sprite("RESIDENT", 7, [3, 2])],
+        vec![sprite("RESIDENT", 7, [3, 2])],
     );
     let resident = *atlas.get(&make_shp_key("RESIDENT", 0)).unwrap();
 
@@ -1357,6 +1360,79 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
             gpu.read_uint_texels(&indices, origin, size),
             vec![index; (size[0] * size[1]) as usize],
             "{type_id} indices uploaded to its rectangle"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires a wgpu adapter; actual band uploads"]
+fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
+    // Shelves at rows 0, 4 and 7 of a 10x8 page, as the pack lays them out.
+    // A zero- or one-byte band uploads each shelf on its own, 121 bytes (one
+    // past the first shelf's 120) the first two shelves together, and an
+    // unbounded band all of them in one write; each must put every sprite on
+    // its rectangle, leave the rest zero, and free the sprites' pixels.
+    let gpu = crate::render::terrain_draw_gpu_tests::Gpu::new();
+    let batch = BatchRenderer::new_with_device(
+        &gpu.device,
+        &gpu.queue,
+        wgpu::TextureFormat::Bgra8UnormSrgb,
+    );
+    let size = [10u32, 8];
+    let shelves: [(u8, [u32; 2], [u32; 2]); 4] = [
+        (1, [4, 3], [0, 0]),
+        (2, [3, 2], [5, 0]),
+        (3, [6, 2], [0, 4]),
+        (4, [2, 1], [0, 7]),
+    ];
+    let mut expected = vec![0u8; (size[0] * size[1]) as usize];
+    for &(index, [width, height], [x, y]) in &shelves {
+        for row in y..y + height {
+            let start = (row * size[0] + x) as usize;
+            expected[start..start + width as usize].fill(index);
+        }
+    }
+    for band_bytes in [0, 1, 121, u64::MAX] {
+        let mut sprites: Vec<RenderedShpSprite> = shelves
+            .iter()
+            .map(|&(index, [width, height], _)| RenderedShpSprite {
+                key: make_shp_key(&format!("SHELF{index}"), 0),
+                rgba: vec![index; (width * height * 4) as usize],
+                indices: vec![index; (width * height) as usize],
+                width,
+                height,
+                offset_x: 0.0,
+                offset_y: 0.0,
+                canvas_rect: [0.0, 0.0, width as f32, height as f32],
+                extended: false,
+            })
+            .collect();
+        let placed: Vec<(usize, [u32; 2])> = shelves
+            .iter()
+            .enumerate()
+            .map(|(idx, &(_, _, origin))| (idx, origin))
+            .collect();
+        let (page, indices) =
+            batch.create_blank_texture_with_indices(&gpu.device, size[0], size[1]);
+        upload_shelves(
+            &gpu.device,
+            &gpu.queue,
+            page.view.texture(),
+            &indices,
+            &mut sprites,
+            &placed,
+            band_bytes,
+        );
+        assert!(
+            sprites
+                .iter()
+                .all(|sprite| sprite.rgba.is_empty() && sprite.indices.is_empty()),
+            "band {band_bytes}: written sprites release their pixels"
+        );
+        assert_eq!(
+            gpu.read_uint_texels(&indices.create_view(&Default::default()), [0, 0], size),
+            expected,
+            "band {band_bytes}: sprites on their rectangles, zero elsewhere"
         );
     }
 }

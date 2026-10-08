@@ -1431,9 +1431,12 @@ impl BatchRenderer {
                 view_formats: &[],
             })
         };
-        let texture = blank("Batch Growth Texture", wgpu::TextureFormat::Rgba8UnormSrgb);
+        let texture = blank(
+            "Batch Writable Texture",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
         let source_indices = blank(
-            "SHP growth source palette indices",
+            "SHP writable source palette indices",
             wgpu::TextureFormat::R8Uint,
         );
         let indices_view = source_indices.create_view(&Default::default());
