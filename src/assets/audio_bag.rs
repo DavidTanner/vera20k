@@ -31,6 +31,8 @@
 //! - Compressed entries decode through `assets::ima_adpcm`, the crate's single
 //!   IMA ADPCM implementation, mirroring the single decoder in `gamemd.exe`.
 
+use crate::util::read_helpers::read_u32_le;
+
 const IDX_HEADER_SIZE: usize = 12;
 /// V1 entries are 32 bytes, V2 entries are 36 bytes (extra chunk_size field).
 const IDX_ENTRY_SIZE_V1: usize = 32;
@@ -279,16 +281,6 @@ pub fn decode_bag_audio(entry: &AudioBagEntry, data: &[u8]) -> Option<BagAudio> 
         sample_rate: entry.sample_rate,
         channels: entry.channels(),
     })
-}
-
-/// Read a little-endian u32 from a byte slice at the given offset.
-fn read_u32_le(data: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes([
-        data[offset],
-        data[offset + 1],
-        data[offset + 2],
-        data[offset + 3],
-    ])
 }
 
 #[cfg(test)]

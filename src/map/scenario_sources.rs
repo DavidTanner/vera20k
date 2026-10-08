@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::assets::asset_manager::AssetManager;
+use crate::assets::asset_manager::{AssetManager, retail_enumerated_file};
 use crate::assets::csf_file::CsfFile;
 use crate::assets::mix_archive::MixArchive;
 use crate::map::preview::PreviewSection;
@@ -43,7 +43,7 @@ pub fn list_available_maps() -> Result<Vec<MapMenuEntry>> {
             Err(_) => continue,
         };
         let path = entry.path();
-        if !retail_wildcard_file(&path) {
+        if !retail_enumerated_file(&path) {
             continue;
         }
         let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
@@ -245,7 +245,7 @@ fn loose_files_with_extension(ra2_dir: &Path, extension: &str) -> Result<Vec<(Pa
             Err(_) => continue,
         };
         let path = entry.path();
-        if !retail_wildcard_file(&path) {
+        if !retail_enumerated_file(&path) {
             continue;
         }
         let Some(file_name) = path
@@ -405,24 +405,6 @@ pub(crate) fn read_map_menu_entry(path: &Path, file_name: &str) -> MapMenuEntry 
     };
 
     read_map_menu_entry_from_ini(&ini, file_name)
-}
-
-fn retail_wildcard_file(path: &Path) -> bool {
-    let Ok(metadata) = path.metadata() else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x116 == 0
-    }
-    #[cfg(not(windows))]
-    {
-        true
-    }
 }
 
 #[cfg(test)]

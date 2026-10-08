@@ -110,7 +110,7 @@ fn resolved_cell_costs(
     let terrain_object_blocked = if speed_type == SpeedType::Foot {
         cell.terrain_object_occupation.is_some_and(|ini_bits| {
             super::core::terrain_object_blocks_infantry(
-                super::core::terrain_object_cell_bits_from_ini(ini_bits),
+                crate::sim::terrain_object::terrain_raw_occupation_mask(ini_bits),
             )
         })
     } else {
