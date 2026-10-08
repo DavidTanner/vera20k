@@ -51,7 +51,7 @@ pub struct Position {
 ///
 /// Live ObjectType::strength owns the cap/ratio denominator. EstimatedHealth
 /// is independent state; writes to this field do not implicitly update it.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Health {
     pub current: i32,
 }
@@ -65,15 +65,19 @@ impl Health {
         X87::div(X87::load_i32(self.current), X87::load_i32(strength))
     }
 
-    /// Object radio22 (5F5339) and Techno repair6F4DE5 share this C0-clear
-    /// test, including signed and masked division. AudioVisual66B323..32D
-    /// writes the threshold1.0 unconditionally; there is no ConditionGreen key.
-    pub(crate) fn is_fully_repaired(self, strength: i32) -> bool {
-        matches!(
-            self.compare_ratio(strength, 1.0),
-            crate::util::native_x87::MaskedX87Ordering::Equal
-                | crate::util::native_x87::MaskedX87Ordering::Greater
-        )
+    /// [`Self::ratio`] compared `>=` `Rules+0x16F8` with an ordered FCOMP
+    /// (the C0-clear test): 0/0 (NaN) is not full and x/0 for x > 0 (+inf)
+    /// is. AudioVisual `0x0066B323..0x0066B32D` writes that threshold as 1.0
+    /// unconditionally; there is no ConditionGreen key. Object radio
+    /// (`0x005F5339`), Techno repair (`0x006F4DE5`), the healer fire errors and
+    /// the hospital and depot tests ask it. The quotient of two dwords cannot
+    /// round across 1.0, so the integer form is exact.
+    pub(crate) fn is_full(self, strength: i32) -> bool {
+        match strength.cmp(&0) {
+            std::cmp::Ordering::Greater => self.current >= strength,
+            std::cmp::Ordering::Less => self.current <= strength,
+            std::cmp::Ordering::Equal => self.current > 0,
+        }
     }
 
     /// Compare the native ratio without converting masked values to a host float.
@@ -1047,5 +1051,26 @@ mod tests {
         let mut r = RockingState::default();
         r.is_ship_rocking = true;
         assert!(!r.is_neutral());
+    }
+
+    /// The integer `is_full` answers what the masked chop53 division and
+    /// FCOMP against 1.0 answer, including x/0, 0/0 and the i32 extremes.
+    #[test]
+    fn is_full_matches_the_masked_ratio_compare() {
+        use crate::util::native_x87::MaskedX87Ordering::{Equal, Greater};
+        let mut values = vec![i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX];
+        for base in [0i32, 1, 2, 3, 100, 600, 1 << 24, 1 << 30] {
+            for delta in [-1i32, 0, 1] {
+                let v = base + delta;
+                values.extend([v, -v]);
+            }
+        }
+        for &strength in &values {
+            for &health in &values {
+                let health = Health { current: health };
+                let native = matches!(health.compare_ratio(strength, 1.0), Equal | Greater);
+                assert_eq!(health.is_full(strength), native, "{health:?} / {strength}");
+            }
+        }
     }
 }

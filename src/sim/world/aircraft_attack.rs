@@ -199,25 +199,18 @@ impl Simulation {
         AircraftMission::Attack { sub_state: state }
     }
 
-    /// The Target test each strike state opens with (`0x004182A3` also
-    /// leaves on Ammo 0), taken here because VERA's combat phase visits only
-    /// an object that holds a target. `Some` asks the combat phase for the
-    /// visit; `None` leaves for state 10.
+    /// [`attack_mission::strike_leaves`], taken here because VERA's combat
+    /// phase visits only an object that holds a target. `Some` asks the
+    /// combat phase for the visit; `None` leaves for state 10.
     pub(crate) fn aircraft_strike_target(&self, id: u64, state: u8) -> Option<TargetKind> {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
-        let attack = entity.attack_target.as_ref()?;
-        if !attack_mission::aircraft_target_present(Some(attack), &self.substrate.entities) {
+        let attack = entity.attack_target.as_ref();
+        let target = attack_mission::aircraft_target_present(attack, &self.substrate.entities);
+        let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
+        if attack_mission::strike_leaves(state, target, ammo) {
             return None;
         }
-        if state == 4
-            && entity
-                .aircraft_ammo
-                .as_ref()
-                .is_some_and(|a| a.current == 0)
-        {
-            return None;
-        }
-        Some(attack.target)
+        attack.map(|attack| attack.target)
     }
 
     /// State 10 (`0x00418BEC`) after the entry prefix. Returns the mission

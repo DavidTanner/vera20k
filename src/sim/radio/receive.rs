@@ -944,7 +944,7 @@ fn techno_receive(
             else {
                 return RadioResponse::None;
             };
-            if entity.health.is_fully_repaired(object.strength) {
+            if entity.health.is_full(object.strength) {
                 RadioResponse::Negatory
             } else {
                 RadioResponse::Roger
@@ -1006,7 +1006,7 @@ fn techno_repair_tick(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>
     let Some(object) = sim.object_type(entity.type_ref(), rules) else {
         return RadioResponse::None;
     };
-    if entity.health.is_fully_repaired(object.strength) {
+    if entity.health.is_full(object.strength) {
         return RadioResponse::Negatory;
     }
     // InfantryType5247A0/524790 overrides cost0 and Rules+16D8 IRepairStep.
@@ -1044,7 +1044,7 @@ fn techno_repair_tick(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>
     let Some(entity) = sim.substrate.entities.get_mut(techno) else {
         return RadioResponse::None;
     };
-    if entity.health.is_fully_repaired(strength) {
+    if entity.health.is_full(strength) {
         entity.health.current = strength;
         entity.estimated_health.reset(strength);
         RadioResponse::RepairComplete
