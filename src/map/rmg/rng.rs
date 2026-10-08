@@ -1,40 +1,22 @@
-//! Exact reproduction of the map-generation RNG: a hash-seeded, 250-dword
-//! lag-103 XOR generator with caller-side range reduction.
-//!
-//! Deliberately separate from `sim::rng::SimRng`. That one drives match
-//! simulation; this one reproduces a different machine, byte for byte, and
-//! sharing code between them would let drift in either corrupt the other.
+//! The map-generation RNG: the native generator's state and raw draw
+//! (`util::native_random`, shared with the scenario stream) with this
+//! generator's caller-side range reduction.
 //!
 //! Verified against golden vectors in `tools/rmg_oracle/vectors/rng.json`,
 //! which were produced by running the original routines under emulation.
 
 use super::x87::TruncF64;
 use crate::rng_continuation::{MAPGEN_RNG_STATE_WORDS, MapGenRngContinuation};
+use crate::util::native_random::{self, LAG};
 
 /// Number of state words in the generator buffer.
 const STATE_LEN: usize = MAPGEN_RNG_STATE_WORDS;
-/// Distance between the two cursors; also the second cursor's start position.
-const LAG: usize = 0x67;
-/// Seed-hash table 1, consumed at indices 0..3 (one per hash round).
-const TABLE1: [u32; 4] = [0xBAA9_6887, 0x1E17_D32C, 0x03BC_DC3C, 0x0F33_D1B2];
-/// Seed-hash table 2. The original pre-increments its index before the load,
-/// so only entries 1..=4 are ever consumed; entry 0 is kept for provenance.
-const TABLE2: [u32; 5] = [
-    0x48AA_D7E4,
-    0x4B0F_3B58,
-    0xE874_F0C3,
-    0x6955_C5A6,
-    0x55A7_CA46,
-];
 /// Multiplier that converts a raw draw to `[0, 1)`.
 ///
 /// This is NOT bit-exact `2^-32`: the stored constant carries one extra
 /// mantissa bit. Writing `1.0 / 4294967296.0` here silently diverges from the
 /// original on values that land near a rounding boundary.
 pub const RANGE_K_BITS: u64 = 0x3DF0_0000_0010_0000;
-
-/// Hash rounds applied per seeded state word.
-const HASH_ROUNDS: usize = 4;
 
 /// The map generator's random number generator.
 #[derive(Debug, Clone)]
@@ -45,46 +27,10 @@ pub struct RmgRng {
 }
 
 impl RmgRng {
-    /// Seed the generator. Each of the 250 state words is produced by four
-    /// hash rounds that carry the previous round's pre-mangle value forward.
+    /// Seed the generator ([`native_random::seeded_words`]).
     pub fn new(seed: u16) -> Self {
-        let seed = u32::from(seed);
-        let mut state = [0u32; STATE_LEN];
-        let mut counter: u32 = 0;
-
-        for slot in state.iter_mut() {
-            let mut value = counter;
-            counter = counter.wrapping_add(1);
-            // Round 0 mixes in the seed; later rounds mix in the previous
-            // round's input instead.
-            let mut carry = seed;
-
-            for round in 0..HASH_ROUNDS {
-                let mangled = TABLE1[round] ^ value;
-                let previous = value;
-
-                // Split into signed halves: the original uses arithmetic
-                // shifts, so the high half keeps its sign.
-                let hi = (mangled as i32) >> 16;
-                let lo = (mangled & 0xFFFF) as i32;
-
-                let hi_hi = !hi.wrapping_mul(hi) as u32;
-                let hi_lo = hi.wrapping_mul(lo) as u32;
-                let lo_lo = lo.wrapping_mul(lo) as u32;
-
-                let sum = hi_hi.wrapping_add(lo_lo);
-                // Swap the halves of `sum`, keeping the arithmetic shift.
-                let swapped = ((sum as i32 >> 16) as u32) | (sum << 16);
-
-                value = (swapped ^ TABLE2[round + 1]).wrapping_add(hi_lo) ^ carry;
-                carry = previous;
-            }
-
-            *slot = value;
-        }
-
         Self {
-            state,
+            state: native_random::seeded_words(u32::from(seed)),
             idx_a: 0,
             idx_b: LAG,
         }
@@ -98,19 +44,7 @@ impl RmgRng {
     /// Draw one raw word: XOR the lagged pair into the leading slot, return it,
     /// then advance both cursors with wraparound.
     pub fn next_u32(&mut self) -> u32 {
-        let value = self.state[self.idx_a] ^ self.state[self.idx_b];
-        self.state[self.idx_a] = value;
-
-        self.idx_a += 1;
-        self.idx_b += 1;
-        if self.idx_a >= STATE_LEN {
-            self.idx_a = 0;
-        }
-        if self.idx_b >= STATE_LEN {
-            self.idx_b = 0;
-        }
-
-        value
+        native_random::draw(&mut self.state, &mut self.idx_a, &mut self.idx_b)
     }
 
     /// Convert a draw to `[0, 1)` using the original's exact constant.

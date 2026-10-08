@@ -4,7 +4,7 @@
 //! it, and the simulation consumes it. Keeping the DTO below both owners avoids
 //! making live simulation depend on the pre-play generator implementation.
 
-pub(crate) const MAPGEN_RNG_STATE_WORDS: usize = 250;
+pub(crate) const MAPGEN_RNG_STATE_WORDS: usize = crate::util::native_random::STATE_WORDS;
 
 /// Move-only post-generation cursor handed to the live simulation.
 ///
