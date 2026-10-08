@@ -2170,7 +2170,7 @@ mod tests {
                 })
                 .collect(),
             update_timer: CdTimer::started(10, 20),
-            reload_timer: CdTimer::default(),
+            spawn_timer: CdTimer::default(),
             current_target: None,
             queued_target: None,
             mode: SpawnManagerMode::Idle,
@@ -2183,8 +2183,8 @@ mod tests {
             (SpawnSlotState::ReadyDocked, false),
             (SpawnSlotState::KamikazeWait, true),
             (SpawnSlotState::InFlight, true),
-            (SpawnSlotState::ReturningToDock, true),
-            (SpawnSlotState::LandingAtDock, true),
+            (SpawnSlotState::Attacking, true),
+            (SpawnSlotState::ComingHome, true),
             (SpawnSlotState::Reloading, false),
             (SpawnSlotState::Regenerating, true),
         ] {

@@ -6476,24 +6476,8 @@ impl Simulation {
                 &self.interner,
             );
             // Unit facing already committed immediately after that Unit's
-            // FireAt, before this frame's next live Logic object.
-            // SpawnManager pass. Native dispatches it per object from
-            // `TechnoClass::AI_Update` (+0x2D0 → vtable+0x5C), after that
-            // object's Mission_Dispatch → Fire_At → SetTarget. Running it
-            // immediately after the combat phase preserves that
-            // "target set, then manager reads it" ordering within the tick;
-            // the manager self-gates to every 10 frames regardless.
-            let ordinary_logic_order = logic_order
-                .iter()
-                .copied()
-                .filter(|id| !tube_turn_owned_ids.contains(id))
-                .collect::<Vec<_>>();
-            crate::sim::spawn_manager::tick_spawn_managers(
-                self,
-                rules,
-                &ordinary_logic_order,
-                overlay_registry,
-            );
+            // FireAt, before this frame's next live Logic object. Each
+            // SpawnManager ran in its owner's TechnoClass::AI slot.
             let receipt = combat_result
                 .consequences
                 .commit(self, rules, overlay_registry);

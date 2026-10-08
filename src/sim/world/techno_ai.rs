@@ -659,6 +659,7 @@ fn techno_ai_shell(
             }
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             if let Some(rules) = rules {
                 open_transport_reach_step(sim, id, rules, ctx.overlay_registry);
             }
@@ -703,6 +704,7 @@ fn techno_ai_shell(
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             // The Gattling block after the Techno AI (`0x0043FE5B..0x0043FF8B`).
             if let Some(rules) = rules {
                 building_missions::gattling_idle(sim, id, rules);
@@ -794,6 +796,7 @@ fn techno_ai_shell(
             }
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
+            spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             techno_common_post(sim, id, rules);
         }
     }
@@ -1374,6 +1377,25 @@ fn slave_manager_slot(
     }
 }
 
+/// `TechnoClass::AI`'s SpawnManager call (`0x006FA94C..0x006FA958`): past the
+/// IsAlive gate (`0x006FA735`), the self-heal and the cloak (`vt+0x410`,
+/// `0x006FA946`), a spawner runs `SpawnManagerClass::AI`
+/// (`sim::spawn_manager`). A Unit's own Fire_At_Target comes after its
+/// `FootClass::AI` (`0x0073647B`, `0x007365E1`), so a target its fire hands
+/// the manager waits for the next pass.
+fn spawn_manager_slot(
+    sim: &mut Simulation,
+    id: u64,
+    rules: Option<&RuleSet>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+) {
+    if let Some(rules) = rules
+        && ai_alive(sim, id)
+    {
+        crate::sim::spawn_manager::spawn_manager_ai(sim, rules, id, overlay_registry);
+    }
+}
+
 /// The bomb fuse's slot in `TechnoClass::AI_Update` (`0x006FA6F5..
 /// 0x006FA717`): after the mission step and passive acquisition, before the
 /// SlaveManager and CaptureManager. A carrier its own blast kills runs no
@@ -1660,6 +1682,7 @@ fn unit_techno_bracket(
     if !ai_alive(sim, id) {
         return BracketReach::Dispatched;
     }
+    spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
     if let Some(rules) = rules {
         open_transport_reach_step(sim, id, rules, ctx.overlay_registry);
     }

@@ -2453,13 +2453,10 @@ impl Simulation {
         // The Foot prelude (`0x004D9744`) leaves the object's team, before
         // Limbo is set, so the object still takes its idle mode.
         self.leave_team(stable_id, false, context.rules());
-        // RESIDUAL: this Detach_All(1) (`0x005F4D61`) also visits the concealed
-        // object itself, so native runs the SpawnManager owner arm on a live
-        // spawner's Limbo: docked children UnInit with a zero regen timer, and
-        // airborne ones turn kamikaze on the wing's target (`0x006B7100`). VERA
-        // skips `spawn_manager_owner_expired` here. Trigger: a spawner limboed
-        // alive. Effect: its wing survives the Limbo. Frequency: rare in stock.
-        // Risk: spawn-pool timing only.
+        // This Detach_All(1) (`0x005F4D61`) also visits the concealed object
+        // itself, so a live spawner's Limbo runs its SpawnManager's owner arm:
+        // docked children UnInit with a zero regen timer, and airborne ones
+        // turn kamikaze on the wing's target (`0x006B7100`).
         self.notify_pointer_expired(stable_id, context);
 
         if self.unmark_entity_remove(stable_id, context) {
@@ -2813,7 +2810,6 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::DestroyDeselected { stable_id });
 
-        self.spawn_manager_owner_expired(stable_id, context);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::DestroyNotifyBoundary { stable_id });
         self.notify_pointer_expired(stable_id, context);
@@ -2890,44 +2886,6 @@ impl Simulation {
                     crate::sim::docking::building_dock::clear_pending_entry(unit);
                 }
             }
-        }
-    }
-
-    /// `SpawnManagerClass::PointerExpired @ 0x006B7C60`, owner arm
-    /// (`0x006B7CBC`): `Kill_All_Spawns()` then `ClearAllTargets()`. Every
-    /// object joins the expiry roster in `ObjectClass::Constructor @
-    /// 0x005F3900` (append `0x005F3A85..0x005F3A8B`) and the announce loop
-    /// (`0x00725947`) does not skip the announcer, so the dying owner's own
-    /// `TechnoClass::PointerExpired` reaches its SpawnManager forward
-    /// (`0x00707B24`). Docked/reloading children and any missile still in its
-    /// post-launch window die with the parent; aircraft already out crash
-    /// (`SpawnRetreat__Push`) unless they are missiles. The target clear is the
-    /// second, separate call — `Kill_All_Spawns` alone never touches the
-    /// targets.
-    ///
-    /// RESIDUAL: VERA runs this self-visit ahead of the listener walk; native
-    /// reaches it at the owner's roster slot, after the listeners before it.
-    /// Trigger: a spawner dies while a lower-roster listener targets it, and
-    /// either another listener targets one of its missiles still in the
-    /// post-launch window or one of its Hornets is airborne. Effect: that
-    /// listener's passive-scan re-arm draw (`RandomRanged(4,8)` at
-    /// `0x00707A0D`) moves after the missile's re-arm or the Hornets' Crash
-    /// spin draws on the Scenario stream. Frequency: occasional — any Carrier
-    /// sunk under attack with its wing out. Risk: Scenario-stream order only.
-    fn spawn_manager_owner_expired(&mut self, stable_id: u64, context: UninitContext<'_>) {
-        if self
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.spawn_manager.is_some())
-        {
-            crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
-            crate::sim::spawn_manager::clear_all_spawn_targets(
-                self,
-                stable_id,
-                context.rules(),
-                context.registry(),
-            );
         }
     }
 
@@ -3158,6 +3116,7 @@ impl Simulation {
                 .as_ref()
                 .is_some_and(|plant| plant.target_building_id == expired_id)
             || listener.pending_entry() == Some(expired_id)
+            || listener.spawn_owner_id == Some(expired_id)
             || listener
                 .aircraft_ammo
                 .as_ref()
@@ -3490,6 +3449,9 @@ impl Simulation {
             &listener.passenger_role,
             PassengerRole::Transport { cargo } if cargo.passengers.contains(&expired_id)
         );
+        // `0x007077EE..0x007077FD`, after the radio and cargo, whatever the
+        // control: a child whose SpawnOwner (`+0x2D4`) expires forgets it.
+        let drops_spawn_owner = listener.spawn_owner_id == Some(expired_id);
 
         // `TechnoClass::PointerExpired @ 0x007077C0`, the `allowClear` local
         // (`[ESP+0x24]`): it starts true and is cancelled only on the
@@ -3522,7 +3484,7 @@ impl Simulation {
         if clears_current_target {
             self.shorten_passive_scan_timer(listener_id);
         }
-        if (drops_contact || drops_passenger)
+        if (drops_contact || drops_passenger || drops_spawn_owner)
             && let Some(listener) = self.substrate.entities.get_mut(listener_id)
         {
             // `RadioClass::PointerExpired @ 0x0065AAC0` nulls matching sparse
@@ -3551,6 +3513,9 @@ impl Simulation {
                 && let PassengerRole::Transport { cargo } = &mut listener.passenger_role
             {
                 let _ = cargo.disembark(expired_id);
+            }
+            if drops_spawn_owner {
+                listener.spawn_owner_id = None;
             }
         }
 
@@ -4174,7 +4139,6 @@ impl Simulation {
 
         self.run_represented_uninit_pre_hook(stable_id);
         self.uninit_carried_passengers(stable_id, context);
-        self.spawn_manager_owner_expired(stable_id, context);
 
         #[cfg(test)]
         {
