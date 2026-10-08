@@ -716,6 +716,7 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
     // Phase 1: Charge/suspend lifecycle for all instances.
     // Collect owners to avoid borrow conflict on sim.super_weapons.
     let owners: Vec<InternedId> = sim.super_weapons.keys().copied().collect();
+    let offline_only = offline_only_supers(sim, rules);
     let mut became_ready: Vec<(InternedId, InternedId)> = Vec::new();
     let mut hold_changed: Vec<(InternedId, InternedId)> = Vec::new();
     let mut faded: Vec<(InternedId, [i32; 3])> = Vec::new();
@@ -738,12 +739,20 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
                 continue;
             }
             let sw = rules.super_weapon(sim.interner.resolve(inst.type_id));
-            // The power arm of `HouseClass @ 0x0050AF10`: a powered type
-            // holds while the house is short of power, and every type is
-            // released otherwise, charged or not. RESIDUAL: native also
-            // holds one whose providing building is offline (`+0x660`).
+            // The hold arm of `HouseClass @ 0x0050AF10`: a Super is released,
+            // charged or not, while its house has power and one of the
+            // buildings that provide it is online (`+0x660`); otherwise a
+            // powered type holds and any other keeps its state. One that no
+            // building provides was revoked when its last provider went
+            // (`refresh_super_weapons_for_owner`). Native runs the pass when
+            // the power state flips (`0x00508DD5`) and at the House update
+            // after a building event (`+0x1FC`), after the object loop. VERA
+            // tests every frame, after the object pass that starts, ends and
+            // erases warps, so it holds and releases in the same frame; a
+            // release by a Phase 5 kill lands a frame late.
             let manual_control = sw.is_some_and(|sw| sw.manual_control);
-            let changed = if !is_low_power {
+            let online = !is_low_power && !offline_only.contains(&(owner_id, inst.type_id));
+            let changed = if online {
                 inst.suspend(false, manual_control, current_frame)
             } else if sw.is_none_or(|sw| sw.is_powered) {
                 inst.suspend(true, manual_control, current_frame)
@@ -825,13 +834,136 @@ pub fn tick_active_superweapon_effects(
     dominator || storm
 }
 
+/// The owner's buildings the grant and hold passes scan: on the map, out
+/// of limbo and not dying (`0x0050B22E..0x0050B240`,
+/// `0x0050AFB0..0x0050AFC6`). Native walks `BuildingClass::Array` for the
+/// owner's; the house's own list (House+0x68), which Unlimbo and
+/// ChangeOwner append to and the building's expiry clears, holds the same
+/// buildings. The passes' answers do not depend on the order.
+fn owned_live_buildings(
+    sim: &Simulation,
+    owner: InternedId,
+) -> impl Iterator<Item = &crate::sim::game_entity::GameEntity> {
+    sim.houses
+        .get(&owner)
+        .into_iter()
+        .flat_map(|house| house.base_projection.buildings())
+        .filter_map(|&id| sim.substrate.entities.get(id))
+        .filter(move |building| {
+            building.category == crate::map::entities::EntityCategory::Structure
+                && !building.dying
+                && !building.lifecycle.in_limbo
+                && building.owner() == owner
+        })
+}
+
+/// Whether `owner` meets `sw`'s `AuxBuilding=` (`+0xC8`, which
+/// `BuildingTypeClass::FindOrAllocate @ 0x004653C0` resolves): `sw` names
+/// none, or the house has a building of that type on the map
+/// (`HouseClass+0x5550`). The provider test (`0x00457630`) and the
+/// detection EVA (`0x004468FA..0x00446935`) read it. Retail names none.
+pub(crate) fn aux_building_present(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    sw: &SuperWeaponType,
+) -> bool {
+    use crate::map::entities::EntityCategory;
+    use crate::rules::object_type::ObjectCategory;
+    sw.aux_building.as_deref().is_none_or(|aux| {
+        rules
+            .object_in_category(ObjectCategory::Building, aux)
+            .and_then(|aux| sim.interner.get(&aux.id))
+            .zip(sim.houses.get(&owner))
+            .is_some_and(|(aux, house)| {
+                house.tracking.active_count(EntityCategory::Structure, aux) > 0
+            })
+    })
+}
+
+/// The Supers `building` provides: its type's `SuperWeapon=` and
+/// `SuperWeapon2=` (`BuildingClass @ 0x00457630`, `0x00457690`), each only
+/// while its owner meets the Super's `AuxBuilding=`
+/// ([`aux_building_present`]). The grant pass, the hold pass and the
+/// building destructor (`0x0043BE47..0x0043BEEA`) share it.
+///
+/// RESIDUAL: the passes also count the `SuperWeapon=`/`SuperWeapon2=` of a
+/// building's upgrades (`+0x5EC`; `0x0050B242..0x0050B267`,
+/// `0x0050AFF2..0x0050B02A`), without the `AuxBuilding=` test. Retail has
+/// no upgrade building (`PowersUpBuilding=`), so it never decides.
+fn provided_supers<'r>(
+    sim: &Simulation,
+    rules: &'r RuleSet,
+    building: &crate::sim::game_entity::GameEntity,
+) -> impl Iterator<Item = &'r str> + use<'r> {
+    let object = sim.object_type(building.type_ref(), rules);
+    let provides = |sw_id: &str| {
+        rules
+            .super_weapon(sw_id)
+            .is_some_and(|sw| aux_building_present(sim, rules, building.owner(), sw))
+    };
+    [
+        object.and_then(|object| object.super_weapon.as_deref()),
+        object.and_then(|object| object.super_weapon2.as_deref()),
+    ]
+    .map(|sw_id| sw_id.filter(|sw_id| provides(sw_id)))
+    .into_iter()
+    .flatten()
+}
+
+/// The (owner, Super) pairs the hold pass's online test
+/// (`0x0050AFF2..0x0050B05F`) finds providers for, none of them online
+/// (`BuildingClass+0x660`, cleared through a Temporal warp): it holds a
+/// powered one as it does under low power (`0x0050B0FE..0x0050B12C`).
+/// Only the buildings of houses holding a Super are walked, and their
+/// Supers only when one of them is offline.
+///
+/// RESIDUAL: a warp is VERA's only way offline
+/// ([`GameEntity::building_online`](crate::sim::game_entity::GameEntity::building_online)).
+/// `BuildingClass::GoOffline @ 0x00452360`, which also sets the owner's
+/// `+0x1FC` (`0x004523B8`), is not ported, nor its callers: the power
+/// toggle event (`0x004C6D9A`), trigger action 61 (`0x006DDFB9`) and a
+/// map's powered-down building (`0x0044FD23`). Trigger: a player powers
+/// down every building that provides a powered Super. Effect: native holds
+/// the Super until one is powered up; VERA has no toggle. Frequency:
+/// a player's choice. No retail map powers a superweapon building down:
+/// its 338 map texts hold one powered-down `[Structures]` entry and one
+/// action 61, neither on one.
+fn offline_only_supers(
+    sim: &Simulation,
+    rules: &RuleSet,
+) -> std::collections::BTreeSet<(InternedId, InternedId)> {
+    use std::collections::BTreeSet;
+    let mut pairs = BTreeSet::new();
+    for (&owner, weapons) in &sim.super_weapons {
+        if !weapons.values().any(|inst| inst.is_active)
+            || owned_live_buildings(sim, owner).all(|building| building.building_online())
+        {
+            continue;
+        }
+        let providers = |online: bool| -> BTreeSet<&str> {
+            owned_live_buildings(sim, owner)
+                .filter(|building| building.building_online() == online)
+                .flat_map(|building| provided_supers(sim, rules, building))
+                .collect()
+        };
+        let online = providers(true);
+        pairs.extend(
+            providers(false)
+                .difference(&online)
+                .filter_map(|sw_id| Some((owner, sim.interner.get(sw_id)?))),
+        );
+    }
+    pairs
+}
+
 /// Refresh superweapon grants for a specific owner by scanning their buildings.
 ///
-/// Call when a building is completed, sold, or destroyed. Grants each weapon
-/// the owner's buildings provide and the owner does not hold, including one
-/// revoked earlier, and revokes each one no building provides. With the
-/// Super Weapons option off, no building provides a `DisableableFromShell=`
-/// type.
+/// Call when a building is completed, sold, destroyed, captured or erased.
+/// Grants each weapon the owner's buildings provide ([`provided_supers`])
+/// and the owner does not hold, including one revoked earlier, and revokes
+/// each one no building provides. With the Super Weapons option off, no
+/// building provides a `DisableableFromShell=` type.
 ///
 /// gamemd: the grant pass `HouseClass @ 0x0050B1D0` (Ghidra label
 /// `HouseClass__Grant_Provided_Supers`, called from `BuildingClass::Unlimbo`
@@ -855,7 +987,12 @@ pub fn tick_active_superweapon_effects(
 /// pass also deactivates every Super of a defeated house (`+0x1F5`,
 /// `0x0050AF70`, `0x0050B0F4`) whatever buildings it keeps; VERA revokes by
 /// building only. Trigger: a defeated house that still owns a superweapon
-/// building, not seen in retail play.
+/// building, not seen in retail play. The MCV's deploy
+/// ([`Simulation::deploy_mcv`]) and a construction yard's undeploy
+/// ([`Simulation::finish_undeploy`]) unlimbo and limbo a building without
+/// a refresh, where native Unlimbo and Limbo set `+0x1FC` (`0x00440D1E`,
+/// `0x00445D99`); dormant, as no retail construction yard provides a
+/// Super.
 pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
     use std::collections::BTreeSet;
 
@@ -865,38 +1002,19 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
     // (`0x0050B2A4..0x0050B2B5`) and the hold pass revokes one already
     // granted (`0x0050B085..0x0050B09B`). The others work with it off.
     let super_weapons_allowed = sim.session.game_options.super_weapons;
-    let provides = |sw_id: &str| {
-        rules
-            .super_weapon(sw_id)
-            .is_some_and(|sw| super_weapons_allowed || !sw.disableable_from_shell)
+    let allowed = |sw_id: &&str| {
+        super_weapons_allowed
+            || rules
+                .super_weapon(sw_id)
+                .is_some_and(|sw| !sw.disableable_from_shell)
     };
 
     // Collect all SW type IDs (as strings) granted by living buildings of this owner.
-    let mut granted_strs: Vec<String> = Vec::new();
-    for (_, entity) in sim.substrate.entities.iter_sorted() {
-        if entity.owner() != owner {
-            continue;
-        }
-        if entity.category != crate::map::entities::EntityCategory::Structure {
-            continue;
-        }
-        if entity.dying || entity.lifecycle.in_limbo {
-            continue;
-        }
-        let type_str = sim.interner.resolve(entity.type_ref());
-        if let Some(obj) = rules.object(type_str) {
-            if let Some(ref sw_id) = obj.super_weapon
-                && provides(sw_id)
-            {
-                granted_strs.push(sw_id.clone());
-            }
-            if let Some(ref sw2_id) = obj.super_weapon2
-                && provides(sw2_id)
-            {
-                granted_strs.push(sw2_id.clone());
-            }
-        }
-    }
+    let granted_strs: Vec<String> = owned_live_buildings(sim, owner)
+        .flat_map(|building| provided_supers(sim, rules, building))
+        .filter(allowed)
+        .map(str::to_string)
+        .collect();
 
     // Intern all granted SW IDs. `BTreeSet` (not `HashSet`) keeps the
     // revoke pass deterministic across machines.
@@ -978,6 +1096,17 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
 #[cfg(test)]
 mod frame_tests {
     use super::*;
+
+    /// A house for each owner, as every scenario owner has: the passes walk
+    /// the house's buildings.
+    fn add_houses(sim: &mut Simulation, names: &[&str]) {
+        for name in names {
+            let id = sim.interner.intern(name);
+            sim.houses.entry(id).or_insert_with(|| {
+                crate::sim::house_state::HouseState::new(id, 0, None, true, 10_000, 10)
+            });
+        }
+    }
 
     #[test]
     fn charge_progress_uses_full_recharge_time_across_suspend_resume() {
@@ -1079,6 +1208,7 @@ mod frame_tests {
         let mut rules = RuleSet::from_ini(&ini).expect("superweapon grant rules should parse");
         rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
         let mut sim = Simulation::new();
+        add_houses(&mut sim, &["Americans"]);
         let owner = sim.interner.intern("Americans");
         let nuke = sim.interner.intern("NukeSpecial");
         let weapon = |sim: &Simulation| {
@@ -1136,6 +1266,7 @@ mod frame_tests {
             rules.set_buildup_control_for_test(name, [0, 25, 2]);
         }
         let mut sim = Simulation::new();
+        add_houses(&mut sim, &["Americans", "Russians"]);
         let americans = sim.interner.intern("Americans");
         let russians = sim.interner.intern("Russians");
         let neutral = sim.interner.intern("Neutral");
@@ -1258,6 +1389,7 @@ mod frame_tests {
         let mut rules = RuleSet::from_ini(&ini).expect("superweapon grant rules should parse");
         rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
         let mut sim = Simulation::new();
+        add_houses(&mut sim, &["Americans", "Russians"]);
         let americans = sim.interner.intern("Americans");
         let russians = sim.interner.intern("Russians");
         let nuke = sim.interner.intern("NukeSpecial");
@@ -1305,6 +1437,7 @@ mod frame_tests {
         let mut rules = RuleSet::from_ini(&ini).expect("superweapon status rules should parse");
         rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
         let mut sim = Simulation::new();
+        add_houses(&mut sim, &["Americans"]);
         let owner = sim.interner.intern("Americans");
         let nuke = sim.interner.intern("NukeSpecial");
         let reports = |sim: &Simulation| {
@@ -1341,6 +1474,51 @@ mod frame_tests {
             &mut sim, &rules, silo
         ));
         assert_eq!(reports(&sim), 3, "the loss");
+    }
+
+    /// `BuildingClass @ 0x00457630`: a Super whose `AuxBuilding=` names a
+    /// building type is provided only while its owner keeps one of that type
+    /// on the map (`HouseClass+0x5550`). `BuildingTypeClass::FindOrAllocate
+    /// @ 0x004653C0` resolves the name: any case, `none` for no type, and a
+    /// new type no one builds for an unknown name.
+    #[test]
+    fn an_aux_building_gates_its_super() {
+        use crate::rules::ini_parser::IniFile;
+        let granted = |aux: &str, plant: bool| {
+            let mut rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+                "[SuperWeaponTypes]\n0=NukeSpecial\n\
+                 [NukeSpecial]\nType=MultiMissile\nRechargeTime=1\nAuxBuilding={aux}\n\
+                 [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+                 [BuildingTypes]\n1=SILO\n2=PLANT\n\
+                 [SILO]\nStrength=1000\nSuperWeapon=NukeSpecial\n[PLANT]\nStrength=1000\n"
+            )))
+            .expect("aux rules should parse");
+            for name in ["SILO", "PLANT"] {
+                rules.set_buildup_control_for_test(name, [0, 25, 2]);
+            }
+            let mut sim = Simulation::new();
+            let owner = sim.interner.intern("Americans");
+            sim.houses.insert(
+                owner,
+                crate::sim::house_state::HouseState::new(owner, 0, None, true, 10_000, 10),
+            );
+            sim.spawn_object("SILO", "Americans", 10, 10, 0, &rules)
+                .expect("silo spawns");
+            if plant {
+                sim.spawn_object("PLANT", "Americans", 14, 10, 0, &rules)
+                    .expect("plant spawns");
+            }
+            refresh_super_weapons_for_owner(&mut sim, &rules, owner);
+            let nuke = sim.interner.intern("NukeSpecial");
+            sim.super_weapons
+                .get(&owner)
+                .and_then(|weapons| weapons.get(&nuke))
+                .is_some_and(|instance| instance.is_active)
+        };
+        assert!(!granted("plant", false), "no PLANT on the map");
+        assert!(granted("plant", true), "a PLANT");
+        assert!(granted("none", false), "no type");
+        assert!(!granted("ABSENT", true), "a type no one builds");
     }
 
     /// The Super Weapons option (`0x00A8B263`) on the retail rules, through
