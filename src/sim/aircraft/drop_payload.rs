@@ -547,6 +547,8 @@ mod tests {
              [AircraftTypes]\n\
              0=PDPLANE\n\
              [BuildingTypes]\n\
+             [Warheads]\n\
+             0=SHOTWH\n\
              [E1]\n\
              Name=GI\n\
              Strength=100\n\
@@ -554,7 +556,10 @@ mod tests {
              [PDPLANE]\n\
              Name=Paradrop Plane\n\
              Strength=400\n\
-             Ammo=100\n",
+             Ammo=100\n\
+             [SHOTWH]\n\
+             Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+             InfDeath=1\n",
         );
         RuleSet::from_ini(&ini).expect("drop test rules should parse")
     }
@@ -854,6 +859,109 @@ mod tests {
         assert!(wound_down, "the landing zeroed the remaining loops");
         assert!(played_out, "the canopy left at its last frame");
         assert!(sim.substrate.entities.get(passenger_id).is_some());
+    }
+
+    /// A paratrooper shot dead in its fall still holds Paradrop (`+0x6C4`
+    /// 0x21), so InfantryClass::ReceiveDamage kills it as InfDeath 3 whatever
+    /// the warhead says (`0x0051836F..0x0051842F`): InfantryExplode at its
+    /// Location (`0x00518647..0x00518698`), then UnInit (`0x00518B9A`). Its
+    /// canopy goes with it (`AnimClass::PointerExpired @ 0x00425150`).
+    #[test]
+    fn a_paratrooper_shot_in_its_fall_explodes_and_leaves() {
+        use crate::rules::art_data::ArtRegistry;
+        use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
+        let mut sim = Simulation::new();
+        let mut rules = drop_test_rules();
+        rules.general.parachute_shp = Some("PARACH".to_string());
+        // An E1 sequence with Paradrop frames, as retail's GI has: without them
+        // Do_Action refuses the drop's Paradrop (`0x0051D70F`).
+        let art_ini = IniFile::from_str(
+            "[PARACH]\nRate=900\nLoopStart=2\nLoopEnd=5\nLoopCount=-1\n\
+             [S_BANG34]\nRate=900\n\
+             [E1]\nSequence=E1Sequence\n\
+             [E1Sequence]\nReady=0,1,1\nGuard=0,1,1\nWalk=8,6,6\nDie1=134,15,0\n\
+             Die2=149,15,0\nParadrop=418,1,0\n",
+        );
+        let mut art = ArtRegistry::from_ini(&art_ini);
+        art.bind_anim_frame_count_for_test("PARACH", 9);
+        art.bind_anim_frame_count_for_test("S_BANG34", 9);
+        rules.install_art_fixture(art);
+        let sequences = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
+        rules.replace_animation_sequences_for_test(
+            crate::rules::animation_sequence::build_animation_sequence_catalog(
+                &rules,
+                Some(&sequences),
+            ),
+        );
+        let (aircraft_id, passenger_id) = (sim.allocate_stable_id(), sim.allocate_stable_id());
+        insert_loaded_paradrop_pair(&mut sim, aircraft_id, passenger_id);
+        sim.substrate
+            .entities
+            .get_mut(aircraft_id)
+            .unwrap()
+            .position
+            .exact_z_leptons = Some(1500);
+        drop_payload(&mut sim, aircraft_id, &rules, None);
+        for _ in 0..10 {
+            sim.advance_tick(&[], Some(&rules), None, None, 100);
+        }
+        let passenger = sim.substrate.entities.get(passenger_id).unwrap();
+        assert!(passenger.is_falling_down());
+        assert_eq!(
+            passenger
+                .mission_leaf
+                .as_infantry()
+                .map(|leaf| leaf.doing()),
+            Some(DO_PARADROP)
+        );
+        let at = crate::sim::movement::ground_pose::position_world_coord(&passenger.position);
+        assert!(at.z > 1400, "still high in its fall: {at:?}");
+
+        let warhead = sim.interner.intern("SHOTWH");
+        let hit = EntityDamageEvent::direct_receiver(
+            passenger_id,
+            1000,
+            0,
+            RAD_NO_ATTACKER,
+            None,
+            warhead,
+            ReceiverCallFlags {
+                ignore_defenses: false,
+                arg6: false,
+            },
+        );
+        sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+
+        assert!(
+            sim.substrate
+                .entities
+                .get(passenger_id)
+                .is_none_or(|passenger| !passenger.lifecycle.object_alive),
+            "UnInit at the hit"
+        );
+        let explode = sim.interner.get("S_BANG34").expect("InfantryExplode built");
+        let explosions: Vec<_> = sim
+            .substrate
+            .anims
+            .iter()
+            .filter(|(_, anim)| anim.type_id == explode)
+            .map(|(_, anim)| anim.world_coord)
+            .collect();
+        assert_eq!(explosions.len(), 1, "{explosions:?}");
+        assert_eq!(
+            (explosions[0].x, explosions[0].y, explosions[0].z),
+            (at.x, at.y, at.z),
+            "at its Location"
+        );
+        let parachute = sim.interner.get("PARACH").expect("canopy interned");
+        assert!(
+            sim.substrate
+                .anims
+                .iter()
+                .filter(|(_, anim)| anim.type_id == parachute)
+                .all(|(_, anim)| anim.owner_entity.is_none() && anim.runtime.inactive),
+            "the canopy's owner expired"
+        );
     }
 
     /// The drop coordinate is the plane's GetCoords (`0x00415C93`) with only

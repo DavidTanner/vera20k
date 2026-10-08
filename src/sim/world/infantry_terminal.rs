@@ -9,6 +9,7 @@ use super::Simulation;
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::SequenceKind;
+use crate::sim::movement::infantry_action::DO_PARADROP;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum InfantryDeathSequence {
@@ -97,13 +98,28 @@ impl InfantryDeathPostlude {
 /// infantryman's death builds it whatever the warhead (`0x00518313`).
 const INFANTRY_EXPLODE_INF_DEATH: u8 = 3;
 
+/// The InfDeath an infantryman dies with while its action is still Paradrop
+/// (`+0x6C4` 0x21), whatever the warhead's (`0x0051836F..0x0051842F`): a
+/// paratrooper shot in its fall, where Do_Action refuses every death
+/// sequence (`0x0051D722`), explodes and is UnInit.
+///
+/// RESIDUAL: with an `InfDeath=8` warhead (retail `Virus` and `VirusGas`, by
+/// the production reader) native first builds InfantryVirus at the Location,
+/// spawns one gas particle of its `SpawnsParticle=` type there into
+/// GasCloudSys (`0x0062E430`) and deletes the anim (`0x0051837E..0x0051842C`);
+/// VERA ports no gas particles (`AnimClass::Middle`'s RESIDUAL). Trigger: a
+/// Virus shot or gas kill on a falling paratrooper. Effect: no gas puff over
+/// its explosion. Frequency: rare.
+const PARADROP_INF_DEATH: u8 = INFANTRY_EXPLODE_INF_DEATH;
+
 impl Simulation {
     /// Select the represented concrete recipe after recursive DeathWeapon
     /// damage. Effects remain in the consuming postlude; Do_Action owns the
     /// class sequence admission and shared Stage independently of drawing.
     ///
     /// A `JumpJet=` type (`+0xD94`, `0x00518313`) builds InfantryExplode
-    /// whatever the warhead, ahead of the InfDeath table. A `Crashable=` one
+    /// whatever the warhead, ahead of the InfDeath table; after it, one whose
+    /// action is still Paradrop dies as [`PARADROP_INF_DEATH`]. A `Crashable=` one
     /// (`+0xD95`, `0x005185F1`) then crashes (`Crash(NULL)`, `0x0051860B`):
     /// accepted, it stays alive at Health 0 and falls (`world::jumpjet_cruise`,
     /// `movement::infantry_action`); refused on the ground, it is UnInit. An
@@ -170,6 +186,15 @@ impl Simulation {
         let (jumpjet, crashable) = self
             .object_type(entity.type_ref(), rules)
             .map_or((false, false), |object| (object.jumpjet, object.crashable));
+        let inf_death = if entity
+            .mission_leaf
+            .as_infantry()
+            .is_some_and(|leaf| leaf.doing() == DO_PARADROP)
+        {
+            PARADROP_INF_DEATH
+        } else {
+            inf_death
+        };
         let recipe = if jumpjet {
             if crashable && self.foot_crash(id, None, rules, overlay_registry) {
                 ReceiverDeathRecipe::CrashExplode

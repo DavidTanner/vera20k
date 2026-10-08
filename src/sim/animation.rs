@@ -608,16 +608,16 @@ pub fn tick_voxel_animations(entities: &mut crate::sim::entity_store::EntityStor
 /// `0x0D`/`0x0E`/`0x0F`. Selection draws no RNG: `Do_Action` is called with
 /// `randomStart = 0`, which is the parameter that gates the frame-start draw.
 ///
-/// RESIDUAL (GSI-08.13) — four arms ahead of the table are not modelled, each
-/// needing a field VERA does not carry: a paradropping infantryman forces
-/// `InfDeath = 3` (`CurrentDoType == 33`); a kill by a building whose type sets
-/// `+0x16BF` forces `5`, the Tesla-Coil skeleton death; a type with a non-empty
-/// `DeathAnims` list (`+0xE7C`) spawns from that list and returns, taking NO
-/// sequence; and `NotHuman=` (`+0xEAD`) forces `Die1`. Trigger: paradrops, any
-/// Tesla kill, and the `NotHuman=` types. Player effect: a Tesla-Coiled
-/// infantryman plays the ordinary death instead of the skeleton, and a
-/// `NotHuman=` type plays a sequence it does not own. Frequency: Tesla Coils are
-/// routine in a Soviet match; paradrops are per-support-power.
+/// RESIDUAL (GSI-08.13) — three arms ahead of the table are not modelled, each
+/// needing a field VERA does not carry: a kill by a building whose type sets
+/// `+0x16BF` forces `5`; a type with a non-empty `DeathAnims` list (`+0xE7C`)
+/// spawns from that list and returns, taking NO sequence; and `NotHuman=`
+/// (`+0xEAD`) forces `Die1`. `+0x16BF` is `LaserFence=` (BuildingTypeClass::
+/// ReadINI, `0x00460AA9`), which retail `rulesmd.ini` sets nowhere, so that
+/// arm is dormant. Trigger: the `DeathAnims=` and `NotHuman=` types. Player
+/// effect: such a type plays a death it does not own. The paradropping
+/// infantryman's arm ahead of them is `world::infantry_terminal`'s
+/// `PARADROP_INF_DEATH`.
 pub fn death_sequence_for_inf_death(inf_death: u8) -> Option<SequenceKind> {
     match inf_death {
         1 => Some(SequenceKind::Die1),
