@@ -15,10 +15,12 @@
 
 use super::facing_class::FacingClass;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::cell_kernel::{native_coord_distance, native_xyz_distance};
+use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::components::DriveCoord;
 use crate::util::direction_tables::facing16_from_delta;
-use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering, X87Value};
+use crate::util::native_x87::{
+    NativeF64Bits, X87Chop53, X87Ordering, X87Value, distance_3d_leptons,
+};
 
 #[path = "hover_process.rs"]
 mod process;
@@ -169,13 +171,7 @@ impl HoverRuntime {
             return;
         }
         let near = match self.destination {
-            None => {
-                native_coord_distance(
-                    foot.x.wrapping_sub(head.x),
-                    foot.y.wrapping_sub(head.y),
-                    foot.z.wrapping_sub(head.z),
-                ) < 0x100
-            }
+            None => distance_3d_leptons([foot.x, foot.y, foot.z], [head.x, head.y, head.z]) < 0x100,
             Some(destination) => {
                 native_xyz_distance(
                     foot.x.wrapping_sub(destination.x),

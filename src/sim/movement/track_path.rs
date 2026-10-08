@@ -53,7 +53,6 @@ use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::mission_data::MissionType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::cell_kernel::native_coord_distance;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::block_index::HeldBlockSets;
@@ -62,6 +61,7 @@ use crate::sim::world::Simulation;
 use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
+use crate::util::native_x87::distance_3d_leptons;
 
 /// Foot+64C after a found route (0x4B3285 / 0x6A28D5).
 const FOUND_ROUTE_RETRIES: u32 = 10;
@@ -284,10 +284,9 @@ impl Simulation {
         //4B291D..4B29A9: not Enter, within CloseEnough of the destination
         //(Distance3D, 4B2974), and a Move or AreaGuard mission.
         if mission != Some(MissionType::Enter)
-            && native_coord_distance(
-                location.x.wrapping_sub(destination.x),
-                location.y.wrapping_sub(destination.y),
-                location.z.wrapping_sub(destination.z),
+            && distance_3d_leptons(
+                [location.x, location.y, location.z],
+                [destination.x, destination.y, destination.z],
             ) < rules.general.close_enough
             && matches!(mission, Some(MissionType::Move | MissionType::AreaGuard))
         {
@@ -544,10 +543,9 @@ impl Simulation {
         let destination = track_destination(actor).unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         //4B2C14..4B2C62: Distance3D (0x41C380) below CloseEnough, then no
         //radio contact (0x65AE30) and the shared stop band.
-        let close = native_coord_distance(
-            location.x.wrapping_sub(destination.x),
-            location.y.wrapping_sub(destination.y),
-            location.z.wrapping_sub(destination.z),
+        let close = distance_3d_leptons(
+            [location.x, location.y, location.z],
+            [destination.x, destination.y, destination.z],
         ) < rules.general.close_enough;
         if close && actor.radio_contacts.is_empty() && self.track_stop_band(location, destination) {
             //4B2CDD..4B2D65: clear the head, then stop or take the waypoint.

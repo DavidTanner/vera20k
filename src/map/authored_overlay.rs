@@ -140,16 +140,10 @@ impl NativeOverlayMapShape {
         Self { width, height }
     }
 
-    /// `Cell_in_bounds_check @ 0x00568300` after the caller has narrowed both
+    /// `MapClass::In_Bounds @ 0x00568300` after the caller has narrowed both
     /// coordinate words to signed 16-bit values.
     pub(crate) const fn admits(self, x: i16, y: i16) -> bool {
-        let x = x as i32;
-        let y = y as i32;
-        let sum = x.wrapping_add(y);
-        self.width < sum
-            && x.wrapping_sub(y) < self.width
-            && y.wrapping_sub(x) < self.width
-            && sum <= self.width.wrapping_add(self.height.wrapping_mul(2))
+        crate::map::playfield::size_diamond_contains(self.width, self.height, (x, y))
     }
 
     /// Exact real-cell anti-diagonal order used by `Full_Init @ 0x00686B20`

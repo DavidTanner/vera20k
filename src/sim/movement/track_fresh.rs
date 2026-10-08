@@ -241,10 +241,9 @@ impl Simulation {
             return false;
         }
         let location = ground_pose::position_world_coord(&actor.position);
-        let distance = crate::sim::cell_kernel::native_coord_distance(
-            location.x.wrapping_sub(destination.x),
-            location.y.wrapping_sub(destination.y),
-            location.z.wrapping_sub(destination.z),
+        let distance = crate::util::native_x87::distance_3d_leptons(
+            [location.x, location.y, location.z],
+            [destination.x, destination.y, destination.z],
         );
         let cells = crate::util::lepton::lepton_to_cell(distance);
         if cells >= 24 {

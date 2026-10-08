@@ -43,7 +43,7 @@ use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{CELL_CENTER_LEPTON, LEPTONS_PER_LEVEL, ground_height_leptons};
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::distance_3d_leptons;
 
 const BUILDING_CENTER_HEIGHT_ALLOWANCE_LEPTONS: i32 = 2 * LEPTONS_PER_LEVEL as i32;
 
@@ -862,24 +862,6 @@ fn impact_is_above_ground(
         .is_ok_and(|ground_z| ground_z < impact.z_leptons)
 }
 
-/// CoordStruct::Distance3D (`0x41C380`): x87 `x*x + y*y + z*z`, the retail
-/// Sqrt_Approx LUT, then Math__ftol. The signed deltas intentionally wrap in
-/// the same i32 coordinate domain before entering x87.
-fn native_distance_leptons(impact_xyz: (i32, i32, i32), target_xyz: (i32, i32, i32)) -> i32 {
-    let dx = X87Chop53::load_i32(target_xyz.0.wrapping_sub(impact_xyz.0));
-    let dy = X87Chop53::load_i32(target_xyz.1.wrapping_sub(impact_xyz.1));
-    let dz = X87Chop53::load_i32(target_xyz.2.wrapping_sub(impact_xyz.2));
-    let squared = X87Chop53::add(
-        X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy)),
-        X87Chop53::mul(dz, dz),
-    );
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
-}
-
 #[allow(clippy::too_many_arguments)]
 fn push_airborne_aoe_damage(
     result: &mut AoEDamageResult,
@@ -916,9 +898,9 @@ fn push_airborne_aoe_damage(
     let target_y = i32::from(entity.position.ry)
         .wrapping_mul(256)
         .wrapping_add(entity.position.sub_y.to_num::<i32>());
-    let raw_distance_leptons = native_distance_leptons(
-        (impact_x, impact_y, impact.z_leptons),
-        (target_x, target_y, target_z),
+    let raw_distance_leptons = distance_3d_leptons(
+        [impact_x, impact_y, impact.z_leptons],
+        [target_x, target_y, target_z],
     );
     if i64::from(raw_distance_leptons) > spread_leptons {
         return;
@@ -1016,7 +998,7 @@ fn push_entity_aoe_damage(
             .and_then(|terrain| terrain.cell(scan_rx, scan_ry))
             .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
             .unwrap_or_else(|| i32::from(entity.position.z).wrapping_mul(LEPTONS_PER_LEVEL as i32));
-        (x, y, z)
+        [x, y, z]
     } else {
         let x = i32::from(entity.position.rx)
             .wrapping_mul(256)
@@ -1025,18 +1007,18 @@ fn push_entity_aoe_damage(
             .wrapping_mul(256)
             .wrapping_add(entity.position.sub_y.to_num::<i32>());
         let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
-        (x, y, z)
+        [x, y, z]
     };
     let distance_leptons = if entity.category == EntityCategory::Structure && center_cell {
-        let height_above_cell = impact.z_leptons.wrapping_sub(target_xyz.2);
+        let height_above_cell = impact.z_leptons.wrapping_sub(target_xyz[2]);
         if height_above_cell <= BUILDING_CENTER_HEIGHT_ALLOWANCE_LEPTONS {
             0
         } else {
-            native_distance_leptons((impact_x, impact_y, impact.z_leptons), target_xyz)
+            distance_3d_leptons([impact_x, impact_y, impact.z_leptons], target_xyz)
                 .wrapping_sub(BUILDING_CENTER_HEIGHT_ALLOWANCE_LEPTONS)
         }
     } else {
-        native_distance_leptons((impact_x, impact_y, impact.z_leptons), target_xyz)
+        distance_3d_leptons([impact_x, impact_y, impact.z_leptons], target_xyz)
     };
     if i64::from(distance_leptons) > spread_leptons {
         return;
@@ -1088,9 +1070,9 @@ fn push_terrain_aoe_damage(
         .wrapping_mul(256)
         .wrapping_add(impact.sub_y.to_num::<i32>());
     let target_coord = object.world_coord();
-    let distance_leptons = native_distance_leptons(
-        (impact_x, impact_y, impact.z_leptons),
-        (target_coord.x, target_coord.y, target_coord.z),
+    let distance_leptons = distance_3d_leptons(
+        [impact_x, impact_y, impact.z_leptons],
+        [target_coord.x, target_coord.y, target_coord.z],
     );
     if i64::from(distance_leptons) > spread_leptons {
         return;
