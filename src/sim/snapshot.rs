@@ -872,9 +872,13 @@ use crate::sim::world::Simulation;
 // held the same values. Prior records cannot resume.
 // 301 -> 302: FogState drops the version-81 wire shadow of the view-cache
 // generation, which nothing read. Prior records cannot resume.
-// 302 -> 303: a Super saves its place in the Super timer list (0x00A83D50).
+// 302 -> 303: LocomotorState drops its unread HoverAttack copy, AircraftAmmo
+// its target_pad and AircraftMission's Docking/DockedIdle their pad_index:
+// write-only copies of the AirfieldDocks reservation. Prior records cannot
+// resume.
+// 303 -> 304: a Super saves its place in the Super timer list (0x00A83D50).
 // Prior records lack it.
-const SNAPSHOT_VERSION: u32 = 303;
+const SNAPSHOT_VERSION: u32 = 304;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3894,8 +3898,9 @@ mod tests {
         // 300 -> 301: guidance reads Airburst/Inaccurate/Level from the
         // collision policy instead of keeping copies.
         // 301 -> 302: FogState drops its unread v81 generation wire shadow.
-        // 302 -> 303: a Super's place in the Super timer list.
-        assert_eq!(super::SNAPSHOT_VERSION, 303);
+        // 302 -> 303: unread HoverAttack copy and aircraft pad-index copies.
+        // 303 -> 304: a Super's place in the Super timer list.
+        assert_eq!(super::SNAPSHOT_VERSION, 304);
     }
 
     #[test]
@@ -3918,13 +3923,9 @@ mod tests {
                     .try_reserve(1, id, 300)
                     .unwrap();
                 assert_eq!(u64::from(pad), id - 2);
-                entity.aircraft_mission = Some(AircraftMission::DockedIdle {
-                    airfield_id: 1,
-                    pad_index: pad,
-                });
+                entity.aircraft_mission = Some(AircraftMission::DockedIdle { airfield_id: 1 });
                 let mut ammo = AircraftAmmo::new(3);
                 ammo.target_airfield = Some(1);
-                ammo.target_pad = Some(pad);
                 entity.aircraft_ammo = Some(ammo);
             }
             sim.substrate.entities.insert(entity);
@@ -3935,18 +3936,6 @@ mod tests {
         let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(restored.state_hash(), before);
-        let aircraft = restored.substrate.entities.get(301).unwrap();
-        assert!(matches!(
-            aircraft.aircraft_mission,
-            Some(AircraftMission::DockedIdle {
-                airfield_id: 1,
-                pad_index: 299
-            })
-        ));
-        assert_eq!(
-            aircraft.aircraft_ammo.as_ref().unwrap().target_pad,
-            Some(299)
-        );
         assert_eq!(
             restored.production.airfield_docks.pad_for(301),
             Some((1, 299))

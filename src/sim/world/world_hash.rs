@@ -180,13 +180,12 @@ mod locomotor_field_hash_tests {
     /// active fold are among them.
     #[test]
     fn every_active_and_stashed_locomotor_field_changes_current_hash() {
-        let mutations: [(&str, fn(&mut LocomotorState)); 8] = [
+        let mutations: [(&str, fn(&mut LocomotorState)); 7] = [
             ("kind", |l| l.kind = LocomotorKind::Walk),
             ("powered", |l| l.powered = false),
             ("layer", |l| l.layer = MovementLayer::Bridge),
             ("altitude", |l| l.altitude = SimFixed::from_num(5)),
             ("balloon_hover", |l| l.balloon_hover = true),
-            ("hover_attack", |l| l.hover_attack = true),
             ("speed_type", |l| l.speed_type = SpeedType::Wheel),
             ("movement_zone", |l| {
                 l.movement_zone = MovementZone::Amphibious
@@ -1997,7 +1996,6 @@ fn hash_locomotor(
         layer,
         altitude,
         balloon_hover,
-        hover_attack,
         speed_type,
         movement_zone,
     } = loco;
@@ -2009,7 +2007,6 @@ fn hash_locomotor(
     // SimFixed has no Hash; fold the raw bits.
     altitude.to_bits().hash(hasher);
     balloon_hover.hash(hasher);
-    hover_attack.hash(hasher);
     speed_type.hash(hasher);
     movement_zone.hash(hasher);
     hash_locomotor_payload(runtime_payload, hasher);
@@ -4390,50 +4387,12 @@ mod aircraft_dock_hash_tests {
     use crate::sim::game_entity::GameEntity;
 
     #[test]
-    fn aircraft_dock_indices_and_reservations_affect_simulation_hash() {
+    fn aircraft_dock_reservations_affect_simulation_hash() {
         let mut sim = Simulation::new();
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
-        let mut ammo = AircraftAmmo::new(3);
-        ammo.target_pad = Some(0);
-        entity.aircraft_ammo = Some(ammo);
-        entity.aircraft_mission = Some(AircraftMission::DockedIdle {
-            airfield_id: 2,
-            pad_index: 0,
-        });
+        entity.aircraft_ammo = Some(AircraftAmmo::new(3));
+        entity.aircraft_mission = Some(AircraftMission::DockedIdle { airfield_id: 2 });
         sim.substrate.entities.insert(entity);
-        let original = sim.state_hash();
-        sim.substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .aircraft_ammo
-            .as_mut()
-            .unwrap()
-            .target_pad = Some(256);
-        assert_ne!(
-            sim.state_hash(),
-            original,
-            "saved ammo pad must not alias low byte"
-        );
-        sim.substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .aircraft_ammo
-            .as_mut()
-            .unwrap()
-            .target_pad = Some(0);
-        assert_eq!(sim.state_hash(), original);
-        sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-            Some(AircraftMission::DockedIdle {
-                airfield_id: 2,
-                pad_index: 256,
-            });
-        assert_ne!(
-            sim.state_hash(),
-            original,
-            "mission pad must not alias low byte"
-        );
         let before_reservation = sim.state_hash();
         sim.production.airfield_docks.try_reserve(2, 1, 300);
         assert_ne!(

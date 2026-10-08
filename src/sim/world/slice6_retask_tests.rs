@@ -299,7 +299,10 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Rocket locomotor port: the entity-level absent rocket_state tag is removed;
 // the Rocket payload owns its fold. Restoring only that old 0 tag recovers
 // incoming 0xF008D6D1349CCD9C in the same test binary. Control removed.
-const SLICE6_BASELINE_HASH: u64 = 0x775E_E0D5_4F7A_EB5F;
+// Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
+// binary (main with a hash that skips only those fields) gives this value in
+// the same test, with every tripwire above green. Control removed.
+const SLICE6_BASELINE_HASH: u64 = 0x1781_9D66_E821_D237;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

@@ -648,14 +648,12 @@ pub(in crate::sim) fn exit_produced_object(
                 Some(af_obj.dock_contact_capacity())
             })
             .unwrap_or(1);
-        let assigned_pad = sim
-            .reserve_airfield_pad(af_id, spawned, max_slots)
-            .unwrap_or(0); // Fresh spawn on a single-pad helipad always wins pad 0.
+        // The fresh spawn books its pad; on a single-pad helipad it always
+        // wins pad 0.
+        sim.reserve_airfield_pad(af_id, spawned, max_slots);
         if let Some(entity) = sim.substrate.entities.get_mut(spawned) {
-            entity.aircraft_mission = Some(crate::sim::aircraft::AircraftMission::DockedIdle {
-                airfield_id: af_id,
-                pad_index: assigned_pad,
-            });
+            entity.aircraft_mission =
+                Some(crate::sim::aircraft::AircraftMission::DockedIdle { airfield_id: af_id });
         }
     }
     let stable_id = spawned;

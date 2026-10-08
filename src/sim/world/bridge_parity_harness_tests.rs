@@ -310,7 +310,10 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // Rocket locomotor port: the entity-level absent rocket_state tag is removed;
 // the Rocket payload owns its fold. Restoring only that old 0 tag recovers
 // incoming 4C4F372E184105B6 in the same test binary. Control removed.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4647_E5D1_3F93_4248;
+// Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
+// binary (main with a hash that skips only those fields) gives this value in
+// the same test, with every tripwire above green. Control removed.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xD630_9E0F_2B18_E6A3;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

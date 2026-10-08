@@ -57,7 +57,7 @@ pub enum AirMovePhase {
 /// the new active object's `piggyback` slot and restores it, keeping only the
 /// Foot's layer (see [`piggyback::end`]).
 ///
-/// `balloon_hover`, `hover_attack`, `speed_type` and `movement_zone` cache the
+/// `balloon_hover`, `speed_type` and `movement_zone` cache the
 /// Foot's type: set at construction, copied into a BEGIN's temporary and never
 /// written afterwards, so every object of one unit holds the same values.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -89,8 +89,6 @@ pub struct LocomotorState {
     pub altitude: SimFixed,
     /// Stay airborne after reaching destination (BalloonHover=yes).
     pub balloon_hover: bool,
-    /// Can attack while hovering in place (HoverAttack=yes).
-    pub hover_attack: bool,
     /// Which terrain type this unit traverses (from rules.ini SpeedType=).
     /// Used to select the correct TerrainCostGrid for cost-aware pathfinding.
     pub speed_type: SpeedType,
@@ -111,7 +109,6 @@ impl LocomotorState {
             Self::spawn_layer(kind),
             binary_frame,
             obj.balloon_hover,
-            obj.hover_attack,
             obj.speed_type,
             obj.movement_zone,
         );
@@ -137,14 +134,13 @@ impl LocomotorState {
     /// A just-constructed `kind` object on `layer`, before its link: the
     /// `LocomotionClass` constructor (`0x0055A6C0`) raises Powered and each
     /// class constructor clears its own state
-    /// ([`LocomotorRuntimePayload::for_kind`]). The four type caches come
+    /// ([`LocomotorRuntimePayload::for_kind`]). The three type caches come
     /// from the Foot's type.
     fn constructed(
         kind: LocomotorKind,
         layer: MovementLayer,
         binary_frame: u32,
         balloon_hover: bool,
-        hover_attack: bool,
         speed_type: SpeedType,
         movement_zone: MovementZone,
     ) -> Self {
@@ -156,7 +152,6 @@ impl LocomotorState {
             layer,
             altitude: SIM_ZERO,
             balloon_hover,
-            hover_attack,
             speed_type,
             movement_zone,
         }
@@ -193,7 +188,6 @@ impl LocomotorState {
             self.layer,
             binary_frame,
             self.balloon_hover,
-            self.hover_attack,
             self.speed_type,
             self.movement_zone,
         )
@@ -210,7 +204,6 @@ impl LocomotorState {
             kind,
             Self::spawn_layer(kind),
             binary_frame,
-            false,
             false,
             SpeedType::Track,
             MovementZone::Normal,

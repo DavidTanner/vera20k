@@ -55,11 +55,6 @@ pub struct AircraftAmmo {
     pub dock_phase: Option<AircraftDockPhase>,
     /// Stable ID of the target helipad/airfield building.
     pub target_airfield: Option<u64>,
-    /// Pad index assigned by `AirfieldDocks::try_reserve` for the current
-    /// dock attempt. Set when transitioning from WaitForDock → Descending;
-    /// cleared on launch / no-airfield-available.
-    #[serde(default)]
-    pub target_pad: Option<u32>,
     /// Ticks remaining until the next ammo point is restored.
     pub reload_timer: u32,
     /// Cooldown ticks before re-scanning for a helipad (prevents per-tick scans).
@@ -85,7 +80,6 @@ impl AircraftAmmo {
             pending_release: false,
             dock_phase: None,
             target_airfield: None,
-            target_pad: None,
             reload_timer: 0,
             rescan_cooldown: 0,
         }
@@ -545,8 +539,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
         id: u64,
         new_dock_phase: Option<Option<AircraftDockPhase>>, // Some(None) = clear
         new_target_airfield: Option<Option<u64>>,
-        /// Some(Some(pad)) = set pad_index; Some(None) = clear; None = leave alone.
-        new_target_pad: Option<Option<u32>>,
         new_reload_timer: Option<u32>,
         new_rescan_cooldown: Option<u16>,
         restore_ammo: i32,
@@ -567,7 +559,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             id: snap.id,
             new_dock_phase: None,
             new_target_airfield: None,
-            new_target_pad: None,
             new_reload_timer: None,
             new_rescan_cooldown: None,
             restore_ammo: 0,
@@ -644,7 +635,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                             // No airfield — hover and rescan later.
                             m.new_dock_phase = Some(None);
                             m.new_target_airfield = Some(None);
-                            m.new_target_pad = Some(None);
                             m.new_rescan_cooldown = Some(RESCAN_COOLDOWN_TICKS);
                         }
                     }
@@ -654,7 +644,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             Some(AircraftDockPhase::WaitForDock) => {
                 let Some(af_sid) = snap.target_airfield else {
                     m.new_dock_phase = Some(None);
-                    m.new_target_pad = Some(None);
                     mutations.push(m);
                     continue;
                 };
@@ -670,7 +659,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     // Descending lands after this pad approach arrives.
                     m.new_dock_phase = Some(Some(AircraftDockPhase::Descending));
                     m.clear_movement = true;
-                    m.new_target_pad = Some(Some(pad_index));
 
                     // Re-target descent toward the assigned per-pad cell so
                     // multi-pad airfields visibly spread occupants. Falls back
@@ -715,7 +703,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                         // Fully reloaded — launch.
                         m.new_dock_phase = Some(Some(AircraftDockPhase::Launching));
                         m.begin_takeoff = true;
-                        m.new_target_pad = Some(None); // pad released
                         // Release dock slot.
                         sim.release_airfield_pad(snap.id);
                     } else {
@@ -747,9 +734,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                 }
                 if let Some(new_af) = m.new_target_airfield {
                     ammo.target_airfield = new_af;
-                }
-                if let Some(new_pad) = m.new_target_pad {
-                    ammo.target_pad = new_pad;
                 }
                 if let Some(new_timer) = m.new_reload_timer {
                     ammo.reload_timer = new_timer;
@@ -997,6 +981,5 @@ mod tests {
         assert_eq!(ammo.current, 3);
         assert_eq!(ammo.max, 3);
         assert!(ammo.dock_phase.is_none());
-        assert!(ammo.target_pad.is_none());
     }
 }
