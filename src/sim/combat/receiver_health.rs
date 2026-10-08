@@ -34,8 +34,7 @@ pub(super) fn commit_receiver_health(
     alliances: &HouseAllianceMap,
     attacker_owner: Option<InternedId>,
     live_source_owner: Option<InternedId>,
-    receiver_outcome: Option<Option<ResolvedReceiveDamage>>,
-    current_tick: u64,
+    receiver_outcome: Option<ResolvedReceiveDamage>,
 ) -> Option<ReceiverHealthCommit> {
     let target_id = event.target_id;
     let mut building_entry_frame = None;
@@ -60,23 +59,8 @@ pub(super) fn commit_receiver_health(
     let mut voice_feedback_cue: Option<(InternedId, InternedId, u16, u16)> = None;
     let mut threat_feedback: Option<(InternedId, InternedId, i32, i32, i32)> = None;
     if let Some(target) = entities.get_mut(target_id) {
-        if event.distance_leptons.is_none()
-            && crate::sim::superweapon::invulnerability::is_invulnerable(
-                target.invulnerability.as_ref(),
-                current_tick as u32,
-            )
-        {
-            // Damage fully nullified by IronCurtain/ForceShield.
-            // Flash-effect spawn deferred (see design doc Open Questions).
-            return None;
-        }
-
-        let receive_outcome = match receiver_outcome {
-            Some(Some(resolved)) => Some(resolved.outcome),
-            Some(None) => return None,
-            None => None,
-        };
-        if let Some(value) = receive_outcome.and_then(|outcome| outcome.psychedelic_value) {
+        let receive_outcome = receiver_outcome?.outcome;
+        if let Some(value) = receive_outcome.psychedelic_value {
             // TechnoClass writes the signed kernel result first. The
             // first inactive->active transition then runs its callbacks
             // in order: team-member removal (done by the caller before
@@ -90,8 +74,7 @@ pub(super) fn commit_receiver_health(
             }
             return None;
         }
-        let reached_survivor_postlude =
-            receive_outcome.is_some_and(|outcome| outcome.reached_survivor_postlude);
+        let reached_survivor_postlude = receive_outcome.reached_survivor_postlude;
         let target_type = rules.object(interner.resolve(target.type_ref()))?;
         if target.category == EntityCategory::Structure {
             building_entry_frame = Some(crate::sim::building_art::receiver_body_frame(
@@ -101,13 +84,13 @@ pub(super) fn commit_receiver_health(
             ));
         }
         let strength = target_type.strength;
-        let mut packet = receive_outcome.map_or(event.damage, |outcome| outcome.hp_delta);
+        let mut packet = receive_outcome.hp_delta;
         let building_no_c4 = target.category == EntityCategory::Structure && !target_type.can_c4;
         state = super::object_health::commit(
             target,
             &mut packet,
             strength,
-            receive_outcome.map_or(event.damage != 0, |outcome| outcome.apply_object_damage),
+            receive_outcome.apply_object_damage,
             building_no_c4,
             rules.general.condition_red,
             |_target, callback| match callback {
@@ -141,14 +124,11 @@ pub(super) fn commit_receiver_health(
                     interner.resolve(source_owner),
                 )
             });
-        if reached_survivor_postlude
-            && let Some(source_owner) = live_source_owner
-            && let Some(prepared) = receive_outcome
-        {
+        if reached_survivor_postlude && let Some(source_owner) = live_source_owner {
             // An Object early gate leaves the prepared packet intact. Otherwise
             // commit owns CanC4 rewriting and the positive overkill cap.
-            let final_packet = if !prepared.apply_object_damage {
-                prepared.post_object_damage.unwrap_or(packet)
+            let final_packet = if !receive_outcome.apply_object_damage {
+                receive_outcome.post_object_damage.unwrap_or(packet)
             } else {
                 packet
             };
@@ -163,14 +143,12 @@ pub(super) fn commit_receiver_health(
         }
         latch_hostile_hit = survivor_tail && hostile_source;
         smoke_maintenance = survivor_tail.then_some((target.category, state));
-        synchronous_retaliation =
-            event.distance_leptons.is_some() && event.damage >= 0 && survivor_tail;
+        synchronous_retaliation = event.damage >= 0 && survivor_tail;
         healing_only = packet < 0 && !entered_techno_death;
         if packet > 0 {
             positive_postlude = Some((packet, survivor_tail, hostile_source));
         }
         if became_fatal
-            && receiver_outcome.is_some()
             && let Some(duration) =
                 postmortem_duration_for_event(event, target, rules, interner, state)
         {

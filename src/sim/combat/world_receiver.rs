@@ -554,19 +554,17 @@ pub(crate) fn commit_entities(
         };
         // FootClass::ReceiveDamage 0x004D7330..0x004D7413 runs its parasite
         // prefix on the raw damage before TechnoClass::ReceiveDamage.
-        if event.distance_leptons.is_some() {
-            world.foot_receive_damage_parasite_prefix(
-                target_id,
-                (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
-                event.damage,
-                event.warhead_ref,
-                rules,
-            );
-        }
+        world.foot_receive_damage_parasite_prefix(
+            target_id,
+            (attacker_id != RAD_NO_ATTACKER).then_some(attacker_id),
+            event.damage,
+            event.warhead_ref,
+            rules,
+        );
         // ReceiveDamage carries sourceHouse separately from the source object.
-        // Area records snapshot it at detonation; legacy precomputed records
-        // retain the former live-source lookup. Periodic radiation supplies
-        // both null source object and null source house explicitly.
+        // Records snapshot it at detonation; a record without one falls back
+        // to the live source's owner. Periodic radiation supplies both null
+        // source object and null source house explicitly.
         let attacker_owner: Option<InternedId> = event.source_house.or_else(|| {
             (attacker_id != RAD_NO_ATTACKER)
                 .then(|| {
@@ -589,22 +587,18 @@ pub(crate) fn commit_entities(
                     .map(|source| source.owner())
             })
             .flatten();
-        let receiver_outcome = event.distance_leptons.map(|_| {
-            resolve_receive_damage(
-                event,
-                &mut world.substrate.entities,
-                rules,
-                &mut world.interner,
-                &mut world.houses,
-                &world.house_alliances,
-                scenario_no_damage,
-                current_tick,
-                world.resolved_terrain.as_ref(),
-            )
-        });
-        if let Some(effect) = receiver_outcome
-            .flatten()
-            .and_then(|resolved| resolved.invulnerability_impact)
+        let receiver_outcome = resolve_receive_damage(
+            event,
+            &world.substrate.entities,
+            rules,
+            &world.interner,
+            &world.houses,
+            &world.house_alliances,
+            scenario_no_damage,
+            current_tick,
+            world.resolved_terrain.as_ref(),
+        );
+        if let Some(effect) = receiver_outcome.and_then(|resolved| resolved.invulnerability_impact)
         {
             death.combat_light_requests.push(effect);
         }
@@ -614,7 +608,6 @@ pub(crate) fn commit_entities(
         // before the receiver's berserk timer and flag writes, which it does
         // not read.
         let starts_berserk = receiver_outcome
-            .flatten()
             .and_then(|resolved| resolved.outcome.psychedelic_value)
             .is_some()
             && world
@@ -651,7 +644,6 @@ pub(crate) fn commit_entities(
             attacker_owner,
             live_source_owner,
             receiver_outcome,
-            current_tick,
         )
         else {
             continue;
@@ -662,8 +654,7 @@ pub(crate) fn commit_entities(
         // ObjectClass has committed health/visual state and before the dead
         // branch. `ShouldProtect+0x3CF` has no active YR writer; `ToProtect=`
         // is the exact live gate retained here.
-        let protected_techno_response = event.distance_leptons.is_some()
-            && attacker_id != RAD_NO_ATTACKER
+        let protected_techno_response = attacker_id != RAD_NO_ATTACKER
             && world
                 .substrate
                 .entities
@@ -1634,7 +1625,7 @@ fn finish_concrete_death(
     let (ignore_defenses, prevent_crew_escape) = damage_events
         .iter()
         .rfind(|event| event.target_id == dead_id)
-        .and_then(|event| event.receiver_flags)
+        .map(|event| event.receiver_flags)
         .map_or((false, false), |flags| (flags.ignore_defenses, flags.arg6));
 
     // BuildingClass runs DestructionEffects/SpawnSurvivors only after
