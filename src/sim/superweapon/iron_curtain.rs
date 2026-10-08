@@ -1,23 +1,105 @@
-//! IronCurtain superweapon launch handler.
+//! The Iron Curtain's launch: `SuperClass::Launch @ 0x006CC390` case 1
+//! (`0x006CCE64..0x006CD06F`).
 //!
-//! Applies timed invulnerability to all techno entities in a 3×3 cell grid
-//! centered on the target cell. Infantry receive forced authored-Strength damage
-//! through the InfantryClass::IronCurtain override.
+//! A charged Super (`+0x6F`) builds `[General] IronCurtainInvokeAnim=` 5
+//! leptons over the cell's deck coordinate (`0x006CCE76..0x006CCF09`), plays
+//! `EVA_IronCurtainActivated` (`0x006CCF21`) and raises a type-13 radar event
+//! at the cell (`0x006CCF2F`). It then walks the 3x3 block around the cell in
+//! the offset table's order ([`native_cells_3x3`]). Each cell gives its bridge
+//! list (`+0xE8`) when it carries the bridge flag (`+0x140 & 0x100`), else its
+//! ground list (`+0xE4`). Every object on it gets its IronCurtain (vt+0x154)
+//! with `[CombatDamage] IronCurtainDuration=` (`Rules+0xFE8`), the Super's
+//! house and 0, except a Foot under the Chronosphere's warp latch (`+0x27C`,
+//! `0x006CCFF8..0x006CD006`). The next object is read after the call (`+0x30`,
+//! `0x006CD025`).
+//!
+//! The overrides:
+//! - InfantryClass's (`0x00522600`) deals the type's Strength as damage.
+//! - FootClass's (`0x004DEAE0`, Units and Aircraft) does the same for an
+//!   Organic type. For any other, it forces a parasite off, clears the
+//!   paralysis timer and curtains.
+//! - BuildingClass's (`0x00457C90`) defuses a planted C4, then curtains.
+//! - The curtain itself is TechnoClass's (`0x0070E2B0`, [`apply_invulnerability`]).
+//! - Terrain objects take ObjectClass's no-op (`0x00426460`, `RET 0xC`). VERA's
+//!   object lists hold no terrain.
+//!
+//! The local player's tail (`0x006CD03B..0x006CD060`) clears the selected
+//! Super and drops the queued `EVA_IronCurtainReady` line; the app does both
+//! from the launch event.
+//!
+//! Evidence: `tools/superweapon_oracle.py` sections `iron_curtain_launch` and
+//! `curtain_overrides` (Unicorn on gamemd.exe), replayed in
+//! `iron_curtain_tests.rs`.
+//!
+//! RESIDUALS:
+//! - The EVA line is skipped natively while `0x00A8B538` is set
+//!   (`HouseClass::MPlayer_Defeated @ 0x004FC205`), on every client after
+//!   the local player's multiplayer defeat; VERA always plays it.
+//! - A null `IronCurtainInvokeAnim=` hands AnimClass a null type natively;
+//!   VERA constructs nothing. Retail sets `IRONBLST`.
+//! - The trigger action IronCurtainAtWP (`TActionClass @ 0x006E36E0`) is not
+//!   ported. Trigger: a map trigger with that action. Effect: no anim and no
+//!   curtain at the waypoint.
+//!
+//! Ledger:
+//! - Scenario draws: the invoke anim constructor's own, and those of the
+//!   receiver for each infantry or Organic hit.
+//! - Timer writes: each curtain (`TechnoClass+0x18C`), a Foot's paralysis
+//!   timer (`+0x6A0`), an eaten Foot's parasite suppression
+//!   (`ParasiteClass+0x2C`) and a planted building's C4 timer (`+0x528`).
+//! - Detach calls: ExitUnit (`0x0062A4A0`) of the parasite eating a Foot.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/superweapon/{invulnerability,cell_grid},
-//!   sim/game_entity, sim/components, sim/world.
+//!   sim/combat, sim/game_entity, sim/world.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
+#[cfg(test)]
+#[path = "iron_curtain_tests.rs"]
+mod tests;
+
 use crate::map::entities::EntityCategory;
+use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::intern::InternedId;
+use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
 use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
 use crate::sim::world::{SimSoundEvent, Simulation};
 
-/// Launch IronCurtain at (target_rx, target_ry). Applies invulnerability or
-/// forced authored-Strength damage to infantry in the target’s 3×3 cell grid.
+/// What [`launch`] called, in the oracle's terms (observation only).
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Observed {
+    /// An object's IronCurtain (vt+0x154), from the list of the cell the walk
+    /// asked for.
+    Curtain((i16, i16), u64),
+    /// An override's ReceiveDamage (vt+0x16C).
+    ReceiveDamage(EntityDamageEvent),
+    /// FootClass's forced release of the parasite this eater holds.
+    ExitUnit(u64),
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Observation only: what [`launch`] called on this thread while a test
+    /// holds `Some`.
+    static OBSERVED: std::cell::RefCell<Option<Vec<Observed>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn observe(call: Observed) {
+    OBSERVED.with(|log| {
+        if let Some(log) = log.borrow_mut().as_mut() {
+            log.push(call);
+        }
+    });
+}
+
+/// Launch case 1 for `owner`'s Super of type `sw_type` at (target_rx,
+/// target_ry): see the module doc. Returns whether the Super was charged.
 pub fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -25,21 +107,34 @@ pub fn launch(
     target_rx: u16,
     target_ry: u16,
     sw_type: InternedId,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
-    let duration = rules.general.iron_curtain_duration;
-    let anim_name = rules.general.iron_curtain_invoke_anim.clone();
-    let current_frame = sim.session.binary_frame;
+    let charged = sim
+        .super_weapons
+        .get(&owner)
+        .and_then(|weapons| weapons.get(&sw_type))
+        .is_some_and(|instance| instance.is_ready);
+    if !charged {
+        return false;
+    }
+    super::spawn_cell_anim(
+        sim,
+        rules,
+        &rules.general.iron_curtain_invoke_anim,
+        target_rx,
+        target_ry,
+    );
+    sim.sound_events.push(SimSoundEvent::SuperWeaponLaunched {
+        owner,
+        sw_type,
+        rx: target_rx,
+        ry: target_ry,
+    });
+    sim.sound_events.push(SimSoundEvent::SuperWeaponRadarEvent {
+        radar: RadarEventRequest::new(RadarEventType::ImpactSilent, target_rx, target_ry),
+    });
 
-    // 1. Spawn invoke animation at target.
-    super::spawn_cell_anim(sim, rules, &anim_name, target_rx, target_ry);
-
-    // SuperClass::Launch case 1 (0x006CCF39..0x006CD035) selects a live
-    // CellClass list, invokes +0x154, then reads that object's +0x30 AFTER the
-    // call. Never snapshot recipients or infer membership from coordinates.
-    // A Foot under the Chronosphere's warp latch (+0x27C, 0x006CCFF8..
-    // 0x006CD006) is skipped.
-    let mut target_count = 0;
+    let mut curtained = 0;
     for (x, y) in native_cells_3x3(target_rx, target_ry) {
         let Some(((rx, ry), layer)) = selected_cell_list(sim, x, y) else {
             continue;
@@ -50,101 +145,73 @@ pub fn launch(
             .get(rx, ry)
             .and_then(|cell| cell.first_on_layer(layer));
         while let Some(id) = next {
-            if let Some(entity) = sim
+            if let Some(category) = sim
                 .substrate
                 .entities
                 .get(id)
                 .filter(|entity| !entity.chrono_warp_latch())
+                .map(|entity| entity.category)
             {
-                let category = entity.category;
-                let type_ref = entity.type_ref();
-                if category == EntityCategory::Infantry {
-                    // InfantryClass::IronCurtain 0x00522600..0x0052263B:
-                    // full authored Strength, distance 0, C4Warhead, null
-                    // attacker, ignoreDefenses=1, arg6=0, launching sourceHouse.
-                    // The shared receiver owns fatal effects and announcements.
-                    if let Some(object) = rules.object(sim.interner.resolve(type_ref)) {
-                        let event = crate::sim::combat::EntityDamageEvent::direct_receiver(
-                            id,
-                            object.strength,
-                            0,
-                            crate::sim::combat::RAD_NO_ATTACKER,
-                            Some(owner),
-                            sim.interner.intern(&rules.bridge_warheads.c4_name),
-                            crate::sim::combat::ReceiverCallFlags {
-                                ignore_defenses: true,
-                                arg6: false,
-                            },
-                        );
-                        sim.commit_direct_damage_receiver(rules, overlay_registry, event);
+                #[cfg(test)]
+                observe(Observed::Curtain((x, y), id));
+                let duration = rules.general.iron_curtain_duration;
+                match category {
+                    EntityCategory::Infantry => {
+                        receive_strength_as_c4(sim, rules, overlay_registry, id, Some(owner), true);
                     }
-                } else if matches!(category, EntityCategory::Unit | EntityCategory::Aircraft) {
-                    foot_iron_curtain(sim, rules, overlay_registry, id, duration);
-                } else if let Some(entity) = sim.substrate.entities.get_mut(id) {
-                    // TechnoClass::IronCurtain 0x0070E2B0 has no health gate.
-                    apply_invulnerability(entity, current_frame, duration, InvulnKind::IronCurtain);
+                    EntityCategory::Unit | EntityCategory::Aircraft => {
+                        foot_iron_curtain(sim, rules, overlay_registry, id, duration);
+                    }
+                    _ => {
+                        let frame = sim.session.binary_frame;
+                        if let Some(entity) = sim.substrate.entities.get_mut(id) {
+                            apply_invulnerability(entity, frame, duration, InvulnKind::IronCurtain);
+                        }
+                    }
                 }
-                target_count += 1;
+                curtained += 1;
             }
             next = live_successor(sim, id, (rx, ry), layer);
         }
     }
 
-    // 4. Sound event.
-    sim.sound_events.push(SimSoundEvent::SuperWeaponLaunched {
-        owner,
-        sw_type,
-        rx: target_rx,
-        ry: target_ry,
-    });
-
     log::info!(
-        "IronCurtain launched at ({}, {}) by '{}', {} targets affected",
+        "IronCurtain launched at ({}, {}) by '{}', {} objects called",
         target_rx,
         target_ry,
         sim.interner.resolve(owner),
-        target_count
+        curtained
     );
-
     true
 }
 
 /// FootClass::IronCurtain `0x004DEAE0`, the Unit and Aircraft override
 /// (`vtable__UnitClass`/`vtable__AircraftClass` +0x154). An Organic type
-/// (retail DLPH, SQD) receives its authored Strength as C4Warhead damage with
-/// no source, no sourceHouse and ignoreDefenses=0 instead of the curtain.
-/// Otherwise a parasite eating the unit is forced off (suppression 50, then
-/// ExitUnit `0x0062A4A0`: a drone is deleted, a squid released), Foot+6A0 is
-/// cleared, and TechnoClass::IronCurtain `0x0070E2B0` applies.
+/// (`+0xD97`, `0x004DEAEE`; retail DLPH and SQD) receives its Strength
+/// instead of the curtain, before the parasite test. Otherwise a parasite
+/// eating the Foot (`+0x694`) is forced off (`0x004DEB38..0x004DEB6E`): its
+/// suppression timer runs 50 frames, then ExitUnit `0x0062A4A0` deletes a
+/// drone or releases a squid. Then the paralysis timer (`+0x6A0`) restarts
+/// at the frame with no time (`0x004DEB73..0x004DEB8D`), and
+/// TechnoClass::IronCurtain `0x0070E2B0` applies (`0x004DEB9D`).
 fn foot_iron_curtain(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
     duration: i32,
 ) {
-    let Some(object) = sim
+    let Some(organic) = sim
         .substrate
         .entities
         .get(id)
         .and_then(|entity| rules.object(sim.interner.resolve(entity.type_ref())))
+        .map(|object| object.organic)
     else {
         return;
     };
-    if object.organic {
-        let event = crate::sim::combat::EntityDamageEvent::direct_receiver(
-            id,
-            object.strength,
-            0,
-            crate::sim::combat::RAD_NO_ATTACKER,
-            None,
-            sim.interner.intern(&rules.bridge_warheads.c4_name),
-            crate::sim::combat::ReceiverCallFlags {
-                ignore_defenses: false,
-                arg6: false,
-            },
-        );
-        sim.commit_direct_damage_receiver(rules, overlay_registry, event);
+    if organic {
+        receive_strength_as_c4(sim, rules, overlay_registry, id, None, false);
         return;
     }
     if let Some(eater) = sim
@@ -153,6 +220,8 @@ fn foot_iron_curtain(
         .get(id)
         .and_then(|entity| entity.parasite_eating_me)
     {
+        #[cfg(test)]
+        observe(Observed::ExitUnit(eater));
         sim.parasite_force_release(
             eater,
             crate::sim::combat::parasite::FORCED_RELEASE_SUPPRESSION_FRAMES,
@@ -166,247 +235,42 @@ fn foot_iron_curtain(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rules::ini_parser::IniFile;
-    use crate::sim::superweapon::invulnerability::is_invulnerable;
-
-    fn test_rules() -> RuleSet {
-        let ini = IniFile::from_str(
-            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n[BuildingTypes]\n\
-             [E1]\nStrength=125\nArmor=flak\nSpeed=4\n\
-             [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\n\
-             [CombatDamage]\nC4Warhead=C4\n[Warheads]\n0=C4\n\
-             [C4]\nInfDeath=1\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        );
-        RuleSet::from_ini(&ini).expect("test rules")
-    }
-
-    /// `SuperClass::Launch 0x006CCF09`: the invoke animation is a real
-    /// `AnimClass` with the row `(type, &coord, 0, 1, 0x600, 0, 0)`, so its art
-    /// `Report=` plays from `AnimClass::Start` (retail `[IRONBLST]
-    /// Report=IronCurtainBlast`, which no separate launch cue carries).
-    #[test]
-    fn launch_constructs_the_invoke_anim_and_plays_its_report() {
-        let mut rules = test_rules();
-        let mut art = crate::rules::art_data::ArtRegistry::from_ini(&IniFile::from_str(
-            "[IRONBLST]
-Rate=450
-Report=IronCurtainBlast
-Translucent=yes
-",
-        ));
-        art.bind_anim_frame_count_for_test("IRONBLST", 12);
-        rules.replace_art_registry_for_test(art);
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        spawn(&mut sim, 1, "MTNK", 10, 10, EntityCategory::Unit);
-        let sw_test = sim.interner.intern("SWTEST");
-
-        assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
-
-        let invoke = sim.interner.intern("IRONBLST");
-        let anims: Vec<_> = sim
-            .substrate
-            .anims
-            .iter()
-            .map(|(_, anim)| anim)
-            .filter(|anim| anim.type_id == invoke)
-            .collect();
-        assert_eq!(anims.len(), 1);
-        let (rx, ry, ..) = anims[0].world_coord.to_cell_sub_z();
-        assert_eq!((rx, ry), (10, 10));
-        // `0x006CCE76..0x006CCF09`: the cell coordinate plus 5 leptons.
-        assert_eq!(anims[0].world_coord.z, 5);
-        assert_eq!(anims[0].draw_flags, 0x600);
-        assert_eq!(anims[0].z_adjust, 0);
-        let report = sim.interner.intern("IronCurtainBlast");
-        assert!(
-            sim.sound_events.iter().any(|event| matches!(
-                event,
-                SimSoundEvent::AnimationStarted { sound_id, .. } if *sound_id == report
-            )),
-            "AnimClass::Start plays the art Report="
-        );
-    }
-
-    fn spawn(sim: &mut Simulation, id: u64, type_ref: &str, rx: u16, ry: u16, cat: EntityCategory) {
-        let rules = test_rules();
-        sim.intern_rule_type_ids(&rules);
-        sim.resolve_type_handles(&rules);
-        sim.playfield_bounds = Some(super::super::cell_receiver_tests::test_playfield_bounds());
-        if sim.resolved_terrain.is_none() {
-            let cells = (0..20)
-                .flat_map(|y| {
-                    (0..20).map(move |x| super::super::cell_receiver_tests::test_terrain_cell(x, y))
-                })
-                .collect();
-            sim.resolved_terrain =
-                Some(crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(20, 20, cells));
-        }
-        let actual = sim
-            .spawn_object_at_height(type_ref, "Americans", rx, ry, 0, 0, &rules)
-            .expect("production constructor and Mark");
-        assert_eq!(actual, id);
-        assert_eq!(sim.substrate.entities.get(id).unwrap().category, cat);
-        assert!(sim.substrate.occupancy.contains_entity(rx, ry, id));
-    }
-
-    #[test]
-    fn ic_protects_vehicles_in_grid() {
-        let rules = test_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        spawn(&mut sim, 1, "MTNK", 10, 10, EntityCategory::Unit);
-        let sw_test = sim.interner.intern("SWTEST");
-        assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
-        let e = sim.substrate.entities.get(1).expect("tank exists");
-        assert!(e.invulnerability.is_some());
-        assert!(is_invulnerable(
-            e.invulnerability.as_ref(),
-            sim.session.binary_frame
-        ));
-    }
-
-    /// The curtained tank's tint stage steps in its own Techno AI
-    /// (`0x006F9EAF`) and draws from the Scenario stream once, at its stage
-    /// 2 step: the AI visit ten frames after its first under the curtain.
-    /// The same idle tank uncurtained draws in the same other visits.
-    #[test]
-    fn a_curtained_tank_draws_its_tint_number_in_its_own_ai() {
-        let rules = test_rules();
-        let drawing_visits = |curtain: bool| {
-            let mut sim = Simulation::new();
-            let owner = sim.interner.intern("Americans");
-            spawn(&mut sim, 1, "MTNK", 10, 10, EntityCategory::Unit);
-            let sw_test = sim.interner.intern("SWTEST");
-            if curtain {
-                assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
-            }
-            let mut drawn = Vec::new();
-            for visit in 1..=40 {
-                let ((), draws) = crate::sim::rng::trace_draws(|| {
-                    sim.advance_tick(&[], Some(&rules), None, None, 67);
-                });
-                if draws.iter().any(|draw| draw["logic_object"] == 1) {
-                    drawn.push(visit);
-                }
-            }
-            drawn
-        };
-        let mut expected = drawing_visits(false);
-        assert!(!expected.contains(&11));
-        expected.push(11);
-        expected.sort();
-        assert_eq!(drawing_visits(true), expected);
-    }
-
-    #[test]
-    fn ic_kills_infantry_in_grid() {
-        let rules = test_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        spawn(&mut sim, 1, "E1", 10, 10, EntityCategory::Infantry);
-        let sw_test = sim.interner.intern("SWTEST");
-        assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
-        let e = sim.substrate.entities.get(1).expect("infantry exists");
-        assert_eq!(e.health.current, 0);
-        assert!(e.dying);
-        assert!(e.invulnerability.is_none());
-    }
-
-    /// `InfantryClass::IronCurtain @ 0x00522632` kills through `ReceiveDamage`
-    /// (`+0x16C`, `C4Warhead=`), so the death reaches `Death_Announcement`
-    /// (`+0x3B8`): each human-owned kill publishes the radar type-7 request
-    /// (`0x004D98FE`) whose client-side 8-cell dedupe limits "Unit lost".
-    #[test]
-    fn ic_infantry_kill_publishes_unit_lost_per_human_death() {
-        use crate::sim::house_state::HouseState;
-
-        let rules = test_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        sim.houses.insert(
-            owner,
-            HouseState::new(owner, 0, Some(owner), true, 5_000, 10),
-        );
-        sim.session.house_order.push(owner);
-        spawn(&mut sim, 1, "E1", 10, 10, EntityCategory::Infantry);
-        spawn(&mut sim, 2, "E1", 11, 11, EntityCategory::Infantry);
-        spawn(&mut sim, 3, "MTNK", 9, 9, EntityCategory::Unit);
-        let sw_test = sim.interner.intern("SWTEST");
-        assert!(launch(&mut sim, &rules, owner, 10, 10, sw_test, None));
-
-        let lost: Vec<InternedId> = sim
-            .sound_events
-            .iter()
-            .filter_map(|event| match event {
-                SimSoundEvent::UnitLost { owner, .. } => Some(*owner),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            lost,
-            vec![owner, owner],
-            "both infantry kills reach Death_Announcement; the vehicle survives"
-        );
-        assert!(sim.substrate.entities.get(1).unwrap().dying);
-        assert!(sim.substrate.entities.get(2).unwrap().dying);
-        assert!(!sim.substrate.entities.get(3).unwrap().dying);
-    }
-
-    #[test]
-    fn ic_affects_both_diagonals_and_center() {
-        let rules = test_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        spawn(&mut sim, 1, "MTNK", 9, 9, EntityCategory::Unit);
-        spawn(&mut sim, 2, "MTNK", 10, 10, EntityCategory::Unit);
-        spawn(&mut sim, 3, "MTNK", 11, 11, EntityCategory::Unit);
-        let sw_test = sim.interner.intern("SWTEST");
-        launch(&mut sim, &rules, owner, 10, 10, sw_test, None);
-        assert!(
-            sim.substrate
-                .entities
-                .get(1)
-                .unwrap()
-                .invulnerability
-                .is_some()
-        );
-        assert!(
-            sim.substrate
-                .entities
-                .get(2)
-                .unwrap()
-                .invulnerability
-                .is_some()
-        );
-        assert!(
-            sim.substrate
-                .entities
-                .get(3)
-                .unwrap()
-                .invulnerability
-                .is_some()
-        );
-    }
-
-    #[test]
-    fn ic_ignores_cells_outside_grid() {
-        let rules = test_rules();
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Americans");
-        spawn(&mut sim, 1, "MTNK", 15, 15, EntityCategory::Unit);
-        let sw_test = sim.interner.intern("SWTEST");
-        launch(&mut sim, &rules, owner, 10, 10, sw_test, None);
-        assert!(
-            sim.substrate
-                .entities
-                .get(1)
-                .unwrap()
-                .invulnerability
-                .is_none()
-        );
-    }
+/// The overrides' ReceiveDamage (vt+0x16C): the type's Strength (`+0xA0`)
+/// as `[CombatDamage] C4Warhead=` (`Rules+0xFA8`) at distance 0, with no
+/// attacker. InfantryClass::IronCurtain (`0x00522600..0x00522632`) ignores
+/// defenses and names the launching house; FootClass's Organic arm
+/// (`0x004DEAF8..0x004DEB2B`) does neither. The shared receiver owns the
+/// death, its attribution and its announcement.
+fn receive_strength_as_c4(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    id: u64,
+    house: Option<InternedId>,
+    ignore_defenses: bool,
+) {
+    let Some(strength) = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| rules.object(sim.interner.resolve(entity.type_ref())))
+        .map(|object| object.strength)
+    else {
+        return;
+    };
+    let event = EntityDamageEvent::direct_receiver(
+        id,
+        strength,
+        0,
+        RAD_NO_ATTACKER,
+        house,
+        sim.interner.intern(&rules.bridge_warheads.c4_name),
+        ReceiverCallFlags {
+            ignore_defenses,
+            arg6: false,
+        },
+    );
+    #[cfg(test)]
+    observe(Observed::ReceiveDamage(event));
+    sim.commit_direct_damage_receiver(rules, overlay_registry, event);
 }

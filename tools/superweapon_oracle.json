@@ -39126,6 +39126,337 @@
       "word": 4660
     }
   ],
+  "curtain_overrides": [
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "infantry",
+      "organic": false,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          1,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "infantry",
+      "organic": false,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 1
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          0,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "infantry",
+      "organic": false,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 0
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          600,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "infantry",
+      "organic": false,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 600
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": true,
+      "events": [
+        [
+          "receive_damage",
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "infantry",
+      "organic": true,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "techno_curtain",
+          true,
+          750,
+          true,
+          0
+        ]
+      ],
+      "foot_timer": [
+        1000,
+        0
+      ],
+      "frame": 1000,
+      "kind": "foot",
+      "organic": false,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 7,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": true,
+      "events": [
+        [
+          "exit_unit",
+          true
+        ],
+        [
+          "techno_curtain",
+          true,
+          750,
+          true,
+          0
+        ]
+      ],
+      "foot_timer": [
+        1000,
+        0
+      ],
+      "frame": 1000,
+      "kind": "foot",
+      "organic": false,
+      "parasite_timer": [
+        1000,
+        50
+      ],
+      "result": 7,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          125,
+          0,
+          true,
+          0,
+          0,
+          0,
+          false
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "foot",
+      "organic": true,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": true,
+      "events": [
+        [
+          "receive_damage",
+          125,
+          0,
+          true,
+          0,
+          0,
+          0,
+          false
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "foot",
+      "organic": true,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 1,
+      "eaten": true,
+      "events": [
+        [
+          "exit_unit",
+          true
+        ],
+        [
+          "techno_curtain",
+          true,
+          1,
+          true,
+          0
+        ]
+      ],
+      "foot_timer": [
+        0,
+        0
+      ],
+      "frame": 0,
+      "kind": "foot",
+      "organic": false,
+      "parasite_timer": [
+        0,
+        50
+      ],
+      "result": 7,
+      "strength": 125
+    },
+    {
+      "damage_result": 2,
+      "duration": 750,
+      "eaten": false,
+      "events": [
+        [
+          "receive_damage",
+          300,
+          0,
+          true,
+          0,
+          0,
+          0,
+          false
+        ]
+      ],
+      "foot_timer": [
+        -7,
+        -7
+      ],
+      "frame": 1000,
+      "kind": "foot",
+      "organic": true,
+      "parasite_timer": [
+        -7,
+        -7
+      ],
+      "result": 2,
+      "strength": 300
+    }
+  ],
   "defense_alert": [
     {
       "alternate": [
@@ -56389,6 +56720,4290 @@
         ]
       ],
       "start_sound": 41
+    }
+  ],
+  "iron_curtain_launch": [
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          8,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          7,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          6,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          5,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          4,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          3,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          8,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          7,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          6,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          5,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          4,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          3,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_IronCurtainReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": true,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": false,
+      "duration": 750,
+      "events": [],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": true,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          8,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          7,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          6,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          5,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "curtain",
+          4,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          3,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ]
+      ],
+      "levels": [],
+      "mute": true,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_IronCurtainReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [],
+      "player": true,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": false,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": true,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": false,
+          "latch": true,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": true,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          3,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": true
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          0,
+          0
+        ]
+      ],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            421
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          2,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          3,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "curtain",
+          4,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            0
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": true,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            1
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            109
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [
+        [
+          [
+            0,
+            0
+          ],
+          1
+        ]
+      ],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          0,
+          0
+        ]
+      ],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            837
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [
+        [
+          [
+            0,
+            0
+          ],
+          4
+        ]
+      ],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 750,
+      "events": [
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            128,
+            128,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            -1
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          750,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "curtain",
+          1,
+          750,
+          true,
+          0
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "unlink": false
+        },
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            1,
+            1
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        0,
+        0
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 0,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          0,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 1,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          1,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": -1,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          -1,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "duration": 2147483647,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_IronCurtainActivated",
+          -1,
+          -1
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "curtain",
+          0,
+          2147483647,
+          true,
+          0
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "foot": true,
+          "latch": false,
+          "offset": [
+            0,
+            0
+          ],
+          "unlink": false
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
     }
   ],
   "iron_tint": [

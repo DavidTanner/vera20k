@@ -1432,11 +1432,14 @@ pub struct GeneralRules {
     pub ambient_change_interval_frames: i32,
     /// Signed ambient scalar delta: `ftol(AmbientChangeStep * 100)`.
     pub ambient_change_step: i32,
-    // --- IronCurtain ([CombatDamage]) ---
-    /// IronCurtain invulnerability duration in frames (IronCurtainDuration= in [CombatDamage]).
+    /// `[CombatDamage] IronCurtainDuration=` (`RulesClass+0xFE8`, ReadInt at
+    /// `0x0066C646` defaulting to the field, which the constructor zeroes at
+    /// `0x00666BC4`): the Iron Curtain's curtain in frames. Retail 750.
     pub iron_curtain_duration: i32,
-    // --- IronCurtain ([General]) ---
-    /// Animation played on IC target (IronCurtainInvokeAnim= in [General]). Default IRONBLST.
+    /// `[General] IronCurtainInvokeAnim=` (`RulesClass+0x348`, ReadString
+    /// 0x80 at `0x0066E24C`; empty keeps the constructor's null type,
+    /// `0x00665B1A`): the anim the Iron Curtain's launch builds over its cell.
+    /// Retail `IRONBLST`.
     pub iron_curtain_invoke_anim: String,
     /// `[General] ChronoPlacement=` (`RulesClass+0x330`, ReadString 0x80 at
     /// `0x0066E095`, empty keeps the constructor's null type): the anim the
@@ -2039,8 +2042,8 @@ impl Default for GeneralRules {
             ambient_change_rate_nonzero: true,
             ambient_change_interval_frames: 180,
             ambient_change_step: 20,
-            iron_curtain_duration: 750,
-            iron_curtain_invoke_anim: "IRONBLST".to_string(),
+            iron_curtain_duration: 0,
+            iron_curtain_invoke_anim: String::new(),
             chrono_placement_anim: String::new(),
             chrono_blast_anim: String::new(),
             chrono_blast_dest_anim: String::new(),
@@ -3032,12 +3035,8 @@ impl GeneralRules {
             ambient_change_rate_nonzero,
             ambient_change_interval_frames,
             ambient_change_step,
-            iron_curtain_duration: combat_damage.read_int("IronCurtainDuration", 750),
-            iron_curtain_invoke_anim: general.read_string(
-                "IronCurtainInvokeAnim",
-                "IRONBLST",
-                0x80,
-            ),
+            iron_curtain_duration: combat_damage.read_int("IronCurtainDuration", 0),
+            iron_curtain_invoke_anim: general.read_string("IronCurtainInvokeAnim", "", 0x80),
             chrono_placement_anim: general.read_string("ChronoPlacement", "", 0x80),
             chrono_blast_anim: general.read_string("ChronoBlast", "", 0x80),
             chrono_blast_dest_anim: general.read_string("ChronoBlastDest", "", 0x80),
@@ -6400,8 +6399,9 @@ MutateWarhead=MyMutate\n\
         assert_eq!(general.mutate_warhead, "MyMutate");
         assert!(general.tree_targeting);
         assert!(!general.mutate_explosion);
-        // Unspecified keys fall back to defaults.
-        assert_eq!(general.iron_curtain_invoke_anim, "IRONBLST");
+        // Unspecified keys fall back to defaults: the constructor's null type
+        // (`Rules+0x348`, `0x00665B1A`).
+        assert_eq!(general.iron_curtain_invoke_anim, "");
         // The constructor's null type (`Rules+0x34C`, `0x00665B20`).
         assert_eq!(general.force_shield_invoke_anim, "");
         assert_eq!(general.force_shield_blackout_duration, 800);
