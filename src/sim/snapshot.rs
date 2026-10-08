@@ -876,7 +876,9 @@ use crate::sim::world::Simulation;
 // its target_pad and AircraftMission's Docking/DockedIdle their pad_index:
 // write-only copies of the AirfieldDocks reservation. Prior records cannot
 // resume.
-const SNAPSHOT_VERSION: u32 = 303;
+// 303 -> 304: a Super saves its place in the Super timer list (0x00A83D50).
+// Prior records lack it.
+const SNAPSHOT_VERSION: u32 = 304;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3895,8 +3897,10 @@ mod tests {
         // arguments and the killing house; a GENDEATH's end makes its Brute.
         // 300 -> 301: guidance reads Airburst/Inaccurate/Level from the
         // collision policy instead of keeping copies.
+        // 301 -> 302: FogState drops its unread v81 generation wire shadow.
         // 302 -> 303: unread HoverAttack copy and aircraft pad-index copies.
-        assert_eq!(super::SNAPSHOT_VERSION, 303);
+        // 303 -> 304: a Super's place in the Super timer list.
+        assert_eq!(super::SNAPSHOT_VERSION, 304);
     }
 
     #[test]

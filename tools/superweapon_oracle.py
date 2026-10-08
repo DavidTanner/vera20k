@@ -26,7 +26,8 @@ radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
 (paradrop_launch, send_paradrop_planes, paradrop_missions, drop_payload,
 spawn_parachuted) and src/sim/superweapon/genetic_converter_tests.rs
 (genetic_launch, infantry_mutate_death, make_infantry) and
-src/sim/superweapon/psychic_reveal_tests.rs (psychic_launch).
+src/sim/superweapon/psychic_reveal_tests.rs (psychic_launch) and
+src/app/presentation/super_timers.rs (tactical_timers, timer_lines).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -263,6 +264,14 @@ fixture machinery):
   the house's cell (+0x5784), the building's firing type (+0x5F8), DigSound
   at the floor coordinate, EVA_NuclearMissileLaunched, the player's tail and
   the house's recheck flag (+0x1FC).
+- tactical_timers: TacticalClass::Draw's timer block (0x6D4941..0x6D4B25)
+  as a slice: the Scenario timer's line, each listed Super's (0xA83D50 in
+  list order, with the GameMode 0 hold skip through GetRechargeTime
+  0x6CC260), then each house's blackout line: line index, scheme, seconds
+  and label of every 0x6D4B50 call.
+- timer_lines: 0x6D4B50 for one line through Fancy_Text_Print_Wide
+  0x4A61C0 and its print 0x4A5EB0: the texts, measures, right alignment,
+  black boxes, packed colours and the blink.
 """
 from pathlib import Path
 import math
@@ -6747,6 +6756,306 @@ def nuke_launch():
     return rows
 
 
+
+# ------------------------------------------------------------ super_timers
+
+TIMERS = BASE + 0x3D0000
+TM_SUPERS = TIMERS
+TM_SUPER_STRIDE = 0x100
+TM_TYPES = TIMERS + 0x2000
+TM_TYPE_STRIDE = 0x100
+TM_LABELS = TIMERS + 0x4000
+TM_LABEL_STRIDE = 0x40
+TM_BLACKOUT_LABEL = TM_LABELS + 0x1800
+TM_ITEMS = TIMERS + 0x6000
+TM_HOUSE_ITEMS = TIMERS + 0x6800
+TM_SCHEME_ITEMS = TIMERS + 0x7000
+TM_SCHEMES = TIMERS + 0x8000
+TM_SCHEME_STRIDE = 0x400
+TM_SCHEME_COUNT = 32
+TM_FONT = TIMERS + 0x18000
+TM_SURFACE = TIMERS + 0x18100
+TM_SURFACE_VT = TIMERS + 0x18200
+TM_BLINK = TIMERS + 0x18400
+TM_HOUSE_SIZE = 0x16100
+STUB_TM_RECT = STUBS + 0xF80
+STUB_TM_FILL = STUBS + 0xF90
+
+SUPER_TIMER_ITEMS = 0xA83D54
+SUPER_TIMER_COUNT = 0xA83D60
+HOUSE_ITEMS = 0xA8022C
+HOUSE_COUNT = 0xA80238
+PLAYER_PTR = 0xA83D4C
+SCHEME_ITEMS = 0xB054D4
+VIEW_W = 0x886FA8
+VIEW_H = 0x886FAC
+FONT_PTR = 0x89C4D0
+COMPOSITE = 0x88731C
+# The pixel format's shifts (right, then left) for HSV_To_RGB's three output
+# bytes, set here to RGB565.
+PIXEL_SHIFTS = ((0x8A0DD4, 0x8A0DD0, 3, 11), (0x8A0DE4, 0x8A0DE0, 2, 5),
+                (0x8A0DDC, 0x8A0DD8, 3, 0))
+TM_OWNER_HSV = (153, 214, 212)
+TM_BLINK_HSV = (0, 0, 200)
+
+
+def write_wide(emu, address, text):
+    emu.uc.mem_write(address, (text + '\0').encode('utf-16-le'))
+
+
+def read_wide(emu, address):
+    out = bytearray()
+    while True:
+        pair = bytes(emu.uc.mem_read(address + len(out), 2))
+        if pair == b'\0\0':
+            return out.decode('utf-16-le')
+        out += pair
+
+
+def timer_glyph_width(text):
+    """The stub measure: 4 pixels a space, 6 a digit or colon, 8 anything
+    else, and one pixel of spacing after every character, as BitFont's
+    measure adds its +0x2C after each one."""
+    return sum(4 if c == ' ' else 6 if c in '0123456789:' else 8 for c in text) + len(text)
+
+
+def tm_house(emu, scheme, blackout):
+    address = emu.heap
+    emu.heap += TM_HOUSE_SIZE
+    emu.write32(address + 0x16054, scheme)
+    emu.write32(address + 0x2A4, blackout[0])
+    emu.write32(address + 0x2AC, blackout[1])
+    return address
+
+
+def tm_super(owner, start, left, *, hold=False, custom=-1, recharge=9000, name='Nuke'):
+    return dict(owner=owner, start=start, left=left, hold=hold, custom=custom,
+                recharge=recharge, name=name)
+
+
+def tactical_timers_row(*, supers=(), houses=((3, (-1, 0)),), scenario=(-1, 0), game_mode=5,
+                        frame=1000, player=0):
+    """TacticalClass::Draw's timer block (0x6D4941..0x6D4B25) as a slice: the
+    Scenario timer (+0x11E8/+0x11F0, label +0x11F4) in the player's scheme
+    (PlayerPtr 0xA83D4C, House+0x16054, ColorScheme::Array items 0xB054D4),
+    then each Super of the timer list (items 0xA83D54, count 0xA83D60) with
+    GameMode 0xA8B238's on-hold arm and GetRechargeTime 0x6CC260 run
+    natively, then each house's blackout timer (+0x2A4/+0x2AC, HouseClass::
+    Array items 0xA8022C, count 0xA80238) labelled through the string table
+    0x734E60. The string table and the line draw 0x6D4B50 are recorded
+    stubs. `houses` holds (scheme index, blackout (start, left))."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    emu.write32(GAME_MODE, game_mode)
+    emu.write32(SCHEME_ITEMS, TM_SCHEME_ITEMS)
+    for index in range(TM_SCHEME_COUNT):
+        emu.write32(TM_SCHEME_ITEMS + 4 * index, TM_SCHEMES + index * TM_SCHEME_STRIDE)
+    house_addresses = [tm_house(emu, scheme, blackout) for scheme, blackout in houses]
+    emu.write32(HOUSE_ITEMS, TM_HOUSE_ITEMS)
+    for index, address in enumerate(house_addresses):
+        emu.write32(TM_HOUSE_ITEMS + 4 * index, address)
+    emu.write32(HOUSE_COUNT, len(house_addresses))
+    emu.write32(PLAYER_PTR, house_addresses[player])
+    emu.write32(SCENARIO + 0x11E8, scenario[0])
+    emu.write32(SCENARIO + 0x11F0, scenario[1])
+    write_wide(emu, TM_LABELS, 'Mission')
+    emu.write32(SCENARIO + 0x11F4, TM_LABELS)
+    write_wide(emu, TM_BLACKOUT_LABEL, 'Blackout')
+    emu.write32(SUPER_TIMER_ITEMS, TM_ITEMS)
+    emu.write32(SUPER_TIMER_COUNT, len(supers))
+    for slot, sw in enumerate(supers):
+        address = TM_SUPERS + slot * TM_SUPER_STRIDE
+        type_address = TM_TYPES + slot * TM_TYPE_STRIDE
+        label = TM_LABELS + (slot + 1) * TM_LABEL_STRIDE
+        emu.write32(TM_ITEMS + 4 * slot, address)
+        emu.write32(address + 0x24, sw['custom'])
+        emu.write32(address + 0x28, type_address)
+        emu.write32(address + 0x2C, house_addresses[sw['owner']])
+        emu.write32(address + 0x30, sw['start'])
+        emu.write32(address + 0x38, sw['left'])
+        write8(emu, address + 0x70, sw['hold'])
+        emu.write32(type_address + 0x60, label)
+        emu.write32(type_address + 0xB0, sw['recharge'])
+        write_wide(emu, label, sw['name'])
+
+    def string_table(e):
+        e.events.append(['load_string', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return TM_BLACKOUT_LABEL
+
+    def line(e):
+        timer, state = e.arg(2), e.arg(3)
+        blink = None
+        if timer or state:
+            if timer != state + 8 or (state - 0x40 - TM_SUPERS) % TM_SUPER_STRIDE:
+                raise OracleError('a timer line\'s blink pointers are not a Super\'s')
+            blink = (state - 0x40 - TM_SUPERS) // TM_SUPER_STRIDE
+        scheme = e.uc.reg_read(UC_X86_REG_EDX)
+        e.events.append(['line', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+                         (scheme - TM_SCHEMES) // TM_SCHEME_STRIDE, i32(e.arg(0)),
+                         read_wide(e, e.arg(1)), blink])
+
+    emu.hook(0x734E60, string_table, 8)
+    emu.hook(0x6D4B50, line, 0x10)
+    uc = emu.uc
+    uc.reg_write(UC_X86_REG_ESP, STACK_BASE + STACK_SIZE - 0x1000)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x6D4941, 0x6D4B25, count=100_000)
+    return dict(supers=list(supers), houses=[[scheme, list(blackout)] for scheme, blackout in houses],
+                scenario=list(scenario), game_mode=game_mode, frame=frame, player=player,
+                events=emu.events)
+
+
+def tactical_timers():
+    row = tactical_timers_row
+    houses = ((3, (-1, 0)), (11, (-1, 0)), (21, (-1, 0)))
+    rows = [row(houses=houses)]
+    # The Scenario timer takes line 0 while it runs, the Supers follow in
+    # list order, any owner's.
+    supers = (tm_super(0, 400, 9000), tm_super(1, -1, 3000, name='Curtain'),
+              tm_super(0, 0, 900, name='Storm'))
+    for scenario in ((900, 3000), (-1, 500), (0, 500), (100, 54000)):
+        rows.append(row(supers=supers, houses=houses, scenario=scenario))
+    rows.append(row(supers=supers, houses=houses, player=2, scenario=(1000, 15)))
+    # Seconds are frames left over 15, truncated.
+    rows.append(row(supers=tuple(tm_super(0, -1, left) for left in (0, 14, 15, 29, 30, 899,
+                                                                    900, 53999, 54000)),
+                    houses=houses))
+    # In GameMode 0 a held Super whose timer has all of GetRechargeTime left
+    # takes no line; the next one takes its index.
+    held = (tm_super(0, -1, 9000, hold=True), tm_super(1, -1, 8999, hold=True),
+            tm_super(0, -1, 9000), tm_super(1, -1, 4500, hold=True, custom=4500),
+            tm_super(0, -1, 9000, hold=True, custom=4500), tm_super(2, 1000, 9000, hold=True))
+    for game_mode in (0, 5):
+        rows.append(row(supers=held, houses=houses, game_mode=game_mode))
+    # Each house's blackout timer with time left follows, in house order.
+    blackouts = ((3, (900, 300)), (11, (-1, 450)), (21, (0, 100)), (13, (-1, 0)),
+                 (25, (1000, 1)), (29, (-1, -15)))
+    rows.append(row(supers=supers[:1], houses=blackouts))
+    rows.append(row(houses=blackouts, scenario=(990, 30)))
+    return rows
+
+
+def timer_line_row(*, index=0, seconds=600, label='Nuke', blink=None, now=5000,
+                   view=(632, 432), height=17):
+    """0x6D4B50 for one timer line: Fancy_Text_Print_Wide 0x4A61C0 and its
+    print 0x4A5EB0, HSV_To_RGB 0x517440 and the font setters run natively;
+    swprintf 0x7CA564 and vswprintf 0x7CA858, the measure 0x433CF0
+    (timer_glyph_width), the clock 0x4093B0, the Composite surface's
+    GetRect (vt+0x78) and FillRect (vt+0x14) and the glyph print 0x434B90
+    are recorded stubs. The line's scheme holds TM_OWNER_HSV and
+    ColorScheme::Array[5] TM_BLINK_HSV (+0x308); the pixel format is RGB565.
+    `blink` is the Super's (+0x40, +0x48) or None for null pointers."""
+    emu = Emu()
+    emu.write32(VIEW_W, view[0])
+    emu.write32(VIEW_H, view[1])
+    emu.write32(FONT_PTR, TM_FONT)
+    emu.write32(TM_FONT + 0x1C, height)
+    emu.write32(COMPOSITE, TM_SURFACE)
+    emu.write32(TM_SURFACE, TM_SURFACE_VT)
+    emu.write32(TM_SURFACE_VT + 0x78, STUB_TM_RECT)
+    emu.write32(TM_SURFACE_VT + 0x14, STUB_TM_FILL)
+    emu.write32(SCHEME_ITEMS, TM_SCHEME_ITEMS)
+    for index_ in range(TM_SCHEME_COUNT):
+        emu.write32(TM_SCHEME_ITEMS + 4 * index_, TM_SCHEMES + index_ * TM_SCHEME_STRIDE)
+    emu.uc.mem_write(TM_SCHEMES + 0x308, bytes(TM_OWNER_HSV))
+    emu.uc.mem_write(TM_SCHEMES + 5 * TM_SCHEME_STRIDE + 0x308, bytes(TM_BLINK_HSV))
+    for right, left, right_shift, left_shift in PIXEL_SHIFTS:
+        write8(emu, right, right_shift)
+        emu.write32(left, left_shift)
+    write_wide(emu, TM_LABELS, label)
+    if blink is not None:
+        write8(emu, TM_BLINK, blink[0])
+        emu.uc.mem_write(TM_BLINK + 8, struct.pack('<Q', blink[1]))
+
+    def swprintf(e):
+        fmt = read_wide(e, e.arg(1))
+        out, at, arg = [], 0, 2
+        while at < len(fmt):
+            if fmt[at] != '%':
+                out.append(fmt[at])
+                at += 1
+                continue
+            for spec, render in (('s', lambda v: read_wide(e, v)), ('d', lambda v: str(i32(v))),
+                                 ('02d', lambda v: '%02d' % i32(v))):
+                if fmt.startswith(spec, at + 1):
+                    out.append(render(e.arg(arg)))
+                    at += 1 + len(spec)
+                    arg += 1
+                    break
+            else:
+                raise OracleError(f'unexpected swprintf format {fmt!r}')
+        text = ''.join(out)
+        write_wide(e, e.arg(0), text)
+        return len(text)
+
+    def vswprintf(e):
+        text = read_wide(e, e.arg(1))
+        if '%' in text:
+            raise OracleError(f'vswprintf format {text!r}')
+        write_wide(e, e.arg(0), text)
+        return len(text)
+
+    def measure(e):
+        text = read_wide(e, e.arg(0))
+        if e.arg(1):
+            e.write32(e.arg(1), timer_glyph_width(text))
+        if e.arg(2):
+            e.write32(e.arg(2), e.read_i32(TM_FONT + 0x1C))
+        e.events.append(['measure', text, i32(e.arg(3))])
+
+    def clock(e):
+        e.uc.reg_write(UC_X86_REG_EDX, now >> 32)
+        return now & 0xFFFFFFFF
+
+    def get_rect(e):
+        e.uc.mem_write(e.arg(0), struct.pack('<iiii', 0, 0, view[0], view[1]))
+        return e.arg(0)
+
+    def fill(e):
+        e.events.append(['fill', list(struct.unpack('<iiii', e.uc.mem_read(e.arg(0), 16))),
+                         i32(e.arg(1))])
+        return 1
+
+    def glyphs(e):
+        color = struct.unpack('<H', e.uc.mem_read(TM_FONT + 0x24, 2))[0]
+        e.events.append(['print', read_wide(e, e.arg(2)), i32(e.arg(3)), i32(e.arg(4)), color,
+                         list(struct.unpack('<iiii', e.uc.mem_read(TM_FONT + 0x30, 16)))])
+
+    emu.hook(0x7CA564, swprintf, 0)
+    emu.hook(0x7CA858, vswprintf, 0)
+    emu.hook(0x433CF0, measure, 0x10)
+    emu.hook(0x4093B0, clock, 0)
+    emu.hook(STUB_TM_RECT, get_rect, 4)
+    emu.hook(STUB_TM_FILL, fill, 8)
+    emu.hook(0x434B90, glyphs, 0x1C)
+    pointers = (TM_BLINK + 8, TM_BLINK) if blink is not None else (0, 0)
+    emu.invoke(0x6D4B50, ecx=index, edx=TM_SCHEMES, args=[seconds, TM_LABELS, *pointers])
+    after = None
+    if blink is not None:
+        after = [read8(emu, TM_BLINK), struct.unpack('<Q', emu.uc.mem_read(TM_BLINK + 8, 8))[0]]
+    return dict(index=index, seconds=seconds, label=label, blink=list(blink) if blink else None,
+                now=now, view=list(view), height=height, scheme_hsv=list(TM_OWNER_HSV),
+                blink_hsv=list(TM_BLINK_HSV), events=emu.events, blink_after=after)
+
+
+def timer_lines():
+    row = timer_line_row
+    rows = [row(seconds=seconds) for seconds in (0, 1, 59, 60, 61, 599, 600, 3599, 3600, 3661,
+                                                 35999, 36000, 359999)]
+    rows += [row(index=index) for index in (1, 2, 5)]
+    rows.append(row(view=(1112, 718), index=3, seconds=125, label='Iron Curtain'))
+    rows.append(row(height=12, index=2))
+    # At zero seconds a Super's line toggles +0x40 once its +0x48 deadline is
+    # not ahead of the clock, the next deadline 1000 ms on; while it is set
+    # the time takes ColorScheme::Array[5].
+    for blink, now in (((0, 0), 5000), ((1, 6000), 5500), ((1, 6000), 6000),
+                       ((0, 5000), 4999), ((0, 5000), 5000), ((1, 1 << 32), (1 << 32) - 1),
+                       ((0, 1 << 32), (1 << 32) + 5)):
+        rows.append(row(seconds=0, blink=blink, now=now))
+    rows.append(row(seconds=5, blink=(1, 0), now=5000))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -6803,6 +7112,8 @@ def generate():
             'make_infantry': make_infantry(),
             'psychic_launch': psychic_launch(),
             'nuke_launch': nuke_launch(),
+            'tactical_timers': tactical_timers(),
+            'timer_lines': timer_lines(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -6878,7 +7189,10 @@ if __name__ == '__main__':
                'Launch case 11\'s gate, coordinate, RevealArea arguments, sound and '
                'the player\'s tail; the nuclear missile: Launch case 0\'s gate, silo '
                'type scan and lookup, mission, house cell, firing type, sound, EVA, '
-               'the player\'s tail and the recheck flag'),
+               'the player\'s tail and the recheck flag; the tactical timers: '
+               'TacticalClass::Draw\'s Scenario, Super and blackout lines (index, scheme, '
+               'seconds, label, blink pointers and the GameMode 0 hold skip) and each '
+               'line\'s texts, measures, right alignment, black boxes, colours and blink'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -7143,7 +7457,16 @@ if __name__ == '__main__':
                        'types (+0x16BA, +0x16F0, +0x16F4); Find_Building_Of_Type 0x4FD060, the '
                        'floor height 0x578080, the building\'s vt+0x1E8/vt+0x1EC, PlayAtCoord '
                        '0x750E20, PlayEVA 0x752700 and the EVA queue calls are recorded '
-                       'stubs; 0xA8B538 holds the row\'s mute byte'],
+                       'stubs; 0xA8B538 holds the row\'s mute byte',
+                       'tactical_timers: the slice starts at 0x6D4941 on a fresh stack; '
+                       'houses come from the fixture heap; the string table 0x734E60 and '
+                       'the line draw 0x6D4B50 are recorded stubs',
+                       'timer_lines: swprintf 0x7CA564 and vswprintf 0x7CA858 format in '
+                       'Python; the measure 0x433CF0 answers timer_glyph_width and the font '
+                       'height; the clock 0x4093B0 answers the row\'s milliseconds; the '
+                       'Composite surface\'s GetRect vt+0x78 answers the view and FillRect '
+                       'vt+0x14 and the glyph print 0x434B90 are recorded stubs; the pixel '
+                       'format is RGB565'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -7205,4 +7528,6 @@ if __name__ == '__main__':
                       'InfantryClass::ReceiveDamage_infdeath9': 0x5188AE,
                       'AnimClass::AI_make_infantry': 0x424932,
                       'SuperClass::Launch_case11': 0x6CC390,
-                      'SuperClass::Launch_case0': 0x6CC390}))
+                      'SuperClass::Launch_case0': 0x6CC390,
+                      'TacticalClass::Draw_timers': 0x6D4941,
+                      'TacticalClass::DrawTimer': 0x6D4B50}))

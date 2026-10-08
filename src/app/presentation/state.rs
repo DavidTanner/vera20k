@@ -83,6 +83,9 @@ pub(crate) struct MatchPresentationState {
     /// The client's AnimClass `+0x19D` for Supers' ChronoPlacement anims
     /// (`match_runtime::super_selection`): hidden anims, by id.
     pub(crate) hidden_super_anims: std::collections::BTreeSet<crate::sim::anim_class::AnimId>,
+    /// The Supers' timer blinks (`SuperClass+0x40`, `+0x48`), by owner and
+    /// type (`presentation::super_timers`).
+    pub(crate) super_timer_blinks: crate::app::presentation::super_timers::TimerBlinks,
     pub(crate) combat_lights: crate::app::presentation::combat_lights::CombatLightRuntime,
     pub(crate) minimap: Option<MinimapRenderer>,
     /// Animated radar chrome — plays 33-frame open/close animation when radar gained/lost.
