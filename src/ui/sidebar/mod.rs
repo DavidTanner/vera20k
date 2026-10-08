@@ -230,8 +230,6 @@ pub struct SidebarView {
     pub credits: i32,
     pub power_produced: i32,
     pub power_drained: i32,
-    pub credits_frac: f32,
-    pub power_frac: f32,
     pub low_power: bool,
     pub scroll_rows: usize,
     pub max_scroll_rows: usize,

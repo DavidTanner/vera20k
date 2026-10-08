@@ -19,8 +19,7 @@ use crate::sim::production;
 
 // Re-export instance builders so callers don't need to know about the split.
 pub(crate) use crate::app::presentation::sidebar_build::{
-    build_sidebar_cameo_instances, build_sidebar_chrome_instances, build_sidebar_instances,
-    build_sidebar_text_instances,
+    build_sidebar_cameo_instances, build_sidebar_chrome_instances, build_sidebar_text_instances,
 };
 
 // ---------------------------------------------------------------------------

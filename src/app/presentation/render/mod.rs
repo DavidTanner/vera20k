@@ -409,7 +409,6 @@ fn upload_to_gpu(
         "radar_content_boundary",
         &sidebar.content_boundary,
     );
-    pool.upload(&state.renderer.gpu, "sidebar", &sidebar.sidebar);
     pool.upload(&state.renderer.gpu, "sidebar_chrome", &sidebar.chrome);
     pool.upload(&state.renderer.gpu, "radar_anim", &sidebar.radar_anim);
     pool.upload(&state.renderer.gpu, "sidebar_cameo", &sidebar.cameo);
@@ -433,7 +432,6 @@ mod tests {
     fn game_render_counts_preserve_exact_emitted_lengths() {
         let sprite = crate::render::batch::SpriteInstance::default();
         let instances = super::build_instances::SidebarInstances {
-            sidebar: Vec::new(),
             chrome: Vec::new(),
             cameo: Vec::new(),
             gclock: Vec::new(),

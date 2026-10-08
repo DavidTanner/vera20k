@@ -565,8 +565,6 @@ impl App {
                     installed_playfield_authority: None,
                     overlays: Default::default(),
                     terrain_objects: Vec::new(),
-                    cell_tags: HashMap::new(),
-                    tags: HashMap::new(),
                     overlay_names: BTreeMap::new(),
                     overlay_radar_colors: HashMap::new(),
                     house_color_map: HashMap::new(),

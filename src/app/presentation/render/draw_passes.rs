@@ -659,18 +659,6 @@ pub(super) fn dispatch_draw_passes(
         &mut pass,
         &state.renderer.batch_renderer,
         pool,
-        state
-            .match_state
-            .match_presentation
-            .minimap
-            .as_ref()
-            .map(|m| m.white_texture()),
-        "sidebar",
-    );
-    draw_pooled_ui(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
         current_sidebar_chrome_texture(state),
         "sidebar_chrome",
     );
