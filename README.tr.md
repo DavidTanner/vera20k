@@ -38,10 +38,18 @@ ve çeşitli silahlar ile efektler üzerinde daha fazla çalışmamız gerekiyor
 
 ## Derleme ve çalıştırma
 
-[Rust](https://rustup.rs/)'ın güncel kararlı sürümü, Vulkan, DirectX 12 ya da Metal destekleyen bir
-GPU ve kurulu oyun gerekiyor. Yuri's Revenge 1.001'in her sürümü çalışır; macOS'te oyun klasörünü
-bir Windows kurulumundan kopyalayın. Debian ve Ubuntu'da ayrıca `libasound2-dev` ve `pkg-config`
-gerekir. VERA20k, Windows, Linux ve macOS üzerinde oynandı.
+Gerekenler:
+
+- **Oyun:** Red Alert 2: Yuri's Revenge 1.001. Her sürüm çalışır; macOS'te oyun klasörünü bir
+  Windows kurulumundan kopyalayın.
+- **Rust ve Git:** rustup ile kurulmuş güncel kararlı [Rust](https://rustup.rs/) sürümü ve
+  [Git](https://git-scm.com/).
+- **Derleme araçları:** Windows'ta, Rust kurulum programının kurmayı önerdiği Visual Studio C++
+  derleme araçları; macOS'te `xcode-select --install`; Debian ve Ubuntu'da
+  `sudo apt install build-essential libasound2-dev pkg-config`.
+- **Grafik:** Vulkan, DirectX 12 ya da Metal destekleyen bir GPU.
+
+VERA20k, Windows, Linux ve macOS üzerinde oynandı.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -58,8 +66,7 @@ cargo run --release --bin vera20k
 
 Kodun büyük bölümünü yapay zekâ kodlama ajanları yazıyor. Ajanlar özgün motoru Ghidra ile
 inceliyor, ardından davranışını Rust'a aktarıyor ve [karşılaştırma araçları](tools/native_oracle.md)
-ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosyasını, katkıda
-bulunanlar ise aşağıdaki kuralları izler.
+ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosyasını izler.
 
 ## Katkıda bulunma
 
@@ -74,18 +81,6 @@ Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app
 araya geldiğini açıklıyor. Testleri `cargo test -p vera20k --lib` ile çalıştırın. Oyunun INI
 dosyalarına ihtiyaç duyan testler, siz `cargo run --bin extract-ini [oyun klasörü]` komutunu
 çalıştırana kadar atlanır ve yine de başarılı sayılır.
-
-1. **Referans orijinal oyundur.** Çevredeki kodda olduğu gibi özgün fonksiyonu bir yorumda
-   belirtin (`/// MissionClass::Mission_Dispatch @ 0x005B3060`) ya da davranışın nereden
-   geldiğini PR'da yazın. Tahmin yürütmeyin.
-2. **Her durumun tek bir sahibi vardır.** Mevcut sahibi genişletin ve yerine koyduğunuz eski
-   yolu silin.
-3. **Deterministik simülasyon.** Aynı girdiler her işletim sisteminde ve işlemcide aynı sonucu
-   verir. `src/sim/` içinde `SimFixed` kullanın; rastgele sayı çekimlerini ve aynı karedeki
-   etkileri orijinaldeki sırayla koruyun.
-4. **Oynanış değişiklikleri için test ekleyin.**
-5. **Oyun dosyalarını asla commit etmeyin** (`.mix`, INI, görseller, ses, video, `.exe`); `ini/`
-   içindeki hiçbir şeyi de eklemeyin.
 
 Katkılar da projenin geri kalanı gibi GPLv3 ile lisanslanır; CLA yoktur.
 

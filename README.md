@@ -39,9 +39,17 @@ and several weapons and effects need more work. We haven't demonstrated 30-playe
 
 ## Build and run
 
-You need current stable [Rust](https://rustup.rs/), a GPU with Vulkan, DirectX 12 or Metal,
-and the game installed. Any edition of Yuri's Revenge 1.001 works; on macOS, copy the game
-folder from a Windows install. Debian and Ubuntu also need `libasound2-dev` and `pkg-config`.
+You need:
+
+- **The game:** Red Alert 2: Yuri's Revenge 1.001. Any edition works; on macOS, copy the game
+  folder from a Windows install.
+- **Rust and Git:** current stable [Rust](https://rustup.rs/), installed with rustup, and
+  [Git](https://git-scm.com/).
+- **Build tools:** on Windows, the Visual Studio C++ build tools, which the Rust installer offers
+  to install; on macOS, `xcode-select --install`; on Debian and Ubuntu,
+  `sudo apt install build-essential libasound2-dev pkg-config`.
+- **Graphics:** a GPU with Vulkan, DirectX 12 or Metal.
+
 VERA20k has been played on Windows, Linux and macOS.
 
 ```sh
@@ -59,7 +67,7 @@ builds are too slow. The log is in `logs/ra2.log`.
 
 Most of the code is written by AI coding agents. They use Ghidra to study the original
 engine, then port its behavior to Rust and check it with [comparison tools](tools/native_oracle.md)
-and playtesting. Agents follow [AGENTS.md](AGENTS.md); contributors follow the rules below.
+and playtesting. Agents follow [AGENTS.md](AGENTS.md).
 
 ## Contributing
 
@@ -73,15 +81,6 @@ Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `s
 together. Run the tests with `cargo test -p vera20k --lib`. Tests that need the game's INI
 files skip themselves, and still count as passed, until you run
 `cargo run --bin extract-ini [game folder]`.
-
-1. **The original is the reference.** Cite the native function in a comment, as the code
-   around it does (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), or say in the PR where
-   the behavior comes from. Don't guess.
-2. **One owner per piece of state.** Extend the existing owner; delete the old path you replace.
-3. **Deterministic simulation.** Same inputs, same result on every OS and CPU. Use `SimFixed`
-   in `src/sim/`, and keep random draws and same-frame effects in the original's order.
-4. **Add a test** for gameplay changes.
-5. **Never commit game files** (`.mix`, INI, art, audio, video, `.exe`) or anything in `ini/`.
 
 Contributions are licensed under the GPLv3, like the rest of the project; there's no CLA.
 
