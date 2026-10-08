@@ -184,10 +184,15 @@ fn place(
 ///
 /// Left out:
 /// - The mute row: VERA has no `0x00A8B538` (module RESIDUAL).
-/// - The unlink row: a fixture stub clears `+0x30` inside the call. VERA's
-///   counterpart is a real removal, which
+/// - The unlink row: a fixture stub clears `+0x30` inside the call, which
+///   ends that list and moves the walk to the next cell. No Rust test
+///   replays it: by reading, `cell_grid::live_successor` ends the list once
+///   the object has left every cell list (RemoveContent clears `+0x30`,
+///   `0x0047EAF0`), and with retail `C4Warhead=Super` (`InfDeath=2`) a
+///   killed infantryman stays on its list for its death sequence.
 ///   `iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in`
-///   (`cell_receiver_tests`) runs.
+///   (`cell_receiver_tests`) runs the other link change, an object moved
+///   onto another list inside the call.
 /// - An object at a negative cell: no VERA cell list holds one. Real gamemd
 ///   answers the shared dummy there, whose lists are empty.
 ///
@@ -284,6 +289,10 @@ fn the_launch_matches_native() {
         sim.sound_events.clear();
         let frame = sim.session.binary_frame as i32;
         let cell = (target.0 as u16, target.1 as u16);
+        let paralysis_before: Vec<Option<(i32, i32)>> = ids
+            .iter()
+            .map(|id| id.map(|id| paralysis(&sim, id)))
+            .collect();
         let (launched, observed) = observed_launch(&mut sim, &rules, owner, cell, sw_type);
         assert_eq!(launched, charged, "{row}");
 
@@ -374,8 +383,14 @@ fn the_launch_matches_native() {
                 called.then_some((frame, duration, InvulnKind::IronCurtain)),
                 "{row}: object {index}"
             );
-            if called && objects[index]["foot"] == true {
-                assert_eq!(paralysis(&sim, id), (frame, 0), "{row}: object {index}");
+            if objects[index]["foot"] == true {
+                // A skipped Foot (the warp latch, or no launch) keeps its timer.
+                let expected = if called {
+                    Some((frame, 0))
+                } else {
+                    paralysis_before[index]
+                };
+                assert_eq!(Some(paralysis(&sim, id)), expected, "{row}: object {index}");
             }
         }
         compared += 1;
@@ -389,13 +404,16 @@ fn the_launch_matches_native() {
 /// launch. An eaten object holds a Terror Drone, which VERA attaches to
 /// infantry and Organic types too. Compared:
 /// - each ReceiveDamage call's arguments;
-/// - the forced release of the drone, its suppression timer, and its death
-///   through ExitUnit's running-suppression arm;
-/// - the paralysis timer and the curtain.
+/// - the forced release of the drone (the ExitUnit call) and its
+///   suppression timer;
+/// - the paralysis timer and the curtain, and that a row with no Techno
+///   call touches neither.
 ///
 /// ReceiveDamage's own effects belong to the receiver, which the oracle
-/// stubs, so a row with a damage call compares only the call. The override's
-/// return value is not compared: the walk drops it.
+/// stubs, so a row with a damage call compares only the call. The oracle
+/// stubs ExitUnit too: the drone's death through its running-suppression
+/// arm is checked against VERA's ExitUnit only. The override's return value
+/// is not compared: the walk drops it.
 #[test]
 fn the_overrides_match_native() {
     let oracle = oracle();
@@ -435,6 +453,7 @@ fn the_overrides_match_native() {
             drone
         });
         let sw_type = charge_super(&mut sim, owner, IRON_CURTAIN);
+        let paralysis_before = paralysis(&sim, victim);
         let (launched, observed) = observed_launch(&mut sim, &rules, owner, (40, 40), sw_type);
         assert!(launched);
 
@@ -484,6 +503,8 @@ fn the_overrides_match_native() {
             None => {
                 assert_eq!(curtain(&sim, victim), None, "{row}");
                 assert_eq!(row["foot_timer"], serde_json::json!([-7, -7]), "{row}");
+                // The killed victim stays in the store for its death.
+                assert_eq!(paralysis(&sim, victim), paralysis_before, "{row}");
             }
         }
         if let Some(drone) = drone.filter(|_| events(row, "exit_unit").next().is_some()) {
@@ -562,6 +583,10 @@ fn a_curtained_tank_draws_its_tint_number_in_its_own_ai() {
 /// (`+0x3B8`): each human-owned kill publishes the radar type-7 request
 /// (`0x004D98FE`) whose client-side 8-cell dedupe limits "Unit lost". The
 /// tank beside them is curtained.
+///
+/// The launch's line (`0x006CCF21`) and radar event (`0x006CCF2F`) come
+/// before the walk (`0x006CCF39`), so before its kills' "Unit lost" lines:
+/// the critical `EVA_IronCurtainActivated` reaches VoxClass first.
 #[test]
 fn curtained_infantry_die_and_announce_each_loss() {
     let (rules, mut sim, owner) = world_with(rules(""), 64, &[]);
@@ -585,6 +610,16 @@ fn curtained_infantry_die_and_announce_each_loss() {
         })
         .collect();
     assert_eq!(lost, vec![owner, owner]);
+    let position = |wanted: fn(&SimSoundEvent) -> bool| {
+        sim.sound_events
+            .iter()
+            .position(wanted)
+            .expect("the event was pushed")
+    };
+    let launched = position(|event| matches!(event, SimSoundEvent::SuperWeaponLaunched { .. }));
+    let radar = position(|event| matches!(event, SimSoundEvent::SuperWeaponRadarEvent { .. }));
+    let first_loss = position(|event| matches!(event, SimSoundEvent::UnitLost { .. }));
+    assert!(launched < radar && radar < first_loss);
     for id in [first, second] {
         let infantry = sim.substrate.entities.get(id).unwrap();
         assert!(infantry.dying && infantry.health.current == 0);

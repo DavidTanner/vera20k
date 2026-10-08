@@ -28,8 +28,12 @@
 //! from the launch event.
 //!
 //! Evidence: `tools/superweapon_oracle.py` sections `iron_curtain_launch` and
-//! `curtain_overrides` (Unicorn on gamemd.exe), replayed in
-//! `iron_curtain_tests.rs`.
+//! `curtain_overrides` (Unicorn on gamemd.exe: case 1 and the Infantry and
+//! Foot overrides), replayed in `iron_curtain_tests.rs`. BuildingClass's
+//! override is read from its instructions, not executed: with a C4 planted
+//! (`+0x6DF`) it clears that byte and `+0x540` and restarts the C4 timer
+//! (`+0x528`) at the frame with no time; Rust:
+//! `world_orders_c4_tests::c4_iron_curtain_application_cancels_pending_detonation`.
 //!
 //! RESIDUALS:
 //! - The EVA line is skipped natively while `0x00A8B538` is set
@@ -51,7 +55,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/superweapon/{invulnerability,cell_grid},
-//!   sim/combat, sim/game_entity, sim/world.
+//!   sim/combat, sim/radar, sim/game_entity, sim/world.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 #[cfg(test)]
