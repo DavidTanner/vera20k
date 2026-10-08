@@ -114,9 +114,9 @@ pub enum SpawnSlotState {
     /// 2 — child is out in the world.
     InFlight,
     /// 3 — aircraft child is attacking.
-    ReturningToDock,
+    Attacking,
     /// 4 — aircraft child is coming home to the parent.
-    LandingAtDock,
+    ComingHome,
     /// 6 — child is docked in limbo, reloading.
     Reloading,
     /// 7 — slot has no child; rebuilding one after `SpawnRegenRate` frames.
@@ -167,7 +167,7 @@ pub struct SpawnManagerState {
     /// Gates the whole AI pass (20 frames, then 10).
     pub update_timer: CdTimer,
     /// The manager's SpawnTimer (`+0x5C`): spaces launches across the pool.
-    pub reload_timer: CdTimer,
+    pub spawn_timer: CdTimer,
     pub current_target: Option<TargetKind>,
     pub queued_target: Option<TargetKind>,
     pub mode: SpawnManagerMode,
@@ -248,7 +248,9 @@ impl SpawnManagerState {
 /// Mirrors `TechnoClass::Init_Managers` (`0x006F3FF4`): the manager exists iff
 /// the type's `Spawns=` resolves to a real object type. The slot vector is
 /// created here; the world-owned constructor transaction materialises every
-/// child before the parent attempts Unlimbo.
+/// child before the parent attempts Unlimbo. The constructor
+/// (`0x006B6C90`) writes every node timer and the SpawnTimer as
+/// `{Frame, 0}` and the UpdateTimer as `{Frame, 20}`.
 pub fn init_spawn_manager(
     obj: &crate::rules::object_type::ObjectType,
     rules: &RuleSet,
@@ -265,14 +267,15 @@ pub fn init_spawn_manager(
 
     let missile_family = rules.missile_spawn.family_of(spawn_type_name);
     let is_missile_spawn = missile_family.is_some();
+    let frame = frame as i32;
     let slots = (0..obj.spawns_number.max(0) as usize)
         .map(|_| SpawnSlot {
             spawn: None,
-            // Slots enter Regenerating with an already-due timer so the
-            // world-owned constructor transaction can fill them. Native fills
-            // them in the manager constructor.
+            // Slots enter Regenerating so the world-owned constructor
+            // transaction can fill them (`commit_spawn_manager_pool`). Native
+            // fills them in the manager constructor.
             state: SpawnSlotState::Regenerating,
-            timer: CdTimer::default(),
+            timer: CdTimer::started(frame, 0),
             is_missile_spawn,
         })
         .collect();
@@ -286,8 +289,8 @@ pub fn init_spawn_manager(
             .map(|family| rules.missile_spawn.kamikaze_wait_frames(family))
             .unwrap_or(0),
         slots,
-        update_timer: CdTimer::started(frame as i32, FIRST_UPDATE_DELAY_FRAMES),
-        reload_timer: CdTimer::default(),
+        update_timer: CdTimer::started(frame, FIRST_UPDATE_DELAY_FRAMES),
+        spawn_timer: CdTimer::started(frame, 0),
         current_target: None,
         queued_target: None,
         mode: SpawnManagerMode::Idle,
@@ -316,7 +319,12 @@ trait SpawnHost {
     fn frame(&self) -> i32;
     /// The manager, fetched afresh on every call.
     fn manager(&mut self) -> &mut SpawnManagerState;
+    /// The manager for a read, which leaves the owner untouched: the per-frame
+    /// UpdateTimer gate and every PointerExpired broadcast read it first.
+    fn manager_ref(&self) -> &SpawnManagerState;
     fn is_owner(&self, id: u64) -> bool;
+    /// The pool's type is Rules' `CMislType=` (`0x006B74BC`, `0x006B7513`).
+    fn pool_is_cmisl(&self) -> bool;
     /// The owner's locomotor Is_Moving (ILocomotion `+0x10`, `0x006B731E`).
     fn owner_is_moving(&mut self) -> bool;
     /// The owner's locomotor Is_Moving_Now (ILocomotion `+0x80`, `0x006B7349`).
@@ -385,13 +393,12 @@ trait SpawnHost {
 /// `SpawnManagerClass::AI @ 0x006B7230`.
 fn ai(host: &mut impl SpawnHost) {
     let frame = host.frame();
-    let manager = host.manager();
-    if !manager.update_timer.expired(frame) {
+    if !host.manager_ref().update_timer.expired(frame) {
         return;
     }
-    manager.update_timer = CdTimer::started(frame, UPDATE_PERIOD_FRAMES);
+    host.manager().update_timer = CdTimer::started(frame, UPDATE_PERIOD_FRAMES);
     let mut index = 0;
-    while index < host.manager().slots.len() {
+    while index < host.manager_ref().slots.len() {
         visit_slot(host, index, frame);
         index += 1;
     }
@@ -401,7 +408,7 @@ fn ai(host: &mut impl SpawnHost) {
 /// The per-node switch (jump table `0x006B7B6C`).
 fn visit_slot(host: &mut impl SpawnHost, index: usize, frame: i32) {
     use SpawnSlotState::*;
-    let slot = host.manager().slots[index].clone();
+    let slot = host.manager_ref().slots[index].clone();
     let Some(child) = slot.spawn else {
         // Only a regenerating node is without a unit.
         if slot.state == Regenerating && slot.timer.expired(frame) {
@@ -423,7 +430,7 @@ fn visit_slot(host: &mut impl SpawnHost, index: usize, frame: i32) {
             match host.manager().promote_queued_target() {
                 None => {
                     recall(host, child);
-                    host.manager().slots[index].state = LandingAtDock;
+                    host.manager().slots[index].state = ComingHome;
                 }
                 Some(_) => {
                     host.set_destination(
@@ -434,7 +441,7 @@ fn visit_slot(host: &mut impl SpawnHost, index: usize, frame: i32) {
                 }
             }
         }
-        ReturningToDock => {
+        Attacking => {
             let target = host.manager().promote_queued_target();
             match target.filter(|_| host.child_ammo(child) != 0) {
                 Some(target) => {
@@ -443,15 +450,15 @@ fn visit_slot(host: &mut impl SpawnHost, index: usize, frame: i32) {
                 }
                 None => {
                     recall(host, child);
-                    host.manager().slots[index].state = LandingAtDock;
+                    host.manager().slots[index].state = ComingHome;
                 }
             }
         }
-        LandingAtDock => {
+        ComingHome => {
             let target = host.manager().promote_queued_target();
             match target.filter(|_| host.child_ammo(child) >= 1) {
                 Some(target) => {
-                    host.manager().slots[index].state = ReturningToDock;
+                    host.manager().slots[index].state = Attacking;
                     host.assign_target(child, Some(target));
                     host.queue_mission(child, MissionType::Attack);
                 }
@@ -485,10 +492,10 @@ fn visit_slot(host: &mut impl SpawnHost, index: usize, frame: i32) {
 /// Case 0 (`0x006B72A2..0x006B760E`): with a target, the SpawnTimer run out
 /// and the manager not Returning, the child launches.
 fn launch_slot(host: &mut impl SpawnHost, index: usize, child: u64, frame: i32) {
-    let manager = host.manager();
+    let manager = host.manager_ref();
     let missile = manager.slots[index].is_missile_spawn;
     if manager.current_target.is_none()
-        || !manager.reload_timer.expired(frame)
+        || !manager.spawn_timer.expired(frame)
         || manager.mode == SpawnManagerMode::Returning
     {
         return;
@@ -505,18 +512,18 @@ fn launch_slot(host: &mut impl SpawnHost, index: usize, child: u64, frame: i32) 
     } else {
         LAUNCH_DELAY_FRAMES
     };
-    host.manager().reload_timer = CdTimer::started(frame, delay);
+    host.manager().spawn_timer = CdTimer::started(frame, delay);
     let parity = (missile && host.owner_weapon_burst().is_some_and(|burst| burst > 1))
         .then_some((index & 1) as i32);
     host.manager().slots[index].state = SpawnSlotState::InFlight;
     host.launch(child, parity);
-    if host.manager().missile_family == Some(MissileFamily::CMisl) {
+    if host.pool_is_cmisl() {
         host.takeoff_anim(child);
     }
     if parity.is_some() {
         host.reset_owner_burst();
     }
-    if host.manager().slots[index].is_missile_spawn {
+    if host.manager_ref().slots[index].is_missile_spawn {
         let target = host.manager().promote_queued_target();
         host.set_destination(child, SpawnDestination::Target(target));
     } else {
@@ -525,11 +532,14 @@ fn launch_slot(host: &mut impl SpawnHost, index: usize, child: u64, frame: i32) 
     host.queue_mission(child, MissionType::Move);
 }
 
-/// Case 7's body (`0x006B78D3..0x006B7953`), also the constructor's: a new
-/// child in limbo, flagged by the pool type, with the owner as its SpawnOwner.
+/// Case 7's body (`0x006B78D3..0x006B7953`), also the constructor's
+/// (`0x006B6D3C..0x006B6DA1`): a new child in limbo, flagged by the pool type,
+/// with the owner as its SpawnOwner.
 fn fill_slot(host: &mut impl SpawnHost, index: usize) {
-    // RESIDUAL: the original assumes CreateObject succeeds; a VERA
+    // RESIDUAL: case 7 assumes CreateObject succeeds and the constructor
+    // leaves out a node whose CreateObject fails (`0x006B6D5A`); a VERA
     // construction that fails leaves the slot regenerating for the next pass.
+    // Trigger: a `Spawns=` type VERA cannot construct (none in retail).
     let Some(child) = host.create_child() else {
         return;
     };
@@ -554,7 +564,7 @@ fn recall(host: &mut impl SpawnHost, child: u64) {
 /// The manager status after the node walk (`0x006B796A..`).
 fn manager_status(host: &mut impl SpawnHost, frame: i32) {
     use SpawnSlotState::*;
-    match host.manager().mode {
+    match host.manager_ref().mode {
         SpawnManagerMode::Idle => {
             let Some(target) = host.manager().promote_queued_target() else {
                 return;
@@ -566,7 +576,7 @@ fn manager_status(host: &mut impl SpawnHost, frame: i32) {
             host.manager().mode = SpawnManagerMode::Launching;
         }
         SpawnManagerMode::Launching => {
-            let manager = host.manager();
+            let manager = host.manager_ref();
             if manager.current_target.is_none() {
                 clear_all_targets(host);
                 return;
@@ -580,15 +590,15 @@ fn manager_status(host: &mut impl SpawnHost, frame: i32) {
             }
             let mut pushed = false;
             let mut index = 0;
-            while index < host.manager().slots.len() {
-                let slot = host.manager().slots[index].clone();
+            while index < host.manager_ref().slots.len() {
+                let slot = host.manager_ref().slots[index].clone();
                 index += 1;
                 let Some(child) = slot.spawn.filter(|_| slot.state == InFlight) else {
                     continue;
                 };
-                let target = host.manager().current_target;
+                let target = host.manager_ref().current_target;
                 if !host.child_missile_spawn(child) {
-                    host.manager().slots[index - 1].state = ReturningToDock;
+                    host.manager().slots[index - 1].state = Attacking;
                     host.assign_target(child, target);
                     host.queue_mission(child, MissionType::Attack);
                     continue;
@@ -616,7 +626,7 @@ fn manager_status(host: &mut impl SpawnHost, frame: i32) {
             if !manager
                 .slots
                 .iter()
-                .any(|slot| matches!(slot.state, ReturningToDock | LandingAtDock))
+                .any(|slot| matches!(slot.state, Attacking | ComingHome))
             {
                 manager.mode = SpawnManagerMode::Idle;
             }
@@ -644,8 +654,9 @@ fn manager_status(host: &mut impl SpawnHost, frame: i32) {
 fn pointer_expired(host: &mut impl SpawnHost, expired: u64) {
     let frame = host.frame();
     let expired_target = Some(TargetKind::Entity(expired));
-    let manager = host.manager();
+    let manager = host.manager_ref();
     if manager.current_target == expired_target {
+        let manager = host.manager();
         manager.current_target = None;
         if manager.queued_target.is_none() {
             clear_all_targets(host);
@@ -653,7 +664,7 @@ fn pointer_expired(host: &mut impl SpawnHost, expired: u64) {
         return;
     }
     if manager.queued_target == expired_target {
-        manager.queued_target = None;
+        host.manager().queued_target = None;
         return;
     }
     if let Some(index) = manager
@@ -691,8 +702,8 @@ fn pointer_expired(host: &mut impl SpawnHost, expired: u64) {
 /// once and its missile flies on under the tracker.
 fn clear_all_targets(host: &mut impl SpawnHost) {
     let mut index = 0;
-    while index < host.manager().slots.len() {
-        let slot = host.manager().slots[index].clone();
+    while index < host.manager_ref().slots.len() {
+        let slot = host.manager_ref().slots[index].clone();
         index += 1;
         let Some(child) = slot
             .spawn
@@ -703,10 +714,10 @@ fn clear_all_targets(host: &mut impl SpawnHost) {
         if !host.child_missile_spawn(child) {
             continue;
         }
-        let target = host.manager().current_target;
+        let target = host.manager_ref().current_target;
         host.push(child, target);
         host.restart_kamikaze();
-        if let Some(child) = host.manager().slots[index - 1].spawn {
+        if let Some(child) = host.manager_ref().slots[index - 1].spawn {
             pointer_expired(host, child);
         }
     }
@@ -736,10 +747,10 @@ fn kill_all_spawns(host: &mut impl SpawnHost) {
     let duration = if host.owner_health() > 0 && host.owner_is_alive() {
         0
     } else {
-        host.manager().regen_rate as i32
+        host.manager_ref().regen_rate as i32
     };
-    for index in (0..host.manager().slots.len()).rev() {
-        let slot = host.manager().slots[index].clone();
+    for index in (0..host.manager_ref().slots.len()).rev() {
+        let slot = host.manager_ref().slots[index].clone();
         match (slot.state, slot.spawn) {
             (Regenerating, _) => continue,
             (ReadyDocked | Reloading, child) => {
@@ -757,9 +768,9 @@ fn kill_all_spawns(host: &mut impl SpawnHost) {
                     host.uninit(child);
                 }
             }
-            (InFlight | ReturningToDock | LandingAtDock, child) => {
+            (InFlight | Attacking | ComingHome, child) => {
                 host.manager().slots[index].state = Regenerating;
-                let target = host.manager().current_target;
+                let target = host.manager_ref().current_target;
                 if let Some(child) = child {
                     host.push(child, target);
                 }
@@ -799,17 +810,25 @@ pub fn commit_spawn_manager_pool(sim: &mut Simulation, owner_id: u64, rules: &Ru
     let Some(mut host) = WorldSpawn::new(sim, owner_id, UninitContext::with_rules(rules)) else {
         return;
     };
-    for index in 0..host.manager().slots.len() {
-        if host.manager().slots[index].spawn.is_none() {
+    for index in 0..host.manager_ref().slots.len() {
+        if host.manager_ref().slots[index].spawn.is_none() {
             fill_slot(&mut host, index);
         }
     }
 }
 
 /// [`pointer_expired`] for one listening manager, from
-/// `TechnoClass::PointerExpired`'s forward (`0x00707B24`,
-/// control-insensitive). The owner arm, its own announce, runs earlier
-/// through [`owner_pointer_expired`], so this skips it.
+/// `TechnoClass::PointerExpired`'s forward (`0x00707B19..0x00707B24`), which
+/// sits outside the control test, so a cloak's `Detach_All(0)` reaches it as
+/// a Destroy or UnInit does.
+///
+/// Every object joins the expiry roster in `ObjectClass::Constructor @
+/// 0x005F3900` (append `0x005F3A85..0x005F3A8B`) and the announce loop
+/// (`0x00725947..0x0072595F`) does not skip the announcer, so a spawner's own
+/// expiry reaches the owner arm at its roster slot: at its Destroy and its
+/// UnInit, a live spawner's Limbo (`0x005F4D61`) and each cloak broadcast. A
+/// live owner's docked children UnInit and its slots regenerate at once
+/// (`Kill_All_Spawns`); the next AI pass rebuilds them.
 pub fn notify_pointer_expired(
     sim: &mut Simulation,
     listener_id: u64,
@@ -817,47 +836,16 @@ pub fn notify_pointer_expired(
     rules: Option<&RuleSet>,
     registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
 ) {
-    if listener_id == expired_id {
-        return;
-    }
     if let Some(mut host) = WorldSpawn::new(sim, listener_id, UninitContext::new(rules, registry)) {
         pointer_expired(&mut host, expired_id);
     }
 }
 
-/// [`pointer_expired`]'s owner arm (`0x006B7CBC`) for a spawner whose own
-/// pointer expires, at its Destroy's announce and its UnInit:
-/// Kill_All_Spawns, then ClearAllTargets.
-///
-/// Every object joins the expiry roster in `ObjectClass::Constructor @
-/// 0x005F3900` (append `0x005F3A85..0x005F3A8B`) and the announce loop
-/// (`0x00725947`) does not skip the announcer, so the dying owner's own
-/// `TechnoClass::PointerExpired` reaches its SpawnManager forward
-/// (`0x00707B24`); [`notify_pointer_expired`] therefore skips the owner.
-///
-/// RESIDUAL: VERA runs this self-visit ahead of the listener walk; native
-/// reaches it at the owner's roster slot, after the listeners before it.
-/// Trigger: a spawner dies while a lower-roster listener targets it, and
-/// either another listener targets one of its missiles still in the
-/// post-launch window or one of its Hornets is airborne. Effect: that
-/// listener's passive-scan re-arm draw (`RandomRanged(4,8)` at `0x00707A0D`)
-/// moves after the missile's re-arm or the Hornets' Crash spin draws on the
-/// Scenario stream. Frequency: occasional — any Carrier sunk under attack
-/// with its wing out. Risk: Scenario-stream order only.
-pub(crate) fn owner_pointer_expired(
-    sim: &mut Simulation,
-    owner_id: u64,
-    context: UninitContext<'_>,
-) {
-    if let Some(mut host) = WorldSpawn::new(sim, owner_id, context) {
-        pointer_expired(&mut host, owner_id);
-    }
-}
-
 /// [`clear_all_targets`] for one owner. Native callers besides the manager's
-/// own bodies: the owner's target scan, Stun, the EventClass execute and
-/// Fire_At_Target. The rules-less UnInit adapters (tests and fixtures only)
-/// find no `MissileSpawn=` child, so only the clear runs.
+/// own bodies: the owner's target scan and Stun, both wired; the EventClass
+/// execute of a Stop (`0x004C762A..0x004C7634`) and Fire_At_Target, not
+/// wired. The rules-less UnInit adapters (tests and fixtures only) find no
+/// `MissileSpawn=` child, so only the clear runs.
 pub(crate) fn clear_all_spawn_targets(
     sim: &mut Simulation,
     owner_id: u64,
@@ -870,11 +858,9 @@ pub(crate) fn clear_all_spawn_targets(
 }
 
 /// [`kill_all_spawns`] for one owner. Native callers, and which are wired:
-/// - `SpawnManagerClass::PointerExpired(owner)` — WIRED through
-///   [`owner_pointer_expired`] at the killing hit's Destroy broadcast and
-///   again at UnInit. Conceal's Destroy(1) broadcast would reach it too;
-///   VERA's conceal does not run it (RESIDUAL, see
-///   `object_conceal_with_context`).
+/// - `SpawnManagerClass::PointerExpired(owner)` — WIRED: every broadcast of
+///   the owner's own expiry reaches it at the owner's roster slot
+///   ([`notify_pointer_expired`]).
 /// - `TechnoClass::ChangeOwner` (`0x0070157E`) — WIRED, via
 ///   `Simulation::change_owner`; this is the mind-control path.
 /// - `TemporalClass::InitiateWarp` (`0x0071AF39`) — WIRED, via
@@ -945,8 +931,23 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .expect("a spawn manager keeps its owner for the call")
     }
 
+    fn manager_ref(&self) -> &SpawnManagerState {
+        self.sim
+            .substrate
+            .entities
+            .get(self.owner_id)
+            .and_then(|owner| owner.spawn_manager.as_ref())
+            .expect("a spawn manager keeps its owner for the call")
+    }
+
     fn is_owner(&self, id: u64) -> bool {
         id == self.owner_id
+    }
+
+    fn pool_is_cmisl(&self) -> bool {
+        self.context
+            .rules()
+            .is_some_and(|rules| cmisl_pool(self.sim, rules, self.manager_ref().spawn_type))
     }
 
     fn owner_is_moving(&mut self) -> bool {
@@ -1366,16 +1367,20 @@ fn launch_coordinate(
         y: fire.coord.y,
         z: fire.coord.z.wrapping_add(LAUNCH_Z_LIFT_LEPTONS),
     };
-    // Native tests the pool's spawn type pointer against Rules' CMislType
-    // once (`0x006B74BC`); a type name names one type, so the name compare is
-    // that test.
-    if sim
-        .interner
-        .resolve(spawn_type)
-        .eq_ignore_ascii_case(&rules.missile_spawn.cmisl.type_name)
-    {
+    if cmisl_pool(sim, rules, spawn_type) {
         coord.x = coord.x.wrapping_sub(CMISL_LAUNCH_OFFSET_LEPTONS[0]);
         coord.y = coord.y.wrapping_sub(CMISL_LAUNCH_OFFSET_LEPTONS[1]);
     }
     Some(coord)
+}
+
+/// The pool's spawn type pointer against Rules' `CMislType=`, which case 0
+/// tests for the launch offset (`0x006B74BC`) and for `V3TAKOFF`
+/// (`0x006B7513`); a type name names one type, so the name compare is that
+/// test. It stays separate from the family the pool's flag and kamikaze wait
+/// read, so a mod whose CMislType is also its V3 or DMisl type keeps both.
+fn cmisl_pool(sim: &Simulation, rules: &RuleSet, spawn_type: InternedId) -> bool {
+    sim.interner
+        .resolve(spawn_type)
+        .eq_ignore_ascii_case(&rules.missile_spawn.cmisl.type_name)
 }

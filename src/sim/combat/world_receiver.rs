@@ -2744,11 +2744,16 @@ fn admit_attacker_fire<'r>(
                     uncloak_to_fire(world, rules, obj, snap.stable_id, sound_enabled);
                 }
             }
-            // RESIDUAL: case 6 (`0x00737054`) also clears a spawner's targets
-            // (`SpawnManagerClass 0x006B7BB0`), not ported. Trigger: a V3,
-            // Dreadnought, Boomer or Carrier whose shot is CANT (EMP,
-            // paralysis, a bridge beside it). Effect: its launched spawns keep
-            // their target. Frequency: rare. Downstream: spawn targeting only.
+            // Case 6 (`0x00737054`): a CANT shot clears a spawner's targets
+            // (`SpawnManagerClass::ClearAllTargets 0x006B7BB0`).
+            fire_error::FireError::Cant => {
+                crate::sim::spawn_manager::clear_all_spawn_targets(
+                    world,
+                    snap.stable_id,
+                    Some(rules),
+                    overlay_registry,
+                );
+            }
             _ => {}
         },
         EntityCategory::Infantry => {

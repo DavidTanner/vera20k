@@ -2466,13 +2466,10 @@ impl Simulation {
         // The Foot prelude (`0x004D9744`) leaves the object's team, before
         // Limbo is set, so the object still takes its idle mode.
         self.leave_team(stable_id, false, context.rules());
-        // RESIDUAL: this Detach_All(1) (`0x005F4D61`) also visits the concealed
-        // object itself, so native runs the SpawnManager owner arm on a live
-        // spawner's Limbo: docked children UnInit with a zero regen timer, and
-        // airborne ones turn kamikaze on the wing's target (`0x006B7100`). VERA
-        // skips `spawn_manager::owner_pointer_expired` here. Trigger: a
-        // spawner limboed alive. Effect: its wing survives the Limbo.
-        // Frequency: rare in stock. Risk: spawn-pool timing only.
+        // This Detach_All(1) (`0x005F4D61`) also visits the concealed object
+        // itself, so a live spawner's Limbo runs its SpawnManager's owner arm:
+        // docked children UnInit with a zero regen timer, and airborne ones
+        // turn kamikaze on the wing's target (`0x006B7100`).
         self.notify_pointer_expired(stable_id, context);
 
         if self.unmark_entity_remove(stable_id, context) {
@@ -2826,7 +2823,6 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::DestroyDeselected { stable_id });
 
-        crate::sim::spawn_manager::owner_pointer_expired(self, stable_id, context);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::DestroyNotifyBoundary { stable_id });
         self.notify_pointer_expired(stable_id, context);
@@ -4156,7 +4152,6 @@ impl Simulation {
 
         self.run_represented_uninit_pre_hook(stable_id);
         self.uninit_carried_passengers(stable_id, context);
-        crate::sim::spawn_manager::owner_pointer_expired(self, stable_id, context);
 
         #[cfg(test)]
         {

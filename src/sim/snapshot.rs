@@ -7122,7 +7122,7 @@ mod tests {
                 },
             ],
             update_timer: CdTimer::default(),
-            reload_timer: CdTimer::default(),
+            spawn_timer: CdTimer::default(),
             current_target: Some(TargetKind::Entity(target)),
             queued_target: Some(TargetKind::Entity(target)),
             mode: SpawnManagerMode::Launching,

@@ -62,8 +62,8 @@ fn slot_state(status: i32) -> SpawnSlotState {
         0 => ReadyDocked,
         1 => KamikazeWait,
         2 => InFlight,
-        3 => ReturningToDock,
-        4 => LandingAtDock,
+        3 => Attacking,
+        4 => ComingHome,
         6 => Reloading,
         7 => Regenerating,
         other => panic!("node status {other}"),
@@ -76,8 +76,8 @@ fn status_of(state: SpawnSlotState) -> i32 {
         ReadyDocked => 0,
         KamikazeWait => 1,
         InFlight => 2,
-        ReturningToDock => 3,
-        LandingAtDock => 4,
+        Attacking => 3,
+        ComingHome => 4,
         Reloading => 6,
         Regenerating => 7,
     }
@@ -160,7 +160,7 @@ impl<'a> Replay<'a> {
                 .unwrap_or(0),
             slots,
             update_timer: timer(&manager["update_timer"]),
-            reload_timer: timer(&manager["spawn_timer"]),
+            spawn_timer: timer(&manager["spawn_timer"]),
             current_target: target(&manager["target"]),
             queued_target: target(&manager["new_target"]),
             mode: mode_of(int(&manager["status"])),
@@ -252,7 +252,7 @@ impl<'a> Replay<'a> {
             "target": target_name(manager.current_target),
             "new_target": target_name(manager.queued_target),
             "update_timer": pair(manager.update_timer),
-            "spawn_timer": pair(manager.reload_timer),
+            "spawn_timer": pair(manager.spawn_timer),
             "nodes": manager.slots.iter().map(|slot| json!({
                 "unit": name(slot.spawn),
                 "status": status_of(slot.state),
@@ -280,8 +280,18 @@ impl SpawnHost for Replay<'_> {
         &mut self.manager
     }
 
+    fn manager_ref(&self) -> &SpawnManagerState {
+        &self.manager
+    }
+
     fn is_owner(&self, id: u64) -> bool {
         id == OWNER
+    }
+
+    /// The oracle points Rules' CMislType at the pool's type for a `cmisl`
+    /// row only.
+    fn pool_is_cmisl(&self) -> bool {
+        self.row["input"]["family"].as_str() == Some("cmisl")
     }
 
     fn owner_is_moving(&mut self) -> bool {

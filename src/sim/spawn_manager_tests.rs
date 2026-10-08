@@ -4,10 +4,10 @@
 //! the update-timer gate (negative half only), the `Spawner=yes` fire
 //! hand-off, the missile launch path (stationary gate, kamikaze window, flight
 //! speed), the impact damage, both `Kill_All_Spawns` entry points, and the
-//! aircraft dock (`LandingAtDock` → `Reloading` → `ReadyDocked`).
+//! aircraft dock (`ComingHome` → `Reloading` → `ReadyDocked`).
 //!
 //! NOT covered here: the slot's `Regenerating` → `ReadyDocked` rebuild after
-//! `SpawnRegenRate`, the `ReturningToDock` → `LandingAtDock` hand-off, and the
+//! `SpawnRegenRate`, the `Attacking` → `ComingHome` hand-off, and the
 //! update timer's positive edge.
 
 #![cfg(test)]
@@ -1043,6 +1043,107 @@ fn v3_attack_order_damages_the_target_through_the_spawned_rocket() {
     // the attacker.
 }
 
+/// `TechnoClass::AI` runs the SpawnManager (`0x006FA94C`) inside the Unit's
+/// `FootClass::AI` (`0x0073647B`), before `UnitClass::AI`'s Fire_At_Target
+/// (`0x007365E1`): when a V3's manager pass falls on the frame it fires, the
+/// target its fire hands over stays queued until the next pass.
+#[test]
+fn a_v3s_fire_reaches_its_manager_at_the_next_pass() {
+    let rules = make_spawner_rules();
+    let mut sim = missile_sim();
+    let v3 = sim
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
+        .expect("spawn V3");
+    let target = sim
+        .spawn_object("FRAGILE", "Yuri", 16, 10, 0, &rules)
+        .expect("spawn FRAGILE");
+    sim.substrate.entities.get_mut(v3).unwrap().attack_target =
+        Some(crate::sim::combat::AttackTarget::new(target));
+    // A manager pass on every frame.
+    let tick = |sim: &mut Simulation| {
+        sim.substrate
+            .entities
+            .get_mut(v3)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap()
+            .update_timer = CdTimer::default();
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        sim.substrate
+            .entities
+            .get(v3)
+            .and_then(|e| e.spawn_manager.clone())
+            .unwrap()
+    };
+
+    let fired = (0..300)
+        .map(|_| tick(&mut sim))
+        .find(|manager| manager.queued_target.is_some() || manager.current_target.is_some())
+        .expect("the V3 fires");
+    assert_eq!(fired.update_timer.duration(), 10, "the frame's pass ran");
+    assert_eq!(fired.queued_target, Some(TargetKind::Entity(target)));
+    assert_eq!(fired.current_target, None, "the pass ran before the fire");
+    assert_eq!(fired.mode, SpawnManagerMode::Idle);
+
+    let next = tick(&mut sim);
+    assert_eq!(next.current_target, Some(TargetKind::Entity(target)));
+    assert_eq!(next.mode, SpawnManagerMode::Launching);
+}
+
+/// The announce loop (`0x00725947..0x0072595F`) visits the announcer too, and
+/// `TechnoClass::PointerExpired`'s SpawnManager forward
+/// (`0x00707B19..0x00707B24`) ignores the control: a live V3's own
+/// Detach_All — a cloak's here — takes the owner arm, which UnInits its
+/// docked missile and regenerates the slot at once; the next pass builds a
+/// new missile whose SpawnOwner is the V3.
+#[test]
+fn a_live_spawners_own_expiry_rebuilds_its_docked_missile() {
+    let rules = make_spawner_rules();
+    let mut sim = missile_sim();
+    let v3 = sim
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
+        .expect("spawn V3");
+    let manager = |sim: &Simulation| {
+        sim.substrate
+            .entities
+            .get(v3)
+            .and_then(|e| e.spawn_manager.clone())
+            .unwrap()
+    };
+    let docked = manager(&sim).slots[0].spawn.expect("a docked missile");
+
+    sim.detach_all_pointer_expired(v3, &rules, None);
+    assert!(
+        sim.substrate
+            .entities
+            .get(docked)
+            .is_none_or(|c| c.dying || !c.lifecycle.object_alive),
+        "the docked missile UnInits"
+    );
+    let frame = sim.session.binary_frame as i32;
+    let slot = manager(&sim).slots[0].clone();
+    assert_eq!(slot.spawn, None);
+    assert_eq!(slot.state, SpawnSlotState::Regenerating);
+    assert_eq!(
+        slot.timer,
+        CdTimer::started(frame, 0),
+        "a live owner waits no SpawnRegenRate"
+    );
+
+    sim.substrate
+        .entities
+        .get_mut(v3)
+        .and_then(|e| e.spawn_manager.as_mut())
+        .unwrap()
+        .update_timer = CdTimer::default();
+    spawn_manager_ai(&mut sim, &rules, v3, None);
+    let rebuilt = manager(&sim).slots[0].spawn.expect("the slot is rebuilt");
+    assert_ne!(rebuilt, docked);
+    assert_eq!(
+        sim.substrate.entities.get(rebuilt).unwrap().spawn_owner_id,
+        Some(v3)
+    );
+}
+
 #[test]
 fn owner_death_destroys_docked_children() {
     let rules = make_spawner_rules();
@@ -1073,10 +1174,11 @@ fn owner_death_destroys_docked_children() {
     }
 }
 
-/// `ObjectClass::ReceiveDamage`'s exact-zero Destroy (`0x005F57AF`) visits the
-/// dying owner itself, and its SpawnManager forward (`0x00707B24`) takes the
-/// owner arm (`0x006B7CBC`): the docked children are UnInit'd at the killing
-/// hit, ahead of the owner's own expiry broadcast and its UnInit.
+/// `ObjectClass::ReceiveDamage`'s exact-zero Destroy (`0x005F57AF`) announces
+/// the owner's expiry; the announce loop (`0x00725947`) visits the dying owner
+/// itself, and its SpawnManager forward (`0x00707B24`) takes the owner arm
+/// (`0x006B7CBC`): the docked children are UnInit'd inside the killing hit's
+/// broadcast, before the owner's UnInit.
 #[test]
 fn a_killing_hit_destroys_docked_children_at_the_destroy() {
     use crate::sim::world::LifecycleTestEvent;
@@ -1128,11 +1230,10 @@ fn a_killing_hit_destroys_docked_children_at_the_destroy() {
     for child in children {
         let child_uninit = uninit_of(child).expect("Kill_All_Spawns UnInits the docked child");
         assert!(
-            child_uninit < owner_destroy,
-            "the owner arm runs inside the Destroy, before its expiry broadcast"
+            owner_destroy < child_uninit && child_uninit < owner_uninit,
+            "the owner arm runs in the Destroy's broadcast, before the owner's UnInit"
         );
     }
-    assert!(owner_destroy < owner_uninit);
 }
 
 #[test]
@@ -1465,8 +1566,8 @@ fn gsi_13_07_count_docked_spawns_accepts_only_states_zero_and_six() {
         (SpawnSlotState::ReadyDocked, 1),
         (SpawnSlotState::KamikazeWait, 0),
         (SpawnSlotState::InFlight, 0),
-        (SpawnSlotState::ReturningToDock, 0),
-        (SpawnSlotState::LandingAtDock, 0),
+        (SpawnSlotState::Attacking, 0),
+        (SpawnSlotState::ComingHome, 0),
         (SpawnSlotState::Reloading, 1),
         (SpawnSlotState::Regenerating, 0),
     ] {
@@ -1702,7 +1803,7 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
             // The launch pacing between Hornets.
-            manager.reload_timer = CdTimer::default();
+            manager.spawn_timer = CdTimer::default();
         }
         spawn_manager_ai(&mut sim, &rules, carrier, None);
     }
@@ -1829,7 +1930,7 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
             .unwrap();
         manager.set_target(None);
         manager.current_target = None;
-        manager.slots[slot].state = SpawnSlotState::LandingAtDock;
+        manager.slots[slot].state = SpawnSlotState::ComingHome;
     }
     {
         let child = sim.substrate.entities.get_mut(hornet).unwrap();
@@ -2041,7 +2142,7 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
         .and_then(|e| e.spawn_manager.as_mut())
         .unwrap()
         .slots[slot]
-        .state = SpawnSlotState::ReturningToDock;
+        .state = SpawnSlotState::Attacking;
     let frame = sim.session.binary_frame as i32;
     let child = sim.substrate.entities.get_mut(hornet).unwrap();
     child.attack_target = Some(crate::sim::combat::AttackTarget::new(target));
@@ -2079,7 +2180,7 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
         .unwrap();
     assert_eq!(
         manager.slots[slot].state,
-        SpawnSlotState::LandingAtDock,
+        SpawnSlotState::ComingHome,
         "an empty Hornet is recalled"
     );
 }
@@ -2339,7 +2440,7 @@ fn retail_launches(
             .and_then(|e| e.spawn_manager.as_mut())
             .unwrap();
         manager.update_timer = CdTimer::default();
-        manager.reload_timer = CdTimer::default();
+        manager.spawn_timer = CdTimer::default();
         spawn_manager_ai(&mut sim, rules, owner, None);
         let frame = sim.session.binary_frame;
         let owner_entity = sim.substrate.entities.get(owner).unwrap();

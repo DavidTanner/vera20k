@@ -2836,7 +2836,7 @@ mod tests {
                         kamikaze_wait_frames: 0,
                         slots,
                         update_timer: CdTimer::default(),
-                        reload_timer: CdTimer::default(),
+                        spawn_timer: CdTimer::default(),
                         current_target: None,
                         queued_target: None,
                         mode: SpawnManagerMode::Idle,
