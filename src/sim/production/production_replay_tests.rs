@@ -250,7 +250,7 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
     );
     let factory = |sim: &Simulation| {
         sim.production
-            .factory_shadow
+            .factories
             .iter_insertion_ordered()
             .into_iter()
             .find(|f| f.owner == owner && f.category == ProductionCategory::Infantry)
@@ -284,12 +284,12 @@ fn derived_view_state_stays_building_on_underfunded_stall() {
     let (am, _, e1, _) = ids(&sim);
     // Arm an E1 build directly, then simulate a mid-build underfunded stall.
     sim.production
-        .factory_shadow
+        .factories
         .test_enqueue_kernel(am, ProductionCategory::Infantry, e1, 1, 200);
     {
         let f = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(am, ProductionCategory::Infantry)
             .expect("infantry factory armed");
         f.progress = 10;
@@ -501,7 +501,7 @@ fn economy_conservation_through_cancel_refund() {
     // P5d: the queue-of-record lives in the registry, pruned when idle).
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(am, ProductionCategory::Vehicle)
             .is_none(),
         "the cancelled active build left the Americans Vehicle factory"
@@ -526,30 +526,22 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
     let mtnk = sim.interner.intern("MTNK");
     // Arm directly (bypassing the enqueue eligibility gate) an active + one queued MTNK for
     // an owner with NO war factory -> both classify NoFactory -> PermanentlyBlocked.
-    sim.production.factory_shadow.test_enqueue_kernel(
-        am,
-        ProductionCategory::Vehicle,
-        mtnk,
-        1,
-        900,
-    );
-    sim.production.factory_shadow.test_enqueue_kernel(
-        am,
-        ProductionCategory::Vehicle,
-        mtnk,
-        2,
-        900,
-    );
+    sim.production
+        .factories
+        .test_enqueue_kernel(am, ProductionCategory::Vehicle, mtnk, 1, 900);
+    sim.production
+        .factories
+        .test_enqueue_kernel(am, ProductionCategory::Vehicle, mtnk, 2, 900);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(am, ProductionCategory::Vehicle)
             .is_some()
     );
     sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(am, ProductionCategory::Vehicle)
             .is_none(),
         "no-factory build abandoned + queued dropped -> factory pruned"
@@ -579,7 +571,7 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     let spent = {
         let f = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(am, ProductionCategory::Vehicle)
             .expect("active MTNK factory");
         assert!(
@@ -613,7 +605,7 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     );
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(am, ProductionCategory::Vehicle)
             .is_none(),
         "the abandoned factory is pruned"
@@ -634,7 +626,7 @@ fn revalidate_keeps_buildable_build_untouched() {
     }
     let view = sim
         .production
-        .factory_shadow
+        .factories
         .view(am, ProductionCategory::Vehicle)
         .expect("buildable MTNK is still building, not abandoned");
     assert!(
@@ -725,7 +717,7 @@ fn retail_builds_step_at_the_native_frames() {
 
         let factory_state = |sim: &Simulation| {
             sim.production
-                .factory_shadow
+                .factories
                 .iter_insertion_ordered()
                 .into_iter()
                 .find(|f| f.owner == owner && f.category == category)

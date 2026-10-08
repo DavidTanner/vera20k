@@ -1015,7 +1015,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         let mut sim = retail_world(&rules, &terrain_rules);
         let owner = sim.interner.intern("Americans");
         let unit_type = sim.interner.intern("MTNK");
-        assert!(sim.production.factory_shadow.test_enqueue_kernel(
+        assert!(sim.production.factories.test_enqueue_kernel(
             owner,
             ProductionCategory::Vehicle,
             unit_type,
@@ -1123,7 +1123,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         }
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let prior_rng = sim.rng_state();
@@ -1241,7 +1241,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         production::release_delivered_mobile(&mut sim, &rules, owner, ProductionCategory::Vehicle);
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .view(owner, ProductionCategory::Vehicle)
                 .is_none_or(|factory| factory.object.is_none()),
             "{name}: successful caller releases its held identity"

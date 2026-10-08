@@ -212,7 +212,7 @@ pub struct ProductionState {
     /// enqueue/cancel/delivery (no `queues_by_owner` mirror); serialized + hashed. Its
     /// per-step charge runs against the real wallet via
     /// `step_all` at the Phase-7 head, before the house tail (C1).
-    pub factory_shadow: FactoryRegistry,
+    pub factories: FactoryRegistry,
 }
 
 impl ProductionState {
@@ -293,7 +293,7 @@ impl Default for ProductionState {
             terrain_occupation_bits: BTreeMap::new(),
             tiberium_spawning_terrain_cells: BTreeSet::new(),
             airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks::default(),
-            factory_shadow: FactoryRegistry::default(),
+            factories: FactoryRegistry::default(),
         }
     }
 }

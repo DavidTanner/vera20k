@@ -269,7 +269,7 @@ fn rally_entry(
             && !entity.lifecycle.in_limbo;
         let candidate = standing
             || (house.difficulty == HouseDifficulty::Hard
-                && sim.production.factory_shadow.is_building(id));
+                && sim.production.factories.is_building(id));
         let ty = rules.object(sim.interner.resolve(entity.type_ref()));
         (candidate, rally_value(entity.category, ty, rules, house))
     } else {

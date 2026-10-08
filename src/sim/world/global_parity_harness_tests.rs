@@ -99,8 +99,8 @@ pub(super) fn record_replay_diagnostic(
             "power_states":sim.power_states.iter().map(|(owner,state)|serde_json::json!({
                 "owner":sim.resolve(*owner),"state":state,
             })).collect::<Vec<_>>(),
-            "factory_count":sim.production.factory_shadow.len(),
-            "factories":sim.production.factory_shadow.holders_insertion_ordered().into_iter()
+            "factory_count":sim.production.factories.len(),
+            "factories":sim.production.factories.holders_insertion_ordered().into_iter()
                 .map(|(holder,factory)|serde_json::json!({"holder":holder,"factory":factory})).collect::<Vec<_>>(),
         },
     });

@@ -993,7 +993,7 @@ impl Simulation {
     /// three states + the Option presence tags fold distinctly, consistent with the
     /// rest of this file.
     fn hash_factory_registry(&self, hasher: &mut impl Hasher) {
-        for (holder, f) in self.production.factory_shadow.holders_insertion_ordered() {
+        for (holder, f) in self.production.factories.holders_insertion_ordered() {
             // The building that holds a computer's factory (`BuildingClass+0x524`);
             // a House's factory folds as earlier schemas did.
             if let crate::sim::production::FactoryHolder::Building(building) = holder {

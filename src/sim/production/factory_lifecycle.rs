@@ -59,10 +59,8 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     let category = production_category_for_object(obj);
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
-    if let Some((active, held, finished)) = sim
-        .production
-        .factory_shadow
-        .active_object(owner_id, category)
+    if let Some((active, held, finished)) =
+        sim.production.factories.active_object(owner_id, category)
         && active == type_interned
         && (held || finished)
     {
@@ -77,7 +75,7 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
             time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
         let frame = sim.session.binary_frame;
         sim.production
-            .factory_shadow
+            .factories
             .resume(owner_id, category, time_to_build, frame);
         return true;
     }
@@ -86,7 +84,7 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     }
     let enqueue_order = sim.production.next_enqueue_order;
     let cost = sim.cost_of(owner_id, obj, rules);
-    let outcome = sim.production.factory_shadow.enqueue(
+    let outcome = sim.production.factories.enqueue(
         owner_id,
         category,
         type_interned,
@@ -119,9 +117,7 @@ pub fn suspend_production(sim: &mut Simulation, owner: &str, category: Productio
         return false;
     };
     let frame = sim.session.binary_frame;
-    sim.production
-        .factory_shadow
-        .suspend(owner_id, category, frame)
+    sim.production.factories.suspend(owner_id, category, frame)
 }
 
 /// Start the build an active factory head holds. `HouseClass::Begin_Production
@@ -154,7 +150,7 @@ pub(super) fn start_active_production(
 ) -> Option<u64> {
     let (owner_id, category) = sim
         .production
-        .factory_shadow
+        .factories
         .factory(holder)
         .map(|factory| (factory.owner, factory.category))?;
     let obj = sim.object_type(type_id, rules)?;
@@ -166,7 +162,7 @@ pub(super) fn start_active_production(
     let stable_id = sim.construct_object_limbo_at_height(&type_name, &owner, 0, 0, 0, 0, rules)?;
     let linked = sim
         .production
-        .factory_shadow
+        .factories
         .link_active_entity(holder, stable_id);
     if linked != Some(stable_id) {
         let _ = sim.discard_constructed_limbo(stable_id, Some(rules));
@@ -175,7 +171,7 @@ pub(super) fn start_active_production(
     let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
     let frame = sim.session.binary_frame;
     sim.production
-        .factory_shadow
+        .factories
         .start_rate(holder, time_to_build, frame);
     Some(stable_id)
 }
@@ -258,7 +254,7 @@ pub fn cancel_by_type_for_owner(
     let type_interned = sim.interner.intern(type_id);
     let outcome = sim
         .production
-        .factory_shadow
+        .factories
         .cancel_one(owner_id, category, type_interned, all);
     match outcome {
         CancelOutcome::NoMatch => return false,
@@ -271,7 +267,7 @@ pub fn cancel_by_type_for_owner(
             advance_after_delivery(sim, rules, owner_id, category);
         }
     }
-    sim.production.factory_shadow.prune_all_idle();
+    sim.production.factories.prune_all_idle();
     true
 }
 
@@ -307,13 +303,13 @@ fn advance_after_delivery(
 ) {
     let next_cost = sim
         .production
-        .factory_shadow
+        .factories
         .peek_next_queued(owner_id, category)
         .and_then(|t| sim.object_type(t, rules))
         .map_or(0, |object| sim.cost_of(owner_id, object, rules));
     let promoted = sim
         .production
-        .factory_shadow
+        .factories
         .clear_active_and_advance(owner_id, category, next_cost);
     if let Some(type_id) = promoted {
         start_active_production(
@@ -331,7 +327,7 @@ pub(super) fn active_entity_id(
     category: ProductionCategory,
 ) -> Option<u64> {
     sim.production
-        .factory_shadow
+        .factories
         .view(owner_id, category)
         .and_then(|view| view.object.and_then(|object| object.entity_id))
         .filter(|&stable_id| sim.substrate.entities.contains(stable_id))
@@ -374,7 +370,7 @@ pub(super) fn publish_completion(
 ) {
     let Some(type_id) = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .and_then(|view| view.object.map(|object| object.type_id))
     else {
@@ -382,7 +378,7 @@ pub(super) fn publish_completion(
     };
     if !sim
         .production
-        .factory_shadow
+        .factories
         .account_completed_object_once(owner, category)
     {
         return;
@@ -411,7 +407,7 @@ pub(in crate::sim) fn release_delivered_mobile(
 ) {
     if let Some(object) = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .and_then(|view| view.object)
     {
@@ -455,7 +451,7 @@ pub(super) fn refund_failed_delivery(
 ) {
     let type_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .and_then(|view| view.object.map(|object| object.type_id));
     if let Some(type_id) = type_id {
@@ -499,11 +495,7 @@ pub(super) fn ready_object(
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<ReadyFactoryObject> {
-    let object = sim
-        .production
-        .factory_shadow
-        .view(owner, category)?
-        .object?;
+    let object = sim.production.factories.view(owner, category)?.object?;
     if object.type_id != type_id {
         return None;
     }
@@ -533,7 +525,7 @@ pub(in crate::sim) fn construct_active_factory_fixture(
 /// Revalidate before the charge sweep at its existing frame phase. Dispose all
 /// abandoned objects before starting any promoted ones.
 pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules: &RuleSet) {
-    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
+    let mut registry = std::mem::take(&mut sim.production.factories);
     // P6: prereq/factory-loss revalidation BEFORE the charge sweep. Builds whose
     // prerequisites or producing factory were lost are abandoned and refunded
     // + now-unbuildable queued items dropped, so a freshly-abandoned factory is not
@@ -547,14 +539,14 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
     for (owner, type_id) in lifecycle.abandoned_finished {
         remove_ready_entry(sim, owner, type_id);
     }
-    sim.production.factory_shadow = registry;
+    sim.production.factories = registry;
     for (owner, category, type_id) in lifecycle.promoted {
         start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
             .expect("validated revalidation promotion must construct one Techno");
     }
-    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
+    let mut registry = std::mem::take(&mut sim.production.factories);
     registry.step_all(&mut sim.houses, sim.session.binary_frame);
-    sim.production.factory_shadow = registry;
+    sim.production.factories = registry;
 }
 
 /// House508D88 invokes the existing Factory rate owner after power changes.
@@ -563,9 +555,9 @@ pub(in crate::sim) fn refresh_factory_rates_for_house(
     rules: &RuleSet,
     owner: InternedId,
 ) {
-    let mut registry = std::mem::take(&mut sim.production.factory_shadow);
+    let mut registry = std::mem::take(&mut sim.production.factories);
     registry.refresh_rates_for_house(sim, rules, owner);
-    sim.production.factory_shadow = registry;
+    sim.production.factories = registry;
 }
 
 /// A saved relationship that the live factory operations cannot publish.
@@ -611,7 +603,7 @@ pub(crate) fn validate_restored_factory_state(
             }
             let factory = sim
                 .production
-                .factory_shadow
+                .factories
                 .view(owner, category)
                 .ok_or_else(|| fail(owner, "ready entry has no factory"))?;
             let held = factory
@@ -627,7 +619,7 @@ pub(crate) fn validate_restored_factory_state(
     }
 
     let mut roots = BTreeSet::new();
-    for (&holder, factory) in sim.production.factory_shadow.keyed_factories() {
+    for (&holder, factory) in sim.production.factories.keyed_factories() {
         let (owner, category) = (factory.owner, factory.category);
         match holder {
             FactoryHolder::House(key_owner, key_category) => {
@@ -742,7 +734,7 @@ pub(crate) fn validate_restored_factory_state(
 
     // Restrict only factory roots: native manager pointers elsewhere can alias
     // without implying reciprocal ownership, and ordinary limbo is not a root.
-    for (_, factory) in sim.production.factory_shadow.keyed_factories() {
+    for (_, factory) in sim.production.factories.keyed_factories() {
         let owner = factory.owner;
         let Some(parent) = factory.object.as_ref().and_then(|object| object.entity_id) else {
             continue;

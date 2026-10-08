@@ -186,7 +186,7 @@ fn build_limit(
     }
     let in_production =
         sim.production
-            .factory_shadow
+            .factories
             .iter_insertion_ordered()
             .into_iter()
             .any(|factory| {

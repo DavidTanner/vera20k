@@ -4339,7 +4339,7 @@ impl Simulation {
         // the tail stamps strictly increase AND exceed the factory's `insertion_seq`, its
         // construction stamp (FIFO `push_back` of a monotonic mint: every queued build was
         // stamped after the factory was made, and a promotion keeps the factory's stamp).
-        let ordered = self.production.factory_shadow.iter_insertion_ordered();
+        let ordered = self.production.factories.iter_insertion_ordered();
         let mut prev_seq: Option<u64> = None;
         for f in &ordered {
             if let Some(p) = prev_seq {
@@ -4369,7 +4369,7 @@ impl Simulation {
 
         // (B) STATE: progress in 0..=54; balance >= 0 (the seed is non-negative, the
         // per-step ladder only decrements it, and cancel resets it to 0).
-        for f in self.production.factory_shadow.iter_insertion_ordered() {
+        for f in self.production.factories.iter_insertion_ordered() {
             debug_assert!(
                 f.progress <= PRODUCTION_STEPS,
                 "P5b (B): tick {} {:?}/{:?}: progress {} exceeds {}",
@@ -6530,10 +6530,9 @@ impl Simulation {
             // DEPENDS ON: completed live-object visits, including depot spending.
             // PRODUCES: factory charges/change flags, dock/ore updates.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
-            // factories step BEFORE the house tail `run_late_region`). The previous
-            // tick's tail reconcile prepared the registry; `step_all` charges each armed
-            // factory's per-step cost against the REAL wallet (house.economy.credits) in
-            // insertion_seq (temporal) order. Completed heads retain their
+            // factories step BEFORE the house tail `run_late_region`). `step_all`
+            // charges each armed factory's per-step cost against the REAL wallet
+            // (house.economy.credits) in insertion_seq (temporal) order. Completed heads retain their
             // change flag until the next Strip prefix; its PLACE event tail
             // releases the object and advances the queue-of-record there.
             //
