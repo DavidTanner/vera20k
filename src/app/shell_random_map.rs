@@ -317,7 +317,7 @@ pub(super) fn prepare_random_map_generation(
     let resolved_inputs = crate::map::rmg::build::ResolvedTheaterInputs::from_theater(
         &theater,
         &terrain_rules,
-        crate::map::rmg::trig::global().cloned(),
+        crate::map::retail_trig::global().cloned(),
     );
     let blocks =
         crate::map::rmg::theater_blocks::TheaterTileBlocks::build(&theater.lookup, |name| {

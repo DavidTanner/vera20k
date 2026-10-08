@@ -2321,7 +2321,7 @@ pub(crate) fn load_map_initial_with_assets(
     // sine/cosine table.  Install it before selecting the map source: explicit
     // `[Tubes]` are valid in ordinary .map/.mpr/.mmx content, not just .SED
     // random maps.  OnceLock keeps repeated map loads read-only and cheap.
-    crate::map::rmg::trig::install_from_dir(&ra2_dir);
+    crate::map::retail_trig::install_from_dir(&ra2_dir);
     if !crate::map::retail_trig::wave_tables_available() {
         anyhow::bail!(
             "{} does not provide the verified gamemd sine/Acos tables required by stock Sonic Wave simulation",
@@ -2381,7 +2381,7 @@ pub(crate) fn load_map_initial_with_assets(
         let resolved = crate::map::rmg::build::ResolvedTheaterInputs::from_theater(
             &theater,
             &terrain_rules,
-            crate::map::rmg::trig::global().cloned(),
+            crate::map::retail_trig::global().cloned(),
         );
 
         // Tile-block layouts (sub-cell height/terrain grids) from the theater's
@@ -3490,7 +3490,7 @@ mod random_map_retail_tests {
         };
         // The .SED lives in a scratch directory, while verified native tables
         // belong to the retail install, like the AssetManager supplied below.
-        crate::map::rmg::trig::install_from_dir(&ra2);
+        crate::map::retail_trig::install_from_dir(&ra2);
 
         let mut structures_placed = 0usize;
         let mut configurations = 0usize;

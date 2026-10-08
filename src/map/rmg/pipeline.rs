@@ -66,7 +66,7 @@ pub struct PipelineInputs<'a> {
     /// The resolved `NeutralTechBuildings` list.
     pub tech_types: &'a [TechType],
     /// The generator's sine table, for the river's heading.
-    pub trig: Option<&'a super::trig::TrigTable>,
+    pub trig: Option<&'a crate::map::retail_trig::TrigTable>,
 
     // Scalars from the `.SED` options / MapSeed / RMGMD settings.
     pub map_type: i32,
