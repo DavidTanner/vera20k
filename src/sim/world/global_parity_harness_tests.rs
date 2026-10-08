@@ -569,7 +569,10 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // drops fog_of_war. A control binary (main with a hash that skips only those
 // fields) gives this value in the same test, with every tripwire above green.
 // Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xFD14_176C_FFEF_E340;
+// Snapshot307: the session's LocalSize copy leaves the hash. A control binary
+// (main with a hash that skips only that tuple) gives this value in the same
+// test, with every tripwire above green. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x2F2B_3D24_D9FC_70E3;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

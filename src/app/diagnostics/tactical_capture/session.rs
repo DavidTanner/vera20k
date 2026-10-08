@@ -708,8 +708,6 @@ impl TacticalCaptureSession {
                     .session
                     .theater
                     .eq_ignore_ascii_case(&profile.fixture.theater)
-                && sim.session.local_width == profile.fixture.local_size.width as u16
-                && sim.session.local_height == profile.fixture.local_size.height as u16
                 && sim.session.mp_start_waypoints.len()
                     == profile.fixture.start_waypoint_count as usize,
             "live map/session identity differs from the sealed fixture"

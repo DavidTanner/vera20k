@@ -200,10 +200,6 @@ pub(crate) fn load_with_launch(
         tiberium_spreads_flag: true,
         map_width: scenario_cell_extent,
         map_height: scenario_cell_extent,
-        local_left: map.header.local_left as u16,
-        local_top: map.header.local_top as u16,
-        local_width: map.header.local_width as u16,
-        local_height: map.header.local_height as u16,
         mp_start_waypoints: waypoints::multiplayer_start_waypoints(
             bound_scenario_prefix
                 .projection()
@@ -577,10 +573,6 @@ mod retail_construction_tests {
 
         let descriptor = ScenarioDescriptor {
             seed,
-            local_left: map.header.local_left as u16,
-            local_top: map.header.local_top as u16,
-            local_width: map.header.local_width as u16,
-            local_height: map.header.local_height as u16,
             ..ScenarioDescriptor::default()
         };
         let (sim, resolved) = stage_fill_populate(

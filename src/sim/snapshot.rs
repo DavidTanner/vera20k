@@ -884,7 +884,9 @@ use crate::sim::world::Simulation;
 // 305 -> 306: OwnerVisibility keeps one byte of CellClass ground bits per cell
 // instead of the legacy counter projection and visibility marks, and
 // SightAdmission drops its fog_of_war copy. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 306;
+// 306 -> 307: ScenarioSession drops its LocalSize copy; playfield_bounds owns
+// it. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 307;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3909,7 +3911,8 @@ mod tests {
         // 303 -> 304: a Super's place in the Super timer list.
         // 304 -> 305: write-only power transition latch and miner return flag.
         // 305 -> 306: ground bits replace the legacy visibility counters.
-        assert_eq!(super::SNAPSHOT_VERSION, 306);
+        // 306 -> 307: the session's LocalSize copy.
+        assert_eq!(super::SNAPSHOT_VERSION, 307);
     }
 
     #[test]

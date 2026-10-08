@@ -318,7 +318,10 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // drops fog_of_war. A control binary (main with a hash that skips only those
 // fields) gives this value in the same test, with every tripwire above green.
 // Control removed.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xFA70_930D_D20D_FC8B;
+// Snapshot307: the session's LocalSize copy leaves the hash. A control binary
+// (main with a hash that skips only that tuple) gives this value in the same
+// test, with every tripwire above green. Control removed.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x29F5_E786_FA1B_8F86;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

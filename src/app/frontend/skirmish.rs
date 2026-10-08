@@ -384,10 +384,6 @@ mod tests {
         sim.install_playfield_from_map_header(&map.header);
         sim.session.map_width = 138;
         sim.session.map_height = 138;
-        sim.session.local_left = 2;
-        sim.session.local_top = 4;
-        sim.session.local_width = 76;
-        sim.session.local_height = 48;
     }
 
     fn test_launch_starts() -> [Waypoint; 4] {
