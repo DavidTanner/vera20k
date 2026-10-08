@@ -104,23 +104,30 @@ confirmed in Ghidra; commit, publish and merge validated chains.
     observations
     ([map_observation.md](../../tools/map_observation.md#lightning-storm-observation)).
 
+14. The Iron Curtain's launch, player path: Launch case 1 `0x6CCE64`
+    (`superweapon/iron_curtain.rs`): the charge gate, the invoke anim, the EVA line,
+    radar event 13, the 3x3 walk's lists and latch skip, the player's tail (selection
+    and Ready line, in the app), and the Infantry and Foot IronCurtain overrides
+    `0x522600`/`0x4DEAE0`. `IronCurtainDuration=`/`IronCurtainInvokeAnim=` take the
+    constructor's defaults. Oracle sections `iron_curtain_launch` and
+    `curtain_overrides`, replayed in `superweapon/iron_curtain_tests.rs`; production
+    observation ([map_observation.md](../../tools/map_observation.md#iron-curtain-observation)).
+
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- Launch cases VERA ports without a native comparison: the Iron Curtain (1,
-  `iron_curtain.rs`), the paradrops (5 and 6, `paradrop.rs`), the Genetic Mutator (9,
-  `genetic_converter.rs`) and the Psychic Reveal (11, `psychic_reveal.rs`).
+- Launch cases VERA ports without a native comparison: the paradrops (5 and 6,
+  `paradrop.rs`), the Genetic Mutator (9, `genetic_converter.rs`) and the Psychic
+  Reveal (11, `psychic_reveal.rs`).
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold
   `+0x660`, the paradrop plane's Retreat exit `0x415A50` (a residual in
-  `aircraft/paradrop_mission.rs`), the player tails of Launch cases 0, 1, 9 and 11
-  (a residual in `app/match_runtime/super_selection.rs`), TechnoClass::Draw's curtain
-  arm for voxel aircraft (a residual in `superweapon/invulnerability.rs`), and
-  `IronCurtainInvokeAnim=`'s default: VERA's `IRONBLST`, the constructor's null type
-  (`Rules+0x348`, `0x00665B1A`); dormant on retail, which sets the key.
+  `aircraft/paradrop_mission.rs`), the player tails of Launch cases 0, 9 and 11
+  (a residual in `app/match_runtime/super_selection.rs`), and TechnoClass::Draw's
+  curtain arm for voxel aircraft (a residual in `superweapon/invulnerability.rs`).
 
 The ChronoWarpTo paths (`0x4DF7F0`, `0x522FE0`) are map-trigger only; they stay a
 residual in `superweapon/chronosphere.rs`. The map trigger action
