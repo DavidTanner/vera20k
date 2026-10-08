@@ -4,7 +4,7 @@
 //! receiver; death/lifecycle consequences finish before traversal resumes.
 //! Evidence: HIGH_BRIDGE_RIM_REFRESH_ALGORITHM_GHIDRA_REPORT.md.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{
     EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags, TerrainDamageEvent,

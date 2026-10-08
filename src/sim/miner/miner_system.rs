@@ -16,7 +16,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
+use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerState, ResourceType};
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
@@ -423,12 +423,12 @@ pub(super) fn build_miner_snapshot(
     if entity.dying {
         return None;
     }
-    let miner = entity.miner.as_ref()?;
     // A Slave Miner's own Mission_Harvest is HandleReturnedSlaves
     // (`0x0073E5E9`, chain 6); its slaves harvest through `slave_manager`.
-    if miner.kind == MinerKind::Slave {
+    if !entity.is_harvester() {
         return None;
     }
+    let miner = entity.miner.as_ref()?;
     // The miner's drive loop asks the same getter every mover does, so a
     // `FASTER` miner takes the multiply here.
     let obj = sim.object_type(entity.type_ref(), rules);
@@ -540,7 +540,7 @@ pub(super) fn tick_miners_test_walk(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let live_order = sim.live_object_order_snapshot();
     let keys: Vec<u64> = if live_order.is_empty() {
@@ -566,7 +566,7 @@ pub(super) fn process_miner(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
     // Mission_Harvest73E5E0 reaches its dock/type gates and state switch even
@@ -659,7 +659,7 @@ pub(super) fn process_miner(
 fn harvest_looking(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
     let id = snap.entity_id;
@@ -739,7 +739,7 @@ fn assign_archive_destination(
     rules: &RuleSet,
     id: u64,
     archive: crate::sim::combat::TargetKind,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     if let crate::sim::combat::TargetKind::Cell(x, y) = archive {
         let _ = issue_stock_miner_drive_move(sim, rules, id, (x, y), overlay_registry);
@@ -779,7 +779,7 @@ fn harvest_cutting(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) {
     let now = sim.session.binary_frame;
@@ -837,7 +837,7 @@ fn harvest_cutting(
 pub(crate) fn harvest_ore_tick_for_test(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> bool {
     let mut snap = build_miner_snapshot(sim, rules, id).expect("a dispatchable miner");
@@ -870,7 +870,7 @@ fn harvest_ore_tick(
     sim: &mut Simulation,
     rules: &RuleSet,
     config: &MinerConfig,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) -> bool {
     let id = snap.entity_id;
@@ -952,9 +952,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         .is_some_and(|object| object.teleporter);
     let pinned = snap
         .miner
-        .forced_return
-        .then_some(snap.miner.reserved_refinery)
-        .flatten()
+        .reserved_refinery
         .filter(|&bay| sim.substrate.entities.get(bay).is_some());
     let driving = sim
         .substrate
@@ -1003,7 +1001,6 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         ) == RadioResponse::Roger
     {
         snap.state = MinerState::Dock;
-        snap.miner.forced_return = false;
         snap.miner.reserved_refinery = None;
         return;
     }
@@ -1162,7 +1159,7 @@ fn handle_handoff(sim: &mut Simulation, snap: &MinerSnapshot) {
 fn handle_going_to_idle(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
 ) -> bool {
     let human = sim
@@ -1250,7 +1247,7 @@ fn refinery_building_in_cell(sim: &Simulation, rules: &RuleSet, cell: (u16, u16)
 pub(crate) fn extract_bale(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     cell: (u16, u16),
     config: &MinerConfig,
 ) -> Option<CargoBale> {
@@ -1537,7 +1534,7 @@ pub(crate) fn issue_stock_miner_drive_move(
     rules: &RuleSet,
     entity_id: u64,
     target: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(grid) = sim.path_grid() else {
         return false;
@@ -1595,7 +1592,7 @@ pub(crate) fn issue_move_if_idle(
     entity_id: u64,
     target: (u16, u16),
     speed: SimFixed,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(grid) = sim.path_grid() else {
         return;
@@ -1733,6 +1730,7 @@ mod harvest_scan_dispatch_tests {
     use crate::rules::ini_parser::IniFile;
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::miner::MinerKind;
     use crate::sim::mission::MissionType;
     use crate::sim::pathfinding::PathGrid;
 

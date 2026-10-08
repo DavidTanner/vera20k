@@ -70,7 +70,7 @@
 mod tests;
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::RAD_NO_ATTACKER;
 use crate::sim::combat::world_receiver::apply_area_damage;

@@ -28,8 +28,7 @@ pub(crate) use self::exit_cell_search::find_nearby_passable_cell_with_index;
 pub(crate) use self::harvest_mission::mission_harvest;
 pub(crate) use self::miner_system::extract_bale;
 pub(crate) use self::refinery_dock::{
-    clear_unload_latch, mission_unload, native_dock_miner, pay_refinery_owner,
-    per_cell_release_dock_contact,
+    clear_unload_latch, mission_unload, pay_refinery_owner, per_cell_release_dock_contact,
 };
 
 use crate::rules::object_type::ObjectType;
@@ -252,8 +251,6 @@ pub struct Miner {
     pub cargo: Vec<CargoBale>,
     /// Maximum number of bales this miner can carry.
     pub capacity_bales: u16,
-    /// Whether the player issued a manual return order.
-    pub forced_return: bool,
     /// Unit+0x6D1 unload-active latch.
     #[serde(default)]
     pub unload_active: bool,
@@ -297,7 +294,6 @@ impl Miner {
             reserved_refinery: None,
             cargo: Vec::with_capacity(capacity_bales as usize),
             capacity_bales,
-            forced_return: false,
             unload_active: false,
             harvesting: false,
         }

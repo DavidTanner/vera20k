@@ -29,7 +29,6 @@ pub(super) struct DrawPassData<'a> {
     pub overlay_render_z: &'a [RenderZPolicy],
     pub bridge_shadows: &'a [SpriteInstance],
     pub object_layers: &'a [super::draw_plan_lowering::ObjectLayerPass; 5],
-    pub ghost_page: u8,
 }
 
 /// Create the main render pass and dispatch all draw calls in the correct order.
@@ -576,34 +575,7 @@ pub(super) fn dispatch_draw_passes(
         bracket_tex,
         "building_radius_rings",
     );
-    // Placement preview — world-space, uses world camera (zoom).
-    let ghost_tex = state
-        .match_state
-        .match_presentation
-        .sprite_atlas
-        .as_ref()
-        .and_then(|a| a.page(data.ghost_page as usize))
-        .map(|p| &p.texture);
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        ghost_tex,
-        "placement_ghost",
-    );
-    let wall_ghost_tex = state
-        .match_state
-        .match_presentation
-        .overlay_atlas
-        .as_ref()
-        .map(|a| &a.texture);
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        wall_ghost_tex,
-        "placement_wall_ghost",
-    );
+    // Placement cells — world-space, uses world camera (zoom).
     let valid_tex = state
         .match_state
         .match_presentation
@@ -683,18 +655,6 @@ pub(super) fn dispatch_draw_passes(
     // engine draws over both regions. Release the tactical scissor before any of
     // it goes down.
     pass.set_scissor_rect(0, 0, state.render_width(), state.render_height());
-    draw_pooled_ui(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        state
-            .match_state
-            .match_presentation
-            .minimap
-            .as_ref()
-            .map(|m| m.white_texture()),
-        "sidebar",
-    );
     draw_pooled_ui(
         &mut pass,
         &state.renderer.batch_renderer,
@@ -1151,7 +1111,6 @@ mod tests {
 
     #[test]
     fn gsi_04_01_retained_sidebar_radar_subpass_ends_with_content_boundary() {
-        let sidebar = source_offset("\"sidebar\"");
         let chrome = source_offset("\"sidebar_chrome\"");
         let cameo = source_offset("\"sidebar_cameo\"");
         let gclock = source_offset("\"sidebar_gclock\"");
@@ -1163,7 +1122,6 @@ mod tests {
         let boundary = source_offset("\"radar_content_boundary\"");
         let message = source_offset("\"message_text\"");
 
-        assert!(sidebar < chrome);
         assert!(chrome < cameo);
         assert!(cameo < gclock);
         assert!(gclock < cameo_overlay);
@@ -1180,7 +1138,6 @@ mod tests {
         // strata begin.
         let retained_tail = &SOURCE[boundary..message];
         for later_retained_batch in [
-            "\"sidebar\"",
             "\"sidebar_chrome\"",
             "\"sidebar_cameo\"",
             "\"sidebar_gclock\"",

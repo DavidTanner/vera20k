@@ -81,7 +81,7 @@ pub(super) fn overfly(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> i32 {
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return OVERFLY_FRAMES;

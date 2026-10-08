@@ -94,7 +94,7 @@
 //! - Start with the empty cell on a map without a Size loops forever
 //!   natively; VERA keeps the empty cell. Only headless fixtures lack a Size.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::{AnimId, AnimWorldCoord};
 use crate::sim::cell_rect::{CellRef, get_cellclass_fallback, get_cellclass_fallback_leptons};

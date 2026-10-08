@@ -19,9 +19,10 @@
 //! globals (`0x00B1CFE8`, `0x00A8F200`).
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::combat::veterancy::RANK_ELITE_U16;
 use crate::sim::components::NavTargetRef;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::find_nearby_cell::{
@@ -133,10 +134,6 @@ pub(super) fn unit_scatter_admitted(
         && locomotor.is_powered()
 }
 
-/// The veterancy `Scatter_Objects`' elite pre-scan asks each occupant's
-/// `VeterancyClass::IsElite` for.
-const ELITE_VETERANCY: u16 = 200;
-
 /// Live Techno inputs at one `Scatter_Objects` dispatch
 /// (`0x00481771..0x004817C1`). A non-Techno has none and passes only on a
 /// cell-wide term.
@@ -241,7 +238,8 @@ pub(super) fn scatter_objects_admitted(
         && listed().any(|id| {
             entities
                 .get(id)
-                .is_some_and(|entity| entity.veterancy() >= ELITE_VETERANCY)
+                // `Scatter_Objects`' elite pre-scan: each occupant's `IsElite`.
+                .is_some_and(|entity| entity.veterancy() >= RANK_ELITE_U16)
         });
     listed()
         .filter(|&id| {

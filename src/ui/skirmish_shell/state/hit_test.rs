@@ -1,7 +1,7 @@
 //! Hit testing, hover targets, status-help keys, and action application for the skirmish shell.
 
 use crate::map::scenario_menu::MapMenuEntry;
-use crate::skirmish_launch::SKIRMISH_PLAYER_SLOT_COUNT;
+use crate::skirmish_launch::{LaunchCountry, SKIRMISH_PLAYER_SLOT_COUNT};
 
 use super::super::layout::{
     COMBO_DROPDOWN_ROW_H, ChooseMapModalButton, ChooseMapModalLayout, ColorComboId,
@@ -275,16 +275,16 @@ fn status_help_key_for_side_item(country: SkirmishCountryChoice) -> Option<&'sta
     match country {
         SkirmishCountryChoice::Random => Some("STT:PlayerSideRandom"),
         SkirmishCountryChoice::Country(country) => match country {
-            crate::ui::main_menu::SkirmishCountry::America => Some("STT:PlayerSideAmerica"),
-            crate::ui::main_menu::SkirmishCountry::Korea => Some("STT:PlayerSideKorea"),
-            crate::ui::main_menu::SkirmishCountry::France => Some("STT:PlayerSideFrance"),
-            crate::ui::main_menu::SkirmishCountry::Germany => Some("STT:PlayerSideGermany"),
-            crate::ui::main_menu::SkirmishCountry::GreatBritain => Some("STT:PlayerSideBritain"),
-            crate::ui::main_menu::SkirmishCountry::Libya => Some("STT:PlayerSideLibya"),
-            crate::ui::main_menu::SkirmishCountry::Iraq => Some("STT:PlayerSideIraq"),
-            crate::ui::main_menu::SkirmishCountry::Cuba => Some("STT:PlayerSideCuba"),
-            crate::ui::main_menu::SkirmishCountry::Russia => Some("STT:PlayerSideRussia"),
-            crate::ui::main_menu::SkirmishCountry::Yuri => Some("STT:PlayerSideYuriCountry"),
+            LaunchCountry::America => Some("STT:PlayerSideAmerica"),
+            LaunchCountry::Korea => Some("STT:PlayerSideKorea"),
+            LaunchCountry::France => Some("STT:PlayerSideFrance"),
+            LaunchCountry::Germany => Some("STT:PlayerSideGermany"),
+            LaunchCountry::GreatBritain => Some("STT:PlayerSideBritain"),
+            LaunchCountry::Libya => Some("STT:PlayerSideLibya"),
+            LaunchCountry::Iraq => Some("STT:PlayerSideIraq"),
+            LaunchCountry::Cuba => Some("STT:PlayerSideCuba"),
+            LaunchCountry::Russia => Some("STT:PlayerSideRussia"),
+            LaunchCountry::Yuri => Some("STT:PlayerSideYuriCountry"),
         },
     }
 }

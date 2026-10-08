@@ -378,12 +378,6 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// A weapon fired — play its Report= sound.
-    WeaponFired {
-        report_sound_id: InternedId,
-        rx: u16,
-        ry: u16,
-    },
     /// An entity was destroyed — play its DieSound=.
     EntityDied {
         die_sound_id: InternedId,
@@ -420,10 +414,6 @@ pub enum SimSoundEvent {
         rx: u16,
         ry: u16,
     },
-    /// A miner docked at a refinery — play the building's deploy sound.
-    /// The app layer should select the healthy or damaged sound variant
-    /// based on the refinery's health ratio vs ConditionYellow.
-    DockDeploy { building_id: u64 },
     /// A building finished construction — play EVA "Construction complete".
     BuildingComplete { owner: InternedId },
     /// `HouseClass::Place_Production 0x004FB5C6..0x004FB644`: a unit left the
@@ -699,11 +689,6 @@ pub enum SimSoundEvent {
     /// First-occupant SFX from rulesmd [AudioVisual] BuildingGarrisonedSound.
     /// Positional cue gated on owner == local human.
     BuildingGarrisonedSfx { owner: InternedId, rx: u16, ry: u16 },
-    /// SFX for conditional reciprocal-link harvester release. Resolved at
-    /// the app layer to [AudioVisual] BunkerWallsDownSound (retail value
-    /// "TankBunkerDown"). Stock zero-link refinery unload completion does
-    /// not emit this event.
-    RefineryExitSfx { rx: u16, ry: u16 },
     /// A struck building crossed a damage-state threshold and its type carries
     /// no `DamageSound=` of its own — the global `[AudioVisual]
     /// BuildingDamageSound=` cue, played at the building's own coordinate.
@@ -1351,7 +1336,7 @@ pub(crate) fn mark_wall_radar_dirty_cell(
 fn dispatch_tiberium_reduction_inline(
     request: &crate::sim::combat::TiberiumReductionRequest,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     scenario_rng: &mut SimRng,
     overlay_grid: Option<&mut crate::sim::overlay_grid::OverlayGrid>,
     terrain: Option<&mut ResolvedTerrainGrid>,
@@ -1417,7 +1402,7 @@ impl crate::sim::combat::combat_aoe::AoECellPrelude for SimulationAreaDamageCell
         rx: u16,
         ry: u16,
         overlay_grid: Option<&mut crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         terrain: Option<&mut ResolvedTerrainGrid>,
         scenario_rng: Option<&mut SimRng>,
         occupancy: Option<&OccupancyGrid>,
@@ -1696,7 +1681,7 @@ impl WallDamageTransactionHost for SimulationWallRuntimeHost<'_> {
 fn dispatch_smudge_inline(
     request: &crate::sim::combat::SmudgeSpawnRequest,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     occupancy: &OccupancyGrid,
     raw_occupation: &crate::sim::occupancy::RawCellOccupationGrid,
     scenario_rng: &mut SimRng,
@@ -1908,7 +1893,7 @@ impl Simulation {
     fn tick_combat_with_fatal_lifecycle(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         logic_order: &[u64],
         fire_suppressed: &BTreeSet<u64>,
@@ -1937,7 +1922,7 @@ impl Simulation {
         &mut self,
         visit: crate::sim::combat::world_receiver::FireVisit,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> damage_consequences::DamageCommitReceipt {
         #[cfg(test)]
         let observed_direct = match &visit {
@@ -1997,7 +1982,7 @@ impl Simulation {
     fn commit_logic_projectile_detonations(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         detonations: &[crate::sim::projectile::ProjectileDetonation],
     ) -> bool {
         if detonations.is_empty() {
@@ -2165,7 +2150,7 @@ impl Simulation {
         &mut self,
         first_tail_id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let mut bridge_state_changed = false;
         let mut index = 0;
@@ -2194,7 +2179,7 @@ impl Simulation {
     fn commit_logic_wave_damage_request(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         request: &crate::sim::wave::WaveDamageRequest,
     ) {
         // DamageArea reads WaveClass+0x1D4 at the call boundary. Health and
@@ -2586,7 +2571,7 @@ impl Simulation {
     pub(crate) fn commit_direct_damage_receiver(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         event: crate::sim::combat::EntityDamageEvent,
     ) {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
@@ -2619,7 +2604,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
             return;
@@ -2648,7 +2633,7 @@ impl Simulation {
     pub(crate) fn commit_direct_terrain_damage_receiver(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         event: crate::sim::combat::TerrainDamageEvent,
     ) {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
@@ -2678,7 +2663,7 @@ impl Simulation {
     pub(crate) fn commit_noncombat_aoe_hits(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         hits: &[crate::sim::combat::EntityDamageEvent],
     ) {
         let receivers = hits
@@ -2694,7 +2679,7 @@ impl Simulation {
     pub(crate) fn commit_noncombat_aoe_receivers(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
     ) -> damage_consequences::DamageCommitReceipt {
         let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
@@ -2725,7 +2710,7 @@ impl Simulation {
     fn absorb_noncombat_damage_effects(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         effects: crate::sim::combat::DeathEffects,
         under_attack_events: Vec<crate::sim::combat::UnderAttackEvent>,
         terrain_navigation_changed_cells: Vec<(u16, u16)>,
@@ -3341,7 +3326,7 @@ impl Simulation {
     pub(crate) fn commit_smudge_request_inline(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         request: crate::sim::combat::SmudgeSpawnRequest,
     ) {
         let binary_frame = self.session.binary_frame;
@@ -3389,7 +3374,7 @@ impl Simulation {
         cell: (u16, u16),
         amount: A,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> crate::sim::tiberium::ReduceTiberiumOutcome {
         let mut ctx = crate::sim::tiberium::ReduceTiberiumContext {
             overlay_grid: self.overlay_grid.as_mut(),
@@ -3661,7 +3646,7 @@ impl Simulation {
     fn tick_ore_growth_rungs(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         // Native TiberiumClass drivers run before the main live-object vector,
         // growth first and spread second.
@@ -3741,7 +3726,7 @@ impl Simulation {
     pub(crate) fn publish_tiberium_cells(
         &mut self,
         rules: &RuleSet,
-        registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        registry: &crate::rules::overlay_types::OverlayTypeRegistry,
         cells: &[(u16, u16)],
     ) {
         if let (Some(grid), Some(terrain)) =
@@ -4375,7 +4360,7 @@ impl Simulation {
         // the tail stamps strictly increase AND exceed the factory's `insertion_seq`, its
         // construction stamp (FIFO `push_back` of a monotonic mint: every queued build was
         // stamped after the factory was made, and a promotion keeps the factory's stamp).
-        let ordered = self.production.factory_shadow.iter_insertion_ordered();
+        let ordered = self.production.factories.iter_insertion_ordered();
         let mut prev_seq: Option<u64> = None;
         for f in &ordered {
             if let Some(p) = prev_seq {
@@ -4405,7 +4390,7 @@ impl Simulation {
 
         // (B) STATE: progress in 0..=54; balance >= 0 (the seed is non-negative, the
         // per-step ladder only decrements it, and cancel resets it to 0).
-        for f in self.production.factory_shadow.iter_insertion_ordered() {
+        for f in self.production.factories.iter_insertion_ordered() {
             debug_assert!(
                 f.progress <= PRODUCTION_STEPS,
                 "P5b (B): tick {} {:?}/{:?}: progress {} exceeds {}",
@@ -4574,7 +4559,7 @@ impl Simulation {
             return;
         }
         let state = self.power_states.entry(owner).or_default();
-        let (assessed, _) = power_system::assess_house_power(
+        let assessed = power_system::assess_house_power(
             state,
             &self.substrate.entities,
             rules,
@@ -4668,7 +4653,7 @@ impl Simulation {
         stable_id: u64,
         new_owner: InternedId,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         self.change_owner_impl(stable_id, new_owner, Some(rules), registry);
     }
@@ -4678,7 +4663,7 @@ impl Simulation {
         stable_id: u64,
         new_owner: InternedId,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some((old_owner, category, has_spawn_manager, build_const_eligible)) =
             self.substrate.entities.get(stable_id).map(|entity| {
@@ -4950,7 +4935,6 @@ impl Simulation {
         // (`0x004F92F6`, `0x004F92FD`); VERA refreshes at the event, as for
         // a death or a sale.
         if category == EntityCategory::Structure
-            && self.session.game_options.super_weapons
             && let Some(rules) = rules
         {
             crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, old_owner);
@@ -5144,7 +5128,6 @@ impl Simulation {
         let terrain_objects: Vec<_> = self.production.terrain_objects.values().cloned().collect();
         for terrain in &terrain_objects {
             crate::sim::terrain_object::unmark_terrain_occupation(
-                &mut self.production,
                 terrain,
                 Some(&mut resolved_terrain),
             );
@@ -5152,7 +5135,6 @@ impl Simulation {
         for terrain in &terrain_objects {
             if terrain.is_live() {
                 crate::sim::terrain_object::mark_terrain_occupation(
-                    &mut self.production,
                     terrain,
                     Some(&mut resolved_terrain),
                 );
@@ -5282,7 +5264,7 @@ impl Simulation {
     fn finalize_frame_overlays_and_navigation(
         &mut self,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         navigation_rebuild_requested: bool,
         structures_changed: bool,
     ) -> Vec<OverlayEntry> {
@@ -5463,7 +5445,7 @@ impl Simulation {
     pub(crate) fn apply_wall_damage_events(
         &mut self,
         events: &[WallDamageEvent],
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) {
         if events.is_empty() {
             return;
@@ -5530,7 +5512,7 @@ impl Simulation {
     pub(crate) fn apply_wall_crush_on_driveover(
         &mut self,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let (Some(_rules), Some(registry)) = (rules, overlay_registry) else {
             return;
@@ -5929,7 +5911,7 @@ impl Simulation {
         &mut self,
         sid: u64,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         use crate::sim::building_construction::PackUpFrame;
         let now = self.session.binary_frame as i32;
@@ -5983,7 +5965,7 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         execute_tick: u64,
         executed_commands: &mut usize,
@@ -6079,7 +6061,7 @@ impl Simulation {
     fn run_team_script_pass(
         &mut self,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::TeamScript);
@@ -6199,7 +6181,7 @@ impl Simulation {
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
     ) -> TickResult {
         self.install_fixture_path_grid(path_grid);
@@ -6226,7 +6208,7 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
@@ -6247,7 +6229,6 @@ impl Simulation {
             tick,
             admitted_commands,
         } = frame;
-        self.flush_radiation_lighting();
         let lighting_events = std::mem::take(&mut self.lighting_sources.pending);
         let trigger_effects = std::mem::take(&mut self.trigger_effects);
         // Preserve the established terminal-frame gate: these are committed
@@ -6288,7 +6269,7 @@ impl Simulation {
         &mut self,
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
@@ -6376,6 +6357,7 @@ impl Simulation {
                 self.session.binary_frame,
                 &rules.radiation,
                 self.resolved_terrain.as_ref(),
+                &mut self.lighting_sources.pending,
             );
         }
         // Native TeamClass AI precedes the main LogicClass object vector. In
@@ -6436,9 +6418,7 @@ impl Simulation {
             // --- Phase 4.5: Superweapons ---
             // DEPENDS ON: power state (suspend/resume gating).
             // PRODUCES: AnimClass bolts and explosions, damage to entities, sound_events.
-            if self.session.game_options.super_weapons {
-                crate::sim::superweapon::tick_superweapon_instances(self, rules);
-            }
+            crate::sim::superweapon::tick_superweapon_instances(self, rules);
 
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).
@@ -6569,10 +6549,9 @@ impl Simulation {
             // DEPENDS ON: completed live-object visits, including depot spending.
             // PRODUCES: factory charges/change flags, dock/ore updates.
             // Phase 7, FIRST production step — the authoritative factory sweep (C1:
-            // factories step BEFORE the house tail `run_late_region`). The previous
-            // tick's tail reconcile prepared the registry; `step_all` charges each armed
-            // factory's per-step cost against the REAL wallet (house.economy.credits) in
-            // insertion_seq (temporal) order. Completed heads retain their
+            // factories step BEFORE the house tail `run_late_region`). `step_all`
+            // charges each armed factory's per-step cost against the REAL wallet
+            // (house.economy.credits) in insertion_seq (temporal) order. Completed heads retain their
             // change flag until the next Strip prefix; its PLACE event tail
             // releases the object and advances the queue-of-record there.
             //

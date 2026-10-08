@@ -543,7 +543,7 @@ mod tests {
             },
         };
         {
-            let trig = crate::map::rmg::trig::TrigTable::synthetic();
+            let trig = crate::map::retail_trig::TrigTable::synthetic();
             let mut ctx = BlobCtx {
                 grid: &mut grid,
                 scratch: &mut scratch,
@@ -658,7 +658,7 @@ mod tests {
             placed: target - MIN_CELLS,
             region_id: 1,
         };
-        let trig = crate::map::rmg::trig::TrigTable::synthetic();
+        let trig = crate::map::retail_trig::TrigTable::synthetic();
         let mut ctx = BlobCtx {
             grid: &mut grid,
             scratch: &mut scratch,

@@ -612,6 +612,55 @@ fn retail_spy_plane_photographs_the_target_and_leaves() {
     assert!(!sim.fog.is_cell_revealed(americans, 60, 5));
 }
 
+/// The Super Weapons option off (`0x00A8B263`) withholds only the
+/// `DisableableFromShell=` types, which retail's Spy Plane is not, through
+/// the production frames: both houses' radars grant it at the first frame
+/// while the silo grants nothing, its charge runs out in the frame's Super
+/// pass, and the click flies the plane.
+#[test]
+fn retail_spy_plane_flies_with_super_weapons_off() {
+    let Some(rules) = retail_rules() else {
+        return;
+    };
+    let (rules, mut sim, americans) = world(rules);
+    let russians: InternedId = sim.interner.intern("Russians");
+    sim.session.game_options.super_weapons = false;
+    for (kind, owner, at) in [
+        ("NARADR", "Americans", (24, 24)),
+        ("NAMISL", "Americans", (28, 24)),
+        ("NARADR", "Russians", (24, 32)),
+    ] {
+        sim.spawn_object_at_height(kind, owner, at.0, at.1, 0, 0, &rules)
+            .unwrap_or_else(|| panic!("{kind} stands"));
+    }
+    let spy_plane = sim.interner.intern(SPY_PLANE);
+    let nuke = sim.interner.intern("NukeSpecial");
+    let granted = |sim: &Simulation, owner: InternedId, sw_type: InternedId| {
+        sim.super_weapons
+            .get(&owner)
+            .and_then(|supers| supers.get(&sw_type))
+            .is_some_and(|instance| instance.is_active)
+    };
+
+    step(&mut sim, &rules);
+    assert!(granted(&sim, americans, spy_plane));
+    assert!(granted(&sim, russians, spy_plane));
+    assert!(!granted(&sim, americans, nuke));
+
+    let instance = sim
+        .super_weapons
+        .get_mut(&americans)
+        .and_then(|supers| supers.get_mut(&spy_plane))
+        .unwrap();
+    instance.charge_start_tick -= instance.charge_duration;
+    step(&mut sim, &rules);
+    assert!(sim.super_weapons[&americans][&spy_plane].is_ready);
+
+    click(&mut sim, &rules, americans, SPY_PLANE, TARGET);
+    assert!(!sim.super_weapons[&americans][&spy_plane].is_ready);
+    assert_eq!(spy_planes(&sim).len(), 1);
+}
+
 /// The computer's Spy Plane on retail rules, through AI_TryFireSW's
 /// GroundRallyPoint arm (`0x00509CD0`): its enemy's base cell is passable,
 /// so the plane's Target is two cells past it on both axes.

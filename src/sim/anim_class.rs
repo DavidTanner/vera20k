@@ -1196,7 +1196,7 @@ impl Simulation {
         &self,
         location: AnimWorldCoord,
         rules: &RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> i32 {
         let grid_fields = |(rx, ry): (u16, u16)| {
             self.overlay_grid
@@ -1242,7 +1242,7 @@ impl Simulation {
         &mut self,
         id: AnimId,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         // HideIfNoOre and the MakeInfantry mark read the stored Location
         // (`+0x9C`, `0x00423BD6..0x00423BFD`), not GetCoords: an owner-attached
@@ -1483,7 +1483,7 @@ impl Simulation {
         id: AnimId,
         make_infantry: i32,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let Some((location, owner)) = self
             .anim(id)
@@ -2223,7 +2223,7 @@ impl Simulation {
         id: AnimId,
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Option<bool> {
         let mut body = self.anim(id).and_then(|anim| anim.bounce)?;
         let outcome = self.anim_bounce_update(&mut body, rules);
@@ -2265,7 +2265,7 @@ impl Simulation {
         id: AnimId,
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
     ) -> bool {
         if let (Some(bounce_anim), Some(coord)) =
@@ -2362,7 +2362,7 @@ impl Simulation {
         &mut self,
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
     ) -> bool {
         let location = AnimWorldCoord {
@@ -2486,7 +2486,7 @@ impl Simulation {
         id: AnimId,
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let sound_name = config
             .start_sound
@@ -2527,7 +2527,7 @@ impl Simulation {
         id: AnimId,
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if !(config.scorch || config.crater) {
             return;
@@ -2580,7 +2580,7 @@ impl Simulation {
         id: AnimId,
         next: &str,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(config) = rules.art().anim_runtime_config(next).cloned() else {
             self.destroy_anim(id, rules);

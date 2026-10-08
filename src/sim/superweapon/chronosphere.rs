@@ -54,8 +54,8 @@
 //!   through their vtable slots; they and their callers are not ported.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimId;
 use crate::sim::components::{DriveCoord, NavTargetRef};

@@ -737,7 +737,6 @@ fn test_invalid_armed_building_clears_when_not_ready() {
         "GAPOWR".to_string(),
     ));
     let mut preview = Some(crate::sim::production::BuildingPlacementPreview {
-        type_id: crate::sim::intern::test_intern("GAPOWR"),
         rx: 5,
         ry: 5,
         width: 2,

@@ -11,7 +11,7 @@ use super::ground_pose::{position_world_coord, set_height};
 use super::locomotor::MovementLayer;
 use super::track_process::{TrackFamily, TrackInvocation, TrackPayment, TrackProcess};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
 use crate::sim::game_entity::GameEntity;

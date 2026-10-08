@@ -63,7 +63,7 @@
 mod tests;
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 #[cfg(test)]
 use crate::sim::combat::EntityDamageEvent;

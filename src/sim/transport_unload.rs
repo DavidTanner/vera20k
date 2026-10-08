@@ -353,7 +353,7 @@ fn issue_ground_destination(
     rules: &RuleSet,
     id: u64,
     dest: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(info) = sim.resolve_move_info(id, Some(rules)) else {
         return;
@@ -434,7 +434,7 @@ fn eject_head_passenger(
     sim: &mut Simulation,
     rules: &RuleSet,
     transport_id: u64,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> EjectOutcome {
     match depart_cargo_head(
         sim,
@@ -603,7 +603,7 @@ pub(crate) fn unit_mission_unload(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
@@ -773,7 +773,7 @@ pub(crate) fn mission_unload(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> i32 {
     let entity = sim.substrate.entities.get(id).expect("dispatched aircraft");
     match entity.mission.handler_state() {
@@ -879,7 +879,7 @@ const AIRCRAFT_EXIT_SCAN: [usize; 9] = [4, 5, 3, 7, 1, 0, 6, 2, 4];
 fn eject_from_aircraft(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     aircraft_id: u64,
 ) -> bool {
     let mut picked_up = false;

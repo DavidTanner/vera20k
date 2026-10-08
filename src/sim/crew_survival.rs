@@ -138,8 +138,8 @@
 //!   past the list (open native question); VERA skips Phase B's cells.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::FactoryType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};

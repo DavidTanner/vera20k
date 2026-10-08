@@ -708,8 +708,6 @@ impl TacticalCaptureSession {
                     .session
                     .theater
                     .eq_ignore_ascii_case(&profile.fixture.theater)
-                && sim.session.local_width == profile.fixture.local_size.width as u16
-                && sim.session.local_height == profile.fixture.local_size.height as u16
                 && sim.session.mp_start_waypoints.len()
                     == profile.fixture.start_waypoint_count as usize,
             "live map/session identity differs from the sealed fixture"
@@ -829,7 +827,7 @@ impl TacticalCaptureSession {
             .collect();
         let owner_id = sim.interner.get(&owner).unwrap_or_default();
         let mut queued_production = Vec::new();
-        for factory in sim.production.factory_shadow.iter_insertion_ordered() {
+        for factory in sim.production.factories.iter_insertion_ordered() {
             if factory.owner != owner_id {
                 continue;
             }

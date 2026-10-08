@@ -27,7 +27,8 @@
 //! The actor-local fear receiver executes at InfantryAI51BF0B after Process.
 //! It reads NavCom and the actual locomotor motion query independently.
 
-use crate::rules::object_type::ObjectType;
+use crate::rules::object_type::{Ability, ObjectType};
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::game_entity::GameEntity;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -46,21 +47,9 @@ const REPEATED_YELLOW_ADD: u16 = 25;
 #[cfg(test)]
 const REPEATED_GREEN_ADD: u16 = 12;
 const PRONE_THRESHOLD: u16 = 50;
-const VETERAN_LEVEL: u16 = 100;
-const ELITE_LEVEL: u16 = 200;
-
-pub fn has_veteran_fearless_ability(obj: &ObjectType, entity: &GameEntity) -> bool {
-    if entity.veterancy() >= ELITE_LEVEL {
-        obj.veteran_fearless || obj.elite_fearless
-    } else if entity.veterancy() >= VETERAN_LEVEL {
-        obj.veteran_fearless
-    } else {
-        false
-    }
-}
 
 pub fn is_fear_application_blocked(obj: &ObjectType, entity: &GameEntity) -> bool {
-    obj.fearless || has_veteran_fearless_ability(obj, entity)
+    obj.fearless || has_weapon_ability(rank_from_u16(entity.veterancy()), obj, Ability::Fearless)
 }
 
 pub fn can_decay_fear(obj: &ObjectType) -> bool {
@@ -147,7 +136,7 @@ impl crate::sim::world::Simulation {
         &mut self,
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);

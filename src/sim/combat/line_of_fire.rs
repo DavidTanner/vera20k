@@ -27,8 +27,8 @@
 //! audio/net.
 
 use crate::map::houses::{HouseAllianceMap, are_houses_friendly};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::intern::StringInterner;

@@ -95,7 +95,6 @@ pub(crate) struct SightAdmission {
     pub owner: InternedId,
     pub origin: (u16, u16, i32),
     pub radius: u16,
-    pub fog_of_war: bool,
     pub cells: Vec<(u16, u16)>,
 }
 

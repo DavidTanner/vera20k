@@ -113,9 +113,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use self::combat_weapon::{WeaponSlot, select_weapon_against};
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::object_type::ObjectType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::{HouseCostFactors, RuleSet};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
@@ -712,7 +712,7 @@ fn wall_overlay_flags_at<'a>(
     overlay_registry: Option<&'a OverlayTypeRegistry>,
     rx: u16,
     ry: u16,
-) -> Option<&'a crate::map::overlay_types::OverlayTypeFlags> {
+) -> Option<&'a crate::rules::overlay_types::OverlayTypeFlags> {
     let (Some(grid), Some(registry)) = (overlay_grid, overlay_registry) else {
         return None;
     };
@@ -724,7 +724,7 @@ fn wall_overlay_flags_at<'a>(
 
 fn warhead_damages_wall(
     warhead: &WarheadType,
-    wall_flags: &crate::map::overlay_types::OverlayTypeFlags,
+    wall_flags: &crate::rules::overlay_types::OverlayTypeFlags,
 ) -> bool {
     warhead.wall || warhead.wall_absolute_destroyer || (warhead.wood && wall_flags.armor_is_wood)
 }
@@ -1447,14 +1447,6 @@ pub(crate) fn install_cell_attack_target_for_test(
     true
 }
 
-/// Compute distance in cells between two entities' grid positions.
-#[cfg(test)]
-pub(crate) fn cell_distance(ax: u16, ay: u16, bx: u16, by: u16) -> f32 {
-    let dx: f32 = ax as f32 - bx as f32;
-    let dy: f32 = ay as f32 - by as f32;
-    (dx * dx + dy * dy).sqrt()
-}
-
 use self::combat_targeting::{AttackerSnapshot, GarrisonSnapshot};
 
 /// A `CanBeOccupied` building destroyed in combat with live occupants —
@@ -1786,8 +1778,11 @@ pub(crate) fn death_arm_explodes(
     let numbered_weapon = combat_weapon::weapon_for_index(obj, veterancy, current_weapon_number)
         .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
     obj.explodes
-        || (veterancy >= 100 && obj.veteran_explodes)
-        || (veterancy >= 200 && obj.elite_explodes)
+        || self::veterancy::has_weapon_ability(
+            self::veterancy::rank_from_u16(veterancy),
+            obj,
+            crate::rules::object_type::Ability::Explodes,
+        )
         || numbered_weapon.is_some_and(|weapon| weapon.suicide)
 }
 

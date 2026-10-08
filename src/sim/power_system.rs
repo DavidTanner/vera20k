@@ -33,9 +33,6 @@ pub struct PowerState {
     pub is_low_power: bool,
     /// House+2A4/+2AC, read through the shared native countdown owner.
     blackout_timer: crate::sim::timer::CdTimer,
-    /// Whether the player was in low-power state on the previous tick.
-    /// Used to detect transitions for EVA voice events.
-    pub was_low_power: bool,
     /// Sum of absolute `|Power=|` values from TypeClass for ALL owned buildings,
     /// regardless of health, construction state, or online status. Used by the
     /// sidebar power bar fill curve (asymptotic: `400 / (total + 400)`).
@@ -66,7 +63,6 @@ impl Default for PowerState {
             //HouseCtor4F583D seeds the native current frame. Scenario Houses
             //are constructed at0; the empty retained timer is not stopped−1.
             blackout_timer: crate::sim::timer::CdTimer::started(0, 0),
-            was_low_power: false,
             theoretical_total_power: 0,
             power_dirty: true,
             radar_dirty: true,
@@ -235,15 +231,6 @@ pub(crate) fn is_operational_for_output(
         && facts.effective_mission != 0x13
 }
 
-/// Events emitted when a player's power state transitions.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PowerEvent {
-    /// Player entered low-power state (drain now exceeds output).
-    EnteredLowPower { owner: InternedId },
-    /// Player's power was restored after a deficit.
-    PowerRestored { owner: InternedId },
-}
-
 /// House508CB0/508CB8 tests limbo(+81) and cell-marked(+74), not ObjectAlive
 /// (+90) or actual HP. Rust tombstones remain excluded until physical removal.
 fn participates_in_power_accounting(entity: &GameEntity) -> bool {
@@ -365,7 +352,7 @@ pub fn tick_power_states(
     rules: &RuleSet,
     interner: &crate::sim::intern::StringInterner,
     binary_frame: u32,
-) -> Vec<PowerEvent> {
+) {
     // House state outlives its last contributing building. Revisit retained
     // owners too: an empty contribution set must clear totals and keep the
     // existing blackout/transition clock advancing after Unmark or removal.
@@ -379,16 +366,10 @@ pub fn tick_power_states(
     owners.sort_unstable();
     owners.dedup();
 
-    let mut events: Vec<PowerEvent> = Vec::new();
-
     for &owner_id in &owners {
         let state = power_states.entry(owner_id).or_default();
         state.invalidate(true);
-        let (_, event) =
-            assess_house_power(state, entities, rules, owner_id, interner, binary_frame);
-        if let Some(event) = event {
-            events.push(event);
-        }
+        assess_house_power(state, entities, rules, owner_id, interner, binary_frame);
         let buildings: Vec<u64> = entities
             .values()
             .filter(|entity| {
@@ -407,8 +388,6 @@ pub fn tick_power_states(
             binary_frame,
         );
     }
-
-    events
 }
 
 /// Original House4F844B..4F84EA. A remaining value of exactly one resets
@@ -424,8 +403,7 @@ pub(crate) fn assess_house_power(
     owner: InternedId,
     interner: &crate::sim::intern::StringInterner,
     binary_frame: u32,
-) -> (bool, Option<PowerEvent>) {
-    state.was_low_power = state.is_low_power;
+) -> bool {
     if state.blackout_remaining(binary_frame) == 1 {
         state.blackout_timer.start(binary_frame as i32, 0);
         state.invalidate(false);
@@ -435,18 +413,13 @@ pub(crate) fn assess_house_power(
         state.radar_dirty = true;
     }
     if !state.power_dirty {
-        return (false, None);
+        return false;
     }
     //508C79 clears the byte before scanning, not at a health writer.
     state.power_dirty = false;
     recalculate_power_for_owner(state, entities, rules, owner, interner, binary_frame);
     state.radar_dirty = true;
-    let event = match (state.was_low_power, state.is_low_power) {
-        (false, true) => Some(PowerEvent::EnteredLowPower { owner }),
-        (true, false) => Some(PowerEvent::PowerRestored { owner }),
-        _ => None,
-    };
-    (true, event)
+    true
 }
 
 /// House508DF0's pure availability scan. Rust exposes the same inputs for
@@ -919,20 +892,18 @@ BuildSpeed=0.02
         assert_eq!(states[&owner].theoretical_total_power, 0);
 
         store.insert(drain);
-        assert_eq!(
-            tick_power_states(&mut states, &mut store, &rules, &interner, 0),
-            vec![PowerEvent::EnteredLowPower { owner }],
-        );
+        assert!(!states[&owner].is_low_power);
+        tick_power_states(&mut states, &mut store, &rules, &interner, 0);
+        assert!(states[&owner].is_low_power);
         trigger_spy_blackout(&mut states, owner, 2);
         store.remove(2);
-        assert_eq!(
-            tick_power_states(&mut states, &mut store, &rules, &interner, 0),
-            vec![PowerEvent::PowerRestored { owner }],
-        );
+        tick_power_states(&mut states, &mut store, &rules, &interner, 0);
+        assert!(!states[&owner].is_low_power);
         assert_eq!(states[&owner].total_drain, 0);
         assert_eq!(states[&owner].blackout_remaining(0), 2);
         assert_eq!(states[&owner].blackout_remaining(1), 1);
-        assert!(tick_power_states(&mut states, &mut store, &rules, &interner, 1).is_empty());
+        tick_power_states(&mut states, &mut store, &rules, &interner, 1);
+        assert!(!states[&owner].is_low_power);
         assert_eq!(states[&owner].blackout_remaining(1), 0);
     }
 
@@ -1057,7 +1028,7 @@ BuildSpeed=0.02
     }
 
     #[test]
-    fn test_power_transition_events() {
+    fn test_power_transitions() {
         let rules = test_rules();
         let mut store = EntityStore::new();
         // Start with just a tesla coil (drain=75, output=0) → immediate low power.
@@ -1070,19 +1041,13 @@ BuildSpeed=0.02
         let interner = test_interner();
         let mut states: BTreeMap<InternedId, PowerState> = BTreeMap::new();
 
-        let events = tick_power_states(&mut states, &mut store, &rules, &interner, 0);
-        assert!(
-            events.contains(&PowerEvent::EnteredLowPower { owner: soviet }),
-            "should detect entering low power"
-        );
+        tick_power_states(&mut states, &mut store, &rules, &interner, 0);
+        assert!(states[&soviet].is_low_power, "should enter low power");
 
         // Add a power plant → should restore power.
         store.insert(make_building(2, "NAPOWR", "Soviet", 400));
-        let events = tick_power_states(&mut states, &mut store, &rules, &interner, 0);
-        assert!(
-            events.contains(&PowerEvent::PowerRestored { owner: soviet }),
-            "should detect power restored"
-        );
+        tick_power_states(&mut states, &mut store, &rules, &interner, 0);
+        assert!(!states[&soviet].is_low_power, "power should be restored");
     }
 
     #[test]

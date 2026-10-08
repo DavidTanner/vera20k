@@ -837,7 +837,7 @@ fn a_warped_building_goes_offline() {
     let _ = sim.mission_assign_exact(plant, MissionId::from_known(MissionType::Guard), now);
     let americans = sim.interner.get("Americans").unwrap();
     let output = |sim: &mut Simulation| {
-        let _ = crate::sim::power_system::tick_power_states(
+        crate::sim::power_system::tick_power_states(
             &mut sim.power_states,
             &mut sim.substrate.entities,
             &rules,
@@ -860,6 +860,147 @@ fn a_warped_building_goes_offline() {
     assert!(entity(&sim, plant).building_online());
     assert_eq!(output(&mut sim), 100);
     assert_eq!(sim.building_operational_state(plant, &rules), Some(true));
+}
+
+/// The fixture with `SILO`, which provides a powered `NukeSpecial`.
+fn silo_rules() -> RuleSet {
+    rules_from(
+        &format!(
+            "{}[SuperWeaponTypes]\n0=NukeSpecial\n\
+             [NukeSpecial]\nType=MultiMissile\nRechargeTime=1\n\
+             [SILO]\nStrength=40\nSuperWeapon=NukeSpecial\n",
+            RULES.replace("3=GAWEAP\n", "3=GAWEAP\n4=SILO\n")
+        ),
+        ART,
+    )
+}
+
+/// The Super hold pass's online test (`0x0050AFF2..0x0050B05F`): a warped
+/// silo is offline, so its house's powered Nuke holds, keeping its time left
+/// (`SuperClass::Suspend @ 0x006CB4D0`), and runs on after the release.
+#[test]
+fn a_warped_superweapon_building_holds_its_super() {
+    let rules = silo_rules();
+    let (mut sim, grid) = arena(9, &rules);
+    let silo = spawn(&mut sim, &rules, "SILO", "Americans", 12, 10);
+    let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
+    let americans = sim.interner.get("Americans").unwrap();
+    let nuke = sim.interner.get("NukeSpecial").unwrap();
+    let step = |sim: &mut Simulation| sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
+    let state = |sim: &Simulation| {
+        let inst = &sim.super_weapons[&americans][&nuke];
+        (
+            inst.is_active,
+            inst.is_suspended,
+            inst.charge_start_tick,
+            inst.charge_duration,
+        )
+    };
+    step(&mut sim);
+    let (active, held, start, _) = state(&sim);
+    assert!(active && !held && start != -1, "granted and charging");
+
+    sim.temporal_initiate_warp(cleg, Some(silo), &rules, None);
+    step(&mut sim);
+    let warped = state(&sim);
+    assert_eq!((warped.0, warped.1, warped.2), (true, true, -1), "held");
+    for _ in 0..5 {
+        step(&mut sim);
+    }
+    assert_eq!(state(&sim), warped, "the time left stays");
+
+    sim.temporal_let_go(cleg);
+    step(&mut sim);
+    let (active, held, start, duration) = state(&sim);
+    assert!(active && !held && start != -1, "released");
+    assert_eq!(duration, warped.3, "it runs on from the time left");
+}
+
+/// The online test asks for any online provider (`0x0050B04F`): with two
+/// silos, warping one leaves the Nuke charging and warping both holds it. A
+/// Super that is not `IsPowered=` (`SuperClass::IsPowered @ 0x006CC2A0`)
+/// charges on though its only provider is warped.
+#[test]
+fn a_super_holds_only_while_no_provider_is_online() {
+    let rules = rules_from(
+        &format!(
+            "{}[SuperWeaponTypes]\n0=NukeSpecial\n1=SpyPlaneSpecial\n\
+             [NukeSpecial]\nType=MultiMissile\nRechargeTime=1\n\
+             [SpyPlaneSpecial]\nType=SpyPlane\nRechargeTime=1\nIsPowered=no\n\
+             [SILO]\nStrength=40\nSuperWeapon=NukeSpecial\n\
+             [RADAR]\nStrength=40\nSuperWeapon=SpyPlaneSpecial\n",
+            RULES.replace("3=GAWEAP\n", "3=GAWEAP\n4=SILO\n5=RADAR\n")
+        ),
+        ART,
+    );
+    let (mut sim, grid) = arena(12, &rules);
+    let silos = [12, 14].map(|rx| spawn(&mut sim, &rules, "SILO", "Americans", rx, 10));
+    let radar = spawn(&mut sim, &rules, "RADAR", "Americans", 16, 10);
+    let clegs = [12, 14, 16].map(|rx| spawn(&mut sim, &rules, "CLEG", "Russians", rx, 12));
+    let americans = sim.interner.get("Americans").unwrap();
+    let [nuke, spy_plane] =
+        ["NukeSpecial", "SpyPlaneSpecial"].map(|sw| sim.interner.get(sw).unwrap());
+    let step = |sim: &mut Simulation| sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
+    let held = |sim: &Simulation, sw| sim.super_weapons[&americans][&sw].is_suspended;
+    step(&mut sim);
+    assert!(!held(&sim, nuke) && !held(&sim, spy_plane), "both charging");
+
+    sim.temporal_initiate_warp(clegs[0], Some(silos[0]), &rules, None);
+    sim.temporal_initiate_warp(clegs[2], Some(radar), &rules, None);
+    step(&mut sim);
+    assert!(!held(&sim, nuke), "the other silo is online");
+    assert!(!held(&sim, spy_plane), "not IsPowered=");
+
+    sim.temporal_initiate_warp(clegs[1], Some(silos[1]), &rules, None);
+    step(&mut sim);
+    assert!(held(&sim, nuke), "no silo is online");
+    assert!(!held(&sim, spy_plane), "still charging");
+}
+
+/// Through the production fire path: a Chrono Legionnaire ordered to attack
+/// a silo holds its house's Nuke during the warp and erases the silo after
+/// Strength * 10 / Damage = 50 of its AI turns. The erase revokes the Nuke
+/// (`+0x1FC` at `0x0071AA60`; the destructor's revoke pass `0x0043BEF0`) and
+/// reports it.
+#[test]
+fn erasing_a_superweapon_building_revokes_its_super() {
+    use crate::sim::command::{Command, CommandEnvelope};
+    let rules = silo_rules();
+    let (mut sim, grid) = arena(11, &rules);
+    let silo = spawn(&mut sim, &rules, "SILO", "Americans", 13, 10);
+    let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
+    let americans = sim.interner.get("Americans").unwrap();
+    let nuke = sim.interner.get("NukeSpecial").unwrap();
+    let owner = sim.interner.intern("Russians");
+    sim.queue_command(CommandEnvelope::new(
+        owner,
+        sim.session.tick + 1,
+        Command::Attack {
+            attacker_id: cleg,
+            target_id: silo,
+        },
+    ));
+    let mut held = false;
+    let mut erased_at = None;
+    for frame in 0..200 {
+        sim.sound_events.clear();
+        let commands = sim.take_due_commands();
+        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        if erased(&sim, silo) {
+            erased_at = Some(frame);
+            break;
+        }
+        held |=
+            head_of(&sim, silo) == Some(cleg) && sim.super_weapons[&americans][&nuke].is_suspended;
+    }
+    assert!(held, "held while warped");
+    assert!(erased_at.is_some(), "the silo is erased");
+    assert!(!sim.super_weapons[&americans][&nuke].is_active, "revoked");
+    assert!(sim.sound_events.iter().any(|event| matches!(
+        event,
+        SimSoundEvent::SuperWeaponStatusChanged { owner, sw_type }
+            if *owner == americans && *sw_type == nuke
+    )));
 }
 
 /// A warped object is frozen: its head's Update runs from its own AI turn,

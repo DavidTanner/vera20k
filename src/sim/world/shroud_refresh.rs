@@ -10,14 +10,12 @@ impl Simulation {
     /// The settings every reveal reads (`TechnoClass::UpdateReveal @
     /// 0x0070AF50` and its callers, the Psychic Reveal): with a live map the
     /// stored playfield byte gates a Techno's, the map's `Size=` diamond
-    /// bounds them, the rules' sight keys and `AllyReveal=` shape them, and
-    /// the game's fog decides the first mapping's CleanFog.
+    /// bounds them, and the rules' sight keys and `AllyReveal=` shape them.
     pub(crate) fn sight_reveal_config(&self, rules: Option<&RuleSet>) -> vision::VisionConfig {
         vision::VisionConfig::new(
             rules,
             self.map_size_diamond(),
             self.playfield_bounds.is_some(),
-            self.session.game_options.fog_of_war,
         )
     }
 

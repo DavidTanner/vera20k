@@ -8,7 +8,7 @@
 //!
 //! sim/ only — never render/ui/audio/net.
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::BunkerLink;
 use crate::sim::movement;

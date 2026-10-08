@@ -81,7 +81,7 @@ pub(crate) fn apply_bridge_damage_events_with_overlay_registry(
     sim: &mut Simulation,
     rules: &RuleSet,
     events: &[BridgeDamageEvent],
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let mut collapsed = false;
     // Finish each event's existing callbacks before another event can enter
@@ -97,7 +97,7 @@ fn apply_one_bridge_damage_event(
     sim: &mut Simulation,
     rules: &RuleSet,
     event: &BridgeDamageEvent,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let events = std::slice::from_ref(event);
 
@@ -148,7 +148,7 @@ pub(crate) fn dispatch_bridge_collapse_from_hut_with_overlay_registry(
     sim: &mut Simulation,
     rules: &RuleSet,
     hut_center: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let scan: Vec<(u16, u16)> = hut_destroy_5x5_scan(hut_center).collect();
     let family = choose_hut_bridge_family(sim, &scan);
@@ -269,7 +269,7 @@ fn finish_hut_fallback(
     sim: &mut Simulation,
     rules: &RuleSet,
     extra: HutFallbackExecution,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let rim_collapsed = extra.rim_cell.is_some_and(|ramp| {
         live_publication::update_adjacent_bridges(
@@ -688,7 +688,7 @@ pub(super) fn blow_up_bridge_cell_fallout(
     rules: &RuleSet,
     rx: u16,
     ry: u16,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     kill_ground_occupants_at(sim, rules, rx, ry, overlay_registry);
     drop_in_bridge_deck_entities(sim, rx, ry);
@@ -705,7 +705,7 @@ pub(super) fn kill_ground_occupants_at(
     rules: &RuleSet,
     rx: u16,
     ry: u16,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     ground_fallout::apply(sim, rules, overlay_registry, rx, ry);
 }

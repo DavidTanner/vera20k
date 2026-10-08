@@ -127,7 +127,7 @@ fn held_infantry_survives_launch(name: &str) {
     ));
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, production::ProductionCategory::Infantry)
         .unwrap()
         .object
@@ -170,7 +170,7 @@ fn held_infantry_survives_launch(name: &str) {
     );
     let before_factory = sim
         .production
-        .factory_shadow
+        .factories
         .iter_insertion_ordered()
         .into_iter()
         .cloned()
@@ -200,7 +200,7 @@ fn held_infantry_survives_launch(name: &str) {
     );
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .iter_insertion_ordered()
             .into_iter()
             .cloned()

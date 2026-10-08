@@ -18,8 +18,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::{InternedId, StringInterner};
@@ -523,7 +523,6 @@ fn construct_terrain_objects_inner(
     sim.production.terrain_animations.clear();
     sim.production.terrain_objects.clear();
     sim.production.terrain_object_cells.clear();
-    sim.production.terrain_occupation_bits.clear();
     sim.production.tiberium_spawning_terrain_cells.clear();
 
     let mut constructed = 0usize;
@@ -549,11 +548,6 @@ fn construct_terrain_objects_inner(
         );
         terrain_state.native_unique_id = native_unique_id;
         let occupation_bits = terrain_state.occupation_bits;
-        if occupation_bits != 0 {
-            sim.production
-                .terrain_occupation_bits
-                .insert((obj.rx, obj.ry), occupation_bits);
-        }
         sim.production
             .terrain_object_cells
             .insert((obj.rx, obj.ry), stable_id);
@@ -575,7 +569,6 @@ fn construct_terrain_objects_inner(
                 .expect("new Terrain remains registered")
                 .clone();
             crate::sim::terrain_object::mark_terrain_occupation(
-                &mut sim.production,
                 &terrain_snapshot,
                 sim.resolved_terrain.as_mut(),
             );
@@ -680,9 +673,9 @@ mod tests {
         BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
     };
     use crate::map::entities::EntityCategory;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::entity_store::EntityStore;
@@ -1414,7 +1407,10 @@ mod tests {
         );
         let stable_id = sim.production.terrain_object_cells[&(10, 5)];
         assert_eq!(sim.production.terrain_objects[&stable_id].health, 200);
-        assert_eq!(sim.production.terrain_occupation_bits[&(10, 5)], 4);
+        assert_eq!(
+            sim.production.terrain_objects[&stable_id].occupation_bits,
+            4
+        );
 
         let grid = PathGrid::test_all_passable(64, 64);
         sim.queue_command(CommandEnvelope::new(
@@ -1471,11 +1467,10 @@ mod tests {
             !sim.production.terrain_object_cells.contains_key(&(10, 5)),
             "a destroyed tree releases its cell"
         );
-        assert!(
-            !sim.production
-                .terrain_occupation_bits
-                .contains_key(&(10, 5)),
-            "a destroyed tree releases its occupation bits"
+        assert_eq!(
+            sim.substrate.raw_cell_occupation.ground_bits(10, 5) & 0x1C,
+            0,
+            "a destroyed tree releases its raw occupation bits"
         );
     }
 
@@ -1618,13 +1613,6 @@ mod tests {
                 let terrain = &sim.production.terrain_objects[&stable_id];
                 assert_eq!(terrain.occupation_bits, source_mask);
                 assert_eq!(terrain.lifecycle, TerrainObjectLifecycle::Live);
-                if source_mask != 0 {
-                    assert_eq!(
-                        sim.production.terrain_occupation_bits[&(object.rx, object.ry)],
-                        source_mask,
-                        "zone/passability authority retains the unshifted source mask"
-                    );
-                }
             }
 
             for foundation_only_cell in [(19, 2), (18, 3), (19, 3)] {

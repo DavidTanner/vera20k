@@ -530,7 +530,7 @@ impl crate::sim::world::Simulation {
         &mut self,
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         use crate::sim::mission::{MissionId, MissionType};
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -586,7 +586,7 @@ impl crate::sim::world::Simulation {
         &mut self,
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<(), String> {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(());

@@ -8,7 +8,6 @@ pub(crate) mod fire_effects;
 pub(crate) mod instances;
 pub(crate) mod line_trails;
 pub(crate) mod overlay_index;
-pub(crate) mod radiation_light;
 pub(crate) mod render;
 pub(crate) mod selection_brackets;
 pub(crate) mod state;

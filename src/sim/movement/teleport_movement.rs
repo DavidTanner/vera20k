@@ -478,7 +478,7 @@ impl crate::sim::world::Simulation {
         target: (u16, u16),
         rules: &crate::rules::ruleset::RuleSet,
         is_harvester: bool,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         use crate::map::entities::EntityCategory;
         use crate::map::resolved_terrain::NativeCellQuery;

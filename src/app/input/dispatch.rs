@@ -2897,9 +2897,12 @@ fn jump_camera_to_base(state: &mut AppState) {
     }
 
     // Fallback: jump to the first multiplayer start waypoint.
-    if let Some(wp) = crate::map::waypoints::first_multiplayer_start(
-        &state.match_state.match_presentation.waypoints,
-    ) {
+    if let Some(wp) = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| crate::map::waypoints::first_multiplayer_start(&rt.resources.waypoints))
+    {
         log::info!(
             "H: falling back to start waypoint at ({}, {})",
             wp.rx,

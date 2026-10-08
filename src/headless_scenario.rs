@@ -20,11 +20,11 @@ use std::path::Path;
 
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::map_file::MapFile;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater;
 use crate::map::tile_variant_selector::TileVariantSelectorCache;
 use crate::map::waypoints;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::sim::scenario_bootstrap::ScenarioBootstrapRng;
 use crate::sim::scenario_session::ScenarioDescriptor;
 use crate::sim::world::Simulation;
@@ -169,7 +169,6 @@ pub(crate) fn load_with_launch(
     let theater = theater::load_theater(&mut assets, &map.header.theater)
         .ok_or_else(|| format!("load theater {}", map.header.theater))?;
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
-    rules.general.resolve_art_rates(&art_ini);
     let infantry_sequences =
         crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
     let overlay_registry = OverlayTypeRegistry::from_ini(&rules_ini, Some(&art_ini));
@@ -200,10 +199,6 @@ pub(crate) fn load_with_launch(
         tiberium_spreads_flag: true,
         map_width: scenario_cell_extent,
         map_height: scenario_cell_extent,
-        local_left: map.header.local_left as u16,
-        local_top: map.header.local_top as u16,
-        local_width: map.header.local_width as u16,
-        local_height: map.header.local_height as u16,
         mp_start_waypoints: waypoints::multiplayer_start_waypoints(
             bound_scenario_prefix
                 .projection()
@@ -577,10 +572,6 @@ mod retail_construction_tests {
 
         let descriptor = ScenarioDescriptor {
             seed,
-            local_left: map.header.local_left as u16,
-            local_top: map.header.local_top as u16,
-            local_width: map.header.local_width as u16,
-            local_height: map.header.local_height as u16,
             ..ScenarioDescriptor::default()
         };
         let (sim, resolved) = stage_fill_populate(

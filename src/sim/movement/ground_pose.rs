@@ -24,7 +24,7 @@ impl Simulation {
         id: u64,
         z: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let marked = self
             .substrate
@@ -493,7 +493,7 @@ impl Simulation {
         id: u64,
         coord: DriveCoord,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let marked = self
             .substrate
@@ -528,7 +528,7 @@ impl Simulation {
         id: u64,
         height: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let context = crate::sim::world::UninitContext::new(rules, registry);
         let marked = self

@@ -398,7 +398,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -595,7 +595,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
@@ -663,7 +663,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let stopped_move = self.substrate.entities.get(id).is_some_and(|actor| {
             actor.category == EntityCategory::Infantry

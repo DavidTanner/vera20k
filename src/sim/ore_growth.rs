@@ -19,8 +19,8 @@ use std::hash::{Hash, Hasher};
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::basic::{BasicSection, SpecialFlagsSection};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::rng::SimRng;
@@ -1651,9 +1651,9 @@ mod tests {
 
     use crate::map::entities::EntityCategory;
     use crate::map::overlay::OverlayEntry;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
     use crate::sim::entity_store::EntityStore;

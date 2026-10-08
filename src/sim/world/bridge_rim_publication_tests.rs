@@ -260,7 +260,7 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
     restored
         .restore_map_authority_after_snapshot_load(
             &rules,
-            &crate::map::overlay_types::OverlayTypeRegistry::empty(),
+            &crate::rules::overlay_types::OverlayTypeRegistry::empty(),
         )
         .unwrap();
     for y in 140..=144 {

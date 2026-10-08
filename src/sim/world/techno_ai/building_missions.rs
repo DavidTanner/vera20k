@@ -1335,7 +1335,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let ctx = ObjectAiCtx {
             overlay_registry,

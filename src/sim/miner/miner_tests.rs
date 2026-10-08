@@ -1417,7 +1417,7 @@ fn extract_max_node_remaining_zero() {
 /// Minimal stock-shaped tiberium rules plus an overlay registry so a miner
 /// test can run the production overlay-grid resource path
 /// (real `CellClass::Reduce_Tiberium` shape, including the density-0 overlay).
-fn miner_rules_with_tiberium() -> (RuleSet, crate::map::overlay_types::OverlayTypeRegistry) {
+fn miner_rules_with_tiberium() -> (RuleSet, crate::rules::overlay_types::OverlayTypeRegistry) {
     let mut text = String::from(
         "[InfantryTypes]\n\
          [VehicleTypes]\n\
@@ -1459,7 +1459,7 @@ fn miner_rules_with_tiberium() -> (RuleSet, crate::map::overlay_types::OverlayTy
     let ini = IniFile::from_str(&text);
     (
         RuleSet::from_ini(&ini).expect("miner+tiberium rules"),
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None),
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None),
     )
 }
 
@@ -1467,7 +1467,7 @@ fn miner_rules_with_tiberium() -> (RuleSet, crate::map::overlay_types::OverlayTy
 fn tick_miners_overlay_n(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     n: usize,
 ) {
     let config = MinerConfig::default();
@@ -3584,7 +3584,7 @@ fn player_move_arrival_off_ore_parks_a_human_miner_on_guard_and_an_ai_miner_on_h
 /// `cell`, folded into `land_type` by the same `recalc_overlay_passability`
 /// the map loader and every overlay mutation run.
 fn sim_with_resolved_tiberium_cell(
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     cell: (u16, u16),
 ) -> Simulation {
     use crate::rules::terrain_rules::LandType;

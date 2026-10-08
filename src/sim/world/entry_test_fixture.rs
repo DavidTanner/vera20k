@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub(crate) fn fixture() -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     fixture_with_rules("")
 }
@@ -22,7 +22,7 @@ pub(crate) fn fixture_with_rules(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     fixture_with_rules_and_fixed_art(extra, &IniFile::from_str(""))
 }
@@ -34,7 +34,7 @@ pub(crate) fn fixture_with_rules_and_fixed_art(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     let mut text = String::from(
         "[InfantryTypes]\n0=ENGINEER\n1=JUMPJET\n[JUMPJET]\nStrength=125\nSpeed=9\nSpeedType=Hover\nMovementZone=Fly\nJumpjetSpeed=30\nJumpjetHeight=500\nJumpjetClimb=20\nJumpJet=yes\nBalloonHover=yes\nHoverAttack=yes\nLocomotor={92612C46-F71F-11d1-AC9F-006008055BB5}\n[AircraftTypes]\n0=HORNET\n[HORNET]\nLandable=yes\nSpeed=12\nSpeedType=Winged\nStrength=75\nLocomotor={4A582746-9839-11d1-B709-00A024DDAFD1}\n[BuildingTypes]\n0=CABHUT\n[ENGINEER]\nEngineer=yes\nSpeed=4\nSpeedType=Foot\nStrength=75\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n[CABHUT]\nBridgeRepairHut=yes\nFoundation=1x1\nStrength=200\n[Warheads]\n0=SA\n1=Super\n[Super]\nInfDeath=2\nPenetratesBunker=yes\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n[CombatDamage]\nC4Warhead=SA\n[SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n[OverlayTypes]\n",
@@ -55,7 +55,7 @@ pub(crate) fn fixture_with_rules_and_fixed_art(
     ini.merge(&IniFile::from_str(extra));
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, art).unwrap();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(art));
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut terrain = ResolvedTerrainGrid::from_cells(
         33,
         33,

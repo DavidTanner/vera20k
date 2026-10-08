@@ -878,7 +878,19 @@ use crate::sim::world::Simulation;
 // resume.
 // 303 -> 304: a Super saves its place in the Super timer list (0x00A83D50).
 // Prior records lack it.
-const SNAPSHOT_VERSION: u32 = 304;
+// 304 -> 305: PowerState drops was_low_power (it fed only a discarded
+// transition event) and Miner its forced_return flag (reserved_refinery is
+// only set beside it). Prior records cannot resume.
+// 305 -> 306: OwnerVisibility keeps one byte of CellClass ground bits per cell
+// instead of the legacy counter projection and visibility marks, and
+// SightAdmission drops its fog_of_war copy. Prior records cannot resume.
+// 306 -> 307: ScenarioSession drops its LocalSize copy; playfield_bounds owns
+// it. Prior records cannot resume.
+// 307 -> 308: ProductionState drops terrain_occupation_bits, a per-cell copy of
+// the terrain objects' occupation that nothing read. Prior records cannot resume.
+// 308 -> 309: Factory drops its special item, which every writer set to the
+// -1 "none" and nothing read. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 309;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2015,7 +2027,7 @@ fn restore_object_references(
         )?;
     }
 
-    for factory in sim.production.factory_shadow.iter_insertion_ordered() {
+    for factory in sim.production.factories.iter_insertion_ordered() {
         if let Some(object_id) = factory.object.as_ref().and_then(|object| object.entity_id) {
             require_resolved_reference(
                 entity_ids.contains(&object_id),
@@ -2039,9 +2051,10 @@ fn restore_object_references(
         }
     }
 
-    // These manager maps are derived/transitional mirrors rather than modeled
-    // native pointer slots. Restore prunes them only after the authoritative
-    // object graph has passed validation.
+    // The primary-factory links (the native primary byte, written by
+    // Building448070 and the player's cycle order) and the airfield pad
+    // reservations name objects by id. Restore prunes ids the validated object
+    // graph no longer holds.
     sim.production.retain_primary_factory_links(&entity_ids);
     sim.production.airfield_docks.cleanup_dead(&entity_ids);
 
@@ -2318,7 +2331,7 @@ impl Simulation {
     pub(crate) fn restore_map_authority_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Result<SnapshotMapRestoreOutput, SnapshotRestoreError> {
         let (overlay_width, overlay_height, overlay_cell_count, retained_wall_count) = self
             .overlay_grid
@@ -2462,7 +2475,7 @@ impl Simulation {
     fn rebuild_native_tiberium_queues_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Result<crate::sim::ore_growth::NativeTiberiumRebuildStats, SnapshotRestoreError> {
         let overlay_grid = self.overlay_grid.as_ref().ok_or(
             SnapshotRestoreError::MissingMapAuthorityComponent {
@@ -2551,8 +2564,8 @@ mod tests {
         use crate::map::basic::{BasicSection, SpecialFlagsSection};
         use crate::map::entities::EntityCategory;
         use crate::map::map_file::MapHeader;
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::components::Health;
         use crate::sim::game_entity::GameEntity;
@@ -3097,8 +3110,8 @@ mod tests {
     #[test]
     fn snapshot_restore_replays_overlay_passability_and_publishes_canonical_navigation() {
         use crate::map::overlay::OverlayEntry;
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::overlay_grid::{OverlayGrid, recalc_overlay_passability};
         use crate::sim::pathfinding::zone_map::ZONE_INVALID;
@@ -3271,7 +3284,7 @@ mod tests {
              [OverlayTypes]\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("truncated-grid rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
         let mut sim = Simulation::new();
         sim.overlay_grid = Some(malformed);
         sim.resolved_terrain = Some(flat_terrain(2, 1));
@@ -3313,7 +3326,7 @@ mod tests {
              [OverlayTypes]\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("truncated-retained-grid rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
         let mut sim = Simulation::new();
         sim.overlay_grid = Some(malformed);
         sim.resolved_terrain = Some(flat_terrain(2, 1));
@@ -3900,7 +3913,12 @@ mod tests {
         // 301 -> 302: FogState drops its unread v81 generation wire shadow.
         // 302 -> 303: unread HoverAttack copy and aircraft pad-index copies.
         // 303 -> 304: a Super's place in the Super timer list.
-        assert_eq!(super::SNAPSHOT_VERSION, 304);
+        // 304 -> 305: write-only power transition latch and miner return flag.
+        // 305 -> 306: ground bits replace the legacy visibility counters.
+        // 306 -> 307: the session's LocalSize copy.
+        // 307 -> 308: the unread terrain occupation copy.
+        // 308 -> 309: the Factory special item.
+        assert_eq!(super::SNAPSHOT_VERSION, 309);
     }
 
     #[test]
@@ -6367,7 +6385,7 @@ mod tests {
         sim.fog.width = 8;
         sim.fog.height = 8;
         sim.fog
-            .insert_fogged_object_footprint(viewer, (3, 3), 91, vec![(3, 3), (4, 3)]);
+            .insert_fogged_object_footprint(viewer, 91, vec![(3, 3), (4, 3)]);
         sim.fog.sensors_add_at(viewer, (3, 3), 2);
         assert!(sim.fog.set_cloaked_by_house(7, 3, 3));
         assert!(
@@ -7457,8 +7475,8 @@ mod tests {
             BRIDGE_FLAG_STRUCTURAL, BridgeFlagStamp, BridgeStampSlot,
             MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
         };
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::overlay_grid::OverlayGrid;
 
@@ -8302,11 +8320,7 @@ mod tests {
 
         let mut original_occupied_grid = flat_terrain(3, 3);
         for terrain in [&damaged, &destroyed, &spawner] {
-            mark_terrain_occupation(
-                &mut sim.production,
-                terrain,
-                Some(&mut original_occupied_grid),
-            );
+            mark_terrain_occupation(terrain, Some(&mut original_occupied_grid));
         }
         let stale_original_grid = original_occupied_grid.clone();
         assert!(

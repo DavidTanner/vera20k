@@ -4132,7 +4132,7 @@ fn persistent_bullet_logic_slot_publishes_native_wall_dirty_visits() {
     );
     let art = crate::rules::ini_parser::IniFile::from_str("[GAWALL]\nDamageLevels=4\n");
     let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).expect("Bullet wall rules");
-    let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+    let overlays = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
 
     let run = |initial_wall_data: u8| {
         let mut sim = Simulation::new();
@@ -4355,7 +4355,7 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         let mut runtime = SimRuntime::from_simulation(sim);
         runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
         runtime.resources.overlay_registry =
-            crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
 
         let _ = runtime
             .advance_frame(&[], 16, super::TickLane::Ordinary)
@@ -6386,7 +6386,7 @@ fn wave_tail_consumes_wall_roll_before_mandatory_cliff_chance_roll() {
          [WALLX]\nWall=yes\nChainReaction=yes\nStrength=100\nDamageLevels=4\n",
     );
     let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).expect("wall+cliff rules");
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = Simulation::new();
     let firer_id = sim.allocate_stable_id();
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
@@ -6494,7 +6494,7 @@ fn assert_direct_fatal_death_weapon_starts_crater(bridge: bool) {
     ));
     // One raw frame: no middle frame, so Start runs Middle at construction.
     rules.bind_anim_frame_count_for_test("CRATERANIM", 1);
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut sim = Simulation::with_seed(1);
     let mut cells = Vec::new();
     for ry in 0..10 {
@@ -6589,7 +6589,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
          [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [DECAL]\n",
     );
-    let overlay_registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let overlay_registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let art_ini = crate::rules::ini_parser::IniFile::from_str(
         "[XGRYMED1]\nEnd=1\nRate=1\nRandomRate=900,300\n\
              [XGRYMED2]\nEnd=1\nRate=1\nRandomRate=900,300\n\

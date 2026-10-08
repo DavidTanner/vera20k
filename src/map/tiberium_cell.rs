@@ -6,7 +6,7 @@
 //! native neighbor order, density table/modulo, and signed value arithmetic.
 //! Depends on map overlay types, rules, and util direction; never on sim/.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 use crate::util::direction::DIRECTION_DELTAS;
 

@@ -1,78 +1,9 @@
-//! Shared skirmish country and start choices, startup errors and development
-//! loading presentation.
+//! Startup errors and development loading presentation. The skirmish menu's
+//! country and start choices are the launch record's `LaunchCountry` and
+//! `LaunchStartPosition`.
 //! Normal match setup belongs to the retail shell in `skirmish_shell`.
 
 use crate::ui::client_theme;
-
-/// Individual country selection for skirmish.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SkirmishCountry {
-    #[default]
-    America,
-    Korea,
-    France,
-    Germany,
-    GreatBritain,
-    Libya,
-    Iraq,
-    Cuba,
-    Russia,
-    Yuri,
-}
-
-impl SkirmishCountry {
-    pub const ALL: [SkirmishCountry; 10] = [
-        Self::America,
-        Self::Korea,
-        Self::France,
-        Self::Germany,
-        Self::GreatBritain,
-        Self::Libya,
-        Self::Iraq,
-        Self::Cuba,
-        Self::Russia,
-        Self::Yuri,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::America => "America",
-            Self::Korea => "Korea",
-            Self::France => "France",
-            Self::Germany => "Germany",
-            Self::GreatBritain => "Great Britain",
-            Self::Libya => "Libya",
-            Self::Iraq => "Iraq",
-            Self::Cuba => "Cuba",
-            Self::Russia => "Russia",
-            Self::Yuri => "Yuri",
-        }
-    }
-
-    pub fn country_name(self) -> &'static str {
-        match self {
-            Self::America => "Americans",
-            Self::Korea => "Alliance",
-            Self::France => "French",
-            Self::Germany => "Germans",
-            Self::GreatBritain => "British",
-            Self::Libya => "Africans",
-            Self::Iraq => "Arabs",
-            Self::Cuba => "Confederation",
-            Self::Russia => "Russians",
-            Self::Yuri => "YuriCountry",
-        }
-    }
-}
-
-/// Player's chosen start position on the map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StartPosition {
-    /// No start reserved; the launch assigns one (the shell's Random entry).
-    Auto,
-    /// Specific waypoint index.
-    Position(u8),
-}
 
 /// Display an actionable startup failure. This surface cannot launch a match.
 /// Returns true when the player chooses to quit.

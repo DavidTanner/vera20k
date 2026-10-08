@@ -92,7 +92,7 @@ impl Simulation {
         id: u64,
         attacker: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -179,7 +179,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let terrain = self.resolved_terrain.as_ref();
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -239,7 +239,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if !self.substrate.entities.contains(id) {
             return;
@@ -273,7 +273,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -309,7 +309,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -479,7 +479,7 @@ impl Simulation {
         transport: u64,
         attacker: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         loop {
             let Some(passenger) = self
@@ -518,7 +518,7 @@ impl Simulation {
         victim: u64,
         attacker: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
         if let Some(entity) = self.substrate.entities.get_mut(victim) {

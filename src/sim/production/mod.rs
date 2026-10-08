@@ -31,7 +31,7 @@ mod wall_placement;
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
     BuildEligibility, CancelOutcome, Factory, FactoryHolder, FactoryRegistry, FactoryView,
-    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome,
+    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, StepOutcome,
     TimeToBuildInputs, category_for_object, time_to_build,
 };
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
@@ -40,7 +40,6 @@ pub use self::production_economy::is_harvester_type;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
     place_production_with_overlays, placement_preview_for_owner_with_overlays,
-    placement_preview_for_owner_without_overlays,
 };
 #[cfg(test)]
 pub(crate) use self::production_queue::dispatch_production_changes_for_tests;

@@ -66,8 +66,8 @@
 //!   slot is dereferenced (`0x004FE8A9`, `0x00505368`). VERA makes no choice
 //!   for such a node and splices nothing for a missing plant.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_site::{SiteKey, find_base_building_site, reserved_near};
 use crate::sim::ai_unit_choice::{self, UnitChoiceKind};
@@ -653,9 +653,7 @@ fn place_building(
         return false;
     }
     sim.mission_spawned_entities = true;
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     sim.slave_manager_hand_off(product, rules);
     // The choice clear at `0x0044531F` compares the product with the choice
     // the exit cleared at its start; nothing in between sets it.

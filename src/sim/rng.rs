@@ -7,6 +7,7 @@
 use std::hash::{Hash, Hasher};
 
 use crate::rng_continuation::MapGenRngContinuation;
+use crate::util::native_random;
 
 /// The `double` at `0x007E3570` that scales a `RandomRanged(0, 0x7ffffffe)`
 /// draw onto `[0, 1]` for a unit-interval probability gate (Spark spawns, the
@@ -17,10 +18,7 @@ use crate::rng_continuation::MapGenRngContinuation;
 pub(crate) const RANDOM_RANGED_UNIT_SCALE: crate::util::native_x87::NativeF64Bits =
     crate::util::native_x87::NativeF64Bits::from_bits(0x3e00_0000_0040_0000);
 
-const RNG_TABLE_LEN: usize = 250;
-const RNG_INDEX_B_SEED: i32 = 0x67;
-const INIT_TABLE_1: [u32; 4] = [0xBAA9_6887, 0x1E17_D32C, 0x03BC_DC3C, 0x0F33_D1B2];
-const INIT_TABLE_2: [u32; 4] = [0x4B0F_3B58, 0xE874_F0C3, 0x6955_C5A6, 0x55A7_CA46];
+const RNG_TABLE_LEN: usize = native_random::STATE_WORDS;
 
 #[cfg(test)]
 thread_local! {
@@ -100,14 +98,12 @@ pub struct SimRngLogicalState {
 impl SimRng {
     /// Create a new RNG with the given seed.
     pub fn new(seed: u64) -> Self {
-        let mut rng = Self {
+        Self {
             disabled: 0,
             index_a: 0,
-            index_b: RNG_INDEX_B_SEED,
-            state: vec![0; RNG_TABLE_LEN],
-        };
-        rng.reseed(seed as u32);
-        rng
+            index_b: native_random::LAG as i32,
+            state: Vec::from(native_random::seeded_words(seed as u32)),
+        }
     }
 
     /// Adopt the exact post-RMG `g_MapGenRng` cursor without replaying draws.
@@ -227,31 +223,6 @@ impl SimRng {
         self.state.hash(hasher);
     }
 
-    fn reseed(&mut self, seed: u32) {
-        self.index_a = 0;
-        self.index_b = RNG_INDEX_B_SEED;
-
-        for (entry_index, slot) in self.state.iter_mut().enumerate() {
-            let mut prev = seed;
-            let mut mixed = entry_index as u32;
-            for i in 0..INIT_TABLE_1.len() {
-                let input = INIT_TABLE_1[i] ^ mixed;
-                let high = (input as i32) >> 16;
-                let low = input & 0xFFFF;
-                let square_mix =
-                    (!high.wrapping_mul(high)).wrapping_add((low as i32).wrapping_mul(low as i32));
-                let rotated = ((square_mix >> 16) as u32) | ((square_mix as u32) << 16);
-                let cross = (high as u32).wrapping_mul(low);
-                let next = (rotated ^ INIT_TABLE_2[i]).wrapping_add(cross) ^ prev;
-                prev = mixed;
-                mixed = next;
-            }
-            *slot = mixed;
-        }
-
-        self.disabled = 0;
-    }
-
     /// Advance and return next random u64.
     pub fn next_u64(&mut self) -> u64 {
         let lo = u64::from(self.next_u32());
@@ -267,17 +238,10 @@ impl SimRng {
 
         let a = self.index_a as usize;
         let b = self.index_b as usize;
-        let value = self.state[a] ^ self.state[b];
-        self.state[a] = value;
-
-        self.index_a += 1;
-        if self.index_a >= RNG_TABLE_LEN as i32 {
-            self.index_a = 0;
-        }
-        self.index_b += 1;
-        if self.index_b >= RNG_TABLE_LEN as i32 {
-            self.index_b = 0;
-        }
+        let (mut lead, mut lagged) = (a, b);
+        let value = native_random::draw(&mut self.state, &mut lead, &mut lagged);
+        self.index_a = lead as i32;
+        self.index_b = lagged as i32;
 
         #[cfg(test)]
         DRAW_TRACE.with_borrow_mut(|trace| {

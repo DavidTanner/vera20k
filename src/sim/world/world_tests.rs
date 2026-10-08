@@ -833,7 +833,7 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
          [ORE]\nTiberium=yes\n[WALL]\nWall=yes\nStrength=100\n",
     );
     let rules = RuleSet::from_ini(&ini).expect("terminal overlay rules");
-    let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let overlays = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut terrain = gsi_04_10_clear_terrain(2, 1);
     terrain.cell_mut(0, 0).expect("terrain cell").slope_type = 5;
 
@@ -1067,7 +1067,7 @@ fn move_sound_start_consumes_exactly_one_main_draw() {
 pub(crate) fn gsi_04_07_wall_sell_rules(
     first_unsellable: bool,
     with_sound: bool,
-) -> (RuleSet, crate::map::overlay_types::OverlayTypeRegistry) {
+) -> (RuleSet, crate::rules::overlay_types::OverlayTypeRegistry) {
     let ini = IniFile::from_str(&format!(
         "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=FIRSTWALL\n1=SECONDWALL\n\
@@ -1087,7 +1087,7 @@ pub(crate) fn gsi_04_07_wall_sell_rules(
     let mut rules =
         RuleSet::from_ini_with_fixed_art_for_test(&ini, &art_ini).expect("wall-sale rules");
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
-    let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art_ini));
+    let overlays = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art_ini));
     (rules, overlays)
 }
 
@@ -1752,7 +1752,7 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
         );
         let art = IniFile::from_str("[TESTWALL]\nDamageLevels=2\n");
         let rules = RuleSet::from_ini(&ini).expect("fatal lifecycle rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
         let mut sim = Simulation::with_seed(1);
         let owner = sim.interner.intern("Americans");
         let enemy = sim.interner.intern("Soviet");
@@ -2008,7 +2008,7 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
     ));
     // One raw frame: no middle frame, so Start runs Middle at construction.
     rules.bind_anim_frame_count_for_test("EXPLOSION", 1);
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let ore_id = registry.id_for_name("ORE").expect("ORE overlay id");
 
     let mut sim = Simulation::with_seed(1);
@@ -2105,7 +2105,7 @@ fn gsi_04_11_missile_outer_anim_precedes_per_cell_ore_reduction() {
     rules.replace_art_registry_for_test(crate::rules::art_data::ArtRegistry::from_ini(
         &IniFile::from_str("[EXPLOSION]\nCrater=yes\nScorch=no\nFrameWidth=100\nFrameHeight=100\n"),
     ));
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let ore_id = registry.id_for_name("ORE").unwrap();
     let mut sim = Simulation::with_seed(7);
     let mut terrain = gsi_04_10_clear_terrain(10, 10);
@@ -2628,10 +2628,7 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(gsi_04_10_clear_terrain(2, 1));
     let tree = gsi_04_10_terrain_object(&mut sim, 1, (0, 0), 7);
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        mark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     sim.terrain_costs = build_canonical_terrain_cost_grids(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
     );
@@ -2642,10 +2639,7 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     assert!(!input_path_grid.is_walkable(0, 0));
     assert_eq!(sim.terrain_costs[&SpeedType::Track].cost_at(0, 0), 0);
 
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        unmark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     sim.path_grid = Some(Arc::new(input_path_grid));
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
@@ -2677,10 +2671,7 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(gsi_04_10_clear_terrain(1, 1));
     let tree = gsi_04_10_terrain_object(&mut sim, 1, (0, 0), 0);
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        mark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     assert_eq!(
         sim.resolved_terrain
             .as_ref()
@@ -2709,10 +2700,7 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
         "OccupationBits=0 is a reduced Building zone even though PathGrid is walkable"
     );
 
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        unmark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
     let tail_path_grid = sim.path_grid_snapshot().expect("tail grid");
@@ -4933,7 +4921,7 @@ fn concrete_damage_fixture(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
     serde_json::Value,
 ) {
     let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
@@ -5387,7 +5375,7 @@ fn drive_water_mover(
         "[OverlayTypes]\n{}",
         (0..=25).map(|i| format!("{i}=O{i}\n")).collect::<String>()
     ));
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
     let mut visited = Vec::new();
     for _ in 0..600 {
         let _ = sim.advance_tick(&[], Some(rules), Some(grid), Some(&registry), 67);

@@ -300,7 +300,7 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
 
     let mut runtime = SimRuntime::from_simulation(sim);
     runtime.resources.overlay_registry =
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     runtime.resources.rules = rules;
     let mut fire_count = 0;
     for _ in 0..32 {

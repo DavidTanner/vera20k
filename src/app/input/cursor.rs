@@ -452,7 +452,7 @@ pub(super) fn capability_cursor_for_hover(
     best_id: Option<u64>,
     hover: &crate::app::input::entity_pick::HoverTargetKindWithId,
     rules: Option<&crate::rules::ruleset::RuleSet>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> CursorFeedbackKind {
     use crate::map::entities::EntityCategory;
 
@@ -775,7 +775,7 @@ fn click_refused(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     actor: Option<u64>,
     target: u64,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     rules.zip(actor).is_some_and(|(rules, actor)| {
         sim.selected_weapon_fire_error(
@@ -841,7 +841,7 @@ fn resolved_unit_in_range(
     target_id: u64,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let rules = match rules {
         Some(r) => r,

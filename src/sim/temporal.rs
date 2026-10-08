@@ -83,11 +83,16 @@
 //!   paused animation slots (`0x004521C0`/`0x00452210` pause and resume the 21
 //!   slots) are presentation; the online latch they share is
 //!   [`GameEntity::building_online`].
-//! - House `+0x1FC` (set at a building's warp start, release and erase; read
-//!   for the player house at `0x004F926C`) is not identified.
+//! - House `+0x1FC`, set at a building's warp start (`0x0071B13A`), release
+//!   (`0x0071AC49`, `0x0071AD17`) and erase (`0x0071AA60`), asks the House
+//!   update for the Super passes (`0x004F92F6`, `0x004F92FD`). VERA tests a
+//!   Super's online providers every frame (`superweapon`) and refreshes the
+//!   grants at the erase; for the player house it also refreshes the
+//!   building options and sidebar strips (`0x004F926C`), presentation.
 //! - The online latch's readers VERA wires are Is_Operational, power drain,
-//!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`) and the
-//!   depot probe (`0x0043C7FB`). Not wired:
+//!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`), the
+//!   depot probe (`0x0043C7FB`) and the Super hold pass (`0x0050B020`,
+//!   `0x0050B04F`, in `superweapon`). Not wired:
 //!   - `ObjectTypeClass::FindFactory @ 0x005F7900` with its online argument
 //!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
 //!     build that only offline factories could build (`0x0050924D`), and a
@@ -98,15 +103,15 @@
 //!     keeps producing during the warp.
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
-//!     online, unsold host; plain prerequisites use the house counters), the
-//!     owned-Super pass (`HouseClass__Update_Owned_Supers`, `0x0050B020`),
+//!     online, unsold host; plain prerequisites use the house counters),
 //!     CheckDockArrayOccupancy (`0x0044E855`) and PowerCheck_Upgrade
 //!     (`0x00450605`). Effect: an option enabled by a warped upgrade host
 //!     stays available.
 //!   - The player-only BuildingClass virtual `+0x4E0` (`0x004456D0`,
-//!     unidentified) and the sensor-range circle (`0x00456750`,
-//!     presentation). `0x0044017E` lies past BuildingClass::Update's frozen
-//!     jump, so no warp reaches it.
+//!     UpdateConstructionOptions: it adds the sidebar cameos of what the
+//!     building's factory kind can build) and the sensor-range circle
+//!     (`0x00456750`), both presentation. `0x0044017E` lies past
+//!     BuildingClass::Update's frozen jump, so no warp reaches it.
 //! - A building's erase kills its garrison through `0x004585C0(0)` and deletes
 //!   absorbed passengers outright before Record_The_Kill; VERA's carrier
 //!   UnInit purges both inside the building's UnInit (each at health 0 with no
@@ -269,7 +274,8 @@ impl GameEntity {
     /// `BuildingClass+0x660`, the online latch: cleared at a warp's start
     /// (`0x004521C0`, reached from InitiateWarp for a building) and set at its
     /// release (`0x00452210`, from LetGo). Read by `Is_Operational @
-    /// 0x004555D0`, GetPowerDrain `0x0044E88F` and the radar scan `0x00508EA3`.
+    /// 0x004555D0`, GetPowerDrain `0x0044E88F`, the radar scan `0x00508EA3`
+    /// and the Super hold pass's provider test (`0x0050B020`, `0x0050B04F`).
     /// VERA represents only this writer: the player and trigger power toggle
     /// (`GoOffline @ 0x00452360`, `GoOnline @ 0x00452260`) is not ported, and
     /// a corrupt-head release (ClearLinkedList) that natively leaves the latch
@@ -347,7 +353,7 @@ impl Simulation {
         firer: u64,
         target: TemporalShotTarget,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if !self.substrate.entities.contains(firer) {
             return;
@@ -405,7 +411,7 @@ impl Simulation {
         attacker: u64,
         target: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if let Some(target) = target {
             // 0x0071AF2F..0x0071AF48: the target's spawns die and its captives
@@ -605,7 +611,7 @@ impl Simulation {
         &mut self,
         head: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(link) = self.temporal_link(head).cloned() else {
             return;
@@ -707,7 +713,7 @@ impl Simulation {
         head: u64,
         target: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(target) = target.filter(|&target| self.substrate.entities.contains(target)) else {
             // 0x0071A895..0x0071A8B5: no target — clear and idle; then the
@@ -771,8 +777,19 @@ impl Simulation {
             crate::sim::combat::KillCallback::Terminal,
             rules,
         );
+        let target_owner = self.substrate.entities.get(target).map(GameEntity::owner);
         // vtable +0xF8 UnInit: no death effects, no survivors.
         self.uninit_with_context(target, UninitContext::new(Some(rules), registry));
+        // 0x0071AA5A..0x0071AA60: a building's erase sets its owner's
+        // `+0x1FC`, whose House update runs the Super passes, and the
+        // building's destructor runs the revoke pass (`0x0043BEF0`): a Super
+        // no other building provides is revoked. VERA refreshes at the
+        // event, as for a sale or a death.
+        if category == EntityCategory::Structure
+            && let Some(owner) = target_owner
+        {
+            crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, owner);
+        }
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
         // pointer expiry already cleared the link and idled once).
         self.temporal_owner_idle(head, rules);

@@ -340,7 +340,7 @@ impl Simulation {
         x: i16,
         y: i16,
         rules: &RuleSet,
-        overlays: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlays: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> bool {
         // EventClass rejects only the exact packed null CellStruct. Every
         // other signed pair is resolved by MapClass' fixed 512-wide linear
@@ -569,7 +569,7 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         match cmd {
             Command::Select { entity_ids, .. } => self.apply_selection_snapshot(entity_ids, rules),
@@ -1287,7 +1287,12 @@ impl Simulation {
                     return false;
                 }
                 self.begin_megamission_retask(*entity_id, MissionType::Enter, rules);
-                if crate::sim::miner::native_dock_miner(self, *entity_id) {
+                if self
+                    .substrate
+                    .entities
+                    .get(*entity_id)
+                    .is_some_and(crate::sim::game_entity::GameEntity::is_harvester)
+                {
                     crate::sim::miner::clear_unload_latch(self, *entity_id);
                 }
                 let previous_refinery = self
@@ -1320,7 +1325,6 @@ impl Simulation {
                 if let Some(refinery_id) = explicit_refinery {
                     miner.reserved_refinery = Some(refinery_id);
                 }
-                miner.forced_return = true;
                 // Clear any in-progress movement — the miner system will path to refinery.
                 e.movement_target = None;
                 // Commit the Harvest mission and the ForcedReturn cursor of
@@ -1934,9 +1938,6 @@ impl Simulation {
                 target_ry,
             } => {
                 let Some(rules) = rules else { return false };
-                if !self.session.game_options.super_weapons {
-                    return false;
-                }
                 // The SPECIAL_PLACE event (`EventClass::Execute 0x004C78D6`).
                 let owner = self.interner.intern(command_owner);
                 self.fire_super_weapon(
@@ -2428,7 +2429,7 @@ impl Simulation {
         entity_id: u64,
         target_id: Option<u64>,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         if !self.entity_owned_by_id(command_owner, entity_id) {
             return false;
@@ -2562,7 +2563,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         self.queue_megamission_with_teardown(
             id,
@@ -3359,7 +3360,6 @@ mod tests {
         let miner_entity = sim.substrate.entities.get(1).unwrap();
         let miner = miner_entity.miner.as_ref().unwrap();
         assert_eq!(miner.reserved_refinery, Some(3));
-        assert!(miner.forced_return);
         assert_eq!(miner_entity.miner_state(), Some(MinerState::ForcedReturn));
         // The order's radio break leaves the old refinery on both ends and
         // the unload latch with it; a latch left up would refuse every later
@@ -3399,7 +3399,6 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(miner.reserved_refinery, None);
-        assert!(miner.forced_return);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::ForcedReturn)
@@ -3432,7 +3431,6 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(miner.reserved_refinery, None);
-        assert!(!miner.forced_return);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::SearchOre)

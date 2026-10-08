@@ -2,8 +2,8 @@
 use super::{preferred_local_owner_for_sim, schedule_command_in_sim};
 use crate::app::persistence::{LoadPreparationView, PreparedLoad, SaveRepository};
 use crate::map::houses::HouseRoster;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::command::Command;
 use crate::sim::house_state::HouseState;

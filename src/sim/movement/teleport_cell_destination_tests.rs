@@ -11,10 +11,10 @@
 //! persistence and command tests below are Rust integration regressions.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::retail_ini_fixture::retail_battle_rules_for_map;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::Command;

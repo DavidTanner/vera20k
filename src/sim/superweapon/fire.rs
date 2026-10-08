@@ -35,7 +35,7 @@
 #[path = "fire_tests.rs"]
 mod tests;
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;

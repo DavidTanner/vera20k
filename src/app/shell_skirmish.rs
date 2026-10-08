@@ -43,22 +43,6 @@ impl App {
         }
     }
 
-    fn close_native_skirmish_shell(state: &mut AppState) {
-        state.frontend.shell_route = crate::app::shell_route::ShellRoute::MainMenu;
-        state.frontend.shell_first_paint_slide = None;
-        state.frontend.skirmish_shell_state.choose_map_modal = None;
-        state.frontend.skirmish_shell_state.validation_modal = None;
-        state.frontend.skirmish_shell_state.open_combo_dropdown = None;
-        state.frontend.skirmish_shell_state.dropdown_scroll_drag = None;
-        state.frontend.skirmish_shell_state.dropdown_scroll_press = None;
-        state.frontend.skirmish_shell_state.trackbar_hold = None;
-        state.frontend.skirmish_shell_state.pressed_owner_draw_button = None;
-        crate::ui::skirmish_shell::blur_player_name_edit(&mut state.frontend.skirmish_shell_state);
-        state.frontend.skirmish_shell_last_painted_pressed_button = None;
-        state.frontend.skirmish_preview_texture = None;
-        Self::enter_shell_window_mode(state);
-    }
-
     fn selected_skirmish_mode_is_cooperative(state: &AppState, mode_id: i32) -> bool {
         crate::skirmish_modes::mode_by_id(&state.frontend.skirmish_modes, mode_id)
             .is_some_and(|mode| mode.override_file.eq_ignore_ascii_case("MPCoopMD.ini"))
@@ -153,8 +137,8 @@ impl App {
     }
 
     /// Skirmish Back (`0x5C0`): the proc packs the session like Start does
-    /// (`0x006ACEE0`), then the runner tears the dialog down. From the Single
-    /// Player route that is the teardown slide back to `0x100`.
+    /// (`0x006ACEE0`), then the runner tears the dialog down: the teardown
+    /// slide back to the Single Player page `0x100`.
     pub(super) fn handle_skirmish_back(state: &mut AppState) {
         match crate::ui::skirmish_shell::pack_launch_session_without_start_validation(
             &state.frontend.skirmish_shell_state,
@@ -182,19 +166,10 @@ impl App {
                 log::warn!("Could not pack raw Skirmish Back session: {err:?}");
             }
         }
-        if state
-            .frontend
-            .shell_route
-            .skirmish_returns_to_single_player()
-        {
-            Self::leave_shell_dialog(
-                state,
-                crate::app::frontend::shell_transition::ShellExitThen::SkirmishBack,
-            );
-        } else {
-            Self::close_native_skirmish_shell(state);
-            state.frontend.offline_skirmish_runtime.persist_snapshot();
-        }
+        Self::leave_shell_dialog(
+            state,
+            crate::app::frontend::shell_transition::ShellExitThen::SkirmishBack,
+        );
     }
 
     /// Skirmish Start after the teardown slide: `0x006AE2C0` destroys the
@@ -271,9 +246,7 @@ impl App {
         state.frontend.skirmish_shell_last_painted_pressed_button = None;
         // GameMode stays 5 through the game, so the shell resumes on a new
         // `0x102` afterwards (`App::resume_shell_after_match`).
-        state.frontend.shell_route = crate::app::shell_route::ShellRoute::Skirmish {
-            return_to_single_player: true,
-        };
+        state.frontend.shell_route = crate::app::shell_route::ShellRoute::Skirmish;
         state.frontend.shell_first_paint_slide = None;
         state.frontend.skirmish_preview_texture = None;
         crate::app::loading::pump::begin_loading(state, request);

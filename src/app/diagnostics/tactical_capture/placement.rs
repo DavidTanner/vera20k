@@ -4,7 +4,7 @@
 //! placement authority through `production::placement_preview_for_owner_with_overlays`.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production;
@@ -305,13 +305,14 @@ Buildable=yes
         let expected = ordered
             .iter()
             .find(|candidate| {
-                production::placement_preview_for_owner_without_overlays(
+                production::placement_preview_for_owner_with_overlays(
                     &sim,
                     &rules,
                     "Russians",
                     "NAPOWR",
                     candidate.cell.0,
                     candidate.cell.1,
+                    None,
                 )
                 .is_some_and(|preview| preview.valid)
             })

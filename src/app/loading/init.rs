@@ -39,18 +39,15 @@ use crate::assets::asset_manager::MediaArchiveMode;
 use crate::assets::shp_file::ShpFile;
 use crate::map::actions::ActionMap;
 use crate::map::basic::{BasicSection, BridgeDestroyabilityMode};
-use crate::map::cell_tags::CellTagMap;
 use crate::map::events::EventMap;
 use crate::map::houses::{self, HouseColorMap, HouseRoster};
 use crate::map::lighting::{self, CellLightGrid, LightingConfig};
 use crate::map::map_file::MapFile;
 use crate::map::overlay::{OverlayEntry, TerrainObject};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::source::{
     LoadedMap, LoadedMapSource, load_map_by_name_or_path_with_assets, try_load_mmx,
 };
-use crate::map::tags::TagMap;
 use crate::map::terrain::{self, LocalBounds, TerrainGrid};
 use crate::map::theater;
 use crate::map::trigger_graph::TriggerGraph;
@@ -69,6 +66,7 @@ use crate::render::tile_atlas::TileAtlas;
 use crate::render::unit_atlas::UnitAtlas;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 
@@ -806,6 +804,7 @@ mod map_wall_owner_candidate_tests {
     #[test]
     fn match_lighting_restore_discards_outgoing_pending_samples() {
         use crate::app::presentation::lighting::MatchLighting;
+        use crate::sim::light_sources::LightingEvent;
         let terrain = flat_terrain(128, 128);
         let rules = lighting_rules();
         let mut sim = Simulation::with_seed(0x1b);
@@ -834,12 +833,15 @@ mod map_wall_owner_candidate_tests {
             0,
             &rules.radiation,
             None,
+            &mut sim.lighting_sources.pending,
         );
-        assert_eq!(sim.radiation.clone().take_lighting_events().len(), 1);
+        assert!(matches!(
+            sim.lighting_sources.pending.last(),
+            Some(LightingEvent::Radiation { .. })
+        ));
         sim.session.lighting.current_ambient = 30;
         sim.rebuild_lighting_sources_after_load(&rules);
         assert!(sim.lighting_sources.pending.is_empty());
-        assert!(sim.radiation.take_lighting_events().is_empty());
         assert!(sim.lighting_sources.buildings[&41].active);
         lights.restore(&terrain, &sim, &rules, 2);
         for _ in 0..3 {
@@ -1137,14 +1139,23 @@ mod map_wall_owner_candidate_tests {
             rad_level: 500,
             spread: 1,
         };
-        sim.radiation
-            .apply_detonation(radiation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            radiation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         sim.session.lighting.current_ambient = 250;
         sim.publish_global_lighting();
         sim.set_building_light_active(41, true);
-        sim.radiation
-            .apply_detonation(radiation, 0, &rules.radiation, None);
-        sim.flush_radiation_lighting();
+        sim.radiation.apply_detonation(
+            radiation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         assert!(matches!(
             sim.lighting_sources.pending.as_slice(),
             [
@@ -1260,7 +1271,6 @@ mod map_wall_owner_candidate_tests {
         terrain: &ResolvedTerrainGrid,
         sim: &mut Simulation,
     ) {
-        sim.flush_radiation_lighting();
         let events = std::mem::take(&mut sim.lighting_sources.pending);
         lighting.apply_events(terrain, &events);
     }
@@ -1428,6 +1438,7 @@ mod map_wall_owner_candidate_tests {
             0,
             &rules.radiation,
             None,
+            &mut sim.lighting_sources.pending,
         );
 
         let terrain = flat_terrain(10, 10);
@@ -1471,13 +1482,23 @@ mod map_wall_owner_candidate_tests {
             rad_level: 500,
             spread: 10,
         };
-        sim.radiation
-            .apply_detonation(detonation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            detonation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         let first = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(first.point_lights.len(), 1);
 
-        sim.radiation
-            .apply_detonation(detonation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            detonation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         let merged = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(merged.point_lights.len(), 1);
         assert_ne!(first, merged);
@@ -1504,8 +1525,6 @@ pub struct ScenarioLoadInputs {
     /// Terrain objects for per-frame instance generation.
     pub terrain_objects: Vec<TerrainObject>,
     pub waypoints: HashMap<u32, Waypoint>,
-    pub cell_tags: CellTagMap,
-    pub tags: TagMap,
     pub triggers: TriggerMap,
     pub events: EventMap,
     pub actions: ActionMap,
@@ -1922,7 +1941,6 @@ impl MapLoadInitial {
         )
         .expect("retail generated-map rules");
         rules.install_art_data(ArtRegistry::from_ini(&art_ini));
-        rules.general.resolve_art_rates(&art_ini);
         let infantry_sequences =
             crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
         let overlay_registry = OverlayTypeRegistry::from_ini(&rules_ini, Some(&art_ini));
@@ -1958,10 +1976,6 @@ impl MapLoadInitial {
             // Native Resize constructs a square cell-array extent of SizeW+SizeH.
             map_width: scenario_cell_extent,
             map_height: scenario_cell_extent,
-            local_left: map_data.header.local_left as u16,
-            local_top: map_data.header.local_top as u16,
-            local_width: map_data.header.local_width as u16,
-            local_height: map_data.header.local_height as u16,
             mp_start_waypoints: scenario_start_waypoints_for_load(
                 &map_data,
                 Some(bound_scenario_prefix.projection()),
@@ -2303,7 +2317,7 @@ pub(crate) fn load_map_initial_with_assets(
     // sine/cosine table.  Install it before selecting the map source: explicit
     // `[Tubes]` are valid in ordinary .map/.mpr/.mmx content, not just .SED
     // random maps.  OnceLock keeps repeated map loads read-only and cheap.
-    crate::map::rmg::trig::install_from_dir(&ra2_dir);
+    crate::map::retail_trig::install_from_dir(&ra2_dir);
     if !crate::map::retail_trig::wave_tables_available() {
         anyhow::bail!(
             "{} does not provide the verified gamemd sine/Acos tables required by stock Sonic Wave simulation",
@@ -2363,7 +2377,7 @@ pub(crate) fn load_map_initial_with_assets(
         let resolved = crate::map::rmg::build::ResolvedTheaterInputs::from_theater(
             &theater,
             &terrain_rules,
-            crate::map::rmg::trig::global().cloned(),
+            crate::map::retail_trig::global().cloned(),
         );
 
         // Tile-block layouts (sub-cell height/terrain grids) from the theater's
@@ -2588,7 +2602,6 @@ pub(crate) fn load_map_from_initial(
         populated,
         fallback,
     );
-    rules.general.resolve_art_rates(&fixed_art_ini);
     let infantry_sequences =
         crate::rules::infantry_sequence::parse_infantry_sequence_registry(&fixed_art_ini);
     // Rules + art parsed, merged, and processed (gamemd command-bar/CD/rules
@@ -2642,10 +2655,6 @@ pub(crate) fn load_map_from_initial(
         // Native Resize constructs a square cell-array extent of SizeW+SizeH.
         map_width: scenario_cell_extent,
         map_height: scenario_cell_extent,
-        local_left: map_data.header.local_left as u16,
-        local_top: map_data.header.local_top as u16,
-        local_width: map_data.header.local_width as u16,
-        local_height: map_data.header.local_height as u16,
         mp_start_waypoints: scenario_start_waypoints_for_load(
             &map_data,
             Some(bound_scenario_prefix.projection()),
@@ -3364,8 +3373,6 @@ pub(crate) fn load_map_from_initial(
             overlays: overlays_connected,
             terrain_objects: map_data.terrain_objects,
             waypoints: map_data.waypoints,
-            cell_tags: map_data.cell_tags,
-            tags: map_data.tags,
             triggers: map_data.triggers,
             events: map_data.events,
             actions: map_data.actions,
@@ -3477,7 +3484,7 @@ mod random_map_retail_tests {
         };
         // The .SED lives in a scratch directory, while verified native tables
         // belong to the retail install, like the AssetManager supplied below.
-        crate::map::rmg::trig::install_from_dir(&ra2);
+        crate::map::retail_trig::install_from_dir(&ra2);
 
         let mut structures_placed = 0usize;
         let mut configurations = 0usize;

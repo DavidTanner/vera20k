@@ -53,75 +53,6 @@ fn test_owner_visibility_basic() {
 }
 
 #[test]
-fn cell_visibility_shroud_counter_preserves_native_sentinel_edges() {
-    let mut cell = CellVisibilityRuntime {
-        gap_shroud_counter: 3,
-        ..CellVisibilityRuntime::default()
-    };
-
-    cell.increase_shroud_counter();
-    assert_eq!(cell.shroud_counter, 1, "-1 normalizes through zero to one");
-    assert_ne!(cell.flags & 0x20, 0, "positive transition sets flag 0x20");
-    cell.increase_shroud_counter();
-    cell.increase_shroud_counter();
-    cell.increase_shroud_counter();
-    assert_eq!(cell.shroud_counter, 3, "gap counter is an upper clamp");
-
-    cell.reduce_shroud_counter();
-    cell.reduce_shroud_counter();
-    assert_eq!(cell.shroud_counter, 1);
-    cell.reduce_shroud_counter();
-    assert_eq!(
-        cell.shroud_counter, -1,
-        "native reduce maps one through zero to -1"
-    );
-    assert_eq!(
-        cell.alt_flags & 0x18,
-        0x18,
-        "closed ground flags reopen at nonpositive"
-    );
-}
-
-#[test]
-fn cell_visibility_map_orders_redraw_reveal_then_clean_fog() {
-    let mut cell = CellVisibilityRuntime {
-        flags: 0x40 | 0x400000,
-        ..CellVisibilityRuntime::default()
-    };
-    let mut events = Vec::new();
-
-    cell.map_visible(true, |event| events.push(event));
-
-    assert_eq!(
-        events,
-        vec![
-            CellVisibilityEvent::RegisterCellAsVisible,
-            CellVisibilityEvent::RevealCheck,
-            CellVisibilityEvent::CleanFog,
-        ]
-    );
-    assert_eq!(cell.flags & 0x42, 0x02, "map installs 0x02 and clears 0x40");
-    assert_eq!(cell.alt_flags & 0x18, 0x18);
-    assert_eq!((cell.visibility, cell.foggedness), (-1, -1));
-    assert_eq!(
-        cell.flags & 0x400000,
-        0,
-        "CleanFog clears the snapshot flag"
-    );
-
-    let mut repeat = Vec::new();
-    cell.map_visible(true, |event| repeat.push(event));
-    assert_eq!(
-        repeat,
-        vec![
-            CellVisibilityEvent::RegisterCellAsVisible,
-            CellVisibilityEvent::RevealCheck,
-        ],
-        "a later map update may redraw, but CleanFog is first-transition only"
-    );
-}
-
-#[test]
 fn fogged_footprints_unlink_shared_ids_in_reverse_order() {
     let viewer = intern::test_intern("Americans");
     let mut fog = FogState {
@@ -129,8 +60,8 @@ fn fogged_footprints_unlink_shared_ids_in_reverse_order() {
         height: 8,
         ..FogState::default()
     };
-    let first = fog.insert_fogged_object_footprint(viewer, (2, 2), 11, vec![(2, 2), (3, 2)]);
-    let second = fog.insert_fogged_object_footprint(viewer, (2, 2), 22, vec![(2, 2)]);
+    let first = fog.insert_fogged_object_footprint(viewer, 11, vec![(2, 2), (3, 2)]);
+    let second = fog.insert_fogged_object_footprint(viewer, 22, vec![(2, 2)]);
 
     assert_eq!(fog.fogged_object_cells[&(viewer, 2, 2)], [first, second]);
     let removed = fog.clear_fogged_objects_at(viewer, 2, 2);
@@ -184,21 +115,21 @@ fn sensor_house_counters_drive_cloaked_draw_without_observer_bypass() {
 }
 
 #[test]
-fn owner_visibility_balances_each_frame_visibility_contributor() {
+fn owner_visibility_ground_bits_outlive_the_sight_that_set_them() {
     let mut vis = OwnerVisibility::new(2, 2);
+    assert_eq!(vis.ground_flags_raw()[3], 0);
     vis.mark_visible(1, 1);
     vis.mark_visible(1, 1);
-    assert_eq!(vis.cell_runtime_raw()[3].shroud_counter, 2);
-    assert_eq!(vis.visibility_marks_raw()[3], 2);
+    assert_eq!(vis.ground_flags_raw()[3], 0x18);
 
     vis.clear_all_visible();
 
-    assert_eq!(vis.cell_runtime_raw()[3].shroud_counter, -1);
-    assert_eq!(vis.visibility_marks_raw()[3], 0);
+    assert_eq!(vis.ground_flags_raw()[3], 0x18);
+    assert_eq!(vis.ground_flags_raw()[0], 0, "an unseen cell keeps none");
     assert!(!vis.is_visible(1, 1));
     assert!(
         vis.is_revealed(1, 1),
-        "counter cleanup never clears exploration"
+        "clearing sight never clears exploration"
     );
 }
 
@@ -405,7 +336,6 @@ fn gsi_08_12_veteran_sight_multiplies_only_for_sight_ability_holders() {
             veteran_sight,
             leptons_per_sight_increase: 0,
             reveal_by_height: false,
-            fog_of_war: false,
             ..default_config()
         };
         recompute_owner_visibility_with_rules(
@@ -463,7 +393,6 @@ fn elevation_grants_no_sight_bonus_at_any_reachable_terrain_level() {
         veteran_sight: 0.0,
         leptons_per_sight_increase: 2000,
         reveal_by_height: false,
-        fog_of_war: false,
         ..default_config()
     };
     let fog = recompute_owner_visibility(
@@ -507,7 +436,6 @@ fn test_elevation_sight_bonus_z0_gives_no_bonus() {
         veteran_sight: 0.0,
         leptons_per_sight_increase: 2000,
         reveal_by_height: false,
-        fog_of_war: false,
         ..default_config()
     };
     let fog = recompute_owner_visibility(
@@ -548,7 +476,6 @@ fn test_elevation_sight_bonus_disabled_when_zero() {
         veteran_sight: 0.0,
         leptons_per_sight_increase: 0,
         reveal_by_height: false,
-        fog_of_war: false,
         ..default_config()
     };
     let fog = recompute_owner_visibility(
@@ -1043,7 +970,7 @@ fn test_height_los_blocks_sight_behind_cliff() {
     let mut hg = vec![0u8; width as usize * height as usize];
     hg[7 * width as usize + 9] = 5; // obstruction cell (9,7)
 
-    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, true, Some(&hg), width, height);
+    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, Some(&hg), width, height);
 
     // (6,5)'s obstruction is (7,7) (no cliff) — visible.
     assert!(vis.is_visible(6, 5));
@@ -1062,7 +989,7 @@ fn test_height_los_plus_two_obstruction_offset() {
     let mut vis = OwnerVisibility::new(20, 20);
     let mut hg = vec![0u8; width as usize * height as usize];
     hg[5 * width as usize + 7] = 5; // (7,5) — the pre-fix obstruction guess
-    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, true, Some(&hg), width, height);
+    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, Some(&hg), width, height);
     assert!(
         vis.is_visible(8, 5),
         "naive (7,5) cliff must not block with the +2 offset"
@@ -1072,7 +999,7 @@ fn test_height_los_plus_two_obstruction_offset() {
     let mut vis2 = OwnerVisibility::new(20, 20);
     let mut hg2 = vec![0u8; width as usize * height as usize];
     hg2[7 * width as usize + 9] = 5; // (9,7) — the actual obstruction cell
-    reveal_radius_into(&mut vis2, 5, 5, 5, 0, true, true, Some(&hg2), width, height);
+    reveal_radius_into(&mut vis2, 5, 5, 5, 0, true, Some(&hg2), width, height);
     assert!(
         !vis2.is_visible(8, 5),
         "+2 obstruction cell (9,7) must block"
@@ -1092,25 +1019,14 @@ fn test_height_los_high_viewer_sees_past_cliff() {
 
     // Low viewer (z=0, no shift): index-29 reveal cell is (8,5); 0+3 < 5 → blocked.
     let mut low = OwnerVisibility::new(width, height);
-    reveal_radius_into(&mut low, 5, 5, 5, 0, true, true, Some(&hg), width, height);
+    reveal_radius_into(&mut low, 5, 5, 5, 0, true, Some(&hg), width, height);
     assert!(!low.is_visible(8, 5), "low viewer is blocked by the cliff");
 
     // High viewer (level 4 = 4*104 leptons, shift=2): index-29 reveal cell
     // shifts to (6,3); the SAME obstruction (9,7) is checked, but 4+3 = 7 >= 5
     // → LOS passes.
     let mut high = OwnerVisibility::new(width, height);
-    reveal_radius_into(
-        &mut high,
-        5,
-        5,
-        5,
-        4 * 104,
-        true,
-        true,
-        Some(&hg),
-        width,
-        height,
-    );
+    reveal_radius_into(&mut high, 5, 5, 5, 4 * 104, true, Some(&hg), width, height);
     assert!(
         high.is_visible(6, 3),
         "high viewer sees past the cliff (reveal cell shifted to (6,3))"
@@ -1127,7 +1043,7 @@ fn test_reveal_center_z_shift() {
 
     // Ground unit (z=0): center stays at the foot cell (10,10).
     let mut ground = OwnerVisibility::new(width, height);
-    reveal_radius_into(&mut ground, 10, 10, 1, 0, false, true, None, width, height);
+    reveal_radius_into(&mut ground, 10, 10, 1, 0, false, None, width, height);
     assert!(
         ground.is_visible(10, 10),
         "ground unit centers on its foot cell"
@@ -1148,7 +1064,6 @@ fn test_reveal_center_z_shift() {
         1,
         4 * 104,
         false,
-        true,
         None,
         width,
         height,
@@ -1172,7 +1087,7 @@ fn test_height_los_disabled_when_false() {
     let mut hg = vec![0u8; width as usize * height as usize];
     hg[5 * width as usize + 7] = 5;
 
-    reveal_radius_into(&mut vis, 5, 5, 5, 0, false, true, Some(&hg), width, height);
+    reveal_radius_into(&mut vis, 5, 5, 5, 0, false, Some(&hg), width, height);
 
     // With reveal_by_height=false, the cliff doesn't block.
     assert!(vis.is_visible(8, 5));
@@ -1185,7 +1100,7 @@ fn test_height_los_none_grid_disables_check() {
     let width: u16 = 20;
     let height: u16 = 20;
 
-    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, true, None, width, height);
+    reveal_radius_into(&mut vis, 5, 5, 5, 0, true, None, width, height);
 
     // Without a height grid, all cells in range are visible.
     assert!(vis.is_visible(8, 5));
@@ -1347,19 +1262,8 @@ fn height_los_on_flat_terrain_blocks_nothing() {
     for range in 1..=MAX_SIGHT_RANGE {
         let mut with_los = OwnerVisibility::new(w, h);
         let mut without_los = OwnerVisibility::new(w, h);
-        super::reveal_radius_into(
-            &mut with_los,
-            32,
-            32,
-            range,
-            0,
-            true,
-            true,
-            Some(&flat),
-            w,
-            h,
-        );
-        super::reveal_radius_into(&mut without_los, 32, 32, range, 0, false, true, None, w, h);
+        super::reveal_radius_into(&mut with_los, 32, 32, range, 0, true, Some(&flat), w, h);
+        super::reveal_radius_into(&mut without_los, 32, 32, range, 0, false, None, w, h);
 
         let mut blocked: Vec<(u16, u16)> = Vec::new();
         for ry in 0..h {
@@ -1395,19 +1299,8 @@ fn distant_terrain_cannot_block_nearby_sight() {
     let mut with_obstacle = OwnerVisibility::new(w, h);
     let mut flat_only = OwnerVisibility::new(w, h);
     let flat: Vec<u8> = vec![0; usize::from(w) * usize::from(h)];
-    super::reveal_radius_into(
-        &mut with_obstacle,
-        32,
-        32,
-        5,
-        0,
-        true,
-        true,
-        Some(&heights),
-        w,
-        h,
-    );
-    super::reveal_radius_into(&mut flat_only, 32, 32, 5, 0, true, true, Some(&flat), w, h);
+    super::reveal_radius_into(&mut with_obstacle, 32, 32, 5, 0, true, Some(&heights), w, h);
+    super::reveal_radius_into(&mut flat_only, 32, 32, 5, 0, true, Some(&flat), w, h);
 
     let mut differing: Vec<(u16, u16)> = Vec::new();
     for ry in 0..h {
@@ -1481,7 +1374,7 @@ fn spiral_and_mirror_tables_cover_every_reachable_sight() {
 fn sight_ten_reveals_the_retail_cell_count() {
     let (w, h) = (64u16, 64u16);
     let mut vis = OwnerVisibility::new(w, h);
-    super::reveal_radius_into(&mut vis, 32, 32, 10, 0, false, true, None, w, h);
+    super::reveal_radius_into(&mut vis, 32, 32, 10, 0, false, None, w, h);
 
     let revealed = (0..h)
         .flat_map(|ry| (0..w).map(move |rx| (rx, ry)))
@@ -1509,7 +1402,7 @@ fn sight_ten_outer_ring_is_still_blocked_by_terrain_height() {
     let (w, h) = (64u16, 64u16);
     let flat: Vec<u8> = vec![0; usize::from(w) * usize::from(h)];
     let mut open = OwnerVisibility::new(w, h);
-    super::reveal_radius_into(&mut open, 32, 32, 10, 0, true, true, Some(&flat), w, h);
+    super::reveal_radius_into(&mut open, 32, 32, 10, 0, true, Some(&flat), w, h);
     assert!(open.is_revealed(42, 32), "flat ground hides nothing");
 
     // Ring-10 target (42,32) is spiral offset (10,0), whose mirror is (-1,0);
@@ -1518,18 +1411,7 @@ fn sight_ten_outer_ring_is_still_blocked_by_terrain_height() {
     let mut heights = flat.clone();
     heights[usize::from(34u16) * usize::from(w) + usize::from(43u16)] = 8;
     let mut blocked = OwnerVisibility::new(w, h);
-    super::reveal_radius_into(
-        &mut blocked,
-        32,
-        32,
-        10,
-        0,
-        true,
-        true,
-        Some(&heights),
-        w,
-        h,
-    );
+    super::reveal_radius_into(&mut blocked, 32, 32, 10, 0, true, Some(&heights), w, h);
     assert!(
         !blocked.is_revealed(42, 32),
         "a ring-10 cell must be gated by the same height test as ring 9"
@@ -1548,7 +1430,7 @@ fn sight_ten_outer_ring_is_still_blocked_by_terrain_height() {
 fn sight_zero_reveals_nothing() {
     let (w, h) = (16u16, 16u16);
     let mut vis = OwnerVisibility::new(w, h);
-    super::reveal_radius_into(&mut vis, 8, 8, 0, 0, false, true, None, w, h);
+    super::reveal_radius_into(&mut vis, 8, 8, 0, 0, false, None, w, h);
     let any = (0..h).any(|ry| (0..w).any(|rx| vis.is_revealed(rx, ry)));
     assert!(!any, "a Sight=0 object must not open a hole in the shroud");
 }

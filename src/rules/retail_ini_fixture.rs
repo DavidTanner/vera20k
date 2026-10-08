@@ -289,7 +289,6 @@ pub(crate) fn retail_battle_rules_for_map(map_name: &str) -> Option<RetailBattle
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&fixed_art),
     );
-    rules.general.resolve_art_rates(&fixed_art);
     Some(RetailBattleRules {
         authored_rules,
         fixed_art,

@@ -338,7 +338,7 @@ impl Simulation {
         &mut self,
         victim: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let frame = self.session.binary_frame;
         let Some(owner) = self
@@ -976,7 +976,7 @@ impl Simulation {
         weapon: &crate::rules::weapon_type::WeaponType,
         bullet: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(firer) else {

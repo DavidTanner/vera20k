@@ -87,9 +87,6 @@ fn has_charged_sw_for_owner(
     rules: &crate::rules::ruleset::RuleSet,
     owner: &str,
 ) -> bool {
-    if !sim.session.game_options.super_weapons {
-        return false;
-    }
     let owner_iid = sim.interner.get(owner).unwrap_or_default();
     crate::sim::superweapon::superweapon_views_for_owner(sim, rules, &owner_iid)
         .iter()

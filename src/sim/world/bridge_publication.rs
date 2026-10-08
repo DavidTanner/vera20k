@@ -70,7 +70,7 @@ impl BodyResult {
 pub(super) fn run_state_machine(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
 ) -> BodyResult {
@@ -135,7 +135,7 @@ pub(super) fn run_state_machine(
 pub(super) fn update_adjacent_bridges(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
 ) -> bool {
@@ -152,7 +152,7 @@ pub(super) fn update_adjacent_bridges(
 struct LivePublication<'a> {
     sim: &'a mut Simulation,
     rules: &'a RuleSet,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     collapsed: bool,
 }
 

@@ -117,7 +117,7 @@ fn gsi_04_12_random_map_ui_to_sed_launch_lifecycle_converges() {
         std::env::var("RA2_DIR").expect("set RA2_DIR to the active-retail YR directory"),
     );
     assert!(retail_dir.join("gamemd.exe").is_file());
-    crate::map::rmg::trig::install_from_dir(&retail_dir);
+    crate::map::retail_trig::install_from_dir(&retail_dir);
     let mut assets = crate::assets::asset_manager::AssetManager::new(
         &retail_dir,
         crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,

@@ -227,16 +227,6 @@ pub enum GameSoundEvent {
         source: Option<SoundSource>,
     },
 
-    /// Positional SFX played when a docked harvester departs after dumping.
-    /// Resolved from [AudioVisual] BunkerWallsDownSound (retail "TankBunkerDown").
-    /// Fires every refinery dock cycle.
-    RefineryExitSfx {
-        /// sound.ini ID for the SFX.
-        sound_id: String,
-        /// Screen position for spatial audio.
-        source: Option<SoundSource>,
-    },
-
     /// Positional SFX for tank-bunker walls raising (install) or falling
     /// (exit/teardown). The up/down choice — and thus which rules key resolves
     /// `sound_id` — is made when the event is built; plays at the bunker's
@@ -391,7 +381,6 @@ impl GameSoundEvent {
             | Self::BaseUnderAttackSfx { sound_id }
             | Self::BuildingGarrisonedSfx { sound_id, .. }
             | Self::C4Planted { sound_id, .. }
-            | Self::RefineryExitSfx { sound_id, .. }
             | Self::BunkerWalls { sound_id, .. }
             | Self::ChuteSound { sound_id, .. }
             | Self::BridgeRepaired { sound_id, .. }
@@ -425,7 +414,6 @@ impl GameSoundEvent {
             | Self::VocAt { source, .. }
             | Self::BuildingGarrisonedSfx { source, .. }
             | Self::C4Planted { source, .. }
-            | Self::RefineryExitSfx { source, .. }
             | Self::BunkerWalls { source, .. }
             | Self::ChuteSound { source, .. }
             | Self::BridgeRepaired { source, .. }

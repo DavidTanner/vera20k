@@ -1,15 +1,15 @@
 //! The generated launch's final `MapClass::InitCellAttributes(1)` ore-density rewrite.
 //!
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
-//! `map::cell_index`, `map::overlay_types`, `map::resolved_terrain`, `rules`,
+//! `map::cell_index`, `map::resolved_terrain`, `rules` (including `rules::overlay_types`),
 //! `map::tiberium_cell`, and `sim::overlay_grid`; never on
 //! render/, ui/, app/, audio/, or net/.
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::cell_index::canonical_cell_coord;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::tiberium_cell::{GerminatedCell, spread_cell_germinate_without_randomization};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 use crate::sim::overlay_grid::OverlayGrid;
 

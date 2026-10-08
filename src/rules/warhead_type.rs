@@ -45,14 +45,10 @@ pub struct WarheadType {
     pub cell_spread: SimFixed,
     /// Native `CellSpread` float widened to f64 for ApplyWarheadDamage.
     pub cell_spread_f64: f64,
-    /// Damage percentage at maximum spread distance (0–100).
-    /// Native `PercentAtMax=` is a **float** at `WarheadTypeClass+0x12C`
-    /// (ReadDouble at `0x0075d424`, `FSTP float ptr` at `0x0075d429`, key
-    /// string `0x00847e84`).
-    pub percent_at_max: u8,
-    /// Native `PercentAtMax` float widened to f64 for the receiver damage
-    /// kernel. The byte percentage above remains for legacy presentation and
-    /// callers that have not entered ApplyWarheadDamage.
+    /// Damage fraction at maximum spread distance. Native `PercentAtMax=` is
+    /// a **float** at `WarheadTypeClass+0x12C` (ReadDouble at `0x0075d424`,
+    /// `FSTP float ptr` at `0x0075d429`, key string `0x00847e84`), widened to
+    /// f64 for the receiver damage kernel.
     pub percent_at_max_f64: f64,
     /// Building fatal hits may enter the PostMortem delayed-death branch.
     /// Native WarheadTypeClass `+0x130`; default false.
@@ -329,7 +325,6 @@ impl WarheadType {
         let cell_spread: SimFixed = sim_from_f32(cell_spread_native);
         let cell_spread_f64 = f64::from(cell_spread_native);
         let percent_at_max_native = section.read_float("PercentAtMax", 1.0);
-        let percent_at_max: u8 = (percent_at_max_native * 100.0).round().clamp(0.0, 200.0) as u8;
         let percent_at_max_f64 = f64::from(percent_at_max_native);
         let delay_kill_at_max_f64 = f64::from(section.read_float("DelayKillAtMax", 1.0));
 
@@ -369,7 +364,6 @@ impl WarheadType {
             verses_f64,
             cell_spread,
             cell_spread_f64,
-            percent_at_max,
             percent_at_max_f64,
             causes_delay_kill: section.read_bool("CausesDelayKill", false),
             delay_kill_frames: section.read_int("DelayKillFrames", 5),
@@ -504,7 +498,7 @@ mod tests {
 
         assert_eq!(wh.id, "AP");
         assert_eq!(wh.cell_spread, sim_from_f32(0.5));
-        assert_eq!(wh.percent_at_max, 25); // 0.25 * 100 = 25
+        assert_eq!(wh.percent_at_max_f64, f64::from(0.25f32));
         assert!(wh.wall);
         assert!((wh.verses_f64[0] - 1.00).abs() < 1e-9); // none: 100%
         assert!((wh.verses_f64[2] - 0.90).abs() < 1e-9); // plate: 90%
@@ -543,7 +537,7 @@ mod tests {
 
         assert_eq!(wh.verses_f64, [1.0; 11]);
         assert_eq!(wh.cell_spread, sim_from_f32(0.0));
-        assert_eq!(wh.percent_at_max, 100);
+        assert_eq!(wh.percent_at_max_f64, 1.0);
         assert!(!wh.causes_delay_kill);
         assert_eq!(wh.delay_kill_frames, 5);
         assert_eq!(wh.delay_kill_at_max_f64, 1.0);

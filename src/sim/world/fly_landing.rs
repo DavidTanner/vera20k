@@ -65,7 +65,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let entity = self
             .substrate
@@ -798,7 +798,7 @@ mod tests {
             let mut visibility = serde_json::to_value(OwnerVisibility::new(128, 128)).unwrap();
             let x = row["exposed"][0].as_u64().unwrap() as usize;
             let y = row["exposed"][1].as_u64().unwrap() as usize;
-            visibility["cell_runtime"][y * 128 + x]["alt_flags"] = input["bits"].clone();
+            visibility["ground_flags"][y * 128 + x] = input["bits"].clone();
             sim.fog
                 .by_owner
                 .insert(owner, serde_json::from_value(visibility).unwrap());

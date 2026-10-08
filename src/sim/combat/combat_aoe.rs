@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use super::{EntityDamageEvent, TerrainDamageEvent, cell_spread};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
 use crate::sim::entity_store::EntityStore;
@@ -39,8 +39,6 @@ use crate::sim::overlay_grid::{
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::rng::SimRng;
 use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
-#[cfg(test)]
-use crate::util::fixed_math::SIM_ZERO;
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{CELL_CENTER_LEPTON, LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::distance_3d_leptons;
@@ -1089,37 +1087,6 @@ fn push_terrain_aoe_damage(
     });
 }
 
-/// Compute distance-scaled AoE damage using integer/fixed-point math.
-///
-/// At distance 0 (epicenter): full `base_damage * verses_pct / 100`.
-/// At distance == cell_spread (edge): `base_damage * verses_pct * percent_at_max_pct / 10000`.
-/// Linear interpolation between those extremes.
-#[cfg(test)]
-fn aoe_damage_at_distance(
-    base_damage: i32,
-    distance: SimFixed,
-    cell_spread: SimFixed,
-    percent_at_max_pct: u8,
-    verses_pct: u8,
-) -> u16 {
-    // t = distance / cell_spread, clamped [0, 1] — how far from center (SimFixed).
-    let t: SimFixed = if cell_spread > SIM_ZERO {
-        (distance / cell_spread).clamp(SIM_ZERO, SimFixed::from_num(1))
-    } else {
-        SIM_ZERO
-    };
-    // falloff_pct = lerp(100, percent_at_max_pct, t) in integer.
-    // = 100 + (percent_at_max_pct - 100) * t
-    let pam: i32 = percent_at_max_pct as i32;
-    let falloff_fixed: SimFixed = SimFixed::from_num(100) + SimFixed::from_num(pam - 100) * t;
-    let falloff_pct: i32 = falloff_fixed.to_num::<i32>();
-
-    // raw = base_damage * verses_pct * falloff_pct / 10000
-    // Compute in i64 and clamp to i32 range to prevent silent narrowing overflow.
-    let wide = base_damage as i64 * verses_pct as i64 * falloff_pct as i64 / 10000;
-    wide.clamp(0, u16::MAX as i64) as u16
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -1139,7 +1106,6 @@ mod tests {
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::{CellListInsertion, OccupancyGrid};
-    use crate::util::fixed_math::sim_from_f32;
 
     fn hit_ids(hits: &[EntityDamageEvent]) -> Vec<u64> {
         hits.iter().map(|event| event.target_id).collect()
@@ -1176,41 +1142,6 @@ mod tests {
         let warhead = WarheadType::from_ini_section("WH", ini.section("WH").expect("WH section"));
         let registry = OverlayTypeRegistry::from_ini(&ini, Some(&art));
         (rules, warhead, registry)
-    }
-
-    #[test]
-    fn test_aoe_damage_at_center() {
-        // At distance 0, full damage: 100 * 100 * 100 / 10000 = 100.
-        let dmg = aoe_damage_at_distance(100, SIM_ZERO, sim_from_f32(3.0), 25, 100);
-        assert_eq!(dmg, 100);
-    }
-
-    #[test]
-    fn test_aoe_damage_at_edge() {
-        // At distance == cell_spread, damage = base * percent_at_max / 100 = 100 * 25 / 100 = 25.
-        let dmg = aoe_damage_at_distance(100, sim_from_f32(3.0), sim_from_f32(3.0), 25, 100);
-        assert_eq!(dmg, 25);
-    }
-
-    #[test]
-    fn test_aoe_damage_at_midpoint() {
-        // At half distance, falloff_pct = lerp(100, 25, 0.5) = 62.
-        // damage = 100 * 100 * 62 / 10000 = 62.
-        let dmg = aoe_damage_at_distance(100, sim_from_f32(1.5), sim_from_f32(3.0), 25, 100);
-        assert_eq!(dmg, 62);
-    }
-
-    #[test]
-    fn test_aoe_damage_with_verses() {
-        // 50% verses at center: 100 * 50 * 100 / 10000 = 50.
-        let dmg = aoe_damage_at_distance(100, SIM_ZERO, sim_from_f32(3.0), 25, 50);
-        assert_eq!(dmg, 50);
-    }
-
-    #[test]
-    fn test_aoe_damage_zero_verses() {
-        let dmg = aoe_damage_at_distance(100, SIM_ZERO, sim_from_f32(3.0), 25, 0);
-        assert_eq!(dmg, 0);
     }
 
     #[test]
@@ -2488,13 +2419,6 @@ mod tests {
             Some(TargetKind::Cell(8, 8))
         ));
         assert!(entities.get(40).unwrap().attack_target.is_none());
-    }
-
-    #[test]
-    fn test_aoe_beyond_radius() {
-        // Beyond radius clamped to t=1 → percent_at_max.
-        let dmg = aoe_damage_at_distance(100, sim_from_f32(5.0), sim_from_f32(3.0), 25, 100);
-        assert_eq!(dmg, 25);
     }
 
     #[test]
@@ -4180,7 +4104,6 @@ mod tests {
         sim.substrate.raw_cell_occupation.mark_ground(5, 5, 0x80);
         sim.substrate.raw_cell_occupation.mark_deck(5, 5, 0xA5);
         crate::sim::terrain_object::mark_terrain_occupation(
-            &mut sim.production,
             &terrain_state,
             sim.resolved_terrain.as_mut(),
         );

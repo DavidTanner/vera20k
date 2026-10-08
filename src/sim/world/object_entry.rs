@@ -8,6 +8,7 @@ use crate::map::{
     cell_index::NativeCellIdentity as Cell, entities::EntityCategory,
     resolved_terrain::ResolvedTerrainGrid,
 };
+use crate::rules::object_type::Ability;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::{
     locomotor_type::{LocomotorKind, SpeedType},
@@ -15,6 +16,7 @@ use crate::rules::{
     object_type::ObjectType,
 };
 use crate::sim::combat::combat_weapon;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::movement::bump_crush::{self, CrushCapability, CrushTarget};
 use crate::sim::{components::NavTargetRef, game_entity::GameEntity, intern::InternedId};
 use crate::sim::{movement::locomotor::MovementLayer, occupancy::CellObjectMember};
@@ -33,7 +35,7 @@ mod infantry_entry_priority_tests;
 struct EntryReadContext<'a> {
     sim: &'a Simulation,
     rules: &'a RuleSet,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
 }
 
 impl EntryReadContext<'_> {
@@ -997,7 +999,7 @@ impl Simulation {
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<crate::sim::movement::infantry_entry::InfantryEntryClass, String> {
         if self
             .substrate
@@ -1024,7 +1026,7 @@ impl Simulation {
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
         if self
             .substrate
@@ -1127,7 +1129,7 @@ impl Simulation {
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         _mode: crate::sim::movement::infantry_entry::EntryQueryMode,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
         let mover = self
             .substrate
@@ -1151,7 +1153,7 @@ impl Simulation {
 pub(super) fn classify_object(
     sim: &Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     object: CellObjectMember,
     cell: Cell,
     args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
@@ -1217,9 +1219,8 @@ impl<'a> EntryMover<'a> {
     fn new(live: &EntryReadContext<'a>, id: u64, e: &'a GameEntity, obj: &'a ObjectType) -> Self {
         let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy(), 0)
             .and_then(|(name, _)| live.rules.weapon(name));
-        let crusher = obj.crusher
-            || (e.veterancy() >= 100 && obj.veteran_crusher)
-            || (e.veterancy() >= 200 && obj.elite_crusher);
+        let crusher =
+            obj.crusher || has_weapon_ability(rank_from_u16(e.veterancy()), obj, Ability::Crusher);
         Self {
             id,
             e,
@@ -1299,7 +1300,7 @@ impl Simulation {
         &'a self,
         id: u64,
         rules: &'a RuleSet,
-        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<FootEntryReceiver<'a>, String> {
         if self.resolved_terrain.is_none() {
             return Err("Foot entry requires map cells".into());
@@ -1713,7 +1714,7 @@ fn classify_foot_entry<'a>(
         //query use actual House alliances, including during crew escape.
         let allied = allied || (infantry && live.sim.object_placement_scope_active());
         if !allied {
-            if b.cloak.as_ref().is_some_and(|s| s.state == 2) {
+            if b.cloak.as_ref().is_some_and(|s| s.is_fully_cloaked()) {
                 entry_result = entry_result.max(1);
                 continue;
             }

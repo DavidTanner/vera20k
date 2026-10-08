@@ -6,7 +6,7 @@
 
 use super::{SimFireEvent, SimSoundEvent, Simulation};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{DeathEffects, UnderAttackEvent};
 use crate::sim::intern::InternedId;
@@ -168,11 +168,12 @@ impl DamageConsequences {
                 world.session.binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut world.lighting_sources.pending,
             );
         }
 
         world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
-        if world.session.game_options.super_weapons && effects.structure_destroyed {
+        if effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {
                 if category == EntityCategory::Structure && !refreshed.contains(&owner) {

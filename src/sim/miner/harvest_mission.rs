@@ -9,14 +9,14 @@
 //! returns 105 without drawing. The slave-master prologue73E5E9 runs returned
 //! slaves before its Rate tail; a non-harvester returns450 at73E62F.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 
+use super::MinerState;
 use super::miner_system::{
     MinerSnapshot, build_miner_snapshot, commit_miner_snapshot, process_miner,
 };
-use super::{MinerKind, MinerState};
 
 /// One Unit Mission_Harvest73E5E0 call. Timer admission and its epilogue
 /// belong to the common dispatcher, not this handler.
@@ -45,11 +45,7 @@ pub(crate) fn mission_harvest(
             crate::sim::mission::MissionType::Harvest,
         ));
     }
-    if entity
-        .miner
-        .as_ref()
-        .is_none_or(|miner| miner.kind == MinerKind::Slave)
-    {
+    if !entity.is_harvester() {
         return Some(450);
     }
     let config = config?;

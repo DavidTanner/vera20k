@@ -2,7 +2,7 @@
 //! walk_step owns the paid numeric approach; this owner supplies synchronous
 //! Mark/PerCell placement before the pass tail.
 use super::ground_pose;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::{components::DriveCoord, world::Simulation};
 

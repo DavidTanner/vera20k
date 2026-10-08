@@ -672,7 +672,7 @@ pub(in crate::sim::world) fn ready_repair_fixture(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
     let (mut sim, rules, registry) = fixture();
@@ -705,7 +705,7 @@ pub(in crate::sim::world) fn ready_repair_fixture(
 pub(in crate::sim::world) fn ready_engineer(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     hut: u64,
 ) -> u64 {
     use crate::sim::components::{DriveCoord, NavTargetRef};
@@ -748,7 +748,7 @@ pub(in crate::sim::world) fn ready_engineer(
 pub(in crate::sim::world) fn repair_frame(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
 ) -> crate::sim::world::TickResult {
     sim.advance_tick(&[], Some(rules), None, Some(registry), 67)
 }

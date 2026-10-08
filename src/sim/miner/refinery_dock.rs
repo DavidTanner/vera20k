@@ -55,7 +55,7 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::radio::{self, RadioMessage};
 use crate::sim::world::Simulation;
 
-use super::{MinerKind, ResourceType};
+use super::ResourceType;
 
 /// The body facing the Unload window centres on (`0x0073DF8A`).
 const UNLOAD_FACING: u16 = crate::sim::radio::receive::DOCK_FACING;
@@ -63,16 +63,6 @@ const UNLOAD_FACING: u16 = crate::sim::radio::receive::DOCK_FACING;
 /// Mission_Unload harvester Status (+0xBC) values: dumping and finishing.
 const UNLOAD_DUMPING: u32 = 3;
 const UNLOAD_FINISHING: u32 = 4;
-
-/// Whether `id` runs the native dock missions: a harvester (War or Chrono
-/// Miner). The Slave Miner deploys instead.
-pub(crate) fn native_dock_miner(sim: &Simulation, id: u64) -> bool {
-    sim.substrate
-        .entities
-        .get(id)
-        .and_then(|entity| entity.miner.as_ref())
-        .is_some_and(|miner| miner.kind != MinerKind::Slave)
-}
 
 /// `UnitClass::Mission_Unload @ 0x0073D630`, harvester branch `0x0073DEE0`.
 /// Returns the dispatch delay.

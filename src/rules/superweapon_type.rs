@@ -215,7 +215,11 @@ impl SuperWeaponType {
             // ReadString 0x80 at `0x006CEA6D`, `0x006CED0F`, `0x006CEB7C`,
             // `0x006CEBBE`.
             weapon_type: section.read_name("WeaponType", 0x80).map(str::to_string),
-            aux_building: section.read_name("AuxBuilding", 0x80).map(str::to_string),
+            // ReadString 0x80, then BuildingTypeClass::FindOrAllocate
+            // (`0x006CED1F`), which answers `none` and `<none>` null.
+            aux_building: section
+                .read_type_name("AuxBuilding", 0x80)
+                .map(str::to_string),
             special_sound: section.read_name("SpecialSound", 0x80).map(str::to_string),
             start_sound: section.read_name("StartSound", 0x80).map(str::to_string),
             flash_sidebar_tab_frames: section.read_int("FlashSidebarTabFrames", 0),

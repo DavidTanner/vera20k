@@ -485,6 +485,20 @@ fn step(cell: (u16, u16), direction: u8) -> Option<(u16, u16)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::overlay_types::is_bridge_overlay_index;
+
+    #[test]
+    fn high_bridge_stamps_start_only_at_the_four_anchor_overlays() {
+        for id in [0x18, 0x19, 0xED, 0xEE] {
+            assert!(high_bridge_stamp_for_overlay(id).is_some());
+            assert!(is_bridge_overlay_index(id));
+        }
+        for id in [0x4A, 0x7A, 0xCD, 0xE9] {
+            assert!(high_bridge_stamp_for_overlay(id).is_none());
+        }
+        assert!(is_bridge_overlay_index(0x4A));
+        assert!(is_bridge_overlay_index(0xCD));
+    }
 
     fn facts_at(cells: &[BridgeCellFacts], width: u16, rx: u16, ry: u16) -> BridgeCellFacts {
         cells[ry as usize * width as usize + rx as usize]

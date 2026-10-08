@@ -755,6 +755,15 @@ impl Simulation {
             sys.lifetime.hash(hasher);
             sys.facing.hash(hasher);
             sys.done_spawning.hash(hasher);
+            // The rest of the saved system state. `in_logic_vector` is not
+            // saved (load rebuilds it from the logic vector), so it stays out.
+            sys.offset.to_array().hash(hasher);
+            sys.spawn_timer.to_bits().hash(hasher);
+            sys.spark_spawn_frames.hash(hasher);
+            sys.attached_entity.hash(hasher);
+            sys.owner_entity.hash(hasher);
+            sys.target_coords.to_array().hash(hasher);
+            sys.owner_house.hash(hasher);
             sys.particles.len().hash(hasher);
             for p in &sys.particles {
                 p.type_id.0.hash(hasher);
@@ -766,6 +775,13 @@ impl Simulation {
                 p.translucency.hash(hasher);
                 p.state_advance_counter.hash(hasher);
                 p.marked_for_deletion.hash(hasher);
+                p.origin.to_array().hash(hasher);
+                p.direction.map(|v| v.to_bits()).hash(hasher);
+                p.velocity.to_bits().hash(hasher);
+                p.damage_counter.hash(hasher);
+                p.state_ai_advance.hash(hasher);
+                (p.drift_x, p.drift_y, p.drift_z).hash(hasher);
+                p.prev_delta.map(|v| v.to_bits()).hash(hasher);
                 match p.spark {
                     None => 0_u8.hash(hasher),
                     Some(spark) => {
@@ -970,11 +986,6 @@ impl Simulation {
             ry.hash(hasher);
             stable_id.hash(hasher);
         }
-        for (&(rx, ry), &bits) in &self.production.terrain_occupation_bits {
-            rx.hash(hasher);
-            ry.hash(hasher);
-            bits.hash(hasher);
-        }
         for &(rx, ry) in &self.production.tiberium_spawning_terrain_cells {
             rx.hash(hasher);
             ry.hash(hasher);
@@ -989,11 +1000,10 @@ impl Simulation {
     /// Hash the authoritative factory registry in the deterministic temporal sweep
     /// order (`iter_insertion_ordered`, by `insertion_seq` = front `enqueue_order`) —
     /// the SAME order `step_all` charges in, so the fold order is part of the hash
-    /// contract. Explicit-field folding (NOT `#[derive(Hash)]`) so `SpecialItem`'s
-    /// three states + the Option presence tags fold distinctly, consistent with the
-    /// rest of this file.
+    /// contract. Explicit-field folding (NOT `#[derive(Hash)]`) so the Option
+    /// presence tags fold distinctly, consistent with the rest of this file.
     fn hash_factory_registry(&self, hasher: &mut impl Hasher) {
-        for (holder, f) in self.production.factory_shadow.holders_insertion_ordered() {
+        for (holder, f) in self.production.factories.holders_insertion_ordered() {
             // The building that holds a computer's factory (`BuildingClass+0x524`);
             // a House's factory folds as earlier schemas did.
             if let crate::sim::production::FactoryHolder::Building(building) = holder {
@@ -1029,14 +1039,6 @@ impl Simulation {
             if f.has_changed() {
                 b"factory-changed-5d".hash(hasher);
             }
-            match f.special {
-                crate::sim::production::SpecialItem::NoneNeg1 => 0u8.hash(hasher),
-                crate::sim::production::SpecialItem::NoneZero => 1u8.hash(hasher),
-                crate::sim::production::SpecialItem::Item(v) => {
-                    2u8.hash(hasher);
-                    v.hash(hasher);
-                }
-            }
             // P5d: the queue-of-record (was the per-`BuildQueueItem` `queues_by_owner` fold,
             // now retired). Folds in FIFO (`VecDeque`) order — deterministic by construction.
             (f.queue.len() as u64).hash(hasher);
@@ -1069,17 +1071,8 @@ impl Simulation {
             owner.hash(hasher);
             fog.cells_raw().hash(hasher);
             fog.shroud_knowledge_raw().hash(hasher);
-            // CellClass visibility counters/flags are serialized simulation
-            // state, not renderer cache; fold their row-major projection too.
-            for cell in fog.cell_runtime_raw() {
-                cell.shroud_counter.hash(hasher);
-                cell.gap_shroud_counter.hash(hasher);
-                cell.alt_flags.hash(hasher);
-                cell.flags.hash(hasher);
-                cell.visibility.hash(hasher);
-                cell.foggedness.hash(hasher);
-            }
-            fog.visibility_marks_raw().hash(hasher);
+            // The CellClass ground bits the aircraft queries read.
+            fog.ground_flags_raw().hash(hasher);
         }
         self.fog.gap_sources.hash(hasher);
         self.fog.sight_admissions.hash(hasher);
@@ -1726,7 +1719,6 @@ impl Simulation {
                     None::<(u16, u16)>.hash(hasher);
                     crate::sim::mission::MissionTimer::default().hash(hasher);
                 }
-                miner.forced_return.hash(hasher);
                 if native_ore_field {
                     // Unit+0x6D1/+0x6D2; the shared Stage is folded above.
                     miner.unload_active.hash(hasher);
@@ -3358,6 +3350,44 @@ mod particle_hash_tests {
             );
         }
         assert_ne!(base_hash, hash_with_particle(particle_with_spark(None)));
+    }
+
+    fn hash_with_system(system: ParticleSystem) -> u64 {
+        let mut sim = Simulation::new();
+        insert_system(&mut sim, system);
+        sim.state_hash()
+    }
+
+    /// Every saved system and particle field reaches the hash (#855).
+    #[test]
+    fn saved_system_and_particle_fields_change_the_state_hash() {
+        let mut base = fake_system(IVec3::ZERO);
+        base.particles.push(particle_with_spark(None));
+        let base_hash = hash_with_system(base.clone());
+        let owner_house = Simulation::new().interner.intern("Americans");
+        let edits: Vec<Box<dyn Fn(&mut ParticleSystem)>> = vec![
+            Box::new(|s| s.offset = IVec3::new(1, 0, 0)),
+            Box::new(|s| s.spawn_timer = SimFixed::from_num(1)),
+            Box::new(|s| s.spark_spawn_frames = 1),
+            Box::new(|s| s.attached_entity = Some(7)),
+            Box::new(|s| s.owner_entity = Some(7)),
+            Box::new(|s| s.target_coords = IVec3::new(0, 1, 0)),
+            Box::new(move |s| s.owner_house = Some(owner_house)),
+            Box::new(|s| s.particles[0].origin = IVec3::new(0, 0, 1)),
+            Box::new(|s| s.particles[0].direction[1] = SimFixed::from_num(1)),
+            Box::new(|s| s.particles[0].velocity = SimFixed::from_num(1)),
+            Box::new(|s| s.particles[0].damage_counter = 1),
+            Box::new(|s| s.particles[0].state_ai_advance = 1),
+            Box::new(|s| s.particles[0].drift_x = 1),
+            Box::new(|s| s.particles[0].drift_y = 1),
+            Box::new(|s| s.particles[0].drift_z = 1),
+            Box::new(|s| s.particles[0].prev_delta[2] = SimFixed::from_num(1)),
+        ];
+        for (index, edit) in edits.iter().enumerate() {
+            let mut system = base.clone();
+            edit(&mut system);
+            assert_ne!(base_hash, hash_with_system(system), "edit {index}");
+        }
     }
 
     #[test]

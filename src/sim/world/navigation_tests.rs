@@ -2,8 +2,8 @@
 
 use super::{gsi_04_10_clear_terrain, make_test_entity};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::production::{ProductionCategory, enqueue_by_type};
@@ -254,7 +254,7 @@ fn assert_retained_roles(sim: &Simulation, parent_id: u64, upgrade_id: u64, held
     assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(held.owner(), ProductionCategory::Building)
             .unwrap()
             .object
@@ -308,7 +308,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "HELD"));
     let held_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Building)
         .unwrap()
         .object

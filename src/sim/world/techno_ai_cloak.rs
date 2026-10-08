@@ -1,8 +1,10 @@
 //! Stock Techno cloak producer at the Techno AI head.
 
 use crate::map::entities::EntityCategory;
+use crate::rules::object_type::Ability;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::intern::InternedId;
 use crate::sim::mission::concrete_effects::{
     assign_target_commits, represented_assign_target_admitted,
@@ -28,8 +30,7 @@ fn stock_cloak_tick_facts(
         return None;
     }
     let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    let rank_cloak = entity.veterancy() >= 100 && object.veteran_cloak
-        || entity.veterancy() >= 200 && object.elite_cloak;
+    let rank_cloak = has_weapon_ability(rank_from_u16(entity.veterancy()), object, Ability::Cloak);
     if !object.cloakable && !rank_cloak {
         return None;
     }
@@ -324,7 +325,9 @@ pub(crate) fn sensor_reevaluate_stock_cloak(
         .entities
         .get_mut(id)
         .and_then(|entity| entity.cloak.as_mut())
-        .map(|cloak| cloak.start_cloaking_from_sensor(facts.current_frame, facts.cloaking_speed));
+        // Virtual `StartCloaking +0x460 @ 0x00703770` from the active
+        // sensor-count resident callback `0x006F4EB0`, argument zero.
+        .map(|cloak| cloak.start_cloaking(facts.current_frame, facts.cloaking_speed, false));
     if start.is_some_and(|start| start.play_sound) {
         emit_configured_cloak_sound(sim, id, rules);
     }
@@ -385,7 +388,7 @@ fn detach_targeters_on_cloak(
     sim: &mut Simulation,
     cloaker_id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     sim.detach_all_pointer_expired(cloaker_id, rules, registry);
 }
@@ -486,12 +489,12 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
         .entities
         .get_mut(id)
         .and_then(|entity| entity.cloak.as_mut())
+        // `FootClass::PerCellProcess @ 0x004D8829` invokes the `+0xFC`
+        // `StartUncloaking(0)` wrapper (`0x00703850`) when a fully cloaked
+        // mover enters a cell one of whose eight neighbours holds a
+        // non-allied `Sensors=yes` object.
         .map(|cloak| {
-            cloak.start_uncloaking_from_sensor_neighbour(
-                now,
-                cloaking_speed,
-                rules.general.cloaking_stages,
-            )
+            cloak.start_uncloaking(now, cloaking_speed, rules.general.cloaking_stages, false)
         });
     if surfaced.is_some_and(|result| result.play_sound) {
         emit_configured_cloak_sound(sim, id, rules);
@@ -499,7 +502,11 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
     surfaced.is_some_and(|result| result.transitioned)
 }
 
-fn emit_configured_cloak_sound(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+/// The `CloakSound` of `StartCloaking @ 0x00703770` and `StartUncloaking @
+/// 0x007036C0` when their suppression argument is zero: `[AudioVisual]
+/// CloakSound=` (`Rules+0x6A0`) through `VocClass::PlayAt @ 0x007509E0` at
+/// the object's coordinate. Every cloak transition's sound goes through here.
+pub(crate) fn emit_configured_cloak_sound(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(sound_name) = rules.general.cloak_sound.as_deref() else {
         return;
     };
@@ -572,7 +579,7 @@ pub(super) fn tick_stock_cloak_producer(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some((category, type_ref, veterancy)) = sim
         .substrate
@@ -588,8 +595,7 @@ pub(super) fn tick_stock_cloak_producer(
     let Some(object) = rules.object(sim.interner.resolve(type_ref)) else {
         return;
     };
-    let rank_cloak =
-        veterancy >= 100 && object.veteran_cloak || veterancy >= 200 && object.elite_cloak;
+    let rank_cloak = has_weapon_ability(rank_from_u16(veterancy), object, Ability::Cloak);
     if !object.cloakable && !rank_cloak {
         return;
     }

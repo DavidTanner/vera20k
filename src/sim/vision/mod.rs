@@ -39,146 +39,22 @@ const FLAG_GAP_FOG: u8 = 0x08;
 // Fire4876F0 and Psychic6CD773/6CD79C do not leave that contribution alive.
 const FLAG_SUSTAINED_SIGHT: u8 = 0x10;
 // Pending native Cell+140 bit20, consumed by578100 on the120-frame Logic rung.
-// This is the live bitmap authority; legacy CellVisibilityRuntime is not an
-// exact native counter/cache model and its flags must not drive this transition.
+// This is the live bitmap authority; the ground bits must not drive this
+// transition.
 const FLAG_PENDING_GAP_CONCEAL: u8 = 0x20;
 const FLAG_HOSTILE_GAP_PRESENT: u8 = 0x40;
 // Effective viewer sight is never re-exported as a local allied source.
 const FLAG_EFFECTIVE_GAP_SIGHT: u8 = 0x80;
 
-/// Serialized CellClass visibility fields for one owner/cell projection.
-///
-/// The renderer continues to consume the compact `OwnerVisibility::cells`
-/// bitmap. This state preserves the native transition contract underneath it:
-/// signed shroud counters, the split CellClass flag words, and the two signed
-/// occlusion caches. It is kept per owner because VERA's visibility authority
-/// is per house, while the retail CellClass helpers read the current player.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CellVisibilityRuntime {
-    /// CellClass +0x130. `-1` is the native inactive sentinel.
-    pub shroud_counter: i32,
-    /// CellClass +0x134 upper clamp for `shroud_counter`.
-    pub gap_shroud_counter: i32,
-    /// CellClass +0x12C: ground visible (`0x08`) and ground cache open (`0x10`).
-    pub alt_flags: u8,
-    /// CellClass +0x140 visibility/fog transition flags.
-    pub flags: u32,
-    /// CellClass +0x120 ground occlusion cache.
-    pub visibility: i8,
-    /// CellClass +0x121 fog/air occlusion cache.
-    pub foggedness: i8,
-}
-
-impl Default for CellVisibilityRuntime {
-    fn default() -> Self {
-        Self {
-            shroud_counter: -1,
-            gap_shroud_counter: i32::MAX,
-            alt_flags: 0,
-            flags: 0,
-            visibility: 0,
-            foggedness: 0,
-        }
-    }
-}
-
-/// Ordered side-effect boundary of the native map-cell visibility update.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CellVisibilityEvent {
-    /// TacticalClass::RegisterCellAsVisible: the redraw invalidation boundary.
-    RegisterCellAsVisible,
-    /// MapClass::RevealCheck, always before an eligible clean-fog operation.
-    RevealCheck,
-    /// CellClass::CleanFog on the first mapped/fog-display transition only.
-    CleanFog,
-}
-
-impl CellVisibilityRuntime {
-    const ALT_GROUND_VISIBLE: u8 = 0x08;
-    const ALT_GROUND_OPEN: u8 = 0x10;
-    const FLAG_FOG_OPEN: u32 = 0x01;
-    const FLAG_MAPPED: u32 = 0x02;
-    const FLAG_SHROUD_POSITIVE: u32 = 0x20;
-    const FLAG_TRANSIENT: u32 = 0x40;
-    const FLAG_FOGGED_OBJECT_SNAPSHOT: u32 = 0x400000;
-
-    #[cfg(test)]
-    fn set_fogged_object_snapshot(&mut self, present: bool) {
-        if present {
-            self.flags |= Self::FLAG_FOGGED_OBJECT_SNAPSHOT;
-        } else {
-            self.flags &= !Self::FLAG_FOGGED_OBJECT_SNAPSHOT;
-        }
-    }
-
-    /// Native `CellClass::IncreaseShroudCounter`: no redraw side effect.
-    pub fn increase_shroud_counter(&mut self) {
-        let old = self.shroud_counter;
-        if self.shroud_counter == -1 {
-            self.shroud_counter = 0;
-        }
-        self.shroud_counter = self.shroud_counter.saturating_add(1);
-        self.shroud_counter = self.shroud_counter.min(self.gap_shroud_counter);
-        if old <= 0 && self.shroud_counter > 0 {
-            self.flags |= Self::FLAG_SHROUD_POSITIVE;
-        }
-    }
-
-    /// Native `CellClass::ReduceShroudCounter`, including the `1 -> -1` edge.
-    /// Counter mutation itself deliberately emits no redraw event.
-    pub fn reduce_shroud_counter(&mut self) {
-        if self.shroud_counter == 1 {
-            self.shroud_counter = 0;
-        }
-        self.shroud_counter = self.shroud_counter.saturating_sub(1);
-        if self.shroud_counter > 0 {
-            return;
-        }
-        if self.alt_flags & (Self::ALT_GROUND_VISIBLE | Self::ALT_GROUND_OPEN)
-            == (Self::ALT_GROUND_VISIBLE | Self::ALT_GROUND_OPEN)
-        {
-            self.flags &= !Self::FLAG_SHROUD_POSITIVE;
-        } else {
-            self.alt_flags |= Self::ALT_GROUND_VISIBLE | Self::ALT_GROUND_OPEN;
-        }
-    }
-
-    /// Native `CellClass::Unshroud` flag projection; it is not a traversal.
-    #[cfg(test)]
-    pub fn unshroud(&mut self) {
-        self.alt_flags |= Self::ALT_GROUND_VISIBLE | Self::ALT_GROUND_OPEN;
-        if self.shroud_counter > 0 {
-            self.flags |= Self::FLAG_SHROUD_POSITIVE;
-        }
-    }
-
-    /// Apply the full MapCell-style projection. The event callback makes the
-    /// `RevealCheck`-before-`CleanFog` order explicit without coupling sim to
-    /// renderer invalidation or the unported fogged-object render records.
-    pub fn map_visible(&mut self, fog_of_war: bool, mut emit: impl FnMut(CellVisibilityEvent)) {
-        let had_mapped = self.flags & Self::FLAG_MAPPED != 0;
-        let before = *self;
-
-        self.flags = (self.flags & !(Self::FLAG_MAPPED | Self::FLAG_TRANSIENT)) | Self::FLAG_MAPPED;
-        self.increase_shroud_counter();
-        self.alt_flags |= Self::ALT_GROUND_VISIBLE | Self::ALT_GROUND_OPEN;
-        self.visibility = -1;
-        self.flags |= Self::FLAG_FOG_OPEN;
-        self.foggedness = -1;
-
-        if *self != before {
-            emit(CellVisibilityEvent::RegisterCellAsVisible);
-            emit(CellVisibilityEvent::RevealCheck);
-        }
-        if !had_mapped && fog_of_war {
-            // CellClass::CleanFog clears the snapshot bit before freeing the
-            // shared footprint records; the record store is intentionally not
-            // represented until its owner/link lifetime has a Rust authority.
-            self.flags &= !Self::FLAG_FOGGED_OBJECT_SNAPSHOT;
-            emit(CellVisibilityEvent::CleanFog);
-        }
-    }
-}
+/// CellClass `+0x12C` ground bits as VERA's sight cache sets them: ground
+/// visible (`0x08`) and ground open (`0x10`). Both are set together, on the
+/// first sight mark and on any cell still visible when sight is cleared, and
+/// never cleared. `ShroudKnowledge::open` models the same native bits through
+/// the native writers and can disagree (it closes under a gap generator);
+/// the aircraft readers ([`FogState::is_ground_unshrouded`],
+/// [`FogState::is_ground_open`]) still read this projection.
+const GROUND_VISIBLE: u8 = 0x08;
+const GROUND_OPEN: u8 = 0x10;
 
 /// RA2 hard-caps effective sight at 10 cells. Going past 10 was a crash
 /// in the original engine — we clamp to this limit for compatibility.
@@ -269,13 +145,8 @@ pub struct OwnerVisibility {
     cells: Vec<u8>,
     width: u16,
     height: u16,
-    /// CellClass-like transition state aligned with `cells`.
-    cell_runtime: Vec<CellVisibilityRuntime>,
-    /// Number of current-frame visibility contributors per cell. This lets the
-    /// next recompute apply the same number of native counter reductions that
-    /// this frame admitted; it is serialized because a snapshot can occur
-    /// between visibility rebuilds.
-    visibility_marks: Vec<u16>,
+    /// [`GROUND_VISIBLE`] / [`GROUND_OPEN`] per cell, aligned with `cells`.
+    ground_flags: Vec<u8>,
     shroud_knowledge: Vec<ShroudKnowledge>,
 }
 
@@ -285,8 +156,7 @@ impl Default for OwnerVisibility {
             cells: Vec::new(),
             width: 0,
             height: 0,
-            cell_runtime: Vec::new(),
-            visibility_marks: Vec::new(),
+            ground_flags: Vec::new(),
             shroud_knowledge: Vec::new(),
         }
     }
@@ -300,8 +170,7 @@ impl OwnerVisibility {
             cells: vec![0u8; len],
             width,
             height,
-            cell_runtime: vec![CellVisibilityRuntime::default(); len],
-            visibility_marks: vec![0; len],
+            ground_flags: vec![0; len],
             shroud_knowledge: vec![ShroudKnowledge::default(); len],
         }
     }
@@ -342,7 +211,7 @@ impl OwnerVisibility {
     /// Mark a cell as both visible and revealed.
     #[cfg(test)]
     pub fn mark_visible(&mut self, rx: u16, ry: u16) {
-        self.mark_visible_with_fog_of_war(rx, ry, true);
+        self.mark_sight(rx, ry);
         if let Some(index) = self.index(rx, ry) {
             self.shroud_knowledge[index].counter = 0;
             self.shroud_knowledge[index].open = true;
@@ -351,12 +220,16 @@ impl OwnerVisibility {
         }
     }
 
-    /// Same as [`Self::mark_visible`], with the scenario fog rule carried to
-    /// the CellClass first-map transition.
-    pub fn mark_visible_with_fog_of_war(&mut self, rx: u16, ry: u16, fog_of_war: bool) {
+    /// Mark a cell visible and revealed in this frame's sight, and set its
+    /// ground bits.
+    ///
+    /// RESIDUAL: a cell's first mapping runs `CellClass::CleanFog` when
+    /// `FogOfWar=` is on, freeing the cell's fogged objects. VERA keeps no
+    /// fogged-object records in production (the footprint store is test-only),
+    /// so there is nothing to clean; a fogged-object port needs that call here.
+    pub fn mark_sight(&mut self, rx: u16, ry: u16) {
         if let Some(i) = self.index(rx, ry) {
-            self.cell_runtime[i].map_visible(fog_of_war, |_| {});
-            self.visibility_marks[i] = self.visibility_marks[i].saturating_add(1);
+            self.ground_flags[i] |= GROUND_VISIBLE | GROUND_OPEN;
             self.cells[i] |= FLAG_VISIBLE | FLAG_REVEALED;
         }
     }
@@ -368,18 +241,10 @@ impl OwnerVisibility {
         for knowledge in &mut self.shroud_knowledge {
             knowledge.transient_visible = false;
         }
-        for ((cell, runtime), marks) in self
-            .cells
-            .iter_mut()
-            .zip(&mut self.cell_runtime)
-            .zip(&mut self.visibility_marks)
-        {
+        for (cell, ground) in self.cells.iter_mut().zip(&mut self.ground_flags) {
             if *cell & FLAG_VISIBLE != 0 {
-                for _ in 0..(*marks).max(1) {
-                    runtime.reduce_shroud_counter();
-                }
+                *ground |= GROUND_VISIBLE | GROUND_OPEN;
             }
-            *marks = 0;
             *cell &= !(FLAG_VISIBLE
                 | FLAG_GAP_COVERED
                 | FLAG_GAP_FOG
@@ -441,23 +306,10 @@ impl OwnerVisibility {
         &self.cells
     }
 
-    /// Serialized CellClass-style visibility state, in the same row-major
-    /// order as `cells`, for deterministic hashing and snapshot inspection.
-    pub fn cell_runtime_raw(&self) -> &[CellVisibilityRuntime] {
-        &self.cell_runtime
-    }
-
-    /// Current-frame counter contributions aligned with [`Self::cells_raw`].
-    pub fn visibility_marks_raw(&self) -> &[u16] {
-        &self.visibility_marks
-    }
-
-    #[cfg(test)]
-    fn set_fogged_object_snapshot(&mut self, rx: u16, ry: u16, present: bool) {
-        let Some(index) = self.index(rx, ry) else {
-            return;
-        };
-        self.cell_runtime[index].set_fogged_object_snapshot(present);
+    /// The ground bits in the same row-major order as `cells`, for
+    /// deterministic hashing.
+    pub fn ground_flags_raw(&self) -> &[u8] {
+        &self.ground_flags
     }
 
     pub(crate) fn shroud_knowledge_raw(&self) -> &[ShroudKnowledge] {
@@ -474,12 +326,7 @@ impl OwnerVisibility {
                 expanded.cells[new] = self.cells[old];
                 expanded.shroud_knowledge[new] =
                     self.shroud_knowledge.get(old).copied().unwrap_or_default();
-                if let Some(runtime) = self.cell_runtime.get(old) {
-                    expanded.cell_runtime[new] = *runtime;
-                }
-                if let Some(marks) = self.visibility_marks.get(old) {
-                    expanded.visibility_marks[new] = *marks;
-                }
+                expanded.ground_flags[new] = self.ground_flags[old];
             }
         }
         expanded
@@ -643,7 +490,6 @@ impl FogState {
         viewer: InternedId,
         admission: SightAdmission,
         force_refresh: bool,
-        fog_of_war: bool,
     ) {
         let key = (stable_id, viewer);
         let changed = force_refresh || self.sight_admissions.get(&key) != Some(&admission);
@@ -656,8 +502,8 @@ impl FogState {
             .or_insert_with(|| OwnerVisibility::new(self.width, self.height));
         for &(x, y) in &admission.cells {
             let index = vis.index(x, y).expect("admitted source cell");
-            // Legacy cache projection is not a source of knowledge events.
-            vis.mark_visible_with_fog_of_war(x, y, fog_of_war);
+            // The sight cache is not a source of knowledge events.
+            vis.mark_sight(x, y);
             if changed {
                 let state = &mut vis.shroud_knowledge[index];
                 state.reveal();
@@ -682,7 +528,6 @@ impl FogState {
     pub fn insert_fogged_object_footprint(
         &mut self,
         viewer: InternedId,
-        receiver_cell: (u16, u16),
         source_entity_id: u64,
         occupied_cells: Vec<(u16, u16)>,
     ) -> FoggedObjectId {
@@ -701,12 +546,6 @@ impl FogState {
                 .push(id);
         }
         self.fogged_objects.insert(id, record);
-        if self.width > 0 && self.height > 0 {
-            self.by_owner
-                .entry(viewer)
-                .or_insert_with(|| OwnerVisibility::new(self.width, self.height))
-                .set_fogged_object_snapshot(receiver_cell.0, receiver_cell.1, true);
-        }
         id
     }
 
@@ -730,9 +569,6 @@ impl FogState {
         rx: u16,
         ry: u16,
     ) -> Vec<FoggedObjectFootprintRecord> {
-        if let Some(vis) = self.by_owner.get_mut(&viewer) {
-            vis.set_fogged_object_snapshot(rx, ry, false);
-        }
         let Some(mut ids) = self.fogged_object_cells.remove(&(viewer, rx, ry)) else {
             return Vec::new();
         };
@@ -1092,8 +928,8 @@ impl FogState {
     pub(crate) fn is_ground_unshrouded(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
         self.by_owner.get(&owner).is_some_and(|view| {
             view.index(rx, ry)
-                .and_then(|i| view.cell_runtime.get(i))
-                .is_some_and(|cell| cell.alt_flags & CellVisibilityRuntime::ALT_GROUND_VISIBLE != 0)
+                .and_then(|i| view.ground_flags.get(i))
+                .is_some_and(|&flags| flags & GROUND_VISIBLE != 0)
         })
     }
 
@@ -1102,8 +938,8 @@ impl FogState {
     pub(crate) fn is_ground_open(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
         self.by_owner.get(&owner).is_some_and(|view| {
             view.index(rx, ry)
-                .and_then(|i| view.cell_runtime.get(i))
-                .is_some_and(|cell| cell.alt_flags & CellVisibilityRuntime::ALT_GROUND_OPEN != 0)
+                .and_then(|i| view.ground_flags.get(i))
+                .is_some_and(|&flags| flags & GROUND_OPEN != 0)
         })
     }
 
@@ -1323,9 +1159,6 @@ pub struct VisionConfig {
     /// When true, terrain 4+ levels above the viewer at the midpoint blocks sight.
     /// Default true (the standard RA2/YR setting).
     reveal_by_height: bool,
-    /// Scenario `FogOfWar=` governs the first-map `CleanFog` transition. It
-    /// does not change the compact visibility bitmap's existing semantics.
-    fog_of_war: bool,
     /// The map `Size=` diamond (`MapClass+0xF4/+0xF8`) that bounds a reveal's
     /// lifted centre and each of its cells ([`collect_reveal_cells`]). A
     /// headless fixture without a map has none; the fog grid bounds it alone.
@@ -1343,7 +1176,6 @@ impl Default for VisionConfig {
             veteran_sight: 0.0,
             leptons_per_sight_increase: 0,
             reveal_by_height: true,
-            fog_of_war: false,
             map_size: None,
             ally_reveal: true,
         }
@@ -1354,19 +1186,17 @@ impl VisionConfig {
     /// The rules' sight keys (none in a fixture without rules: no veteran
     /// or elevation sight, `RevealByHeight=` and `AllyReveal=` at their
     /// constructor defaults), the map's `Size=` diamond, whether a Techno
-    /// needs the stored playfield byte, and the scenario's `FogOfWar=`.
+    /// needs the stored playfield byte.
     pub(crate) fn new(
         rules: Option<&crate::rules::ruleset::RuleSet>,
         map_size: Option<(i32, i32)>,
         require_playfield_membership: bool,
-        fog_of_war: bool,
     ) -> Self {
         Self {
             require_playfield_membership,
             veteran_sight: rules.map_or(0.0, |r| r.general.veteran_sight),
             leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
             reveal_by_height: rules.is_none_or(|r| r.general.reveal_by_height),
-            fog_of_war,
             map_size,
             ally_reveal: rules.is_none_or(|r| r.general.ally_reveal),
         }
@@ -1691,17 +1521,10 @@ fn update_entity_sight_admission(
         owner: entity.owner(),
         origin: (entity.position.rx, entity.position.ry, height_leptons),
         radius: effective,
-        fog_of_war: config.fog_of_war,
         cells,
     };
     for viewer in viewers {
-        fog.reconcile_sight_admission(
-            entity.stable_id(),
-            viewer,
-            admission.clone(),
-            force_refresh,
-            config.fog_of_war,
-        );
+        fog.reconcile_sight_admission(entity.stable_id(), viewer, admission.clone(), force_refresh);
     }
 }
 
@@ -1739,7 +1562,6 @@ fn reveal_radius_into(
     range: u16,
     height: i32,
     by_height: bool,
-    fog_of_war: bool,
     height_grid: Option<&[u8]>,
     width: u16,
     grid_height: u16,
@@ -1754,7 +1576,7 @@ fn reveal_radius_into(
         (width, grid_height),
         None,
     ) {
-        vis.mark_visible_with_fog_of_war(x, y, fog_of_war);
+        vis.mark_sight(x, y);
     }
 }
 
@@ -2124,7 +1946,7 @@ fn fire_reveal_cells(fog: &mut FogState, owner: InternedId, cells: Vec<(u16, u16
         .entry(owner)
         .or_insert_with(|| OwnerVisibility::new(width, height));
     for (rx, ry) in cells {
-        vis.mark_visible_with_fog_of_war(rx, ry, true);
+        vis.mark_sight(rx, ry);
         let index = vis.index(rx, ry).expect("collected cell is in bounds");
         vis.shroud_knowledge[index].fire_unshroud();
         vis.shroud_knowledge[index].transient_visible = true;
@@ -2245,7 +2067,7 @@ pub(crate) fn psychic_reveal(
                 .entry(viewer)
                 .or_insert_with(|| OwnerVisibility::new(fog.width, fog.height));
             for &(rx, ry) in &cells {
-                vis.mark_visible_with_fog_of_war(rx, ry, config.fog_of_war);
+                vis.mark_sight(rx, ry);
                 let index = vis.index(rx, ry).expect("collected cell is in bounds");
                 if release {
                     vis.shroud_knowledge[index].leave();

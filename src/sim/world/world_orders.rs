@@ -250,7 +250,7 @@ impl Simulation {
     pub(crate) fn tick_order_intents_pre_combat(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
         for id in self.substrate.entities.keys_sorted() {
@@ -286,7 +286,7 @@ impl Simulation {
         &mut self,
         attacker_id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(entity) = self.substrate.entities.get(attacker_id) else {
             return;
@@ -332,7 +332,7 @@ impl Simulation {
         &mut self,
         rules: Option<&RuleSet>,
         turn_suppressed: &BTreeSet<u64>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         // Without a published grid no order resumes (air resumes included).
         if self.path_grid().is_none() {
@@ -545,7 +545,7 @@ impl Simulation {
         &mut self,
         engineer_id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<EngineerEntryResult, super::FrameAdvanceError> {
         let Some(engineer) = self.substrate.entities.get(engineer_id) else {
             return Ok(EngineerEntryResult::default());
@@ -714,7 +714,7 @@ impl Simulation {
     pub(crate) fn tick_c4_plants_with_overlay_registry(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) -> C4TickOutcome {
         use crate::sim::components::PendingC4Detonation;
@@ -926,7 +926,7 @@ impl Simulation {
         &mut self,
         building_id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some((pending, health, bridge_hut)) = self
             .substrate
@@ -1062,7 +1062,7 @@ impl Simulation {
         warhead_id: crate::sim::intern::InternedId,
         attacker_id: Option<u64>,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> C4DamageOutcome {
         // BridgeRepairHut target: reroute the explosion into the bridge
         // collapse cascade and leave the hut at full HP. The hut never
@@ -1167,7 +1167,7 @@ impl Simulation {
     pub(crate) fn tick_attack_pursuit_with_overlay_registry(
         &mut self,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
     ) {
         // Without a published grid pursuit decides nothing this tick.

@@ -215,7 +215,7 @@ pub(crate) fn sell_wall_under_cursor_is_eligible(state: &AppState) -> bool {
 
 fn sell_wall_command_for_cell(
     sim: &crate::sim::world::Simulation,
-    overlays: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlays: &crate::rules::overlay_types::OverlayTypeRegistry,
     local_owner: &str,
     rx: u16,
     ry: u16,
@@ -339,7 +339,7 @@ pub(crate) fn try_repair_sell_mode_click(state: &mut AppState) -> bool {
 pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str) {
     let owner: String = resolve_owner(state);
     // Use the preview's stored (rx, ry) so the placed building exactly matches
-    // the ghost the player saw, avoiding any cursor-movement drift between frames.
+    // the cells the player saw, avoiding any cursor-movement drift between frames.
     let (rx, ry) =
         if let Some(preview) = state.match_state.input.building_placement_preview.as_ref() {
             log::info!(
@@ -348,7 +348,7 @@ pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str
                 preview.ry,
                 preview.width,
                 preview.height,
-                preview.type_id,
+                type_id,
             );
             (preview.rx, preview.ry)
         } else {
@@ -1333,7 +1333,8 @@ mod tests {
              [GAWALL]\nWall=yes\n\
              [ORE]\nWall=no\n",
         );
-        let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
+        let overlays =
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&overlay_ini, None);
         sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(4, 4));
         for cell in [(0, 1), (1, 1), (3, 3)] {
             sim.fog.mark_visible_for_owner(local, cell.0, cell.1);
@@ -1341,7 +1342,7 @@ mod tests {
 
         fn attempt(
             sim: &mut Simulation,
-            overlays: &crate::map::overlay_types::OverlayTypeRegistry,
+            overlays: &crate::rules::overlay_types::OverlayTypeRegistry,
             cell: (u16, u16),
             object_under_cursor: bool,
         ) -> Option<u64> {

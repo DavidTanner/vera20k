@@ -5,8 +5,8 @@
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;
@@ -19,22 +19,6 @@ use super::production_tech::{
 use super::production_types::*;
 use super::wall_placement;
 use crate::rules::foundation::foundation_dimensions;
-
-/// Placement preview for object types that do not require overlay metadata.
-///
-/// Wall callers must use `placement_preview_for_owner_with_overlays`; naming
-/// this compatibility entry point explicitly prevents live wall-capable paths
-/// from silently dropping the overlay registry.
-pub fn placement_preview_for_owner_without_overlays(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    type_id: &str,
-    rx: u16,
-    ry: u16,
-) -> Option<BuildingPlacementPreview> {
-    placement_preview_for_owner_with_overlays(sim, rules, owner, type_id, rx, ry, None)
-}
 
 pub fn placement_preview_for_owner_with_overlays(
     sim: &Simulation,
@@ -84,9 +68,7 @@ pub fn placement_preview_for_owner_with_overlays(
         }
         _ => Vec::new(),
     };
-    let type_interned = sim.interner.get(type_id).unwrap_or_default();
     Some(BuildingPlacementPreview {
-        type_id: type_interned,
         rx,
         ry,
         width,
@@ -184,7 +166,7 @@ pub fn place_production_with_overlays(
             };
             let Some(factory) = sim
                 .production
-                .factory_shadow
+                .factories
                 .view(owner_id, category)
                 .filter(|factory| factory.ready)
             else {
@@ -227,7 +209,7 @@ pub fn place_production_with_overlays(
                 || exit == BuildingExit::TryLater
                     && sim
                         .production
-                        .factory_shadow
+                        .factories
                         .building_factory(producer)
                         .is_some();
             // House4FB57F's +524 is a producer Factory pointer, not a
@@ -405,9 +387,7 @@ pub fn place_production_with_overlays(
         ge.install_building_up(BuildingUp::placed_by_player(control, now), now);
     }
     // Refresh superweapon grants — newly placed building may provide a SW.
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
 
     let released = held.release_after_placement(sim, rules);
     if released {

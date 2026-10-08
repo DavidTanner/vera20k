@@ -73,7 +73,11 @@ pub(crate) fn dispatch_foot_mission(
                 entity.passenger_role,
                 crate::sim::passenger::PassengerRole::Boarding { .. }
             )
-            && crate::sim::miner::native_dock_miner(sim, id);
+            && sim
+                .substrate
+                .entities
+                .get(id)
+                .is_some_and(crate::sim::game_entity::GameEntity::is_harvester);
         // `FootClass::Mission_Move @ 0x004D4200` keeps its cadence while the
         // NavCom is set (`0x004D4203`) or the locomotor's `Is_Moving` holds
         // (`0x004D422A`); the order itself is not an input.
@@ -892,7 +896,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let saved_base_return = self.foot_enter_idle_base(id, Some(rules), registry);
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -967,7 +971,7 @@ pub(crate) fn foot_unlimbo_idle_mode(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;

@@ -21,17 +21,6 @@ use crate::ui::sidebar::{
 pub(crate) mod command_bar;
 
 // ---------------------------------------------------------------------------
-// Main sidebar panel instances (backgrounds, progress, badges, buttons, meters)
-// ---------------------------------------------------------------------------
-
-pub(crate) fn build_sidebar_instances(
-    _state: &AppState,
-    _view: &SidebarView,
-) -> Vec<SpriteInstance> {
-    Vec::new()
-}
-
-// ---------------------------------------------------------------------------
 // Chrome art instances
 // ---------------------------------------------------------------------------
 

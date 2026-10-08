@@ -345,7 +345,7 @@ fn a_harvest_order_on_a_cutting_miner_keeps_state_one_and_cuts_on_arrival() {
 /// not a whole-map native comparison.
 #[test]
 fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
-    use crate::map::overlay_types::OverlayTypeRegistry;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::sim::command::Command;
     use crate::sim::house_state::HouseState;
     use crate::sim::mission::{MissionId, MissionType};

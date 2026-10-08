@@ -1,6 +1,6 @@
 //! Render-only overlay asset-name helpers: SHP filename candidates and the
 //! debug/render overlay-name resolution over a rules `OverlayTypeRegistry`.
-//! Split out of `map::overlay_types` (F04); presentation-only — no sim or map
+//! Split out of the overlay type registry (F04); presentation-only — no sim or map
 //! consumer may depend on the env-var debug remaps here.
 
 use std::borrow::Cow;

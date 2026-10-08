@@ -15,7 +15,7 @@ use crate::sim::bridge_state::{ordinary_repair, ramp_repair};
 pub(crate) fn damage_ordinary(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
 ) -> Result<BodyResult, String> {
@@ -43,7 +43,7 @@ pub(crate) fn damage_ordinary(
 pub(crate) fn repair_from_engineer(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     engineer: u64,
 ) -> Result<bool, String> {
     let mut live = LivePublication {

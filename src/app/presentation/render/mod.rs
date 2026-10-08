@@ -263,7 +263,6 @@ pub(crate) fn render_game(
             overlay_render_z: &world.overlay_render_z,
             bridge_shadows: &world.bridge_body_shadow,
             object_layers: &world.object_layers,
-            ghost_page: ui.ghost_page,
         },
     );
     Ok(GameRenderOutput {
@@ -390,8 +389,6 @@ fn upload_to_gpu(
         "placement_invalid",
         &ui.placement_invalid,
     );
-    pool.upload(&state.renderer.gpu, "placement_ghost", &ui.placement_ghost);
-    pool.upload(&state.renderer.gpu, "placement_wall_ghost", &ui.wall_ghost);
     pool.upload(
         &state.renderer.gpu,
         "factory_rally_first",
@@ -412,7 +409,6 @@ fn upload_to_gpu(
         "radar_content_boundary",
         &sidebar.content_boundary,
     );
-    pool.upload(&state.renderer.gpu, "sidebar", &sidebar.sidebar);
     pool.upload(&state.renderer.gpu, "sidebar_chrome", &sidebar.chrome);
     pool.upload(&state.renderer.gpu, "radar_anim", &sidebar.radar_anim);
     pool.upload(&state.renderer.gpu, "sidebar_cameo", &sidebar.cameo);
@@ -436,7 +432,6 @@ mod tests {
     fn game_render_counts_preserve_exact_emitted_lengths() {
         let sprite = crate::render::batch::SpriteInstance::default();
         let instances = super::build_instances::SidebarInstances {
-            sidebar: Vec::new(),
             chrome: Vec::new(),
             cameo: Vec::new(),
             gclock: Vec::new(),

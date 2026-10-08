@@ -68,12 +68,14 @@ use super::track_fresh_dispatch::{
 use super::track_path::{clear_track_head, track_destination};
 use super::track_process::TrackFamily;
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::mission_data::MissionType;
+use crate::rules::object_type::Ability;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::combat::TargetKind;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -1193,8 +1195,7 @@ impl Simulation {
         };
         //Type+D28, or HasWeaponAbility(0x11) by rank (0x70D0D0).
         let crusher = object.crusher
-            || (actor.veterancy() >= 100 && object.veteran_crusher)
-            || (actor.veterancy() >= 200 && object.elite_crusher);
+            || has_weapon_ability(rank_from_u16(actor.veterancy()), object, Ability::Crusher);
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let native = cells.lookup(cell);
         let deck = cells.flags(native) & 0x100 != 0 && {

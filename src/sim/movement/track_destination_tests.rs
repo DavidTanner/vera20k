@@ -952,7 +952,7 @@ fn live_drive_target_refresh_resumes_after_owner_warp_ends() {
 fn anytown_destination_dependencies() -> Option<(
     crate::sim::world::Simulation,
     crate::rules::ruleset::RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 )> {
     use crate::rules::retail_ini_fixture::{retail_assets, retail_rules_owner};
 
@@ -985,7 +985,8 @@ fn anytown_destination_dependencies() -> Option<(
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
     );
-    let overlays = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&processed, Some(&art));
+    let overlays =
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&processed, Some(&art));
     let terrain = ResolvedTerrainGrid::build(
         &map.map,
         Some(&theater),

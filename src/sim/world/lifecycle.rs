@@ -64,7 +64,7 @@ pub(crate) enum PointerExpiryControl {
 pub(crate) struct UninitContext<'a> {
     terrain: Option<&'a crate::map::resolved_terrain::ResolvedTerrainGrid>,
     rules: Option<&'a RuleSet>,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     requested_facing: Option<u8>,
 }
 
@@ -72,7 +72,7 @@ impl<'a> UninitContext<'a> {
     /// A caller's rules and overlay table, with no terrain override.
     pub(crate) const fn new(
         rules: Option<&'a RuleSet>,
-        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Self {
         Self {
             terrain: None,
@@ -120,14 +120,14 @@ impl<'a> UninitContext<'a> {
     /// cell's overlay (an ejected occupant's Scatter entry test).
     pub(crate) const fn with_registry(
         self,
-        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Self {
         Self { registry, ..self }
     }
 
     pub(crate) const fn registry(
         self,
-    ) -> Option<&'a crate::map::overlay_types::OverlayTypeRegistry> {
+    ) -> Option<&'a crate::rules::overlay_types::OverlayTypeRegistry> {
         self.registry
     }
 
@@ -1763,7 +1763,7 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> crate::sim::movement::air_movement::AirMovementTickStats {
         use crate::rules::locomotor_type::LocomotorKind;
         use crate::sim::movement::locomotor::MovementLayer;
@@ -1822,7 +1822,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let admitted = self.substrate.entities.get(id).is_some_and(|entity| {
             entity.lifecycle.object_alive
@@ -2516,7 +2516,7 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> ConcealOutcome {
         self.techno_limbo_with_context(stable_id, UninitContext::new(Some(rules), registry))
     }
@@ -2980,7 +2980,7 @@ impl Simulation {
         &mut self,
         request: LifecycleRequest,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         match request {
             LifecycleRequest::Uninit {
@@ -3237,7 +3237,7 @@ impl Simulation {
         &mut self,
         detach_id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules, registry);
     }
@@ -3250,7 +3250,7 @@ impl Simulation {
         rx: u16,
         ry: u16,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules, registry);
     }
@@ -3259,7 +3259,7 @@ impl Simulation {
         &mut self,
         target: TargetKind,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let mut listeners = self.substrate.entities.keys_sorted();
         listeners.reverse();
@@ -3315,7 +3315,7 @@ impl Simulation {
         &mut self,
         hut_id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         // Infantry ctor517B34 appends to its type registry. Represented
         // PointerExpired receivers do not construct/delete registry entries;
@@ -3407,7 +3407,7 @@ impl Simulation {
         expired_owner: Option<InternedId>,
         control: PointerExpiryControl,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(listener) = self.substrate.entities.get(listener_id) else {
             return;
@@ -3735,7 +3735,7 @@ impl Simulation {
         &mut self,
         expired_id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if !self.substrate.entities.contains(expired_id) {
             return;
@@ -4307,7 +4307,6 @@ impl Simulation {
             if self.production.terrain_object_cells.get(&cell) == Some(&stable_id) {
                 self.production.terrain_object_cells.remove(&cell);
                 self.production.terrain_animations.remove(&cell);
-                self.production.terrain_occupation_bits.remove(&cell);
                 self.production
                     .tiberium_spawning_terrain_cells
                     .remove(&cell);
@@ -4372,7 +4371,7 @@ impl Simulation {
     pub(crate) fn process_pending_delete_with(
         &mut self,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::PendingDeleteDrainStarted);

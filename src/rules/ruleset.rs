@@ -262,8 +262,6 @@ impl Default for ProductionRules {
 pub struct AnimRef {
     /// SHP animation name (uppercase), e.g., "WARPIN".
     pub name: String,
-    /// Native gameplay-frame delay derived from art.ini `[ANIM_NAME]` Rate=.
-    pub frame_delay: u16,
 }
 
 /// Convert RulesClass `[AudioVisual] SavourDelay` minutes to the signed timer's
@@ -1603,10 +1601,6 @@ pub(crate) fn damage_spark_spawn_threshold(band: f64) -> u32 {
     threshold.min(DAMAGE_SPARK_ROLL_COUNT as u128) as u32
 }
 
-/// Default animation rate when art.ini section is missing.
-/// Matches gamemd constructor default: 1 game frame at 60fps ≈ 17ms.
-const DEFAULT_ANIM_FRAME_DELAY: u16 = 1;
-
 /// `[General] URepairRate=` and `ReloadRate=` defaults, in minutes.
 const U_REPAIR_RATE_MINUTES: f64 = 0.016;
 const RELOAD_RATE_MINUTES: f64 = 0.3;
@@ -1852,27 +1846,21 @@ impl Default for GeneralRules {
             growth_rate_minutes: 2.0,
             warp_in: AnimRef {
                 name: "WARPIN".to_string(),
-                frame_delay: 1,
             },
             warp_out: AnimRef {
                 name: "WARPOUT".to_string(),
-                frame_delay: 1,
             },
             warp_away: AnimRef {
                 name: "WARPAWAY".to_string(),
-                frame_delay: 1,
             },
             chrono_sparkle1: AnimRef {
                 name: "CHRONOSK".to_string(),
-                frame_delay: 1,
             },
             wake: AnimRef {
                 name: "WAKE1".to_string(),
-                frame_delay: 1,
             },
             move_flash: AnimRef {
                 name: "RING".to_string(),
-                frame_delay: 1,
             },
             infantry_death_anims: [
                 None,
@@ -2449,8 +2437,7 @@ impl GeneralRules {
         let special_weapons = ini.section_or_empty("SpecialWeapons");
         // INI parser already strips everything after `;` (Westwood comment
         // marker), so values like `WarpOut=WARPOUT;WAKE2` are read as
-        // `WARPOUT` — matching gamemd's behaviour. Rate is filled in later
-        // from art.ini in `resolve_art_rates`.
+        // `WARPOUT` — matching gamemd's behaviour.
         let parse_anim_name =
             |key: &str, default: &str| -> String { general.read_string(key, default, 0x80) };
         let mut infantry_death_anims = defaults.infantry_death_anims.clone();
@@ -2871,27 +2858,21 @@ impl GeneralRules {
             bomb_attach_sound,
             warp_in: AnimRef {
                 name: parse_anim_name("WarpIn", "WARPIN"),
-                frame_delay: defaults.warp_in.frame_delay,
             },
             warp_out: AnimRef {
                 name: parse_anim_name("WarpOut", "WARPOUT"),
-                frame_delay: defaults.warp_out.frame_delay,
             },
             warp_away: AnimRef {
                 name: parse_anim_name("WarpAway", "WARPAWAY"),
-                frame_delay: defaults.warp_away.frame_delay,
             },
             chrono_sparkle1: AnimRef {
                 name: parse_anim_name("ChronoSparkle1", "CHRONOSK"),
-                frame_delay: defaults.chrono_sparkle1.frame_delay,
             },
             wake: AnimRef {
                 name: parse_anim_name("Wake", "WAKE1"),
-                frame_delay: defaults.wake.frame_delay,
             },
             move_flash: AnimRef {
                 name: parse_anim_name("MoveFlash", "RING"),
-                frame_delay: defaults.move_flash.frame_delay,
             },
             infantry_death_anims,
             damage_delay_minutes: general.read_double("DamageDelay", 1.0) as f32,
@@ -2903,7 +2884,6 @@ impl GeneralRules {
                         .into_iter()
                         .map(|name| AnimRef {
                             name: name.to_uppercase(),
-                            frame_delay: DEFAULT_ANIM_FRAME_DELAY,
                         })
                         .collect()
                 })
@@ -3089,57 +3069,6 @@ impl GeneralRules {
             metallic_debris: Vec::new(),
             weather_con_clouds: Vec::new(),
             weather_con_bolts: Vec::new(),
-        }
-    }
-
-    /// Resolve animation playback rates from art.ini sections.
-    ///
-    /// Called after both rules.ini and art.ini are loaded. Looks up each
-    /// anim's own `[ANIM_NAME]` section for its native `Rate=` frame delay.
-    pub fn resolve_art_rates(&mut self, art_ini: &IniFile) {
-        fn rate_from_section(ini: &IniFile, name: &str, fallback: u16) -> u16 {
-            crate::rules::art_data::read_anim_rate(ini.section_or_empty(name))
-                .map_or(fallback, crate::rules::art_data::art_rate_to_logic_frames)
-        }
-        self.warp_in.frame_delay =
-            rate_from_section(art_ini, &self.warp_in.name, DEFAULT_ANIM_FRAME_DELAY);
-        self.warp_out.frame_delay =
-            rate_from_section(art_ini, &self.warp_out.name, DEFAULT_ANIM_FRAME_DELAY);
-        self.warp_away.frame_delay =
-            rate_from_section(art_ini, &self.warp_away.name, DEFAULT_ANIM_FRAME_DELAY);
-        self.chrono_sparkle1.frame_delay = rate_from_section(
-            art_ini,
-            &self.chrono_sparkle1.name,
-            DEFAULT_ANIM_FRAME_DELAY,
-        );
-        self.wake.frame_delay =
-            rate_from_section(art_ini, &self.wake.name, DEFAULT_ANIM_FRAME_DELAY);
-        self.move_flash.frame_delay =
-            rate_from_section(art_ini, &self.move_flash.name, DEFAULT_ANIM_FRAME_DELAY);
-        log::info!(
-            "Warp anim frame delays: {}={}, {}={}, {}={}, wake: {}={}",
-            self.warp_in.name,
-            self.warp_in.frame_delay,
-            self.warp_out.name,
-            self.warp_out.frame_delay,
-            self.warp_away.name,
-            self.warp_away.frame_delay,
-            self.wake.name,
-            self.wake.frame_delay,
-        );
-        for fire in &mut self.damage_fire_types {
-            fire.frame_delay = rate_from_section(art_ini, &fire.name, DEFAULT_ANIM_FRAME_DELAY);
-        }
-        if !self.damage_fire_types.is_empty() {
-            log::info!(
-                "DamageFireTypes: {} types ({})",
-                self.damage_fire_types.len(),
-                self.damage_fire_types
-                    .iter()
-                    .map(|f| format!("{}={}", f.name, f.frame_delay))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            );
         }
     }
 }
@@ -6660,7 +6589,7 @@ MutateWarhead=MyMutate\n\
             .expect("mixed-case registry warhead lookup resolves");
         assert!(std::ptr::eq(lower, mixed));
         assert_eq!(lower.id, "RegistryOnlyWH");
-        assert_eq!(lower.percent_at_max, 50);
+        assert_eq!(lower.percent_at_max_f64, 0.5);
         let expected = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
         for (actual, expected) in lower.verses_f64.iter().zip(expected) {
             assert!((actual - expected).abs() < 1e-9);

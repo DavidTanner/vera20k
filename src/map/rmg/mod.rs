@@ -22,7 +22,6 @@ pub mod sqrt_table;
 pub mod tech_catalog;
 pub mod theater_blocks;
 pub mod tiles;
-pub mod trig;
 pub mod x87;
 
 pub use description::SeedDescription;

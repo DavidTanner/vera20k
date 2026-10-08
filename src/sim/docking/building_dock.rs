@@ -814,7 +814,7 @@ pub(crate) fn building_dock_cell(
     mover_id: u64,
     offered: (i16, i16),
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<(u16, u16)> {
     use crate::sim::movement::infantry_entry::{EntryQueryMode, InfantryEntryArgs};
     let producer = sim.substrate.entities.get(producer_id)?;
@@ -1178,7 +1178,7 @@ fn release_contact(
     depot: u64,
     unit: u64,
     state1: bool,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(contact) = sim.substrate.entities.get(unit) else {
         return;
@@ -1252,7 +1252,7 @@ pub(crate) fn mission_repair(
     sim: &mut Simulation,
     rules: &RuleSet,
     depot: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<i32> {
     use crate::util::native_x87::{
         MaskedX87Chop53 as X87, MaskedX87Ordering as Ordering, NativeF64Bits,
@@ -3078,14 +3078,14 @@ mod tests {
             .unwrap()
             .power_off();
         let pending = sim.interner.intern("PENDING");
-        assert!(sim.production.factory_shadow.test_enqueue_kernel(
+        assert!(sim.production.factories.test_enqueue_kernel(
             owner,
             ProductionCategory::Vehicle,
             pending,
             1,
             108,
         ));
-        let factory = sim.production.factory_shadow.test_first_mut().unwrap();
+        let factory = sim.production.factories.test_first_mut().unwrap();
         factory.step_rate_frames = 1;
         factory.step_timer = CdTimer::from_raw(0, 0);
         for id in [DEPOT, 1, 501] {
@@ -3095,7 +3095,7 @@ mod tests {
         assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 108);
         assert_eq!(sim.houses[&owner].economy.credits, 0);
         assert_eq!(sim.houses[&owner].economy.spent_credits, 2);
-        let factory = sim.production.factory_shadow.test_first_mut().unwrap();
+        let factory = sim.production.factories.test_first_mut().unwrap();
         assert_eq!(factory.progress, 0);
         assert_eq!(factory.balance, 108);
         assert!(factory.on_hold);

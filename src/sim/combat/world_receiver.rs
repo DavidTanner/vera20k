@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::sim::world::Simulation;
+use crate::sim::world::techno_ai_cloak::emit_configured_cloak_sound;
 
 #[path = "aircraft_release.rs"]
 mod aircraft_release;
@@ -693,27 +694,27 @@ pub(crate) fn commit_entities(
                 .get(target_id)
                 .and_then(|target| rules.object(world.interner.resolve(target.type_ref())))
                 .map_or(1, |object| object.cloaking_speed);
+            // `TechnoClass::ReceiveDamage @ 0x0070281D` invokes virtual
+            // `+0xFC` (`0x00703850`, a plain `StartUncloaking(0)` wrapper) for
+            // every damage result that is not NowDead — the heal case
+            // included, because the `if (damage < 0) return` early-out sits
+            // AFTER this call. Argument zero, so the transition owns a
+            // `CloakSound`.
             let surfaced = world
                 .substrate
                 .entities
                 .get_mut(target_id)
                 .and_then(|target| target.cloak.as_mut())
                 .map(|cloak| {
-                    cloak.start_uncloaking_from_damage(
+                    cloak.start_uncloaking(
                         now,
                         cloaking_speed,
                         rules.general.cloaking_stages,
+                        false,
                     )
                 });
-            if surfaced.is_some_and(|result| result.play_sound)
-                && let Some(sound_name) = rules.general.cloak_sound.as_deref()
-                && let Some(sink) = sound_enabled.then_some(&mut world.sound_events)
-                && let Some(target) = world.substrate.entities.get(target_id)
-            {
-                sink.push(SimSoundEvent::cloak_sound(
-                    sound_name.to_owned(),
-                    &target.position,
-                ));
+            if surfaced.is_some_and(|result| result.play_sound) && sound_enabled {
+                emit_configured_cloak_sound(world, target_id, rules);
             }
         }
 
@@ -1854,7 +1855,7 @@ fn run_special_detonation_arm(
     rules: &RuleSet,
     action: SpecialDetonationAction,
     detonation: &ProjectileDetonation,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let owner = detonation.source_id;
     let target = match detonation.target {
@@ -3021,27 +3022,23 @@ fn uncloak_to_fire(
     sound_enabled: bool,
 ) {
     let binary_frame = world.session.binary_frame;
+    // `UnitClass::Fire_At_Target @ 0x00736DF0` case 9 invokes virtual
+    // `StartUncloaking +0x45C @ 0x007036C0` after rechecking CanFireAt.
     let start = world
         .substrate
         .entities
         .get_mut(id)
         .and_then(|entity| entity.cloak.as_mut())
         .map(|cloak| {
-            cloak.start_uncloaking_to_fire(
+            cloak.start_uncloaking(
                 binary_frame as i32,
                 obj.cloaking_speed,
                 rules.general.cloaking_stages,
+                false,
             )
         });
-    if start.is_some_and(|result| result.play_sound)
-        && let Some(sound_name) = rules.general.cloak_sound.as_deref()
-        && let Some(sink) = sound_enabled.then_some(&mut world.sound_events)
-        && let Some(entity) = world.substrate.entities.get(id)
-    {
-        sink.push(SimSoundEvent::cloak_sound(
-            sound_name.to_owned(),
-            &entity.position,
-        ));
+    if start.is_some_and(|result| result.play_sound) && sound_enabled {
+        emit_configured_cloak_sound(world, id, rules);
     }
 }
 
@@ -4900,6 +4897,7 @@ pub(crate) fn tick_combat(
                 binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut Vec::new(),
             );
         }
         if !rad.is_empty() && binary_frame.is_multiple_of(rules.radiation.application_delay as u32)
@@ -4980,6 +4978,7 @@ pub(crate) fn tick_combat(
                 binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut Vec::new(),
             );
         }
     }

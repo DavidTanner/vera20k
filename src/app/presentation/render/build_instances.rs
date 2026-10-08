@@ -13,7 +13,7 @@ use crate::app::input::commands::preferred_local_owner;
 use crate::app::presentation::instances;
 use crate::app::presentation::sidebar_render::{
     active_minimap_screen_rect, build_sidebar_cameo_instances, build_sidebar_chrome_instances,
-    build_sidebar_instances as sidebar_inst_fn, build_sidebar_text_instances, current_sidebar_view,
+    build_sidebar_text_instances, current_sidebar_view,
 };
 use crate::app::presentation::ui_overlays::{
     build_bomb_clock_instances, build_building_radius_ring_instances,
@@ -79,9 +79,6 @@ pub(super) struct UiInstances {
     pub drag: Vec<SpriteInstance>,
     pub placement_valid: Vec<SpriteInstance>,
     pub placement_invalid: Vec<SpriteInstance>,
-    pub placement_ghost: Vec<SpriteInstance>,
-    pub ghost_page: u8,
-    pub wall_ghost: Vec<SpriteInstance>,
     pub target_line: Vec<SpriteInstance>,
     pub factory_rally_first: Vec<SpriteInstance>,
     pub factory_rally_second: Vec<SpriteInstance>,
@@ -89,7 +86,6 @@ pub(super) struct UiInstances {
 
 /// Sidebar chrome, cameos, text, minimap, and radar animation.
 pub(super) struct SidebarInstances {
-    pub sidebar: Vec<SpriteInstance>,
     pub chrome: Vec<SpriteInstance>,
     pub cameo: Vec<SpriteInstance>,
     pub gclock: Vec<SpriteInstance>,
@@ -589,9 +585,7 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
         None => Vec::new(),
     };
 
-    // Building placement preview: cell grid + ghost sprite (or wall ghost for wall types).
-    let (placement_valid, placement_invalid, placement_ghost, ghost_page, wall_ghost) =
-        build_placement_preview(state);
+    let (placement_valid, placement_invalid) = build_placement_preview(state);
 
     let input = &state.match_state.input;
     let camera = [input.camera_x.round() as i32, input.camera_y.round() as i32];
@@ -681,97 +675,39 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
         drag,
         placement_valid,
         placement_invalid,
-        placement_ghost,
-        ghost_page,
-        wall_ghost,
         target_line,
         factory_rally_first,
         factory_rally_second,
     }
 }
 
-/// Build the building placement preview: valid/invalid cell markers, ghost sprite,
-/// and wall connectivity ghost for wall-type buildings.
-fn build_placement_preview(
-    state: &AppState,
-) -> (
-    Vec<SpriteInstance>,
-    Vec<SpriteInstance>,
-    Vec<SpriteInstance>,
-    u8,
-    Vec<SpriteInstance>,
-) {
-    match (
+/// Build the building placement cells, split into placeable and blocked: the
+/// foundation's cells and, for a wall, its auto-fill cells.
+///
+/// Native placement draws PLACE.SHP cells and never the building being placed:
+/// `Tactical::BuildingPlacement_OverlayRenderer` (`0x006D5030`) draws it only while
+/// `g_IsMapEditor` (`0x00A8ED6B`) is set, which `Parse_Command_Line` (`0x0052F620`) clears and
+/// only the random-map GALITE pass (`0x005A91E0`) sets, restoring it before returning.
+///
+/// Residual: the cells are PLACE.SHP frames 0 and 1 tinted green and red, and auto-fill cells
+/// draw even when the wall is blocked. Native `CellClass::BuildingPlacement_per_cell_draw`
+/// (`0x0047EC90`) draws a blocked cell with frame slope index + 2 (frame 1 marks pending cells),
+/// and the renderer draws auto-fill cells only when every foundation cell is clear (`0x006D53CB`).
+fn build_placement_preview(state: &AppState) -> (Vec<SpriteInstance>, Vec<SpriteInstance>) {
+    let (Some(o), Some(preview)) = (
         &state.match_state.match_presentation.selection_overlay,
         &state.match_state.input.building_placement_preview,
-    ) {
-        (Some(o), Some(preview)) => {
-            let preview_type_str = state
-                .match_state
-                .sim_runtime
-                .as_ref()
-                .map(|rt| &rt.simulation)
-                .map(|s| s.interner.resolve(preview.type_id).to_string())
-                .unwrap_or_default();
-            let is_wall: bool = state
-                .rules()
-                .and_then(|r| r.object(&preview_type_str))
-                .map(|obj| obj.wall)
-                .unwrap_or(false);
-
-            if is_wall {
-                // Walls show the cursor cell + auto-fill cells toward existing walls.
-                // Draws place.shp on every intermediate cell between cursor and
-                // nearest same-type wall.
-                let (mut valid, mut invalid) =
-                    o.build_building_preview(preview, &state.height_map());
-                if !preview.wall_autofill_cells.is_empty() {
-                    let (av, ai) = o.build_wall_autofill_diamonds(
-                        &preview.wall_autofill_cells,
-                        preview.valid,
-                        &state.height_map(),
-                    );
-                    valid.extend(av);
-                    invalid.extend(ai);
-                }
-                (valid, invalid, Vec::new(), 0, Vec::new())
-            } else {
-                let (valid, invalid) = o.build_building_preview(preview, &state.height_map());
-                let hc: crate::rules::house_colors::HouseColorIndex = state
-                    .match_state
-                    .match_presentation
-                    .house_color_map
-                    .get(
-                        &crate::app::input::commands::preferred_local_owner(state)
-                            .unwrap_or_else(|| "Americans".to_string()),
-                    )
-                    .copied()
-                    // Missing local owner → the producers' default scheme entry, not entry 0.
-                    .unwrap_or(crate::rules::house_colors::HouseColorIndex(
-                        crate::rules::house_colors::DEFAULT_SCHEME_ENTRY as u8,
-                    ));
-                let ghost_result =
-                    crate::render::selection_overlay::SelectionOverlay::build_ghost_sprite(
-                        preview,
-                        state.match_state.match_presentation.sprite_atlas.as_ref(),
-                        hc,
-                        &state.height_map(),
-                        state
-                            .match_state
-                            .sim_runtime
-                            .as_ref()
-                            .map(|rt| &rt.simulation)
-                            .map(|s| &s.interner),
-                    );
-                let (ghost, page) = match ghost_result {
-                    Some((inst, p)) => (vec![inst], p),
-                    None => (Vec::new(), 0),
-                };
-                (valid, invalid, ghost, page, Vec::new())
-            }
-        }
-        _ => (Vec::new(), Vec::new(), Vec::new(), 0, Vec::new()),
-    }
+    ) else {
+        return (Vec::new(), Vec::new());
+    };
+    let height_map = state.height_map();
+    let (mut valid, mut invalid) = o.build_building_preview(preview, height_map);
+    // The producer fills auto-fill cells for walls only.
+    let (autofill_valid, autofill_invalid) =
+        o.build_wall_autofill_diamonds(&preview.wall_autofill_cells, preview.valid, height_map);
+    valid.extend(autofill_valid);
+    invalid.extend(autofill_invalid);
+    (valid, invalid)
 }
 
 // ---------------------------------------------------------------------------
@@ -857,10 +793,6 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
         (Vec::new(), Vec::new(), Vec::new())
     };
 
-    let sidebar = view
-        .as_ref()
-        .map(|v| sidebar_inst_fn(state, v))
-        .unwrap_or_default();
     let chrome = view
         .as_ref()
         .map(|v| build_sidebar_chrome_instances(state, v))
@@ -942,7 +874,6 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
     let radar_anim = build_radar_anim_instance(state);
 
     SidebarInstances {
-        sidebar,
         chrome,
         cameo,
         gclock,

@@ -85,9 +85,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::mind_control_rules::CaptureReason;
 use crate::rules::object_type::ObjectType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::{AnimId, AnimWorldCoord};
 use crate::sim::game_entity::GameEntity;
@@ -876,7 +876,7 @@ impl Simulation {
         &mut self,
         controller_id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let table = &rules.mind_control;
         let Some(entity) = self.substrate.entities.get_mut(controller_id) else {

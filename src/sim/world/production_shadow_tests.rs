@@ -1,10 +1,8 @@
-//! P1+P2 production+economy shadow tests (study §8 P1/P2 + the design proving set).
-//!
-//! These exercise the shadow build from the `world` level, where `Simulation::new`,
-//! `advance_tick`, `state_hash`, `set_logic_order_for_test`, and the snapshot API
-//! are reachable. The contract these pin: the shadow is DERIVED from the legacy
-//! state, NEVER creates a house, and leaves `state_hash()` bit-identical (the new
-//! fields are `#[serde(skip)]` with no serde derive, so `SNAPSHOT_VERSION` stays 17).
+//! Factory registry (`ProductionState.factories`) tests from the `world` level,
+//! where `Simulation::new`, `advance_tick`, `state_hash`, `set_logic_order_for_test`
+//! and the snapshot API are reachable: sweep order, the state-hash fold, snapshot
+//! round trips, the per-step charge against the house wallet, cancel refunds and
+//! the delivery-gated queue advance.
 
 use super::Simulation;
 use crate::map::entities::EntityCategory;
@@ -81,7 +79,7 @@ fn arm(
 ) {
     let cost = sim.object_type(ty, rules).map_or(0, |o| o.cost.max(0));
     sim.production
-        .factory_shadow
+        .factories
         .test_enqueue_kernel(owner, cat, ty, order, cost);
 }
 
@@ -101,7 +99,7 @@ fn factory_enqueue_seeds_zero_progress() {
     {
         let view = sim
             .production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Vehicle)
             .expect("factory exists");
         assert_eq!(
@@ -130,7 +128,7 @@ fn factory_registry_iteration_is_insertion_ordered() {
     }
     let seqs: Vec<u64> = sim
         .production
-        .factory_shadow
+        .factories
         .iter_insertion_ordered()
         .iter()
         .map(|f| f.insertion_seq)
@@ -159,7 +157,7 @@ fn production_authoritative_hash_includes_factory_fields() {
     let base = mid_build().state_hash();
 
     type FMut = fn(&mut crate::sim::production::Factory);
-    let factory_muts: [FMut; 9] = [
+    let factory_muts: [FMut; 8] = [
         |f| f.progress += 1,
         |f| f.balance += 1,
         |f| f.step_timer = CdTimer::started(123, f.step_timer.duration()),
@@ -168,11 +166,10 @@ fn production_authoritative_hash_includes_factory_fields() {
         |f| f.suspended = !f.suspended,
         |f| f.step_rate_frames += 1,
         |f| f.manual = !f.manual,
-        |f| f.special = crate::sim::production::SpecialItem::NoneZero,
     ];
     for m in factory_muts {
         let mut sim = mid_build();
-        m(sim.production.factory_shadow.test_first_mut().unwrap());
+        m(sim.production.factories.test_first_mut().unwrap());
         assert_ne!(
             base,
             sim.state_hash(),
@@ -217,7 +214,7 @@ fn snapshot_roundtrip_factory_registry() {
     ); // a tail entry to round-trip
     // Give the build non-trivial authoritative progress/balance/stats to round-trip.
     {
-        let f = sim.production.factory_shadow.test_first_mut().unwrap();
+        let f = sim.production.factories.test_first_mut().unwrap();
         f.progress = 20;
         f.balance = 300;
         f.step_timer = CdTimer::started(90, 12);
@@ -297,7 +294,7 @@ fn queue_advances_only_after_delivery() {
     );
 
     let before = sim.state_hash();
-    let mut f = sim.production.factory_shadow.iter_insertion_ordered()[0].clone();
+    let mut f = sim.production.factories.iter_insertion_ordered()[0].clone();
     assert_eq!(
         f.object.as_ref().map(|o| o.type_id),
         Some(active),
@@ -392,7 +389,7 @@ fn factory_insertion_seq_equals_front_enqueue_order() {
 
     let ordered: Vec<(ProductionCategory, u64)> = sim
         .production
-        .factory_shadow
+        .factories
         .iter_insertion_ordered()
         .iter()
         .map(|f| (f.category, f.insertion_seq))
@@ -436,7 +433,7 @@ fn factory_step_order_matches_legacy_temporal_order() {
 
     let cats_in_sweep: Vec<ProductionCategory> = sim
         .production
-        .factory_shadow
+        .factories
         .iter_insertion_ordered()
         .iter()
         .map(|f| f.category)
@@ -448,9 +445,9 @@ fn factory_step_order_matches_legacy_temporal_order() {
     );
 }
 
-/// P5a inversion-readiness: drive `advance_tick` over N ticks; the live debug assert
-/// `debug_assert_factory_step_matches_legacy` runs each tick and a clean run (no panic)
-/// proves the (A) order + (D) delivery invariants hold across the suite.
+/// Drive `advance_tick` over N ticks; `debug_assert_factory_invariants` runs each
+/// tick in debug builds, and a clean run (no panic) shows its order and state
+/// invariants hold.
 #[test]
 fn factory_step_matches_legacy_shadow_holds() {
     let mut sim = Simulation::new();
@@ -461,7 +458,7 @@ fn factory_step_matches_legacy_shadow_holds() {
     let ty = sim.interner.intern("GRIZZLY");
     arm(&mut sim, &rules, owner, ProductionCategory::Vehicle, ty, 1);
     for _ in 0..5 {
-        // If the inversion assert diverges, advance_tick panics in a debug build.
+        // A broken invariant panics inside advance_tick in a debug build.
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
 }
@@ -597,7 +594,7 @@ fn cancel_one_partial_refund_to_house_credits() {
     // factory no longer exists in the registry (the queue-of-record).
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Vehicle)
             .is_none(),
         "the cancelled active build left the queue-of-record"

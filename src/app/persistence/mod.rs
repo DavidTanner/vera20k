@@ -17,8 +17,8 @@ pub(crate) mod save_load_panel;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime};
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::snapshot::{
     GameSnapshot, GameSnapshotHeader, SnapshotError, SnapshotMapRestoreOutput, SnapshotRestoreError,

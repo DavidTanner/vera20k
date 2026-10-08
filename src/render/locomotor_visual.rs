@@ -149,8 +149,8 @@ pub const BUILDING_ART_LIFT_PX: f32 = crate::map::terrain::TILE_HEIGHT / 2.0;
 
 /// A building's art anchor, given its plain entity anchor.
 ///
-/// One owner for [`BUILDING_ART_LIFT_PX`] so the placement ghost and the
-/// building it previews cannot drift apart.
+/// One owner for [`BUILDING_ART_LIFT_PX`] so every draw of a building's art
+/// lands on the same point.
 pub fn building_art_anchor(sx: f32, sy: f32) -> (f32, f32) {
     (sx, sy - BUILDING_ART_LIFT_PX)
 }

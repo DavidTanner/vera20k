@@ -37,9 +37,9 @@ use crate::map::bridge_facts::{
 use crate::map::lighting::LightingProfileUnits;
 #[cfg(test)]
 use crate::map::lighting::ParsedLightingProfiles;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::cell_rect::cell_is_in_playfield_height_aware;
@@ -1141,8 +1141,8 @@ pub(crate) mod tests {
     use std::fmt::Write as _;
 
     use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::sim::cell_rect::PlayfieldBounds;
     use crate::sim::overlay_grid::OverlayGrid;
     use crate::sim::pathfinding::PathGrid;
@@ -1206,8 +1206,8 @@ pub(crate) mod tests {
             let override_section = overrides.iter().find_map(|(candidate, _, section)| {
                 (usize::from(*candidate) == id).then_some(*section)
             });
-            let default_low_bridge = crate::map::overlay_types::is_bridge_overlay_index(id as u8)
-                && !crate::map::overlay_types::is_high_bridge_index(id as u8);
+            let default_low_bridge = crate::rules::overlay_types::is_bridge_overlay_index(id as u8)
+                && !crate::rules::overlay_types::is_high_bridge_index(id as u8);
             let section = override_section.or(default_low_bridge.then_some("Land=Road\n"));
             if let Some(section) = section {
                 writeln!(&mut ini_text, "[{name}]").unwrap();
@@ -3151,10 +3151,6 @@ pub(crate) mod tests {
             1 + replay.next_range_u32_inclusive(0, 21) as u16,
         );
         replay.next_range_u32_inclusive(0, 0x7fff_fffe);
-        sim.session.local_left = 0;
-        sim.session.local_top = 0;
-        sim.session.local_width = 1;
-        sim.session.local_height = 1;
 
         let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 

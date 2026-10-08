@@ -318,7 +318,7 @@ pub(crate) fn tolerant_anim_class_roots(rules: &RuleSet) -> Vec<String> {
 /// names take the same path without a WA/TUNTOP name table in Rust.
 pub(crate) fn scheduler_anim_roots(
     rules: &RuleSet,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     tile_animations: &[TerrainTileAnimation],
 ) -> Vec<String> {
     let mut roots = BTreeSet::new();
@@ -367,7 +367,7 @@ pub(crate) fn scheduler_anim_roots(
 /// earlier in the loading funnel, so live-object discovery alone is too late.
 pub(crate) fn startup_crate_anim_remap_keys(
     rules: &RuleSet,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
 ) -> HashSet<(String, crate::rules::house_colors::HouseColorIndex)> {
     [
         rules.crate_rules.wood_crate_img.as_deref(),
@@ -415,7 +415,7 @@ pub(crate) fn populate_staged_app_scenario<F>(
     resolved_terrain: &ResolvedTerrainGrid,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
     bridge_destroyability_mode: BridgeDestroyabilityMode,
     descriptor: &crate::sim::scenario_session::ScenarioDescriptor,
@@ -470,7 +470,7 @@ pub(crate) fn build_presentation_manifest(
     theater_ext: &str,
     theater_name: &str,
     rules: Option<&RuleSet>,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     house_colors: &HouseColorMap,
     theater_unit_palette: Option<&Palette>,
     theater_iso_palette: Option<&Palette>,
@@ -604,7 +604,7 @@ mod tests {
         );
         let strict = super::scheduler_anim_roots(
             &rules,
-            &crate::map::overlay_types::OverlayTypeRegistry::empty(),
+            &crate::rules::overlay_types::OverlayTypeRegistry::empty(),
             &[],
         );
         assert!(
@@ -619,11 +619,11 @@ mod tests {
     use super::{load_rules_with_merged_ini, scheduler_anim_roots, startup_crate_anim_remap_keys};
     use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
     use crate::map::entities::EntityCategory;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::TerrainTileAnimation;
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::native_processing::RulesLayerStack;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::process_owner::NativeRulesProcessOwner;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile};
@@ -665,7 +665,8 @@ mod tests {
              [CrateRules]\nCrateImg=STARTBOX\nWoodCrateImg=STARTBOX\nWaterCrateImg=STARTBOX\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("rules");
-        let overlay_registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let overlay_registry =
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
         let tiles = vec![
             TerrainTileAnimation {
                 rx: 4,
@@ -712,7 +713,8 @@ mod tests {
              [CrateRules]\nCrateImg=STARTBOX\nWoodCrateImg=STARTBOX\nWaterCrateImg=STARTBOX\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("rules");
-        let overlay_registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let overlay_registry =
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
 
         assert_eq!(
             rules.crate_rules.crate_img.as_deref(),

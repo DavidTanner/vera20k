@@ -147,9 +147,10 @@ impl SkirmishLaunchMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum LaunchCountry {
+    #[default]
     America,
     Korea,
     France,
@@ -163,6 +164,35 @@ pub enum LaunchCountry {
 }
 
 impl LaunchCountry {
+    /// Every country, in the setup UI's country-list order.
+    pub const ALL: [LaunchCountry; 10] = [
+        Self::America,
+        Self::Korea,
+        Self::France,
+        Self::Germany,
+        Self::GreatBritain,
+        Self::Libya,
+        Self::Iraq,
+        Self::Cuba,
+        Self::Russia,
+        Self::Yuri,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::America => "America",
+            Self::Korea => "Korea",
+            Self::France => "France",
+            Self::Germany => "Germany",
+            Self::GreatBritain => "Great Britain",
+            Self::Libya => "Libya",
+            Self::Iraq => "Iraq",
+            Self::Cuba => "Cuba",
+            Self::Russia => "Russia",
+            Self::Yuri => "Yuri",
+        }
+    }
+
     pub const fn country_name(self) -> &'static str {
         match self {
             Self::America => "Americans",
@@ -190,25 +220,21 @@ impl LaunchCountry {
     /// country-list order used by the setup UI. Values above the last index
     /// clamp to the final country so the mapping is total.
     pub const fn from_country_index(index: u32) -> Self {
-        match index {
-            0 => Self::America,
-            1 => Self::Korea,
-            2 => Self::France,
-            3 => Self::Germany,
-            4 => Self::GreatBritain,
-            5 => Self::Libya,
-            6 => Self::Iraq,
-            7 => Self::Cuba,
-            8 => Self::Russia,
-            _ => Self::Yuri,
-        }
+        let last = Self::ALL.len() - 1;
+        Self::ALL[if (index as usize) < last {
+            index as usize
+        } else {
+            last
+        }]
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum LaunchStartPosition {
+    /// No start reserved; the launch assigns one (the shell's Random entry).
     Auto,
+    /// Specific waypoint index.
     Position(u8),
 }
 

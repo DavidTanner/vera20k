@@ -41,10 +41,10 @@ mod tests;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::is_allied_with;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::object_type::{FactoryType, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::game_entity::GameEntity;
@@ -269,7 +269,7 @@ fn rally_entry(
             && !entity.lifecycle.in_limbo;
         let candidate = standing
             || (house.difficulty == HouseDifficulty::Hard
-                && sim.production.factory_shadow.is_building(id));
+                && sim.production.factories.is_building(id));
         let ty = rules.object(sim.interner.resolve(entity.type_ref()));
         (candidate, rally_value(entity.category, ty, rules, house))
     } else {

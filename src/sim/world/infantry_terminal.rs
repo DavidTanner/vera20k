@@ -315,7 +315,7 @@ impl Simulation {
         inf_death: u8,
         house: Option<crate::sim::intern::InternedId>,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         immediate_uninit_ids: &mut Vec<u64>,
     ) -> InfantryDeathPostlude {
         if self

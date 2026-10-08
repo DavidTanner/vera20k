@@ -9,9 +9,6 @@ use crate::assets::pal_file::Palette;
 use crate::map::houses::{HouseColorMap, HouseRoster};
 use crate::map::map_file::MapFile;
 use crate::map::overlay::OverlayEntry;
-use crate::map::overlay_types::{
-    OverlayTypeRegistry, is_bridge_overlay_index, is_high_bridge_index,
-};
 use crate::render::batch::BatchRenderer;
 use crate::render::bridge_atlas::{self, BridgeAtlas};
 use crate::render::bridge_railing_atlas::{self, BridgeRailingAtlas, BridgeRailingTileBases};
@@ -22,6 +19,9 @@ use crate::rules::art_data::ArtRegistry;
 use crate::rules::color_scheme::scheme_entry_for_priority;
 use crate::rules::house_colors::HouseColorIndex;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::{
+    OverlayTypeRegistry, is_bridge_overlay_index, is_high_bridge_index,
+};
 use crate::rules::ruleset::RuleSet;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 use crate::sim::scenario_bootstrap::normalized_launch_slots;
@@ -384,10 +384,6 @@ mod tests {
         sim.install_playfield_from_map_header(&map.header);
         sim.session.map_width = 138;
         sim.session.map_height = 138;
-        sim.session.local_left = 2;
-        sim.session.local_top = 4;
-        sim.session.local_width = 76;
-        sim.session.local_height = 48;
     }
 
     fn test_launch_starts() -> [Waypoint; 4] {

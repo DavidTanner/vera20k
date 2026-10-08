@@ -8,11 +8,11 @@
 //! Screen position: `sx = (rx - ry) * 30`, `sy = (rx + ry) * 15 - z * 15`.
 //!
 //! ## Dependency rules
-//! - Part of map/ — depends on map/map_file for MapFile/MapCell.
+//! - Part of map/ — depends on map/map_file for the MapHeader LocalSize rect.
 
 use std::collections::BTreeMap;
 
-use crate::map::map_file::{MapFile, MapHeader};
+use crate::map::map_file::MapHeader;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 
 #[cfg(test)]
@@ -643,84 +643,9 @@ pub fn screen_to_iso_with_height_and_bridges(
     (rx, ry)
 }
 
-/// Build a TerrainGrid from a parsed map file.
-///
-/// Converts all map cells to screen coordinates, computes world bounds,
-/// and sorts by screen_y for correct draw order. Cells outside the
-/// LocalSize playable area are clipped (they are filler tiles hidden
-/// by shroud in the original RA2 engine).
-pub fn build_terrain_grid(map: &MapFile, local_bounds: Option<LocalBounds>) -> TerrainGrid {
-    let mut cells: Vec<TerrainCell> = Vec::with_capacity(map.cells.len());
-    let mut min_x: f32 = f32::MAX;
-    let mut min_y: f32 = f32::MAX;
-    let mut max_x: f32 = f32::MIN;
-    let mut max_y: f32 = f32::MIN;
-
-    for cell in &map.cells {
-        // This legacy direct path has no theater context, so retain its tile-0
-        // fallback while still presenting no-tile cells instead of dropping them.
-        let tile_id: u16 = if cell.tile_index == 0xFFFF || cell.tile_index < 0 {
-            0
-        } else {
-            cell.tile_index as u16
-        };
-        let sub_tile = if cell.tile_index == 0xFFFF || cell.tile_index < 0 {
-            0
-        } else {
-            cell.sub_tile
-        };
-
-        let (sx, sy): (f32, f32) = iso_to_screen(cell.rx, cell.ry, cell.z);
-
-        // Border filler cells (outside LocalSize) are kept: gamemd draws every
-        // allocated cell and hides the border purely by clamping the tactical
-        // camera to LocalSize. Dropping them while the fog still reveals them
-        // left revealed-but-undrawn holes — hard black cutouts with no shroud
-        // feathering — wherever a zoomed-out view reached the map border.
-        cells.push(TerrainCell {
-            screen_x: sx,
-            screen_y: sy,
-            tile_id,
-            sub_tile,
-            z: cell.z,
-            rx: cell.rx,
-            ry: cell.ry,
-            is_water: tile_id == 0,
-            variant: 0,
-            tint: [1.0, 1.0, 1.0],
-            radar_left: [0, 0, 0],
-            radar_right: [0, 0, 0],
-            has_damaged_data: false,
-        });
-
-        min_x = min_x.min(sx);
-        min_y = min_y.min(sy);
-        max_x = max_x.max(sx + TILE_WIDTH);
-        max_y = max_y.max(sy + TILE_HEIGHT);
-    }
-
-    // Sort by screen_y for back-to-front draw order.
-    cells.sort_by(|a, b| {
-        a.screen_y
-            .partial_cmp(&b.screen_y)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    TerrainGrid {
-        cells,
-        world_width: max_x - min_x,
-        world_height: max_y - min_y,
-        origin_x: min_x,
-        origin_y: min_y,
-        local_bounds,
-        bridge_middle_tiles: None,
-    }
-}
-
-/// Build a TerrainGrid from the resolved terrain stage.
-///
-/// Unlike `build_terrain_grid()`, this consumes the final LAT-adjusted tile
-/// choice and retains water classification from resolved terrain metadata.
+/// Build a TerrainGrid from the resolved terrain stage: the final
+/// LAT-adjusted tile choice and the water classification from resolved
+/// terrain metadata.
 pub fn build_terrain_grid_from_resolved(
     resolved: &ResolvedTerrainGrid,
     local_bounds: Option<LocalBounds>,
@@ -735,8 +660,11 @@ pub fn build_terrain_grid_from_resolved(
     for cell in resolved.iter() {
         let (tile_id, sub_tile) = resolved.presentation_tile(cell);
         let (sx, sy) = iso_to_screen(cell.rx, cell.ry, cell.level);
-        // Filler cells kept — see build_terrain_grid: gamemd draws every
-        // allocated cell; only the camera clamp hides the border.
+        // Border filler cells (outside LocalSize) are kept: gamemd draws every
+        // allocated cell and hides the border purely by clamping the tactical
+        // camera to LocalSize. Dropping them while the fog still reveals them
+        // left revealed-but-undrawn holes — hard black cutouts with no shroud
+        // feathering — wherever a zoomed-out view reached the map border.
         cells.push(TerrainCell {
             screen_x: sx,
             screen_y: sy,

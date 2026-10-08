@@ -235,7 +235,7 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
 /// Within tab3, native entry-array order and saturated OutList transport remain
 /// recorded residuals; one infantry factory has no cross-category ambiguity.
 pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
-    let mut completed = sim.production.factory_shadow.take_changed_completed_keys();
+    let mut completed = sim.production.factories.take_changed_completed_keys();
     completed.sort_by_key(|(_, category)| match category {
         ProductionCategory::Building => 0,
         ProductionCategory::Defense => 1,
@@ -245,7 +245,7 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
     for (owner, category) in completed {
         let Some(type_id) = sim
             .production
-            .factory_shadow
+            .factories
             .view(owner, category)
             .and_then(|factory| factory.object.map(|object| object.type_id))
         else {
@@ -262,7 +262,7 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
             ));
         }
     }
-    sim.production.factory_shadow.prune_all_idle();
+    sim.production.factories.prune_all_idle();
 }
 
 /// Exercise the next frame's prefix publication and its event tail in focused owner tests,
@@ -272,7 +272,7 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
 pub(crate) fn dispatch_production_changes_for_tests(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     sim.session.tick = sim.session.tick.saturating_add(1);
     sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
@@ -296,7 +296,7 @@ pub(in crate::sim) fn exit_produced_object(
     rules: &RuleSet,
     producer_id: u64,
     stable_id: u64,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> crate::sim::ai_base_building::BuildingExit {
     use crate::sim::ai_base_building::{self, BuildingExit};
     use crate::sim::ai_unit_choice::UnitChoiceKind;
@@ -447,7 +447,7 @@ pub(in crate::sim) fn exit_produced_object(
                                 && id != selection.producer_id
                                 && candidate.mission.effective().known()
                                     == Some(crate::sim::mission::MissionType::Guard)
-                                && sim.production.factory_shadow.building_factory(id).is_none()
+                                && sim.production.factories.building_factory(id).is_none()
                         })
                     })
             else {
@@ -458,13 +458,13 @@ pub(in crate::sim) fn exit_produced_object(
             //+524 can be NULL. Do not move that House factory to a building.
             let attached = sim
                 .production
-                .factory_shadow
+                .factories
                 .building_factory(selection.producer_id)
                 .is_some();
             if attached
                 && !sim
                     .production
-                    .factory_shadow
+                    .factories
                     .transfer_building_factory_attachment(selection.producer_id, alternate_id)
             {
                 return BuildingExit::Failed;
@@ -474,7 +474,7 @@ pub(in crate::sim) fn exit_produced_object(
             if attached {
                 assert!(
                     sim.production
-                        .factory_shadow
+                        .factories
                         .transfer_building_factory_attachment(alternate_id, selection.producer_id),
                     "ExitObject must restore its lent factory attachment"
                 );
@@ -783,7 +783,7 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
     };
     // (category, stamp, type_id, state, progress)
     let mut items: Vec<(ProductionCategory, u64, InternedId, BuildQueueState, u16)> = Vec::new();
-    for f in sim.production.factory_shadow.iter_insertion_ordered() {
+    for f in sim.production.factories.iter_insertion_ordered() {
         if f.owner != owner_id {
             continue;
         }

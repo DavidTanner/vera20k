@@ -176,7 +176,6 @@ pub(crate) struct TerrainAreaState {
     terrain_animations: BTreeMap<(u16, u16), TerrainAnimationState>,
     terrain_objects: BTreeMap<u64, TerrainObjectState>,
     terrain_object_cells: BTreeMap<(u16, u16), u64>,
-    terrain_occupation_bits: BTreeMap<(u16, u16), u8>,
     tiberium_spawning_terrain_cells: BTreeSet<(u16, u16)>,
     raw_occupation: RawCellOccupationGrid,
     navigation_changed_cells: Vec<(u16, u16)>,
@@ -208,7 +207,6 @@ impl TerrainAreaState {
             terrain_animations: std::mem::take(&mut production.terrain_animations),
             terrain_objects: std::mem::take(&mut production.terrain_objects),
             terrain_object_cells: std::mem::take(&mut production.terrain_object_cells),
-            terrain_occupation_bits: std::mem::take(&mut production.terrain_occupation_bits),
             tiberium_spawning_terrain_cells: std::mem::take(
                 &mut production.tiberium_spawning_terrain_cells,
             ),
@@ -232,10 +230,6 @@ impl TerrainAreaState {
         std::mem::swap(
             &mut self.terrain_object_cells,
             &mut production.terrain_object_cells,
-        );
-        std::mem::swap(
-            &mut self.terrain_occupation_bits,
-            &mut production.terrain_occupation_bits,
         );
         std::mem::swap(
             &mut self.tiberium_spawning_terrain_cells,
@@ -305,7 +299,6 @@ impl TerrainAreaState {
                 terrain_animations: &mut self.terrain_animations,
                 terrain_objects: &mut self.terrain_objects,
                 terrain_object_cells: &mut self.terrain_object_cells,
-                terrain_occupation_bits: &mut self.terrain_occupation_bits,
                 tiberium_spawning_terrain_cells: &mut self.tiberium_spawning_terrain_cells,
                 raw_occupation: &mut self.raw_occupation,
             },
@@ -321,7 +314,6 @@ pub(crate) struct TerrainAuthorityParts<'a> {
     terrain_animations: &'a mut BTreeMap<(u16, u16), TerrainAnimationState>,
     terrain_objects: &'a mut BTreeMap<u64, TerrainObjectState>,
     terrain_object_cells: &'a mut BTreeMap<(u16, u16), u64>,
-    terrain_occupation_bits: &'a mut BTreeMap<(u16, u16), u8>,
     tiberium_spawning_terrain_cells: &'a mut BTreeSet<(u16, u16)>,
     raw_occupation: &'a mut RawCellOccupationGrid,
 }
@@ -334,6 +326,8 @@ pub fn occupation_bits_for(terrain_type: &TerrainObjectType, snow_theater: bool)
     }) & 0x07
 }
 
+/// Terrain-object INI occupation bits (`1|2|4`) shifted into the cell
+/// occupation plane (`0x04|0x08|0x10`).
 pub(crate) fn terrain_raw_occupation_mask(source_mask: u8) -> u8 {
     (source_mask & 0x07) << 2
 }
@@ -355,32 +349,20 @@ fn unmark_terrain_raw_occupation(
 }
 
 pub fn mark_terrain_occupation(
-    production: &mut ProductionState,
     terrain: &TerrainObjectState,
     resolved_terrain: Option<&mut ResolvedTerrainGrid>,
 ) {
-    let cell = terrain.cell();
-    if terrain.occupation_bits != 0 {
-        production
-            .terrain_occupation_bits
-            .insert(cell, terrain.occupation_bits);
-    } else {
-        production.terrain_occupation_bits.remove(&cell);
-    }
     if let Some(grid) = resolved_terrain {
-        grid.set_terrain_object_occupation(cell, Some(terrain.occupation_bits));
+        grid.set_terrain_object_occupation(terrain.cell(), Some(terrain.occupation_bits));
     }
 }
 
 pub fn unmark_terrain_occupation(
-    production: &mut ProductionState,
     terrain: &TerrainObjectState,
     resolved_terrain: Option<&mut ResolvedTerrainGrid>,
 ) {
-    let cell = terrain.cell();
-    production.terrain_occupation_bits.remove(&cell);
     if let Some(grid) = resolved_terrain {
-        grid.set_terrain_object_occupation(cell, None);
+        grid.set_terrain_object_occupation(terrain.cell(), None);
     }
 }
 
@@ -407,7 +389,6 @@ pub(crate) fn production_authority_parts<'a>(
         terrain_animations: &mut production.terrain_animations,
         terrain_objects: &mut production.terrain_objects,
         terrain_object_cells: &mut production.terrain_object_cells,
-        terrain_occupation_bits: &mut production.terrain_occupation_bits,
         tiberium_spawning_terrain_cells: &mut production.tiberium_spawning_terrain_cells,
         raw_occupation,
     }
@@ -434,7 +415,6 @@ fn limbo_terrain_object_at_cell_parts(
         source_cell,
         snapshot.occupation_bits,
     );
-    authority.terrain_occupation_bits.remove(&source_cell);
     if let Some(grid) = resolved_terrain {
         grid.set_terrain_object_occupation(source_cell, None);
     }
@@ -700,7 +680,7 @@ mod tests {
         let before = sim.production.terrain_objects[&stable_id].clone();
 
         let mut resolved = resolved_clear_grid_3x3();
-        mark_terrain_occupation(&mut sim.production, &before, Some(&mut resolved));
+        mark_terrain_occupation(&before, Some(&mut resolved));
         let path_grid = PathGrid::from_resolved_terrain(&resolved);
         let blocker_counts = build_blocker_neighbor_counts(
             &sim.substrate.entities,
@@ -885,7 +865,7 @@ mod tests {
         let stable_id = sim.production.terrain_object_cells[&(0, 0)];
         let terrain = sim.production.terrain_objects[&stable_id].clone();
         let mut grid = resolved_clear_grid();
-        mark_terrain_occupation(&mut sim.production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         let warhead = rules.warhead("WH").expect("warhead");
         let mut area = TerrainAreaState::take_from(
             &mut sim.production,
@@ -922,7 +902,6 @@ mod tests {
         assert!(!area.terrain_object_cells.contains_key(&(0, 0)));
         assert!(!area.terrain_animations.contains_key(&(0, 0)));
         assert!(!area.tiberium_spawning_terrain_cells.contains(&(0, 0)));
-        assert!(!area.terrain_occupation_bits.contains_key(&(0, 0)));
         let cell = grid.cell(0, 0).unwrap();
         assert_eq!(cell.terrain_object_occupation, None);
         assert!(!cell.terrain_object_blocks);
@@ -945,16 +924,15 @@ mod tests {
         let mut interner = StringInterner::default();
         let type_ref = interner.intern("TIBTRE01");
         let mut terrain = TerrainObjectState::new(1, type_ref, (0, 0), terrain_type, false, None);
-        let mut production = ProductionState::default();
         let mut grid = resolved_clear_grid();
 
-        mark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         let cell = grid.cell(0, 0).unwrap();
         assert_eq!(cell.terrain_object_occupation, Some(7));
         assert!(cell.terrain_object_blocks);
         assert_eq!(cell.zone_type, zone_class::WALL);
 
-        unmark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        unmark_terrain_occupation(&terrain, Some(&mut grid));
         let cell = grid.cell(0, 0).unwrap();
         assert_eq!(cell.terrain_object_occupation, None);
         assert!(!cell.terrain_object_blocks);
@@ -962,12 +940,12 @@ mod tests {
         assert_eq!(cell.land_type, LandType::Clear.as_index());
 
         terrain.occupation_bits = 4;
-        mark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         assert_eq!(grid.cell(0, 0).unwrap().zone_type, zone_class::BUILDING);
-        unmark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        unmark_terrain_occupation(&terrain, Some(&mut grid));
 
         terrain.occupation_bits = 0;
-        mark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         let cell = grid.cell(0, 0).unwrap();
         assert_eq!(cell.terrain_object_occupation, Some(0));
         assert!(!cell.terrain_object_blocks);
@@ -976,7 +954,7 @@ mod tests {
         let cell = grid.cell_mut(0, 0).unwrap();
         cell.overlay_zone_type = Some(zone_class::GROUND);
         terrain.occupation_bits = 7;
-        mark_terrain_occupation(&mut production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         assert_eq!(
             grid.cell(0, 0).unwrap().zone_type,
             zone_class::GROUND,
@@ -1036,11 +1014,6 @@ mod tests {
                 .tiberium_spawning_terrain_cells
                 .contains(&(10, 11))
         );
-        assert!(
-            !sim.production
-                .terrain_occupation_bits
-                .contains_key(&(10, 11))
-        );
         assert_eq!(
             sim.production.terrain_objects[&stable_id].lifecycle,
             TerrainObjectLifecycle::Destroyed
@@ -1056,7 +1029,7 @@ mod tests {
             let stable_id = sim.production.terrain_object_cells[&(0, 0)];
             let terrain = sim.production.terrain_objects[&stable_id].clone();
             let mut grid = resolved_clear_grid();
-            mark_terrain_occupation(&mut sim.production, &terrain, Some(&mut grid));
+            mark_terrain_occupation(&terrain, Some(&mut grid));
             let before = sim.production.terrain_objects[&stable_id].clone();
             let warhead = rules.warhead("WH").expect("warhead");
 
@@ -1074,7 +1047,6 @@ mod tests {
             assert_eq!(result, TerrainDamageResult::Ignored);
             assert_eq!(sim.production.terrain_objects[&stable_id], before);
             assert_eq!(sim.production.terrain_object_cells[&(0, 0)], stable_id);
-            assert_eq!(sim.production.terrain_occupation_bits[&(0, 0)], 7);
             let cell = grid.cell(0, 0).unwrap();
             assert_eq!(cell.terrain_object_occupation, Some(7));
             assert!(cell.terrain_object_blocks);
@@ -1089,7 +1061,7 @@ mod tests {
         let stable_id = sim.production.terrain_object_cells[&(0, 0)];
         let terrain = sim.production.terrain_objects[&stable_id].clone();
         let mut grid = resolved_clear_grid();
-        mark_terrain_occupation(&mut sim.production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         let mut expected = sim.production.terrain_objects[&stable_id].clone();
         expected.health = 6;
         let warhead = rules.warhead("WH").expect("warhead");
@@ -1108,7 +1080,6 @@ mod tests {
         assert_eq!(result, TerrainDamageResult::Damaged { remaining: 6 });
         assert_eq!(sim.production.terrain_objects[&stable_id], expected);
         assert_eq!(sim.production.terrain_object_cells[&(0, 0)], stable_id);
-        assert_eq!(sim.production.terrain_occupation_bits[&(0, 0)], 7);
         let cell = grid.cell(0, 0).unwrap();
         assert_eq!(cell.terrain_object_occupation, Some(7));
         assert!(cell.terrain_object_blocks);
@@ -1122,7 +1093,7 @@ mod tests {
         let stable_id = sim.production.terrain_object_cells[&(0, 0)];
         let terrain = sim.production.terrain_objects[&stable_id].clone();
         let mut grid = resolved_clear_grid();
-        mark_terrain_occupation(&mut sim.production, &terrain, Some(&mut grid));
+        mark_terrain_occupation(&terrain, Some(&mut grid));
         assert!(grid.cell(0, 0).unwrap().terrain_object_blocks);
         let warhead = rules.warhead("WH").expect("warhead");
 
@@ -1139,7 +1110,6 @@ mod tests {
 
         assert_eq!(result, TerrainDamageResult::Destroyed);
         assert!(!sim.production.terrain_object_cells.contains_key(&(0, 0)));
-        assert!(!sim.production.terrain_occupation_bits.contains_key(&(0, 0)));
         assert!(!sim.production.terrain_animations.contains_key(&(0, 0)));
         assert!(
             !sim.production
@@ -1178,7 +1148,6 @@ mod tests {
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 0), 0xA0);
         assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(0, 0), 0xA5);
         assert!(!sim.production.terrain_object_cells.contains_key(&(0, 0)));
-        assert!(!sim.production.terrain_occupation_bits.contains_key(&(0, 0)));
         assert_eq!(
             sim.production.terrain_objects[&stable_id].lifecycle,
             TerrainObjectLifecycle::Limbo
@@ -1222,7 +1191,6 @@ mod tests {
         assert_eq!(damaged, TerrainDamageResult::Damaged { remaining: 6 });
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(0, 0), 0xFC);
         assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(0, 0), 0x5A);
-        assert_eq!(sim.production.terrain_occupation_bits[&(0, 0)], 7);
 
         let destroyed = damage_terrain_object_at_cell(
             &mut sim.production,
@@ -1354,7 +1322,6 @@ pub(crate) fn finalize_terrain_lethal(
             terrain_animations: &mut *authority.terrain_animations,
             terrain_objects: &mut *authority.terrain_objects,
             terrain_object_cells: &mut *authority.terrain_object_cells,
-            terrain_occupation_bits: &mut *authority.terrain_occupation_bits,
             tiberium_spawning_terrain_cells: &mut *authority.tiberium_spawning_terrain_cells,
             raw_occupation: &mut *authority.raw_occupation,
         },

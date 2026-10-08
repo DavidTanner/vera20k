@@ -30,7 +30,11 @@ pub struct GameOptions {
     pub bases: bool,
     /// Bridges can be destroyed. Rules+0x14AC.
     pub bridges_destroyable: bool,
-    /// Superweapons can be built. Rules+0x14B9.
+    /// The Super Weapons option, Session `0x00A8B263` (Rules+0x14B9 until the
+    /// setup dialog sets it, `0x0052D1FB`). Off, it withholds the
+    /// `DisableableFromShell=` Supers, and CanBuild the buildings whose
+    /// `SuperWeapon=` is one unless `[AI] BuildTech=` lists them (retail's
+    /// three Battle Labs, which then grant nothing).
     pub super_weapons: bool,
     /// Build adjacent to allied buildings. Rules+0x14BA.
     pub build_off_ally: bool,

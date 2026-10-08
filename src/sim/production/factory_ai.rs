@@ -59,8 +59,8 @@
 //!   with a Scenario `RandomRanged` draw (`0x00443D18..`), which VERA fails
 //!   too. Trigger: a computer aircraft whose airfield's pads are full.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectCategory};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_building::{self, BuildingExit};
 use crate::sim::intern::InternedId;
@@ -99,7 +99,7 @@ pub(crate) fn factory_ai(
     }
     if sim
         .production
-        .factory_shadow
+        .factories
         .building_factory(building)
         .is_some()
     {
@@ -120,7 +120,7 @@ fn exit_finished_object(
 ) {
     let Some(object) = sim
         .production
-        .factory_shadow
+        .factories
         .building_factory(building)
         .filter(|factory| factory.progress >= PRODUCTION_STEPS)
         .and_then(|factory| factory.object.clone())
@@ -150,9 +150,7 @@ fn exit_finished_object(
             record_last_built(sim, rules, owner, object.type_id);
             // CompletedProduction lets the placed object go; the delete
             // finds none to abandon.
-            sim.production
-                .factory_shadow
-                .remove_building_factory(building);
+            sim.production.factories.remove_building_factory(building);
         }
         BuildingExit::TryLater => {
             let frame = sim.session.binary_frame as i32;
@@ -188,7 +186,7 @@ fn abandon_stopped_factory(
     }
     let stopped = sim
         .production
-        .factory_shadow
+        .factories
         .building_factory(building)
         .is_some_and(|factory| {
             factory.step_rate_frames == 0 || factory.suspended || factory.manual
@@ -229,7 +227,7 @@ fn start_factory(
     // (`0x004C9974..0x004C9989`) before StartProduction constructs the object.
     let insertion_seq = sim.production.next_enqueue_order;
     sim.production.next_enqueue_order = insertion_seq.saturating_add(1);
-    sim.production.factory_shadow.create_building_factory(
+    sim.production.factories.create_building_factory(
         building,
         owner,
         category,
@@ -239,9 +237,7 @@ fn start_factory(
     );
     if start_active_production(sim, rules, FactoryHolder::Building(building), type_id).is_none() {
         // `0x004503A7 -> 0x004502DC`: deleted, nothing held to abandon.
-        sim.production
-            .factory_shadow
-            .remove_building_factory(building);
+        sim.production.factories.remove_building_factory(building);
     }
 }
 
@@ -257,11 +253,7 @@ fn placement_wait_over(sim: &Simulation, building: u64) -> bool {
 /// AbandonProduction and the delete of building `building`'s factory, whose
 /// owner is `owner` (the factory's house, `+0x6C`).
 fn abandon(sim: &mut Simulation, rules: &RuleSet, building: u64, owner: InternedId) {
-    if let Some(abandoned) = sim
-        .production
-        .factory_shadow
-        .abandon_building_factory(building)
-    {
+    if let Some(abandoned) = sim.production.factories.abandon_building_factory(building) {
         settle_abandoned(sim, rules, owner, abandoned);
     }
 }
@@ -272,7 +264,7 @@ fn abandon(sim: &mut Simulation, rules: &RuleSet, building: u64, owner: Interned
 /// object refunded and destroyed, and deleted. Without rules (fixtures) the
 /// object is destroyed unrefunded.
 pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building: u64) {
-    let Some(factory) = sim.production.factory_shadow.building_factory(building) else {
+    let Some(factory) = sim.production.factories.building_factory(building) else {
         return;
     };
     let owner = factory.owner;
@@ -281,7 +273,7 @@ pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building
         None => {
             let object = sim
                 .production
-                .factory_shadow
+                .factories
                 .abandon_building_factory(building)
                 .and_then(|abandoned| abandoned.entity_id);
             if let Some(object) = object {

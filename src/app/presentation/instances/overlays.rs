@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 
 use crate::app::AppState;
-use crate::map::overlay_types::is_bridge_overlay_index;
 use crate::map::terrain::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::render::batch::SpriteInstance;
 use crate::render::bridge_atlas::is_high_bridge_body_identity;
@@ -21,6 +20,7 @@ use crate::render::tactical_draw_plan::{BlitPolicy, RenderZPolicy, SpriteEncodin
 use crate::rules::art_data::{AnimTypeRuntimeConfig, anim_translucency_source_alpha};
 use crate::rules::house_colors::HouseColorIndex;
 use crate::rules::overlay_types::OverlayTypeFlags;
+use crate::rules::overlay_types::is_bridge_overlay_index;
 
 use super::helpers::{
     ANIM_DRAW_DEPTH_BIAS_PX, apply_shape_z_adjust, compute_sprite_depth_params, in_view,
@@ -179,7 +179,7 @@ fn overlay_display_identity(
     rx: u16,
     ry: u16,
     slope_type: Option<u8>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     tiberium_types: Option<&crate::rules::tiberium_type::TiberiumTypeRegistry>,
 ) -> (u8, u8) {
     let (Some(overlay_registry), Some(tiberium_types)) = (overlay_registry, tiberium_types) else {
@@ -1249,12 +1249,12 @@ mod tests {
         overlay_display_identity, overlay_render_identity, terrain_object_is_render_visible,
     };
     use crate::map::overlay::TerrainObject;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::render::native_z::ZGradient;
     use crate::render::tactical_draw_plan::RenderZPolicy;
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::overlay_types::OverlayTypeFlags;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::tiberium_type::TiberiumTypeRegistry;
     use crate::sim::intern::StringInterner;

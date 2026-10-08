@@ -426,11 +426,11 @@ fn wall_pursuit_rules() -> RuleSet {
     RuleSet::from_ini(&ini).expect("wall_pursuit_rules should parse")
 }
 
-fn wall_pursuit_registry() -> crate::map::overlay_types::OverlayTypeRegistry {
+fn wall_pursuit_registry() -> crate::rules::overlay_types::OverlayTypeRegistry {
     let ini_str: &str = "\
 [OverlayTypes]\n1=GASAND\n2=CYCL\n3=GAWALL\n\n\
 [GASAND]\nWall=yes\n\n[CYCL]\n\n[GAWALL]\nWall=yes\n";
-    crate::map::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(ini_str), None)
+    crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(ini_str), None)
 }
 
 const WALL_TEST_GRID: u16 = 64;

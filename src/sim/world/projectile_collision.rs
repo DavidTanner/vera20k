@@ -18,7 +18,7 @@ pub(super) struct ProjectileCollisionWorld<'a> {
     pub interner: &'a crate::sim::intern::StringInterner,
     pub alliances: &'a HouseAllianceMap,
     pub overlays: Option<&'a crate::sim::overlay_grid::OverlayGrid>,
-    pub overlay_registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    pub overlay_registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     pub rules: Option<&'a RuleSet>,
     pub map_size: Option<(i32, i32)>,
 }
@@ -255,7 +255,7 @@ mod tests {
                 &IniFile::from_str(&format!("[BUILD]\nFoundation={dimensions}\n")),
             )
             .unwrap();
-            let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+            let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
             let target = &row["target"];
             let mut spawn = gsi_05_02_projectile(1, None);
             if target.is_object() {
@@ -579,7 +579,7 @@ mod tests {
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
             runtime.resources.overlay_registry =
-                crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+                crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary)
                 .expect("fixture frame must complete");
@@ -665,7 +665,7 @@ mod tests {
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = make_rules();
             runtime.resources.overlay_registry =
-                crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+                crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(&[], 16, TickLane::Ordinary)
                 .expect("fixture frame must complete");
@@ -730,7 +730,7 @@ mod tests {
             let mut resumed = SimRuntime::from_simulation(restored);
             resumed.resources.rules = make_rules();
             resumed.resources.overlay_registry =
-                crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+                crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(&[], 16, TickLane::Ordinary)
                 .expect("fixture frame must complete");
@@ -1218,7 +1218,7 @@ mod tests {
         let mut runtime = SimRuntime::from_simulation(sim);
         runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
         runtime.resources.overlay_registry =
-            crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
         let _ = runtime
             .advance_frame(&[], 16, TickLane::Ordinary)
             .expect("fixture frame must complete");
@@ -1269,7 +1269,7 @@ mod tests {
         runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
         assert_eq!(runtime.resources.rules.general.gravity, 0);
         runtime.resources.overlay_registry =
-            crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
         // Native geometry fixtures establish the source-less fractional-below-floor
         // admission and Z=0 selection. Exact reflected stores have their own
         // original-byte comparisons; this checks the real AI-to-damage delivery.

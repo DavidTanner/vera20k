@@ -10,11 +10,11 @@ use std::collections::HashMap;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseRoster;
 use crate::map::map_file::{MapFile, MapHeader};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::waypoints::Waypoint;
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 #[cfg(test)]
 use crate::sim::cell_rect::PlayfieldBounds;
@@ -3223,10 +3223,6 @@ mod tests {
         let mut sim = Simulation::new();
         sim.session.map_width = 138;
         sim.session.map_height = 138;
-        sim.session.local_left = 2;
-        sim.session.local_top = 4;
-        sim.session.local_width = 76;
-        sim.session.local_height = 48;
         let terrain = ResolvedTerrainGrid::from_cells(138, 138, Vec::new());
 
         let bounds = NativeStartBounds::from_session(&sim, &terrain);
@@ -4136,10 +4132,6 @@ mod tests {
         scenario.game_mode_nonzero = true;
         scenario.map_width = SIZE;
         scenario.map_height = SIZE;
-        scenario.local_left = 2;
-        scenario.local_top = 2;
-        scenario.local_width = 36;
-        scenario.local_height = 32;
         scenario.mp_start_waypoints.insert(0, (start.rx, start.ry));
         let mut sim = owner.into_simulation(&scenario);
         // This isolated RNG fixture omits the full native Rules prefix.

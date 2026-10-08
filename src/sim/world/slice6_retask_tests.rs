@@ -302,7 +302,15 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
 // binary (main with a hash that skips only those fields) gives this value in
 // the same test, with every tripwire above green. Control removed.
-const SLICE6_BASELINE_HASH: u64 = 0x1781_9D66_E821_D237;
+// Snapshot306: the legacy CellClass counters, flags, occlusion caches and
+// visibility marks leave the hash (the ground bits stay), and SightAdmission
+// drops fog_of_war. A control binary (main with a hash that skips only those
+// fields) gives this value in the same test, with every tripwire above green.
+// Control removed.
+// Snapshot307: the session's LocalSize copy leaves the hash. A control binary
+// (main with a hash that skips only that tuple) gives this value in the same
+// test, with every tripwire above green. Control removed.
+const SLICE6_BASELINE_HASH: u64 = 0xDCFC_6D0F_1E2C_4BDA;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

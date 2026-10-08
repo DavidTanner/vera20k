@@ -8,12 +8,12 @@ use std::collections::BTreeSet;
 
 use crate::map::bridge_facts::{BridgeFlagStamp, BridgeStampSlot, high_bridge_stamp_for_overlay};
 use crate::map::map_file::AuthoredOverlayPackReceipt;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{
     AutomaticTubeAllocation, AutomaticTubeRequest, LoadCellRecalcEffects, LoadCellRecalcError,
     LoadCellRecalcOutcome, LoadCellRecalcState, ResolvedTerrainGrid, SharedCellDummy,
     TerrainTileAnimation,
 };
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::terrain_rules::LandType;
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 use crate::util::direction_tables::CELL_DELTAS;

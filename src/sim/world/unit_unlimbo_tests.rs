@@ -9,12 +9,12 @@
 
 use super::{PlacementEvidence, Simulation, entry_test_fixture};
 use crate::map::entities::parse_map_entities;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::retail_ini_fixture::retail_rules_and_art;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainRules;
@@ -1015,7 +1015,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         let mut sim = retail_world(&rules, &terrain_rules);
         let owner = sim.interner.intern("Americans");
         let unit_type = sim.interner.intern("MTNK");
-        assert!(sim.production.factory_shadow.test_enqueue_kernel(
+        assert!(sim.production.factories.test_enqueue_kernel(
             owner,
             ProductionCategory::Vehicle,
             unit_type,
@@ -1123,7 +1123,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         }
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let prior_rng = sim.rng_state();
@@ -1241,7 +1241,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         production::release_delivered_mobile(&mut sim, &rules, owner, ProductionCategory::Vehicle);
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .view(owner, ProductionCategory::Vehicle)
                 .is_none_or(|factory| factory.object.is_none()),
             "{name}: successful caller releases its held identity"

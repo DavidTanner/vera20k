@@ -392,7 +392,7 @@ fn cell_scatter_dispatch_matches_original_execution() {
         assert_eq!(dispatched, expected_technos, "{}", input["name"]);
         let elite = technos
             .iter()
-            .any(|&id| entities.get(id).unwrap().veterancy() >= ELITE_VETERANCY);
+            .any(|&id| entities.get(id).unwrap().veterancy() >= RANK_ELITE_U16);
         for id in others {
             assert_eq!(
                 scatter_dispatch_allowed(

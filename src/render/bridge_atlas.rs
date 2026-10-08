@@ -6,12 +6,12 @@ use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::Palette;
 use crate::assets::shp_file::ShpFile;
 use crate::map::overlay::OverlayEntry;
-use crate::map::overlay_types::{OverlayTypeFlags, OverlayTypeRegistry, is_high_bridge_index};
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::overlay_atlas::{OverlaySpriteEntry, stored_frame_offset};
 use crate::rules::art_data::{self, ArtRegistry};
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::{OverlayTypeFlags, OverlayTypeRegistry, is_high_bridge_index};
 use wgpu::util::DeviceExt;
 
 const SPRITE_PADDING: u32 = 1;

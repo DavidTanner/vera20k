@@ -18,8 +18,6 @@ use crate::assets::shp_file::ShpFile;
 use crate::map::terrain::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::render::batch::{BatchRenderer, BatchTexture, SpriteInstance};
 use crate::render::gpu::GpuContext;
-use crate::render::sprite_atlas::{ShpSpriteKey, SpriteAtlas};
-use crate::rules::house_colors::HouseColorIndex;
 use crate::sim::production::BuildingPlacementPreview;
 use crate::sim::selection::SelectionState;
 
@@ -43,9 +41,9 @@ const UNIT_PIP_VARIANT_COUNT: u32 = 3;
 pub struct SelectionOverlay {
     /// Solid color texture for drag rectangle lines.
     drag_texture: BatchTexture,
-    /// Semi-transparent texture for valid building placement preview.
+    /// Texture for placeable building placement cells.
     preview_valid_texture: BatchTexture,
-    /// Semi-transparent texture for invalid building placement preview.
+    /// Texture for blocked building placement cells.
     preview_invalid_texture: BatchTexture,
     /// Canvas height of the placement texture (from place.shp or TILE_WIDTH×TILE_HEIGHT fallback).
     preview_canvas_h: f32,
@@ -706,11 +704,12 @@ impl SelectionOverlay {
         (valid_cells, invalid_cells)
     }
 
-    /// Build valid placement diamonds for a list of extra cells (wall auto-fill).
+    /// Build placement diamonds for a list of extra cells (wall auto-fill),
+    /// placeable when `valid` and blocked otherwise.
     ///
     /// Draws the place.shp diamond on every intermediate cell between the cursor
-    /// and an existing same-type wall. These green diamonds use the same UV/size
-    /// as the standard building preview.
+    /// and an existing same-type wall, with the same UV/size as the foundation
+    /// cells.
     pub fn build_wall_autofill_diamonds(
         &self,
         cells: &[(u16, u16)],
@@ -746,61 +745,6 @@ impl SelectionOverlay {
             }
         }
         (valid_cells, invalid_cells)
-    }
-
-    /// Build a semi-transparent ghost sprite of the building being placed.
-    /// Returns None if the building sprite isn't in the atlas.
-    pub fn build_ghost_sprite(
-        preview: &BuildingPlacementPreview,
-        atlas: Option<&SpriteAtlas>,
-        house_color: HouseColorIndex,
-        height_map: &BTreeMap<(u16, u16), u8>,
-        interner: Option<&crate::sim::intern::StringInterner>,
-    ) -> Option<(SpriteInstance, u8)> {
-        let atlas = atlas?;
-        let key = ShpSpriteKey {
-            palette_context: crate::render::sprite_atlas::ShpPaletteContext::Legacy,
-            type_id: interner.map_or(String::new(), |i| i.resolve(preview.type_id).to_string()),
-            facing: 0,
-            frame: 0,
-            house_color,
-        };
-        let entry = atlas.get(&key)?;
-        let z: u8 = height_map
-            .get(&(preview.rx, preview.ry))
-            .copied()
-            .unwrap_or(0);
-        let (sx, sy) = terrain::iso_to_screen(preview.rx, preview.ry, z);
-        let tint: [f32; 3] = if preview.valid {
-            [0.5, 1.0, 0.5]
-        } else {
-            [1.0, 0.5, 0.5]
-        };
-        // The ghost has to land exactly where the placed building's art will.
-        // `iso_to_screen` gives the tile corner; the entity anchor is the cell's
-        // diamond centre, half a tile east and south of it, and a building's art
-        // then takes the render-coordinate lift back off. Routed through the same
-        // helper the real building uses so the preview cannot drift from it.
-        let (anchor_x, anchor_y) = crate::render::locomotor_visual::building_art_anchor(
-            sx + TILE_WIDTH / 2.0,
-            sy + TILE_HEIGHT / 2.0,
-        );
-        let ghost_x: f32 = anchor_x + entry.offset_x;
-        let ghost_y: f32 = anchor_y + entry.offset_y;
-        Some((
-            SpriteInstance {
-                position: [ghost_x, ghost_y],
-                size: entry.pixel_size,
-                uv_origin: entry.uv_origin,
-                uv_size: entry.uv_size,
-                source_palette: entry.source_palette,
-                depth: DRAG_RECT_DEPTH,
-                tint,
-                alpha: 1.0,
-                ..Default::default()
-            },
-            entry.page,
-        ))
     }
 }
 

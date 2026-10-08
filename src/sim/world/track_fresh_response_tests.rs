@@ -85,7 +85,7 @@ fn unit(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
     let (mut sim, mut rules, registry) = fixture_with_rules(UNITS);

@@ -155,7 +155,7 @@ impl MinimapRenderer {
     /// position within the world. Color is chosen by TMP radar colors when
     /// available, falling back to tile classification (water/land/elevated).
     /// Overlay data is pre-classified by the caller to avoid render/ depending
-    /// on map/overlay_types.
+    /// on rules::overlay_types.
     pub(crate) fn new(
         gpu: &GpuContext,
         batch: &BatchRenderer,
@@ -373,7 +373,7 @@ impl MinimapRenderer {
         rules: Option<&RuleSet>,
         interner: Option<&crate::sim::intern::StringInterner>,
         overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         overlay_radar_colors: &HashMap<(u8, u8), [u8; 3]>,
         resolved_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
         radar_terrain_dirty_cells: &[(u16, u16)],

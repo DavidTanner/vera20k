@@ -367,7 +367,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let Some(rules) = rules else {
             return !self.substrate.entities.get(id).is_some_and(|entity| {

@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use super::startup_splash;
 use crate::app::shell_random_map::{RandomMapGenerationJob, RandomMapGenerationRetention};
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::ui::game_screen::GameScreen;
 
 pub(crate) struct FrontendState {

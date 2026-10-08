@@ -36,7 +36,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     assert!(enqueue_by_type(&mut saved, &rules, "Americans", "E1"));
     let held = saved
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Infantry)
         .unwrap()
         .object
@@ -81,7 +81,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     assert_eq!(
         restored
             .production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Infantry)
             .unwrap()
             .object
@@ -92,7 +92,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     assert!(
         restored
             .production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
     dispatch_production_changes_for_tests(&mut restored, &rules, Some(&registry));
@@ -109,7 +109,7 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     assert!(
         restored
             .production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Infantry)
             .is_none_or(|view| view.object.is_none())
     );

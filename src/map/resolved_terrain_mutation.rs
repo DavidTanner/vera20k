@@ -3,7 +3,7 @@
 //! in production. Authored identity/data passes remain separate literal writes.
 
 use super::{ResolvedTerrainGrid, overlay_reduced_zone_type, recalc_zone_type, zone_class};
-use crate::map::overlay_types::{OverlayTypeFlags, retained_overlay_land};
+use crate::rules::overlay_types::{OverlayTypeFlags, retained_overlay_land};
 use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
 
 impl ResolvedTerrainGrid {

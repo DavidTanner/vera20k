@@ -1147,9 +1147,9 @@ fn apply_trigger_effects(state: &mut AppState, effects: &[TriggerEffect]) {
 fn center_camera_on_waypoint(state: &mut AppState, waypoint_index: u32) {
     let Some(waypoint) = state
         .match_state
-        .match_presentation
-        .waypoints
-        .get(&waypoint_index)
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| rt.resources.waypoints.get(&waypoint_index))
     else {
         log::warn!(
             "Trigger action requested missing waypoint {} for camera centering",
@@ -1203,10 +1203,6 @@ pub(crate) fn update_building_placement_preview(state: &mut AppState) {
         );
     }
     // Place the foundation with cursor cell as the top-left corner.
-    // The building sprite is anchored on the north-west footprint cell's tile row
-    // — the entity anchor with the render-coordinate lift taken off — and
-    // `build_ghost_sprite` derives the preview from the same helper, so the
-    // preview and the placed building always align.
     let (rx, ry) = screen_point_to_world_cell(
         state,
         state.match_state.input.cursor_x,
@@ -1610,10 +1606,7 @@ mod tests {
             terrain.occupation_bits = 7;
             terrain
         };
-        {
-            let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);
-            mark_terrain_occupation(production, &tree, resolved.as_mut());
-        }
+        mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
 
         assert!(sim.rebuild_dynamic_navigation(&rules));
         assert!(!sim.path_grid().expect("terrain").is_walkable(0, 0));
@@ -1623,10 +1616,7 @@ mod tests {
             "terrain object must block both navigation caches before removal"
         );
 
-        {
-            let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);
-            unmark_terrain_occupation(production, &tree, resolved.as_mut());
-        }
+        unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
         assert!(sim.rebuild_dynamic_navigation(&rules));
 
         assert!(sim.path_grid().expect("terrain").is_walkable(0, 0));

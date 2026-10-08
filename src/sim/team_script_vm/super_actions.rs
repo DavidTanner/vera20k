@@ -32,7 +32,7 @@
 //! [`Simulation::team_assign_mission_target`]'s, and the recharge restarts
 //! and launch effects are Fire_SW's (`superweapon/fire.rs`).
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::intern::InternedId;

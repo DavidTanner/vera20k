@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ruleset::RadiationRules;
+use crate::sim::light_sources::LightingEvent;
 use crate::sim::timer::CdTimer;
 use crate::util::lepton::{UnsupportedGroundSlope, ground_height_leptons};
 
@@ -72,9 +73,6 @@ pub struct RadiationState {
     cells: BTreeMap<(u16, u16), f64>,
     /// One site per center cell.
     sites: BTreeMap<(u16, u16), RadSite>,
-    /// Ordered visual source outputs; not field/damage state or saved pointers.
-    #[serde(skip)]
-    pending_lighting: Vec<((u16, u16), Option<crate::map::lighting::PointLight>)>,
 }
 
 /// A weapon detonation that emits radiation, recorded by the combat tick and
@@ -177,12 +175,6 @@ impl RadiationState {
         self.sites.values()
     }
 
-    pub(crate) fn take_lighting_events(
-        &mut self,
-    ) -> Vec<((u16, u16), Option<crate::map::lighting::PointLight>)> {
-        std::mem::take(&mut self.pending_lighting)
-    }
-
     /// Deterministic iteration over irradiated cells (sorted by coord), for
     /// state hashing and the render glow layer.
     pub fn iter_cells(&self) -> impl Iterator<Item = (&(u16, u16), &f64)> {
@@ -278,7 +270,8 @@ impl RadiationState {
     /// Fold one radiation-emitting detonation into the field: create a site
     /// on a fresh center, or merge into the existing site (current effective
     /// level + added level, lifetime reset, field re-spread with the new
-    /// level after the old outstanding contribution is removed).
+    /// level after the old outstanding contribution is removed). The site's
+    /// light goes to `lights`, the simulation's one ordered lighting queue.
     /// NO-DIFF (GSI-04.21) — radiation really is the only live environmental hazard,
     /// and pass 1's neighbours are dead in gamemd rather than unported.
     /// `TreeFlammability` (`Rules+0x588`) and `IsFlammable`
@@ -300,12 +293,13 @@ impl RadiationState {
     /// - Frequency: every structure and bridge death.
     /// - Downstream risk: it spawns damage events from the animation pass, so it
     ///   needs the same ordering care as any other non-combat damage commit.
-    pub fn apply_detonation(
+    pub(crate) fn apply_detonation(
         &mut self,
         det: RadDetonation,
         frame: u32,
         rules: &RadiationRules,
         terrain: Option<&ResolvedTerrainGrid>,
+        lights: &mut Vec<LightingEvent>,
     ) {
         let center = (det.rx, det.ry);
         let merged = self
@@ -350,17 +344,19 @@ impl RadiationState {
             .sites
             .get(&center)
             .and_then(|site| crate::sim::radiation_light::radiation_site_light(site, rules));
-        self.pending_lighting.push((center, source));
+        lights.push(LightingEvent::Radiation { center, source });
     }
 
     /// Per-tick site evolution: lifetime countdown, the periodic per-cell
     /// decay step, and site self-deletion. Residual cell levels survive a
-    /// site's death — only the center registration is released.
-    pub fn tick_decay(
+    /// site's death — only the center registration is released. Each changed
+    /// site light goes to `lights` in site order.
+    pub(crate) fn tick_decay(
         &mut self,
         frame: u32,
         rules: &RadiationRules,
         terrain: Option<&ResolvedTerrainGrid>,
+        lights: &mut Vec<LightingEvent>,
     ) {
         if self.sites.is_empty() {
             return;
@@ -393,7 +389,10 @@ impl RadiationState {
                 .get(&center)
                 .and_then(|site| crate::sim::radiation_light::radiation_site_light(site, rules));
             if previous_light != current_light {
-                self.pending_lighting.push((center, current_light));
+                lights.push(LightingEvent::Radiation {
+                    center,
+                    source: current_light,
+                });
             }
         }
     }
@@ -485,7 +484,7 @@ mod tests {
     fn desolator_deploy_irradiates_square_with_linear_falloff() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(100, 100), 0, &rules, None);
+        rad.apply_detonation(desolator_det(100, 100), 0, &rules, None, &mut Vec::new());
 
         // Center: dist 0 → full level.
         assert_eq!(rad.cell_level((100, 100)), 500.0);
@@ -513,10 +512,10 @@ mod tests {
     fn same_center_redetonation_merges_not_stacks() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(50, 50), 0, &rules, None);
+        rad.apply_detonation(desolator_det(50, 50), 0, &rules, None, &mut Vec::new());
         // Immediately re-detonate: effective is still the full 500 (no frames
         // elapsed), so the merged level is exactly 500 + 500.
-        rad.apply_detonation(desolator_det(50, 50), 0, &rules, None);
+        rad.apply_detonation(desolator_det(50, 50), 0, &rules, None, &mut Vec::new());
         let site = rad.site_at((50, 50)).expect("merged site survives");
         assert_eq!(site.level, 1000);
         assert_eq!(site.duration, 1000);
@@ -533,8 +532,8 @@ mod tests {
     fn different_center_sites_stack_additively() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(100, 100), 0, &rules, None);
-        rad.apply_detonation(desolator_det(102, 100), 0, &rules, None);
+        rad.apply_detonation(desolator_det(100, 100), 0, &rules, None, &mut Vec::new());
+        rad.apply_detonation(desolator_det(102, 100), 0, &rules, None, &mut Vec::new());
         assert_eq!(rad.sites().count(), 2);
         // (101,100) is 1 cell from each center: dist 256 →
         // (2688−256)/2688 × 500 from each site.
@@ -552,18 +551,18 @@ mod tests {
     fn site_self_deletes_and_clears_center_ptr() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(10, 10), 0, &rules, None);
+        rad.apply_detonation(desolator_det(10, 10), 0, &rules, None, &mut Vec::new());
         let full = rad.cell_level((10, 10));
         // duration 500, level_steps = 500/90 = 5, step every 90 frames.
         for frame in 1..=89 {
-            rad.tick_decay(frame, &rules, None);
+            rad.tick_decay(frame, &rules, None, &mut Vec::new());
         }
         assert_eq!(
             rad.cell_level((10, 10)),
             full,
             "no decay step before the 90-frame countdown expires"
         );
-        rad.tick_decay(90, &rules, None);
+        rad.tick_decay(90, &rules, None, &mut Vec::new());
         let after_one = rad.cell_level((10, 10));
         assert_eq!(
             after_one,
@@ -572,7 +571,7 @@ mod tests {
         );
         // Run out the rest of the lifetime.
         for frame in 91..=520 {
-            rad.tick_decay(frame, &rules, None);
+            rad.tick_decay(frame, &rules, None, &mut Vec::new());
         }
         assert!(
             rad.site_at((10, 10)).is_none(),
@@ -598,13 +597,13 @@ mod tests {
     fn decay_countdown_is_activation_anchored() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(10, 10), 37, &rules, None);
+        rad.apply_detonation(desolator_det(10, 10), 37, &rules, None, &mut Vec::new());
         let full = rad.cell_level((10, 10));
         for frame in 38..=126 {
-            rad.tick_decay(frame, &rules, None);
+            rad.tick_decay(frame, &rules, None, &mut Vec::new());
         }
         assert_eq!(rad.cell_level((10, 10)), full);
-        rad.tick_decay(127, &rules, None);
+        rad.tick_decay(127, &rules, None, &mut Vec::new());
         assert!(rad.cell_level((10, 10)) < full);
     }
 
@@ -614,15 +613,15 @@ mod tests {
     fn midlife_merge_resets_to_effective_plus_added() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(10, 10), 0, &rules, None);
+        rad.apply_detonation(desolator_det(10, 10), 0, &rules, None, &mut Vec::new());
         // Advance 180 frames: two decay steps, remaining 500→320.
         for frame in 1..=180 {
-            rad.tick_decay(frame, &rules, None);
+            rad.tick_decay(frame, &rules, None, &mut Vec::new());
         }
         let site = rad.site_at((10, 10)).unwrap();
         assert_eq!(site.remaining, 320);
         // Effective = 320×500/500 = 320; merge adds 500 → 820.
-        rad.apply_detonation(desolator_det(10, 10), 180, &rules, None);
+        rad.apply_detonation(desolator_det(10, 10), 180, &rules, None, &mut Vec::new());
         let site = rad.site_at((10, 10)).unwrap();
         assert_eq!(site.level, 820);
         assert_eq!(site.duration, 820);
@@ -639,7 +638,7 @@ mod tests {
     fn detonation_near_origin_clamps_square() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(2, 2), 0, &rules, None);
+        rad.apply_detonation(desolator_det(2, 2), 0, &rules, None, &mut Vec::new());
         assert_eq!(rad.cell_level((2, 2)), 500.0);
         assert!(rad.cell_level((0, 0)) > 0.0);
     }
@@ -649,9 +648,9 @@ mod tests {
     fn radiation_state_serde_round_trip() {
         let rules = stock_rules();
         let mut rad = RadiationState::default();
-        rad.apply_detonation(desolator_det(10, 10), 5, &rules, None);
+        rad.apply_detonation(desolator_det(10, 10), 5, &rules, None, &mut Vec::new());
         for frame in 6..=130 {
-            rad.tick_decay(frame, &rules, None);
+            rad.tick_decay(frame, &rules, None, &mut Vec::new());
         }
         let bytes = bincode::serialize(&rad).expect("serialize");
         let restored: RadiationState = bincode::deserialize(&bytes).expect("deserialize");

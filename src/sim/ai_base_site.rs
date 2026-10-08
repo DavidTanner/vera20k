@@ -43,8 +43,8 @@
 //! BuildingType sets the key (`ai_base_building_tests.rs` checks the retail
 //! rules), so every type takes the ordinary key.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::ObjectType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_defense::CoverageGrid;
 use crate::sim::base_plan::unpack_base_plan_cell;

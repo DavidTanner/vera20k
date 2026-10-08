@@ -9,10 +9,10 @@
 
 use crate::map::authored_overlay::{FinalizedOverlayCell, FinalizedOverlayPayload};
 use crate::map::overlay::{OverlayDataPack, OverlayEntry};
-use crate::map::overlay_types::{
+use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::{
     OverlayTypeRegistry, clears_tiberium_on_slope, is_bridge_overlay_index,
 };
-use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::util::direction_tables::CELL_DELTAS;

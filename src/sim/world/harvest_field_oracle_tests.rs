@@ -105,11 +105,11 @@ fn rules_for_with(
 /// The overlay registry of the scene's rules: the stock list
 /// (`test_support::tiberium_rules_text`) with the scene's land rows, so a
 /// recalculated ore cell carries its `[Tiberium]` speed row.
-pub(super) fn registry() -> &'static crate::map::overlay_types::OverlayTypeRegistry {
-    static REGISTRY: std::sync::OnceLock<crate::map::overlay_types::OverlayTypeRegistry> =
+pub(super) fn registry() -> &'static crate::rules::overlay_types::OverlayTypeRegistry {
+    static REGISTRY: std::sync::OnceLock<crate::rules::overlay_types::OverlayTypeRegistry> =
         std::sync::OnceLock::new();
     REGISTRY.get_or_init(|| {
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
             &rules_for(&serde_json::json!({})).1,
             None,
         )

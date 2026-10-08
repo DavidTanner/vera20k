@@ -24,7 +24,6 @@ use crate::skirmish_persistence::{
     SKIRMISH_PERSISTED_SLOT_COUNT, SkirmishGlobalDefaults, SkirmishPersistedSlot,
     SkirmishPersistedSnapshot, read_skirmish_snapshot,
 };
-use crate::ui::main_menu::SkirmishCountry;
 use crate::ui::skirmish_shell::{
     PlayerNameEditState, SkirmishAiRowType, SkirmishShellState, SkirmishTrackbarId,
     game_speed_from_visual_position, game_speed_visual_position,
@@ -41,7 +40,7 @@ const DEFAULT_MULTIPLAYER_GAME_MODE: i32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LocalMultiplayerPreferences {
     handle_bytes: Vec<u8>,
-    country: SkirmishCountry,
+    country: LaunchCountry,
     side_ex: i32,
     color_index: usize,
     color_ex: i32,
@@ -52,7 +51,7 @@ impl Default for LocalMultiplayerPreferences {
     fn default() -> Self {
         Self {
             handle_bytes: DEFAULT_MULTIPLAYER_HANDLE.to_vec(),
-            country: SkirmishCountry::America,
+            country: LaunchCountry::America,
             side_ex: 0,
             color_index: 0,
             color_ex: 0,
@@ -337,7 +336,7 @@ impl OfflineSkirmishRuntime {
         handle_bytes.truncate(MULTIPLAYER_HANDLE_LIMIT_BYTES);
         self.local_preferences = LocalMultiplayerPreferences {
             handle_bytes,
-            country: menu_country_from_launch(resolved.local.country),
+            country: resolved.local.country,
             side_ex: if state.player_country_random {
                 RANDOM_ITEM_DATA
             } else {
@@ -718,7 +717,7 @@ fn read_local_multiplayer_preferences(bytes: &[u8]) -> LocalMultiplayerPreferenc
     // allocate a type). Only the ten country IDs have a Rust value here; any
     // other name keeps the current country.
     if let Some(country) = section.read_name("Side", 0x80).and_then(|side| {
-        SkirmishCountry::ALL
+        LaunchCountry::ALL
             .into_iter()
             .find(|country| country.country_name().eq_ignore_ascii_case(side))
     }) {
@@ -746,21 +745,6 @@ fn encode_multiplayer_handle(bytes: &[u8]) -> String {
     encoded
 }
 
-fn menu_country_from_launch(country: LaunchCountry) -> SkirmishCountry {
-    match country {
-        LaunchCountry::America => SkirmishCountry::America,
-        LaunchCountry::Korea => SkirmishCountry::Korea,
-        LaunchCountry::France => SkirmishCountry::France,
-        LaunchCountry::Germany => SkirmishCountry::Germany,
-        LaunchCountry::GreatBritain => SkirmishCountry::GreatBritain,
-        LaunchCountry::Libya => SkirmishCountry::Libya,
-        LaunchCountry::Iraq => SkirmishCountry::Iraq,
-        LaunchCountry::Cuba => SkirmishCountry::Cuba,
-        LaunchCountry::Russia => SkirmishCountry::Russia,
-        LaunchCountry::Yuri => SkirmishCountry::Yuri,
-    }
-}
-
 fn is_cooperative_mode(session: &SkirmishLaunchSession) -> bool {
     session
         .mode
@@ -786,14 +770,14 @@ fn persisted_row_type(value: SkirmishAiRowType) -> i32 {
     }
 }
 
-fn menu_country_from_item_data(value: i32) -> Option<SkirmishCountry> {
+fn menu_country_from_item_data(value: i32) -> Option<LaunchCountry> {
     usize::try_from(value)
         .ok()
-        .and_then(|index| SkirmishCountry::ALL.get(index).copied())
+        .and_then(|index| LaunchCountry::ALL.get(index).copied())
 }
 
-fn menu_country_item_data(country: SkirmishCountry) -> i32 {
-    SkirmishCountry::ALL
+fn menu_country_item_data(country: LaunchCountry) -> i32 {
+    LaunchCountry::ALL
         .iter()
         .position(|candidate| *candidate == country)
         .and_then(|index| i32::try_from(index).ok())
@@ -803,7 +787,7 @@ fn menu_country_item_data(country: SkirmishCountry) -> i32 {
 fn cooperative_country_roster_from_rules(
     rules: &crate::rules::ini_parser::IniFile,
 ) -> Vec<CooperativeCountryRosterEntry> {
-    SkirmishCountry::ALL
+    LaunchCountry::ALL
         .into_iter()
         .map(|country| {
             let id = country.country_name();
@@ -815,7 +799,7 @@ fn cooperative_country_roster_from_rules(
 }
 
 fn stock_cooperative_country_roster() -> Vec<CooperativeCountryRosterEntry> {
-    SkirmishCountry::ALL
+    LaunchCountry::ALL
         .into_iter()
         .map(|country| {
             CooperativeCountryRosterEntry::new(country.country_name(), Some(country.label()))
@@ -833,7 +817,6 @@ mod tests {
         AiDifficulty, LaunchStartPosition, LaunchTeam, SkirmishAiSlot, SkirmishLaunchMode,
         SkirmishLaunchOptions, SkirmishLocalSlot,
     };
-    use crate::ui::main_menu::StartPosition;
 
     fn map_named(file_name: &str) -> MapMenuEntry {
         MapMenuEntry {
@@ -961,7 +944,7 @@ Credits=12345\r\n";
         runtime.gameplay_rng_return_pending = true;
         runtime.local_preferences = LocalMultiplayerPreferences {
             handle_bytes: b"Old".to_vec(),
-            country: SkirmishCountry::America,
+            country: LaunchCountry::America,
             side_ex: 1,
             color_index: 0,
             color_ex: 0,
@@ -979,7 +962,7 @@ Credits=12345\r\n";
         runtime.refresh_local_multiplayer_preferences();
 
         assert_eq!(runtime.local_preferences.handle_bytes, b"Refreshed");
-        assert_eq!(runtime.local_preferences.country, SkirmishCountry::Iraq);
+        assert_eq!(runtime.local_preferences.country, LaunchCountry::Iraq);
         assert_eq!(runtime.local_preferences.side_ex, 7);
         assert_eq!(runtime.local_preferences.color_index, 4);
         assert_eq!(runtime.local_preferences.color_ex, -2);
@@ -1184,7 +1167,7 @@ Credits=12345\r\n";
             preferences,
             LocalMultiplayerPreferences {
                 handle_bytes: b"[New Player]".to_vec(),
-                country: SkirmishCountry::America,
+                country: LaunchCountry::America,
                 side_ex: CONCRETE_ITEM_DATA,
                 color_index: 2,
                 color_ex: CONCRETE_ITEM_DATA,
@@ -1201,7 +1184,7 @@ Credits=12345\r\n";
         runtime.hydrate_shell(&mut shell, &[map()], &[mode()]);
 
         assert_eq!(shell.player_name_edit.text, "[New Player]");
-        assert_eq!(shell.player_country, SkirmishCountry::America);
+        assert_eq!(shell.player_country, LaunchCountry::America);
         assert!(!shell.player_country_random);
         assert_eq!(shell.player_color_index, 2);
         assert!(shell.player_color_claimed);
@@ -1226,7 +1209,7 @@ Credits=12345\r\n";
         let mut shell = SkirmishShellState::default();
         runtime.hydrate_shell(&mut shell, &[map()], &[mode()]);
 
-        assert_eq!(shell.player_country, SkirmishCountry::Yuri);
+        assert_eq!(shell.player_country, LaunchCountry::Yuri);
         assert!(shell.player_country_random);
         assert_eq!(shell.player_color_index, 7);
         assert!(!shell.player_color_claimed);
@@ -1236,7 +1219,7 @@ Credits=12345\r\n";
         );
         runtime.local_preferences = concrete;
         runtime.hydrate_shell(&mut shell, &[map()], &[mode()]);
-        assert_eq!(shell.player_country, SkirmishCountry::Yuri);
+        assert_eq!(shell.player_country, LaunchCountry::Yuri);
         assert!(
             !shell.player_country_random,
             "only exact -2 restores Random"
@@ -1266,7 +1249,7 @@ Credits=12345\r\n";
         );
         assert_eq!(
             active_runtime.local_preferences.country,
-            menu_country_from_launch(resolved.local.country)
+            resolved.local.country
         );
         assert_eq!(active_runtime.local_preferences.side_ex, RANDOM_ITEM_DATA);
         assert_eq!(
@@ -1286,10 +1269,7 @@ Credits=12345\r\n";
         reopened.hydrate_shell(&mut reopened_shell, &[map()], &[mode()]);
         assert!(reopened_shell.player_country_random);
         assert!(!reopened_shell.player_color_claimed);
-        assert_eq!(
-            reopened_shell.player_country,
-            menu_country_from_launch(resolved.local.country)
-        );
+        assert_eq!(reopened_shell.player_country, resolved.local.country);
         assert_eq!(
             reopened_shell.player_color_index,
             usize::from(resolved.local.color_index)
@@ -1303,7 +1283,7 @@ Credits=12345\r\n";
             0x5678,
         );
         let mut shell = SkirmishShellState::default();
-        shell.player_country = SkirmishCountry::Yuri;
+        shell.player_country = LaunchCountry::Yuri;
         shell.player_country_random = false;
         shell.player_color_index = 7;
         shell.player_color_claimed = true;
@@ -1338,7 +1318,7 @@ Credits=12345\r\n";
         reopened.local_preferences = read_local_multiplayer_preferences(&bytes);
         let mut reopened_shell = SkirmishShellState::default();
         reopened.hydrate_shell(&mut reopened_shell, &[map()], &[mode()]);
-        assert_eq!(reopened_shell.player_country, SkirmishCountry::Yuri);
+        assert_eq!(reopened_shell.player_country, LaunchCountry::Yuri);
         assert!(!reopened_shell.player_country_random);
         assert_eq!(reopened_shell.player_color_index, 7);
         assert!(reopened_shell.player_color_claimed);
@@ -1352,7 +1332,7 @@ Credits=12345\r\n";
         );
         runtime.local_preferences = LocalMultiplayerPreferences {
             handle_bytes: vec![0x4a, 0x6f, 0x73, 0xe9],
-            country: SkirmishCountry::Yuri,
+            country: LaunchCountry::Yuri,
             side_ex: CONCRETE_ITEM_DATA,
             color_index: 7,
             color_ex: CONCRETE_ITEM_DATA,
@@ -1387,7 +1367,7 @@ Credits=12345\r\n";
         let preferences =
             read_local_multiplayer_preferences(b"[MultiPlayer]\nColor=7\n[Skirmish]\nGameMode=9\n");
         assert_eq!(preferences.handle_bytes, b"[New Player]");
-        assert_eq!(preferences.country, SkirmishCountry::America);
+        assert_eq!(preferences.country, LaunchCountry::America);
         assert_eq!(preferences.side_ex, 0);
         assert_eq!(preferences.color_index, 7);
         assert_eq!(preferences.color_ex, 0);
@@ -1459,7 +1439,7 @@ Credits=12345\r\n";
         let mut runtime = cooperative_runtime(0x2345);
         runtime.local_preferences = LocalMultiplayerPreferences {
             handle_bytes: b"Cached".to_vec(),
-            country: SkirmishCountry::Russia,
+            country: LaunchCountry::Russia,
             side_ex: CONCRETE_ITEM_DATA,
             color_index: 3,
             color_ex: CONCRETE_ITEM_DATA,
@@ -1742,7 +1722,7 @@ Credits=12345\r\n";
         snapshot.scenario_index = 999;
         let runtime = runtime(snapshot, 3);
         let mut shell = SkirmishShellState::default();
-        shell.player_start_position = StartPosition::Auto;
+        shell.player_start_position = LaunchStartPosition::Auto;
 
         runtime.hydrate_shell(&mut shell, &[map()], &[mode()]);
 

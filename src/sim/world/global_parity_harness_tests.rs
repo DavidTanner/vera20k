@@ -23,8 +23,8 @@
 
 use super::*;
 use crate::map::entities::{EntityCategory, MapEntity};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::mission::{MissionId, MissionType};
@@ -99,8 +99,8 @@ pub(super) fn record_replay_diagnostic(
             "power_states":sim.power_states.iter().map(|(owner,state)|serde_json::json!({
                 "owner":sim.resolve(*owner),"state":state,
             })).collect::<Vec<_>>(),
-            "factory_count":sim.production.factory_shadow.len(),
-            "factories":sim.production.factory_shadow.holders_insertion_ordered().into_iter()
+            "factory_count":sim.production.factories.len(),
+            "factories":sim.production.factories.holders_insertion_ordered().into_iter()
                 .map(|(holder,factory)|serde_json::json!({"holder":holder,"factory":factory})).collect::<Vec<_>>(),
         },
     });
@@ -561,7 +561,18 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
 // binary (main with a hash that skips only those fields) gives this value in
 // the same test, with every tripwire above green. Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x23FE_7E6E_6FE5_8561;
+// Snapshot305: Miner.forced_return leaves the hash. A control binary (main
+// with a hash that skips only that fold) gives this value in the same test,
+// with every tripwire above green. Control removed.
+// Snapshot306: the legacy CellClass counters, flags, occlusion caches and
+// visibility marks leave the hash (the ground bits stay), and SightAdmission
+// drops fog_of_war. A control binary (main with a hash that skips only those
+// fields) gives this value in the same test, with every tripwire above green.
+// Control removed.
+// Snapshot307: the session's LocalSize copy leaves the hash. A control binary
+// (main with a hash that skips only that tuple) gives this value in the same
+// test, with every tripwire above green. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x2F2B_3D24_D9FC_70E3;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

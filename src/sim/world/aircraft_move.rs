@@ -4,7 +4,7 @@
 //! live objects and NavCom reservations; the search and the Rate epilogue
 //! draw Scenario RNG. Executable witnesses: tools/spatial_oracle/aircraft_move.*.
 use super::Simulation;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::{AircraftMission, IdleEntry, enter_idle_mode_for, move_mission};
 use crate::sim::components::NavTargetRef;

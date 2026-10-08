@@ -74,9 +74,9 @@
 //!   chronoshifted onto water.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::components::DriveCoord;

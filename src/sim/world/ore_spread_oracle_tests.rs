@@ -13,7 +13,7 @@ fn world(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     let SuppliedFixture {
         registry,

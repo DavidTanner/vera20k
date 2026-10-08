@@ -37,7 +37,7 @@ const SURVIVOR_OFFSET_MAGNITUDE: i32 = 0x80;
 pub struct SmudgeTiberiumContext<'a> {
     pub overlay_grid: &'a mut OverlayGrid,
     pub ore_growth_state: &'a mut OreGrowthState,
-    pub overlay_registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    pub overlay_registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     pub tiberium_types: Option<&'a crate::rules::tiberium_type::TiberiumTypeRegistry>,
     pub source_object_cells: Option<&'a std::collections::BTreeSet<(u16, u16)>>,
     /// Live ground object lists for the crater reduction's neighbour reseed.
@@ -275,7 +275,7 @@ fn survivor_smudge_cell_passable(
     raw_occupation: &RawCellOccupationGrid,
     terrain: &ResolvedTerrainGrid,
     overlay: &OverlayGrid,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if overlay
         .cell(rx, ry)
@@ -640,7 +640,7 @@ mod dispatch_tests {
     }
 
     fn native_tiberium_registries() -> (
-        crate::map::overlay_types::OverlayTypeRegistry,
+        crate::rules::overlay_types::OverlayTypeRegistry,
         crate::rules::tiberium_type::TiberiumTypeRegistry,
     ) {
         let ini = crate::rules::ini_parser::IniFile::from_bytes(
@@ -651,7 +651,7 @@ mod dispatch_tests {
         )
         .unwrap();
         (
-            crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None),
+            crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None),
             crate::rules::tiberium_type::TiberiumTypeRegistry::from_ini(&ini),
         )
     }
@@ -900,7 +900,7 @@ mod dispatch_tests {
                 "[OverlayTypes]\n0=TESTWALL\n[TESTWALL]\nWall=yes\n",
             );
             let overlay_registry =
-                crate::map::overlay_types::OverlayTypeRegistry::from_ini(&registry_ini, None);
+                crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&registry_ini, None);
             let mut raw = RawCellOccupationGrid::new();
 
             raw.mark_ground(1, 1, 0x80);

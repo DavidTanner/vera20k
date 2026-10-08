@@ -728,7 +728,7 @@ impl Simulation {
         receiver: u64,
         requested: Option<NavTargetRef>,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<(), MissionAuthorityError> {
         if !self.substrate.entities.contains(receiver) {
             return Err(MissionAuthorityError::MissingReceiver(receiver));
@@ -759,7 +759,7 @@ impl Simulation {
         &mut self,
         receiver: u64,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<bool, MissionAuthorityError> {
         let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
         self.mission_restore_exact_with_effects(receiver, &mut effects)

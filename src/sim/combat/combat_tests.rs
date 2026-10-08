@@ -134,7 +134,7 @@ fn gsi_04_11_tiberium_prelude_gates_and_signed_large_quotient() {
          [CHAINPLAIN]\nTiberium=no\nChainReaction=yes\n",
     );
     let rules = RuleSet::from_ini(&ini).expect("tiberium prelude gate rules");
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut overlay = OverlayGrid::new(3, 1);
     overlay.place_overlay(0, 0, registry.id_for_name("DEFAULTORE").unwrap(), 0);
     overlay.place_overlay(1, 0, registry.id_for_name("CHAINORE").unwrap(), 0);
@@ -5687,13 +5687,6 @@ fn test_prone_infantry_takes_scaled_aoe_damage() {
     );
 }
 
-#[test]
-fn test_cell_distance() {
-    assert!((cell_distance(0, 0, 3, 4) - 5.0).abs() < 0.01);
-    assert!((cell_distance(5, 5, 5, 5) - 0.0).abs() < f32::EPSILON);
-    assert!((cell_distance(0, 0, 1, 0) - 1.0).abs() < f32::EPSILON);
-}
-
 /// No fire path reads shroud or fog: GetFireError `0x006FC0B0`, the class
 /// fire routines and Greatest_Threat never call `IsShrouded @ 0x00586360`,
 /// and `IsFogged @ 0x005865E0` is a constant false. A target on a cell its
@@ -6031,7 +6024,7 @@ fn test_weak_weapon_partial_ore_reduction() {
 
 // ---- Wall damage integration tests ----------------------------------------
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::sim::overlay_grid::{OverlayGrid, WallDamageEvent};
 use crate::sim::world::Simulation;
 
@@ -7687,6 +7680,7 @@ fn rad_damage_fires_on_application_delay_boundary_only() {
         0,
         &rules.radiation,
         None,
+        &mut sim.lighting_sources.pending,
     );
 
     // Original Foot4DA554 skips the application on frame15.
@@ -7765,6 +7759,7 @@ fn gsi_04_07_damage_periodic_radiation_enters_direct_receiver_once() {
         0,
         &rules.radiation,
         None,
+        &mut sim.lighting_sources.pending,
     );
 
     let result = rad_combat_tick(&mut sim, &rules, 16);
@@ -7820,6 +7815,7 @@ fn radiation_skips_only_objects_in_the_air() {
         0,
         &rules.radiation,
         None,
+        &mut sim.lighting_sources.pending,
     );
 
     rad_combat_tick(&mut sim, &rules, 16);
@@ -8047,6 +8043,7 @@ fn buildings_take_no_rad_damage() {
         0,
         &rules.radiation,
         None,
+        &mut sim.lighting_sources.pending,
     );
 
     rad_combat_tick(&mut sim, &rules, 16);
@@ -8152,7 +8149,12 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
     // Decay the site below RadLevel/3 (= 166): effective = remaining×500/500
     // drops below 166 once remaining < 167.
     for frame in 3..=340 {
-        sim.radiation.tick_decay(frame, &rules.radiation, None);
+        sim.radiation.tick_decay(
+            frame,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
     }
     let site = sim.radiation.site_at((10, 10)).expect("site still alive");
     assert!(crate::sim::radiation::RadiationState::current_site_level(site) < 500 / 3);

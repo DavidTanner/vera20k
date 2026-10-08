@@ -662,9 +662,13 @@ pub struct ObjectType {
     /// Apocalypse Tank explosion damages nearby units).
     pub explodes: bool,
     /// The full native `VeteranAbilities=` byte array (`TechnoTypeClass+0x29C`,
-    /// 18 bytes). The per-token bools below are projections of this for the
-    /// readers that predate it; new readers go through
-    /// `sim::combat::veterancy::has_weapon_ability`.
+    /// 18 bytes). Readers test a rank through
+    /// `sim::combat::veterancy::has_weapon_ability` (`0x0070D0D0`'s shape, an
+    /// elite inheriting the veteran list), among them `CloakingTick @
+    /// 0x006FB740`, `CanAutoCloak @ 0x006FBDC0` and `ShouldUncloak @
+    /// 0x006FBC90` (CLOAK), the radar registration test `TechnoClass+0x324 @
+    /// 0x0070D1D0` (RADAR_INVISIBLE), the death arm (EXPLODES), Crusher
+    /// (CRUSHER beside `Crusher=`), FEARLESS and SCATTER.
     pub veteran_abilities: AbilityFlags,
     /// The full native `EliteAbilities=` byte array (`TechnoTypeClass+0x2AE`).
     pub elite_abilities: AbilityFlags,
@@ -672,26 +676,6 @@ pub struct ObjectType {
     /// A type with this set heals at every rank; otherwise the `SELF_HEAL`
     /// ability gates the same pulse (`FUN_0070BE80`).
     pub self_healing: bool,
-    /// `EXPLODES` in `VeteranAbilities=`. Native treats this as an effective
-    /// death-explosion gate once the object is veteran.
-    pub veteran_explodes: bool,
-    /// `EXPLODES` in `EliteAbilities=`. Elite objects inherit the veteran
-    /// ability and additionally consult this list.
-    pub elite_explodes: bool,
-    /// `SCATTER` in the rank-selected ability list lets player-owned Infantry
-    /// accept an unforced direct Scatter call even when PlayerScatter is off.
-    pub veteran_scatter: bool,
-    pub elite_scatter: bool,
-    /// `CLOAK` in the rank-selected ability list. Active
-    /// `TechnoClass::CloakingTick @ 0x006FB740`, `CanAutoCloak @
-    /// 0x006FBDC0`, and `ShouldUncloak @ 0x006FBC90` read the veteran and
-    /// elite bytes independently; elite inherits the veteran byte.
-    pub veteran_cloak: bool,
-    pub elite_cloak: bool,
-    /// `CRUSHER` in the rank-selected ability lists. The static `Crusher=`
-    /// byte remains independent; elite objects inherit the veteran list.
-    pub veteran_crusher: bool,
-    pub elite_crusher: bool,
     /// Specific weapon fired on death (overrides default explosion behavior).
     /// References a [WeaponName] section in rules.ini.
     pub death_weapon: Option<String>,
@@ -727,13 +711,6 @@ pub struct ObjectType {
     /// When true, this unit does NOT appear on enemy radar even when in line of sight.
     /// RadarInvisible= in rules.ini. Used by subs, Night Hawk, dolphins, giant squid.
     pub radar_invisible: bool,
-    /// `RADAR_INVISIBLE` in `VeteranAbilities=`. Active
-    /// `TechnoClass+0x324 @ 0x0070D1D0` reads this rank-selected byte before
-    /// deciding whether a sensor is required for radar registration.
-    pub veteran_radar_invisible: bool,
-    /// Elite counterpart at TechnoTypeClass+0x2B9. Elite objects inherit the
-    /// veteran ability and additionally consult this list.
-    pub elite_radar_invisible: bool,
     /// `RadarVisible=`. In active `RenderCellPixel` this restores an otherwise
     /// skipped Insignificant/passive-owner entry. It does not override shroud
     /// or an earlier hostile `RadarInvisible` rejection.
@@ -885,10 +862,6 @@ pub struct ObjectType {
     /// InfantryType+E4C signed secondary prone frame, art.ini `SecondaryProne=`.
     /// ART ReadInt52472D retains this field independently; constructor0.
     pub secondary_prone_frame: i32,
-    /// Whether VeteranAbilities includes FEARLESS for this type.
-    pub veteran_fearless: bool,
-    /// Whether EliteAbilities includes FEARLESS for this type.
-    pub elite_fearless: bool,
     /// `InfantryType+0xEB8`, `HarvestRate=`: the delay a slave's
     /// `InfantryClass::Mission_Harvest @ 0x00522E70` returns after each cut.
     /// `InfantryTypeClass::ReadINI` ReadInt at `0x0052452B`; the constructor
@@ -2318,14 +2291,6 @@ impl ObjectType {
             veteran_abilities,
             elite_abilities,
             self_healing: section.read_bool("SelfHealing", false),
-            veteran_explodes: veteran_abilities.has(Ability::Explodes),
-            elite_explodes: elite_abilities.has(Ability::Explodes),
-            veteran_scatter: veteran_abilities.has(Ability::Scatter),
-            elite_scatter: elite_abilities.has(Ability::Scatter),
-            veteran_cloak: veteran_abilities.has(Ability::Cloak),
-            elite_cloak: elite_abilities.has(Ability::Cloak),
-            veteran_crusher: veteran_abilities.has(Ability::Crusher),
-            elite_crusher: elite_abilities.has(Ability::Crusher),
             death_weapon: section.read_name("DeathWeapon", 0x80).map(str::to_owned),
             // A float field (`FSTP dword` at `0x0071232B`).
             death_weapon_damage_modifier: section.read_float("DeathWeaponDamageModifier", 1.0),
@@ -2337,8 +2302,6 @@ impl ObjectType {
             gap_generator: section.read_bool("GapGenerator", false),
             radar: section.read_bool("Radar", false),
             radar_invisible: section.read_bool("RadarInvisible", false),
-            veteran_radar_invisible: veteran_abilities.has(Ability::RadarInvisible),
-            elite_radar_invisible: elite_abilities.has(Ability::RadarInvisible),
             radar_visible: section.read_bool("RadarVisible", false),
             insignificant: section.read_bool("Insignificant", false),
             to_protect: section.read_bool("ToProtect", false),
@@ -2397,8 +2360,6 @@ impl ObjectType {
             fire_prone_frame: 0,
             secondary_fire_frame: 0,
             secondary_prone_frame: 0,
-            veteran_fearless: veteran_abilities.has(Ability::Fearless),
-            elite_fearless: elite_abilities.has(Ability::Fearless),
             harvest_rate: section.read_int("HarvestRate", 1),
             resource_gatherer: section.read_bool("ResourceGatherer", false),
             resource_destination: section.read_bool("ResourceDestination", false),
@@ -4337,10 +4298,6 @@ mod tests {
         assert!(obj.elite_abilities.has(Ability::Rof));
         assert!(!obj.elite_abilities.has(Ability::Faster));
         assert_eq!(Ability::from_ini_token("BOGUS"), None);
-        // The projections the older readers consume come from the same array.
-        assert!(obj.veteran_explodes && obj.veteran_fearless && tail_obj.veteran_crusher);
-        assert!(obj.veteran_radar_invisible && obj.veteran_cloak && obj.veteran_scatter);
-        assert!(!obj.elite_explodes);
 
         let absent = IniFile::from_str("[Y]\nFixtureOnly=1\n");
         let obj = ObjectType::from_ini_section(
@@ -4533,8 +4490,8 @@ mod tests {
             ini.section("DOT").unwrap(),
             ObjectCategory::Vehicle,
         );
-        assert!(obj.veteran_radar_invisible);
-        assert!(obj.elite_radar_invisible);
+        assert!(obj.veteran_abilities.has(Ability::RadarInvisible));
+        assert!(obj.elite_abilities.has(Ability::RadarInvisible));
         assert!(!obj.radar_invisible);
     }
 
@@ -4983,7 +4940,8 @@ mod tests {
             ini.section("RANKED").unwrap(),
             ObjectCategory::Vehicle,
         );
-        assert!(ranked.veteran_cloak && ranked.elite_cloak);
+        assert!(ranked.veteran_abilities.has(Ability::Cloak));
+        assert!(ranked.elite_abilities.has(Ability::Cloak));
         let defaults = ObjectType::from_ini_section(
             "DEFAULTS",
             ini.section("DEFAULTS").unwrap(),
@@ -5019,8 +4977,8 @@ mod tests {
         assert!(obj.fearless);
         assert!(obj.fraidycat);
         assert!(!obj.crawls);
-        assert!(obj.veteran_fearless);
-        assert!(obj.elite_fearless);
+        assert!(obj.veteran_abilities.has(Ability::Fearless));
+        assert!(obj.elite_abilities.has(Ability::Fearless));
     }
 
     #[test]

@@ -19,11 +19,11 @@ use super::pipeline::{self, LAND_TYPES, PipelineInputs};
 use super::rng::{RANGE_K_BITS, RmgRng};
 use super::scratch::RmgScratch;
 use super::tiles::TileIds;
-use super::trig::TrigTable;
 use super::x87::{Gaussian, TruncF64};
 use super::{
     GeneratedMap, MapGeometry, RmgOptions, RmgSettings, Stage, emit, executed_stages, grid,
 };
+use crate::map::retail_trig::TrigTable;
 
 /// Land type → rules section, the RA2 `LandType` enum order (verified against
 /// the zone classifier's `LAND_WATER == 2` / `LAND_BEACH == 6`).

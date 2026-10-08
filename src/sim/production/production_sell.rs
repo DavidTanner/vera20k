@@ -156,7 +156,7 @@ pub fn sell_back(
     rules: &RuleSet,
     id: u64,
     order: SellOrder,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some((owner, buildup, firestorm_wall, selling, c4)) =
         sim.substrate.entities.get(id).and_then(|entity| {
@@ -378,7 +378,7 @@ pub(crate) fn sell_stage_zero(sim: &mut Simulation, rules: Option<&RuleSet>, id:
 pub(crate) fn sell_stage_one(
     sim: &mut Simulation,
     rules: Option<&RuleSet>,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> bool {
     crate::sim::radio::broadcast_break(sim, id, rules);
@@ -416,7 +416,7 @@ pub(crate) fn sell_stage_one(
 fn sale_survivors(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> bool {
     let Some((skip, cells)) = sim.substrate.entities.get(id).and_then(|entity| {
@@ -489,7 +489,7 @@ fn sale_sounds(sim: &mut Simulation, rules: &RuleSet, id: u64) {
 pub(crate) fn sell_complete(
     sim: &mut Simulation,
     rules: Option<&RuleSet>,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> bool {
     let Some(rules) = rules else {
@@ -529,9 +529,7 @@ pub(crate) fn sell_complete(
         crate::sim::credit_income::add_credits(sim, owner, refund);
     }
     sim.uninit_with_context(id, UninitContext::new(Some(rules), registry));
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     false
 }
 
@@ -586,7 +584,7 @@ fn garrison_sellbuilding_exit_cells(rx: u16, ry: u16, width: u16, height: u16) -
 fn choose_garrison_exit_cell(
     sim: &Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     rx: u16,
     ry: u16,
     width: u16,
@@ -637,7 +635,7 @@ fn uninit_garrison_passenger_without_exit(
 fn sellbuilding_direct_scatter_handoff(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     passenger_id: u64,
     building_rx: u16,
     building_ry: u16,
@@ -817,7 +815,7 @@ fn eject_garrison_passengers_at_edges(
 fn eject_garrison_occupants(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
 ) -> usize {
     // Snapshot building data before mutation.
@@ -969,7 +967,7 @@ pub(crate) fn eject_destruction_garrison_with_context(
 pub(crate) fn sell_building_occupants(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
 ) -> usize {
     let (rx, ry, z, width, height, owner, passenger_ids) = {

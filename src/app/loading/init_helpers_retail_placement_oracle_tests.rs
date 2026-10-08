@@ -10,17 +10,17 @@ use super::load_rules_with_merged_ini;
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::entities::EntityCategory;
 use crate::map::map_file::{self, MapFile};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater;
 use crate::rules::foundation::foundation_dimensions;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::power_system::tick_power_states;
 use crate::sim::production::{
-    placement_preview_for_owner_without_overlays, ready_buildings_for_owner,
+    placement_preview_for_owner_with_overlays, ready_buildings_for_owner,
 };
 use crate::sim::world::Simulation;
 
@@ -356,23 +356,19 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     );
     let held_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner_id, category)
         .unwrap()
         .object
         .unwrap()
         .entity_id
         .expect("enqueue constructs the held GAPOWR identity");
-    assert!(
-        sim.production
-            .factory_shadow
-            .test_arm_ready(owner_id, category)
-    );
+    assert!(sim.production.factories.test_arm_ready(owner_id, category));
     // The factory owns completion accounting and its ready projection.
     crate::sim::production::publish_production_changes(&mut sim, &rules);
     let completed = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner_id, category)
         .unwrap()
         .object
@@ -403,13 +399,14 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         }),
         "blocked retail footprint must contain a map ore overlay"
     );
-    let preview = placement_preview_for_owner_without_overlays(
+    let preview = placement_preview_for_owner_with_overlays(
         &sim,
         &rules,
         OWNER,
         POWER_PLANT,
         fixture.blocked.0,
         fixture.blocked.1,
+        None,
     )
     .expect("stock GAPOWR preview");
     assert!(!preview.valid);
@@ -442,7 +439,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(ready_buildings_for_owner(&sim, &rules, OWNER).len(), 1);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner_id, category)
             .unwrap()
             .object
@@ -466,13 +463,14 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         overlay_before
     );
 
-    let preview = placement_preview_for_owner_without_overlays(
+    let preview = placement_preview_for_owner_with_overlays(
         &sim,
         &rules,
         OWNER,
         POWER_PLANT,
         fixture.valid.0,
         fixture.valid.1,
+        None,
     )
     .expect("stock GAPOWR valid preview");
     assert!(preview.valid);
@@ -532,7 +530,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         );
     }
 
-    let _ = tick_power_states(
+    tick_power_states(
         &mut sim.power_states,
         &mut sim.substrate.entities,
         &rules,

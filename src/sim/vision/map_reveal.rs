@@ -127,7 +127,7 @@ impl FogState {
         //are monotonic Techno construction identities in the current owner.
         for id in ids {
             if let Some(source) = sources.get(&id) {
-                self.reconcile_sight_admission(id, owner, source.clone(), false, source.fog_of_war);
+                self.reconcile_sight_admission(id, owner, source.clone(), false);
             }
             for &gap in reentry_by_id.get(&id).into_iter().flatten() {
                 let vis = self.by_owner.get_mut(&owner).unwrap();

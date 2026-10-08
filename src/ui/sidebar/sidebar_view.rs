@@ -158,12 +158,6 @@ pub(crate) fn build_sidebar_view_with_spec(
         w: layout_spec.sidebar_width,
         h: screen_h,
     };
-    let credits_frac = (credits.max(0) as f32 / 5000.0).clamp(0.0, 1.0);
-    let power_frac = if power_drained <= 0 {
-        1.0
-    } else {
-        (power_produced.max(0) as f32 / power_drained.max(1) as f32).clamp(0.0, 1.0)
-    };
     let low_power = power_produced < power_drained;
 
     // 6ABD30 positions the four SBGadgets with the side-specific tab pitch.
@@ -361,8 +355,6 @@ pub(crate) fn build_sidebar_view_with_spec(
         credits,
         power_produced,
         power_drained,
-        credits_frac,
-        power_frac,
         low_power,
         scroll_rows,
         max_scroll_rows,

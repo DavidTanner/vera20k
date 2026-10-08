@@ -440,11 +440,6 @@ pub struct ScenarioDescriptor {
     /// `Simulation.playfield_bounds` for the diamond test.
     pub map_width: u16,
     pub map_height: u16,
-    /// Playable-area `LocalSize=` rect, stored verbatim.
-    pub local_left: u16,
-    pub local_top: u16,
-    pub local_width: u16,
-    pub local_height: u16,
     /// MP start waypoints (index -> cell) from the map `[Waypoints]` list.
     /// BTreeMap for deterministic iteration; sized by content, never by a
     /// player-count assumption.
@@ -514,11 +509,6 @@ pub struct ScenarioSession {
     /// grid dimensions at construction.
     pub map_width: u16,
     pub map_height: u16,
-    /// Playable-area `LocalSize=` rect, stored verbatim.
-    pub local_left: u16,
-    pub local_top: u16,
-    pub local_width: u16,
-    pub local_height: u16,
     /// MP start waypoints (index -> cell) from the map `[Waypoints]` list.
     pub mp_start_waypoints: BTreeMap<u32, (u16, u16)>,
     /// Start waypoint index -> owning house, filled during launch application
@@ -590,7 +580,6 @@ impl ScenarioSession {
             b"scenario-tiberium-spreads-v1".hash(hasher);
         }
         (s.map_width, s.map_height).hash(hasher);
-        (s.local_left, s.local_top, s.local_width, s.local_height).hash(hasher);
         s.mp_start_waypoints.len().hash(hasher);
         for (idx, cell) in &s.mp_start_waypoints {
             idx.hash(hasher);
@@ -692,10 +681,6 @@ impl ScenarioSession {
             pixel_conversion_bounds: desc.pixel_conversion_bounds,
             map_width: desc.map_width,
             map_height: desc.map_height,
-            local_left: desc.local_left,
-            local_top: desc.local_top,
-            local_width: desc.local_width,
-            local_height: desc.local_height,
             mp_start_waypoints: desc.mp_start_waypoints.clone(),
             start_slot_houses: BTreeMap::new(),
             house_order: Vec::new(),

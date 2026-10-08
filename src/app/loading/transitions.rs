@@ -9,10 +9,10 @@ use crate::app::match_runtime::sim_tick;
 use crate::app::presentation::render;
 use crate::map::basic::BasicSection;
 use crate::map::houses::HouseRoster;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::trigger_graph::TriggerGraph;
 use crate::render::minimap::MinimapRenderer;
 use crate::render::selection_overlay::SelectionOverlay;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::ui::sidebar::SidebarTab;
 use crate::ui::game_screen::GameScreen;
 
@@ -64,8 +64,6 @@ pub(crate) fn fallback_map_load_result() -> init::MapLoadResult {
             overlays: Vec::new(),
             terrain_objects: Vec::new(),
             waypoints: HashMap::new(),
-            cell_tags: HashMap::new(),
-            tags: HashMap::new(),
             triggers: HashMap::new(),
             events: HashMap::new(),
             actions: HashMap::new(),
@@ -159,7 +157,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
                     triggers: result.scenario.triggers,
                     events: result.scenario.events,
                     actions: result.scenario.actions,
-                    waypoints: result.scenario.waypoints.clone(),
+                    waypoints: result.scenario.waypoints,
                 },
             });
     state.match_state.match_presentation.combat_lights.clear();
@@ -245,9 +243,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         .overlays
         .replace_from_source(result.scenario.overlays);
     state.match_state.match_presentation.terrain_objects = result.scenario.terrain_objects;
-    state.match_state.match_presentation.waypoints = result.scenario.waypoints;
-    state.match_state.match_presentation.cell_tags = result.scenario.cell_tags;
-    state.match_state.match_presentation.tags = result.scenario.tags;
     state.match_state.match_presentation.overlay_names = result.presentation.overlay_names;
     state.match_state.match_presentation.overlay_radar_colors =
         result.presentation.overlay_radar_colors;
@@ -567,7 +562,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
 pub(crate) fn build_minimap_overlay_data(
     overlays: &[crate::map::overlay::OverlayEntry],
     terrain_objects: &[crate::map::overlay::TerrainObject],
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     rules: Option<&crate::rules::ruleset::RuleSet>,
 ) -> Vec<crate::render::minimap::MinimapOverlayDatum> {
     use crate::render::minimap::{
