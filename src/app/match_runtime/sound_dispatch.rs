@@ -371,9 +371,11 @@ pub(super) fn dispatch_sim_sound_events(
                 }
             }
             SimSoundEvent::LightningStormApproaching => {
-                // `LightningStorm::Process @ 0x0053AB11`: `VoxClass::Play`
-                // of `EVA_LightningStormCreated` on every client (its line
-                // follows through `lightning_storm_messages`).
+                // `LightningStorm::Process @ 0x0053AB11`: `VoxClass::PlayEVA
+                // @ 0x00752700` of `EVA_LightningStormCreated` on every
+                // client; as for the launch's EVA, an app with no local
+                // player plays none (the line follows through
+                // `lightning_storm_messages`).
                 if local_owner_name.is_none() {
                     continue;
                 }

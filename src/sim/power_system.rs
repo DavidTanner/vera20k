@@ -99,8 +99,7 @@ impl PowerState {
     /// timer at `binary_frame` for `duration` frames, a shorter one too, and
     /// recheck radar (House+5779).
     pub(crate) fn start_radar_outage(&mut self, binary_frame: u32, duration: i32) {
-        self.radar_outage_timer
-            .start(binary_frame as i32, duration);
+        self.radar_outage_timer.start(binary_frame as i32, duration);
         self.radar_dirty = true;
     }
 
@@ -650,10 +649,9 @@ mod tests {
     #[test]
     fn radar_outage_matches_native_rows() {
         use crate::sim::timer::CdTimer;
-        let oracle: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
-            "tools/superweapon_oracle.json",
-        ))
-        .unwrap();
+        let oracle: serde_json::Value =
+            serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
+                .unwrap();
         let int = |value: &serde_json::Value| i32::try_from(value.as_i64().unwrap()).unwrap();
         let rules = rules_from_ini("[BuildingTypes]\n");
         let mut interner = test_interner();
@@ -683,7 +681,14 @@ mod tests {
             state.set_radar_outage_for_test(CdTimer::from_raw(int(&row[0]), int(&row[1])));
             let frame = int(&row[2]) as u32;
             assess_house_radar_projection(
-                &mut state, &entities, &[], &rules, owner, &interner, true, frame,
+                &mut state,
+                &entities,
+                &[],
+                &rules,
+                owner,
+                &interner,
+                true,
+                frame,
             );
             assert_eq!(state.radar_available, row[3] == 1, "{row}");
         }

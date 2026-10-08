@@ -259,21 +259,14 @@ fn fires(stage: i32, frames: i32, percent: i32) -> bool {
     X87Chop53::compare(threshold, ratio) != X87Ordering::Greater
 }
 
-/// The followed anim's stage (`AnimClass+0xAC`) and its image's frame count
-/// (the type's GetImage, vt+0x9C, header `+0x6`). A missing anim reads as
-/// finished (module residual).
+/// The followed anim's stage and its image's frame count
+/// ([`Simulation::anim_stage_and_frames`]). A missing anim reads as finished
+/// (module residual).
 fn anim_progress(sim: &Simulation, rules: &RuleSet) -> (i32, i32) {
-    let anim = sim.psychic_dominator.anim.and_then(|anim| sim.anim(anim));
-    let frames = anim
-        .and_then(|anim| {
-            rules
-                .art()
-                .anim_runtime_config(sim.interner.resolve(anim.type_id))
-        })
-        .and_then(|config| config.raw_shp_frame_count)
-        .unwrap_or(0);
-    let stage = anim.map_or(frames, |anim| anim.runtime.current_frame);
-    (stage, frames)
+    sim.psychic_dominator
+        .anim
+        .and_then(|anim| sim.anim_stage_and_frames(anim, rules))
+        .unwrap_or((0, 0))
 }
 
 /// `PsyDom::MindControlArea @ 0x0053B080`:

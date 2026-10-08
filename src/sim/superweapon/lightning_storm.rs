@@ -41,10 +41,16 @@
 //! strike's bolt type and cue (`Random() % count` each), then its explosion's
 //! and area damage's own draws, then the debris count (`RandomRanged(2, 4)`)
 //! and each piece's type (`RandomRanged(0, count - 1)`). Every anim
-//! constructor's own draws follow its type's draw. Timer writes: each affected
-//! house's radar outage (`HouseClass+0x2B0`, `[frame, duration]`). Detach
-//! calls: none; nothing detaches an anim from the cloud lists natively (only
-//! save and load read them, `0x00539890`, `0x00539AE0`).
+//! constructor's own draws follow its type's draw. The oracle stubs the anim
+//! constructor (`0x00421EA0`), the explosion selector and the area damage, so
+//! the draws inside them, and their places in this order, rest on
+//! instruction reading (`0x0053A1F5..0x0053A237`, `0x0053A345..0x0053A387`,
+//! `0x0053A4C2..0x0053A5D0`, `0x0053A62C..0x0053A68B`); retail's debris
+//! (`Bouncer=yes`, `RandomRate=`) draws in its constructor. Timer writes:
+//! each affected house's radar outage (`HouseClass+0x2B0`, `[frame,
+//! duration]`). Detach calls: none; nothing detaches an anim from the cloud
+//! lists natively (only save and load read them, `0x00539890`,
+//! `0x00539AE0`).
 //!
 //! GroundStrike also lists each bolt in BoltsPresent (`0x00A9FA18`), which
 //! Process empties of bolts past half their frames and nothing else reads;
@@ -79,8 +85,12 @@
 //!   reads the `MetallicDebris=` list there, past its end when the list is
 //!   empty (`0x0053A665`); VERA takes the same draw and constructs nothing.
 //!   Retail's list is not empty.
-//! - The radar outage is skipped natively for every house while `0x00A8B538`
-//!   (the client's defeated flag) is set; VERA has no such flag.
+//! - Start skips every house's radar outage natively while `0x00A8B538` is
+//!   set, which `HouseClass::MPlayer_Defeated` does (`0x004FC205`) once the
+//!   local player is defeated and the game goes on; VERA has no such flag.
+//!   Trigger: every storm that starts after the local player's multiplayer
+//!   defeat. Effect: natively no house on that client loses radar; in VERA
+//!   the storm's enemies do, and that client's radar display shows it.
 //! - Start with the empty cell on a map without a Size loops forever
 //!   natively; VERA keeps the empty cell. Only headless fixtures lack a Size.
 
@@ -403,22 +413,17 @@ pub(super) fn process(
     bridge_changed
 }
 
-/// A listed cloud's stage (`AnimClass+0xAC`), its image's frame count (the
-/// type's GetImage `+6`) and its coordinate (vt+0x48), or `None` once the anim
-/// has left the store (module residual). An unbound image counts no frames.
-fn cloud(sim: &Simulation, rules: &RuleSet, anim: AnimId) -> Option<(i32, i32, [i32; 3])> {
-    let anim = sim.anim(anim)?;
-    let frames = rules
-        .art()
-        .anim_runtime_config(sim.interner.resolve(anim.type_id))
-        .and_then(|config| config.raw_shp_frame_count)
-        .unwrap_or(0);
+/// A listed cloud's stage and its image's frame count
+/// ([`Simulation::anim_stage_and_frames`]) and its coordinate (vt+0x48), or
+/// `None` once the anim has left the store (module residual).
+fn cloud(sim: &Simulation, rules: &RuleSet, id: AnimId) -> Option<(i32, i32, [i32; 3])> {
+    let (stage, frames) = sim.anim_stage_and_frames(id, rules)?;
     let at = crate::sim::anim_class::anim_world_coords(
-        anim,
+        sim.anim(id)?,
         &sim.substrate.entities,
         sim.resolved_terrain.as_ref(),
     );
-    Some((anim.runtime.current_frame, frames, [at.x, at.y, at.z]))
+    Some((stage, frames, [at.x, at.y, at.z]))
 }
 
 /// Process's scattered cloud (`0x0053A980..0x0053AA92`): up to three tries,
@@ -518,13 +523,19 @@ pub(super) fn create_cloud_bolt(sim: &mut Simulation, rules: &RuleSet, cell: (i1
     let z = target
         .level
         .wrapping_mul(GROUND_LEVEL_HEIGHT_LEPTONS)
-        .wrapping_add(crate::util::lepton::native_pixel_height_leptons(image_height / 2))
+        .wrapping_add(crate::util::lepton::native_pixel_height_leptons(
+            image_height / 2,
+        ))
         .wrapping_add(if target.bridge {
             BRIDGE_DECK_HEIGHT_LEPTONS
         } else {
             0
         });
-    let coords = [i32::from(cell.0) * 256 + 128, i32::from(cell.1) * 256 + 128, z];
+    let coords = [
+        i32::from(cell.0) * 256 + 128,
+        i32::from(cell.1) * 256 + 128,
+        z,
+    ];
     let clouds = &general.weather_con_clouds;
     if clouds.is_empty() {
         return;

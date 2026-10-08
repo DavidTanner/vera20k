@@ -3018,7 +3018,8 @@ impl GeneralRules {
             lightning_damage: general.read_int("LightningDamage", defaults.lightning_damage),
             lightning_deferment: general
                 .read_int("LightningDeferment", defaults.lightning_deferment),
-            lightning_hit_delay: general.read_int("LightningHitDelay", defaults.lightning_hit_delay),
+            lightning_hit_delay: general
+                .read_int("LightningHitDelay", defaults.lightning_hit_delay),
             lightning_scatter_delay: general
                 .read_int("LightningScatterDelay", defaults.lightning_scatter_delay),
             lightning_cell_spread: general

@@ -29,7 +29,6 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellListInsertion;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::power_system::PowerState;
-use crate::sim::radar::RadarEventType;
 use crate::sim::rng::SimRng;
 use crate::sim::scenario_session::ScenarioLightingProfile;
 use crate::sim::superweapon::cell_receiver_tests::test_terrain_cell;
@@ -294,7 +293,8 @@ struct Calls {
 
 #[derive(Debug, PartialEq)]
 enum Sound {
-    Radar(RadarEventType, (i16, i16)),
+    /// `CreateRadarEvent`'s native type and cell.
+    Radar(i32, (i16, i16)),
     Began,
     Approaching,
     At(String, [i32; 3]),
@@ -307,7 +307,7 @@ impl Calls {
             .iter()
             .filter_map(|event| match event {
                 SimSoundEvent::SuperWeaponRadarEvent { radar } => Some(Sound::Radar(
-                    radar.event_type,
+                    radar.event_type as i32,
                     (radar.rx as i16, radar.ry as i16),
                 )),
                 SimSoundEvent::LightningStormBegan => Some(Sound::Began),
@@ -374,10 +374,9 @@ impl Calls {
         let mut calls = Self::default();
         for event in row["events"].as_array().unwrap() {
             match event[0].as_str().unwrap() {
-                "radar_event" => calls.sounds.push(Sound::Radar(
-                    RadarEventType::ImpactSilent,
-                    cell_of(&event[2]),
-                )),
+                "radar_event" => calls
+                    .sounds
+                    .push(Sound::Radar(int(&event[1]), cell_of(&event[2]))),
                 "text" if event[1] == "TXT_LIGHTNING_STORM" => calls.sounds.push(Sound::Began),
                 "eva" => calls.sounds.push(Sound::Approaching),
                 "play_at" => calls
@@ -487,7 +486,9 @@ fn storm_cloud_matches_native_rows() {
             Some(0),
         );
         let existing: Vec<AnimId> = (0..int(&row["present"]))
-            .map(|_| super::spawn_super_anim(&mut sim, &rules, "WCCLOUD1", [1000, 1000, 0]).unwrap())
+            .map(|_| {
+                super::spawn_super_anim(&mut sim, &rules, "WCCLOUD1", [1000, 1000, 0]).unwrap()
+            })
             .collect();
         sim.lightning_storm
             .set_clouds_for_test(existing.clone(), existing.clone());
@@ -544,7 +545,11 @@ fn strike_cells(spec: &Value) -> (StrikeCell, StrikeCell) {
         }
     };
     let read = |spec: &Value, base: &Value| {
-        let field = |key: &str| spec.get(key).or_else(|| base.get(key)).unwrap_or(&Value::Null);
+        let field = |key: &str| {
+            spec.get(key)
+                .or_else(|| base.get(key))
+                .unwrap_or(&Value::Null)
+        };
         let (building, _) = object(field("building"), 1);
         let (nearest, nearest_is_infantry) = object(field("nearest"), 2);
         StrikeCell {
@@ -702,7 +707,12 @@ fn storm_process_matches_native_rows() {
                 triple(&anim[1]),
             )
             .unwrap();
-            sim.substrate.anims.get_mut(id).unwrap().runtime.current_frame = int(&anim[2]);
+            sim.substrate
+                .anims
+                .get_mut(id)
+                .unwrap()
+                .runtime
+                .current_frame = int(&anim[2]);
             anims.push(id);
         }
         let pick = |key: &str| -> Vec<AnimId> {
@@ -748,11 +758,7 @@ fn storm_process_matches_native_rows() {
             })
             .collect();
         assert_eq!(table, expected_table, "{row}");
-        assert_eq!(
-            Calls::of(&sim, anims_before),
-            Calls::expected(row),
-            "{row}"
-        );
+        assert_eq!(Calls::of(&sim, anims_before), Calls::expected(row), "{row}");
         assert_eq!(
             house_states(&sim, &houses),
             expected_house_states(row),
@@ -776,7 +782,10 @@ fn lighting_timing_rules(deferment: i32, duration: i32, rate: &str) -> RuleSet {
 }
 
 fn count(sim: &Simulation, wanted: fn(&SimSoundEvent) -> bool) -> usize {
-    sim.sound_events.iter().filter(|event| wanted(event)).count()
+    sim.sound_events
+        .iter()
+        .filter(|event| wanted(event))
+        .count()
 }
 
 fn began(event: &SimSoundEvent) -> bool {
@@ -1186,8 +1195,10 @@ fn a_bridge_strike_hits_the_deck_only() {
     let mut sim = Simulation::with_seed(1);
     let owner = sim.interner.intern("Soviet");
     let type_ref = sim.interner.intern("DUMMY");
-    for (id, on_bridge, layer) in [(1, false, MovementLayer::Ground), (2, true, MovementLayer::Bridge)]
-    {
+    for (id, on_bridge, layer) in [
+        (1, false, MovementLayer::Ground),
+        (2, true, MovementLayer::Bridge),
+    ] {
         // Both stand in the cell's lists, on the map: out of limbo and
         // marked (`+0x74`), which Apply_area_damage's dispatch reads.
         let mut entity = GameEntity::test_default(id, "DUMMY", "Soviet", 5, 5);
@@ -1230,8 +1241,14 @@ fn a_bridge_strike_hits_the_deck_only() {
 fn a_strike_damages_a_building() {
     let rules = registry_only_warhead_rules();
     let mut sim = Simulation::with_seed(1);
-    let mut building =
-        GameEntity::test_default_of_category(10, "GAPOWR", "Soviet", 5, 5, EntityCategory::Structure);
+    let mut building = GameEntity::test_default_of_category(
+        10,
+        "GAPOWR",
+        "Soviet",
+        5,
+        5,
+        EntityCategory::Structure,
+    );
     building.lifecycle.in_limbo = false;
     building.lifecycle.cell_marked = true;
     building.owner = sim.interner.intern("Soviet");
@@ -1380,8 +1397,14 @@ fn retail_storm_rules() {
     );
     assert_eq!(general.lightning_warhead, "IonWH");
     assert_eq!(general.weather_con_bolt_explosion, "EXPLOLB");
-    assert_eq!(general.weather_con_clouds, ["WCCLOUD1", "WCCLOUD2", "WCCLOUD3"]);
-    assert_eq!(general.weather_con_bolts, ["WCLBOLT1", "WCLBOLT2", "WCLBOLT3"]);
+    assert_eq!(
+        general.weather_con_clouds,
+        ["WCCLOUD1", "WCCLOUD2", "WCCLOUD3"]
+    );
+    assert_eq!(
+        general.weather_con_bolts,
+        ["WCLBOLT1", "WCLBOLT2", "WCLBOLT3"]
+    );
     // ReadGeneral's 0x80-byte read of the twenty names keeps fourteen and a
     // cut `D` (`0x0066DA90`), a type with no image.
     assert_eq!(general.metallic_debris.len(), 15);
@@ -1427,9 +1450,11 @@ fn retail_storm_strikes_through_production_frames() {
         sim.sound_events.clear();
         step(&mut sim, &rules);
         frames += 1;
-        if sim.sound_events.iter().any(|event| {
-            matches!(event, SimSoundEvent::LightningStormApproaching)
-        }) {
+        if sim
+            .sound_events
+            .iter()
+            .any(|event| matches!(event, SimSoundEvent::LightningStormApproaching))
+        {
             warnings.push(frames);
         }
         assert!(frames <= 250, "the countdown ends");
@@ -1474,7 +1499,10 @@ fn retail_storm_strikes_through_production_frames() {
         "the strikes reached the tank"
     );
     let (active, time_to_end, _, _, _, cell, owner) = sim.lightning_storm.globals_for_test();
-    assert_eq!((active, time_to_end, cell, owner), (false, false, (0, 0), None));
+    assert_eq!(
+        (active, time_to_end, cell, owner),
+        (false, false, (0, 0), None)
+    );
     assert_eq!(
         sim.session.lighting.selected_profile,
         ScenarioLightingProfile::Normal
