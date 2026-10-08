@@ -121,6 +121,7 @@ pub(crate) fn build_particle_instances(state: &AppState, paged: &mut [Vec<Sprite
                 size: entry.pixel_size,
                 uv_origin: entry.uv_origin,
                 uv_size: entry.uv_size,
+                source_palette: entry.source_palette,
                 depth,
                 tint: [1.0, 1.0, 1.0],
                 alpha,

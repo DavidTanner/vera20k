@@ -225,7 +225,11 @@ impl PackedSpriteGpu {
             device: device.clone(),
             queue: queue.clone(),
             shp: raster(
-                include_str!("zsprite_shader.wgsl"),
+                &format!(
+                    "{}\n{}",
+                    crate::render::tactical_shader::SPRITE_SOURCE,
+                    include_str!("zsprite_shader.wgsl")
+                ),
                 include_str!("terrain_packed_shp.wgsl"),
                 batch.texture_bind_group_layout(),
                 batch.zshape_bind_group_layout(),

@@ -793,6 +793,7 @@ impl SelectionOverlay {
                 size: entry.pixel_size,
                 uv_origin: entry.uv_origin,
                 uv_size: entry.uv_size,
+                source_palette: entry.source_palette,
                 depth: DRAG_RECT_DEPTH,
                 tint,
                 alpha: 1.0,

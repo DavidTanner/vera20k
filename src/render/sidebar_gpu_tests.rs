@@ -78,7 +78,7 @@ impl Gpu {
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: None,
                 source: wgpu::ShaderSource::Wgsl(
-                    super::tactical_shader::world_source(include_str!("batch_shader.wgsl")).into(),
+                    super::tactical_shader::sprite_source(include_str!("batch_shader.wgsl")).into(),
                 ),
             });
         let pipeline = self

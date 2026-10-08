@@ -183,7 +183,15 @@ fn bullet_frame_lookup_preserves_native_stencil_and_rejects_out_of_range() {
         }
     }
     let palette = Palette::from_bytes(&raw).unwrap();
-    let rendered = render_shp_frame(&source, &palette, false, &key, Some(&rules)).unwrap();
+    let rendered = render_shp_frame(
+        &source,
+        &palette,
+        false,
+        &key,
+        Some(&rules),
+        &mut ShpPalettes::default(),
+    )
+    .unwrap();
     assert_eq!(rendered.indices, source.shp.frames[0].pixels);
     assert_eq!([rendered.width, rendered.height], [4, 4]);
     assert_eq!([rendered.offset_x, rendered.offset_y], [-2.0, -2.0]);
@@ -194,7 +202,8 @@ fn bullet_frame_lookup_preserves_native_stencil_and_rejects_out_of_range() {
             &palette,
             false,
             &projectile_key("Cannon", projectile, 1, HouseColorIndex(0)),
-            Some(&rules)
+            Some(&rules),
+            &mut ShpPalettes::default(),
         )
         .is_none()
     );
@@ -249,6 +258,7 @@ fn firer_registration_covers_each_house_scheme_and_lookup_uses_the_supplied_one(
         canvas_rect: [-12.0, -12.0, 24.0, 24.0],
         extended: false,
         page,
+        source_palette: 1,
     };
     for frame in 0..2 {
         let russian = projectile_key("Cannon", projectile, frame, HouseColorIndex(4));
@@ -256,6 +266,7 @@ fn firer_registration_covers_each_house_scheme_and_lookup_uses_the_supplied_one(
         let atlas = SpriteAtlas::new(
             Vec::new(),
             HashMap::from([(russian, entry(0)), (american, entry(1))]),
+            ShpPalettes::default(),
         );
         for (scheme, page) in [(HouseColorIndex(4), 0), (HouseColorIndex(2), 1)] {
             assert_eq!(
@@ -334,16 +345,19 @@ fn retail_hills_projectile_assets_match_original_reader_and_physical_bytes() {
     .unwrap();
     source.draw_offsets = (0, 0);
     let palette = Palette::from_bytes(assets.get_ref("palette.pal").unwrap()).unwrap();
+    let mut palettes = ShpPalettes::default();
     let sprite = render_shp_frame(
         &source,
         &palette,
         false,
         &projectile_key("Cannon", projectile, 0, HouseColorIndex(0)),
         Some(rules),
+        &mut palettes,
     )
     .unwrap();
     assert_eq!(sprite.indices, source.shp.frames[0].pixels);
-    for (index, rgba) in sprite.indices.iter().zip(sprite.rgba.chunks_exact(4)) {
+    let sprite_rgba = palettes.rgba(&sprite);
+    for (index, rgba) in sprite.indices.iter().zip(sprite_rgba.chunks_exact(4)) {
         let c = corpus["palettes"][0]["colors"]
             .as_array()
             .unwrap()

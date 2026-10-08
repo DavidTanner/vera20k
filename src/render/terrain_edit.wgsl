@@ -12,9 +12,7 @@ struct TerrainOutput {
 struct AdmittedPixel { index: u32, candidate: i32 };
 
 fn admitted_pixel(input: VertexOutput) -> AdmittedPixel {
-    let texel = vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)),
-        vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0));
-    let index = textureLoad(source_indices, texel, 0).r;
+    let index = textureLoad(source_indices, source_texel(input.uv), 0).r;
     // Native compressed zero runs advance both destinations without touching
     // either one. The source index owns this stencil, including black colors.
     if index == 0u { discard; }
@@ -34,8 +32,7 @@ fn admitted_pixel(input: VertexOutput) -> AdmittedPixel {
 }
 
 fn body_color(input: VertexOutput, index: u32) -> vec3f {
-    let color = textureLoad(t_sprite, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)),
-        vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0);
+    let color = source_color(source_texel(input.uv), index, input.source_palette);
     return resolve_palette(color.rgb, input.tint, input.palette_light, index, tactical_a_at(input.position.xy));
 }
 

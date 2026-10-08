@@ -2,8 +2,10 @@
 //!
 //! At map load every SHP sprite the world can draw — infantry sequences,
 //! building bodies with their make and overlay animations, world effects — is
-//! rendered to RGBA and shelf-packed into as few pages as the GPU texture limit
-//! allows. When a new (type, house colour) appears mid-match, only its missing
+//! rendered to palette indices and shelf-packed into as few pages as the GPU
+//! texture limit allows. Each sprite resolves its indices through one of the
+//! atlas's palette rows (`ShpPalettes`): its render palette, house ramp
+//! included. When a new (type, house colour) appears mid-match, only its missing
 //! sprites are rendered and appended to a growth page (`atlas_growth`); the
 //! pages already resident are never repacked or re-uploaded. Keys with nothing
 //! to draw are remembered, so no refresh retries them.
@@ -33,8 +35,8 @@ use crate::rules::house_colors::{HouseColorIndex, HouseColorRamps};
 use crate::rules::projectile_type::ProjectileType;
 use crate::rules::ruleset::RuleSet;
 
-/// Edge of a growth page: RGBA plus indices is 80 MB, room for the sprites
-/// of about ten new (type, house colour) pairs.
+/// Edge of a growth page: 16 MiB of palette indices, room for the sprites of
+/// about ten new (type, house colour) pairs.
 const GROWTH_PAGE_SIZE: u32 = 4096;
 const INFANTRY_FACING_STEP: u8 = crate::util::direction::FACING_UNITS_PER_DIRECTION;
 const INFANTRY_FACING_BUCKETS: u8 = 8;
@@ -290,13 +292,105 @@ pub struct ShpSpriteEntry {
     pub extended: bool,
     /// Atlas page index (0-based). Each page is a separate GPU texture.
     pub page: u8,
+    /// The `SpriteInstance::source_palette` that resolves this sprite's
+    /// palette indices: its row in the atlas's palette rows, plus one.
+    pub source_palette: u32,
 }
 
 /// A single page of the multi-page sprite atlas.
 /// Each page is a separate GPU texture with its own bind group.
 pub struct SpriteAtlasPage {
-    /// The packed GPU texture for this page.
+    /// The page's palette indices (`BatchRenderer::create_indexed_page`),
+    /// bound beside the atlas's palette rows.
     pub texture: BatchTexture,
+}
+
+/// Most render palettes one atlas holds. Rows exist only for palettes its
+/// sprites use: the unit, effect, cell and projectile palettes, each plain or
+/// with one `[Colors]` scheme's team band.
+const SHP_PALETTE_ROWS: u32 = 256;
+
+/// The palettes an SHP atlas's index pages resolve through, so the atlas
+/// stores each sprite pixel once, as its palette index. Each row holds the 256
+/// RGBA colours of one render palette: a base palette, house-remapped or not
+/// ([`render_shp_frame`]). Rows are keyed by content, so every sprite drawn
+/// through the same colours shares a row whichever file or remap produced
+/// them. Registered rows reach the GPU when pages are created or grown.
+#[derive(Clone, Default)]
+struct ShpPalettes {
+    /// Row of each registered palette, by its RGBA bytes.
+    rows: HashMap<Vec<u8>, u32>,
+    /// Registered palettes in row order; the first `uploaded` are on the GPU.
+    colors: Vec<Vec<u8>>,
+    uploaded: usize,
+    /// The row texture, created by the first upload.
+    texture: Option<(wgpu::Texture, wgpu::TextureView)>,
+}
+
+impl ShpPalettes {
+    /// The row `palette` resolves through, registering it; None once the rows
+    /// are full.
+    fn row(&mut self, palette: &Palette) -> Option<u32> {
+        let colors = palette.to_rgba_bytes();
+        if let Some(&row) = self.rows.get(&colors) {
+            return Some(row);
+        }
+        let row = u32::try_from(self.colors.len())
+            .ok()
+            .filter(|&row| row < SHP_PALETTE_ROWS)?;
+        self.rows.insert(colors.clone(), row);
+        self.colors.push(colors);
+        Some(row)
+    }
+
+    /// Upload the rows registered since the last upload, creating the row
+    /// texture on first use, and return its view for page bind groups.
+    fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+        let (texture, view) = self.texture.get_or_insert_with(|| {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("SHP atlas palette rows"),
+                size: wgpu::Extent3d {
+                    width: 256,
+                    height: SHP_PALETTE_ROWS,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                // sRGB like the RGBA pages it replaces: reads decode the
+                // palette bytes to the same linear values.
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            (texture, view)
+        });
+        for (row, colors) in self.colors.iter().enumerate().skip(self.uploaded) {
+            atlas_growth::write_texels(queue, texture, [0, row as u32], [256, 1], 4, colors);
+        }
+        self.uploaded = self.colors.len();
+        view.clone()
+    }
+
+    /// The RGBA the shaders resolve `sprite`'s indices to (`indexed_color`).
+    #[cfg(test)]
+    fn rgba(&self, sprite: &RenderedShpSprite) -> Vec<u8> {
+        let colors = &self.colors[sprite.palette as usize];
+        sprite
+            .indices
+            .iter()
+            .flat_map(|&index| {
+                let entry = &colors[usize::from(index) * 4..usize::from(index) * 4 + 4];
+                [
+                    entry[0],
+                    entry[1],
+                    entry[2],
+                    if index == 0 { 0 } else { entry[3] },
+                ]
+            })
+            .collect()
+    }
 }
 
 /// World-effect and parachute animations, registered once per match by the
@@ -353,6 +447,8 @@ pub struct SpriteAtlas {
     /// Palette-index textures of the growth pages, by page; each page's bind
     /// group holds only a view of it.
     growth_indices: HashMap<usize, wgpu::Texture>,
+    /// The palettes every page's indices resolve through.
+    palettes: ShpPalettes,
 }
 
 fn push_effect_name(effect_names: &mut Vec<String>, name: &str) {
@@ -408,7 +504,11 @@ fn collect_effect_names(rules: &RuleSet) -> Vec<String> {
 }
 
 impl SpriteAtlas {
-    fn new(pages: Vec<SpriteAtlasPage>, entries: HashMap<ShpSpriteKey, ShpSpriteEntry>) -> Self {
+    fn new(
+        pages: Vec<SpriteAtlasPage>,
+        entries: HashMap<ShpSpriteKey, ShpSpriteEntry>,
+        palettes: ShpPalettes,
+    ) -> Self {
         Self {
             pages,
             entries,
@@ -423,6 +523,7 @@ impl SpriteAtlas {
             effects: EffectRegistry::default(),
             growth: None,
             growth_indices: HashMap::new(),
+            palettes,
         }
     }
 
@@ -495,15 +596,19 @@ impl SpriteAtlas {
 
     /// Place sprites rendered after the map-load pack on growth pages and
     /// upload the rows they fill, one write per page and texture. A sprite
-    /// no page can hold is remembered as unrenderable.
+    /// no page can hold is remembered as unrenderable. `palettes` is this
+    /// atlas's palette registry with the rows the sprites registered.
     fn append_sprites(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         batch: &BatchRenderer,
         sprites: Vec<RenderedShpSprite>,
+        palettes: ShpPalettes,
     ) {
         let max_dim = device.limits().max_texture_dimension_2d;
+        self.palettes = palettes;
+        let palette_rows = self.palettes.upload(device, queue);
         let (pages, growth_indices) = (&mut self.pages, &mut self.growth_indices);
         let (placed, unplaced) = atlas_growth::place_on_growth_pages(
             &mut self.growth,
@@ -513,7 +618,7 @@ impl SpriteAtlas {
             |[width, height]| {
                 let size = [width, height].map(|side| GROWTH_PAGE_SIZE.max(side).min(max_dim));
                 let (texture, source_indices) =
-                    batch.create_blank_texture_with_indices(device, size[0], size[1]);
+                    batch.create_indexed_page(device, size[0], size[1], &palette_rows);
                 pages.push(SpriteAtlasPage { texture });
                 let page = pages.len() - 1;
                 growth_indices.insert(page, source_indices);
@@ -525,7 +630,6 @@ impl SpriteAtlas {
             let texture = &self.pages[group.page].texture;
             write_sprite_band(
                 queue,
-                texture.view.texture(),
                 &self.growth_indices[&group.page],
                 group
                     .sprites
@@ -582,14 +686,16 @@ fn atlas_entry(
         canvas_rect: sprite.canvas_rect,
         extended: sprite.extended,
         page: u8::try_from(page).ok()?,
+        source_palette: sprite.palette + 1,
     })
 }
 
 /// Intermediate rendered sprite before atlas packing.
 struct RenderedShpSprite {
     key: ShpSpriteKey,
-    /// RGBA pixels of the stored frame rectangle, without canvas padding.
-    rgba: Vec<u8>,
+    /// The atlas palette row its indices resolve through ([`ShpPalettes`]).
+    palette: u32,
+    /// Palette indices of the stored frame rectangle, without canvas padding.
     indices: Vec<u8>,
     width: u32,
     height: u32,
@@ -1611,6 +1717,12 @@ pub fn build_sprite_atlas(
 
     let mut rendered: Vec<RenderedShpSprite> = Vec::with_capacity(new_keys.len());
     let mut unrenderable: Vec<ShpSpriteKey> = Vec::new();
+    // A refresh registers rows in a copy that is installed only with its
+    // sprites, so an aborted refresh leaves the atlas as it was.
+    let mut palettes = previous_atlas
+        .as_ref()
+        .map(|atlas| atlas.palettes.clone())
+        .unwrap_or_default();
     let mut source: Option<(&str, bool, Option<ShpSource>)> = None;
     for (key, palette_choice) in new_keys.iter().zip(palette_choices) {
         let projectile = key.palette_context.is_projectile();
@@ -1665,7 +1777,9 @@ pub fn build_sprite_atlas(
         let sprite = source
             .as_ref()
             .and_then(|(_, _, loaded)| loaded.as_ref())
-            .and_then(|loaded| render_shp_frame(loaded, pal, house_remap, key, rules));
+            .and_then(|loaded| {
+                render_shp_frame(loaded, pal, house_remap, key, rules, &mut palettes)
+            });
         match sprite {
             Some(sprite) => rendered.push(sprite),
             None if cell_drawer_type_ids.contains(&key.type_id.to_ascii_uppercase()) => {
@@ -1688,7 +1802,8 @@ pub fn build_sprite_atlas(
         .is_some_and(|atlas| atlas.harvest_overlay_loaded)
         && entities.values().any(|e| e.miner.is_some());
     if load_harvest_overlay {
-        let oregath_sprites: Vec<RenderedShpSprite> = render_harvest_overlay_frames(asset_manager);
+        let oregath_sprites: Vec<RenderedShpSprite> =
+            render_harvest_overlay_frames(asset_manager, &mut palettes);
         if !oregath_sprites.is_empty() {
             log::info!(
                 "Rendered {} oregath.shp harvest overlay frames",
@@ -1703,7 +1818,7 @@ pub fn build_sprite_atlas(
     let added = rendered.len();
     let mut atlas = match previous_atlas {
         Some(mut atlas) => {
-            atlas.append_sprites(device, queue, batch, rendered);
+            atlas.append_sprites(device, queue, batch, rendered, palettes);
             atlas
         }
         None if rendered.is_empty() => {
@@ -1711,7 +1826,7 @@ pub fn build_sprite_atlas(
             return None;
         }
         None => {
-            let mut atlas = pack_sprites(device, queue, batch, rendered);
+            let mut atlas = pack_sprites(device, queue, batch, rendered, palettes);
             atlas.effects = registered_effects;
             atlas
         }
@@ -1833,7 +1948,7 @@ fn load_shp_source(
     })
 }
 
-/// Load and render a single SHP sprite to RGBA pixels.
+/// Load and render a single SHP sprite, with the RGBA its indices resolve to.
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn render_shp_sprite(
@@ -1845,7 +1960,7 @@ fn render_shp_sprite(
     theater_name: &str,
     rules: Option<&RuleSet>,
     art: Option<&ArtRegistry>,
-) -> Option<RenderedShpSprite> {
+) -> Option<(RenderedShpSprite, Vec<u8>)> {
     let source = load_shp_source(
         asset_manager,
         &key.type_id,
@@ -1855,19 +1970,25 @@ fn render_shp_sprite(
         rules,
         art,
     )?;
-    render_shp_frame(&source, palette, house_remap, key, rules)
+    let mut palettes = ShpPalettes::default();
+    let sprite = render_shp_frame(&source, palette, house_remap, key, rules, &mut palettes)?;
+    let rgba = palettes.rgba(&sprite);
+    Some((sprite, rgba))
 }
 
-/// Render one key's frame of a decoded SHP to RGBA pixels.
+/// Render one key's frame of a decoded SHP: its palette indices, and the row
+/// of `palettes` holding the palette they resolve through.
 ///
 /// Selects the appropriate frame based on facing (8-direction for infantry).
-/// An empty (0x0) frame has nothing to draw and returns None.
+/// An empty (0x0) frame has nothing to draw and returns None, as does a frame
+/// whose palette the full rows cannot take.
 fn render_shp_frame(
     source: &ShpSource,
     palette: &Palette,
     house_remap: bool,
     key: &ShpSpriteKey,
     rules: Option<&RuleSet>,
+    palettes: &mut ShpPalettes,
 ) -> Option<RenderedShpSprite> {
     let shp = &source.shp;
     let found_name = source.found_name.as_str();
@@ -1924,17 +2045,13 @@ fn render_shp_frame(
             &remapped_pal
         };
 
-    let frame_rgba: Vec<u8> = match shp.frame_to_rgba(frame_idx, render_pal) {
-        Ok(rgba) => rgba,
-        Err(e) => {
-            log::warn!(
-                "Failed to convert {} frame {}: {}",
-                found_name,
-                frame_idx,
-                e
-            );
-            return None;
-        }
+    let Some(palette_row) = palettes.row(render_pal) else {
+        log::warn!(
+            "{} frame {}: the sprite atlas palette rows are full",
+            found_name,
+            frame_idx
+        );
+        return None;
     };
 
     // CC_Draw_Shape @ 0x004AED70 centers the SHP canvas, then adds the
@@ -1971,7 +2088,7 @@ fn render_shp_frame(
 
     Some(RenderedShpSprite {
         key: key.clone(),
-        rgba: frame_rgba,
+        palette: palette_row,
         indices: frame.pixels.clone(),
         width: fw,
         height: fh,
@@ -1995,7 +2112,10 @@ pub fn canonical_infantry_facing(facing: u8) -> u8 {
 /// Returns all 120 SHP frames (15 animation frames x 8 facings) as rendered sprites.
 /// Each frame is keyed by OREGATH, facing zero and its SHP frame index.
 /// At render time, the correct frame is: `facing_index * 15 + anim_frame`.
-fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedShpSprite> {
+fn render_harvest_overlay_frames(
+    asset_manager: &AssetManager,
+    palettes: &mut ShpPalettes,
+) -> Vec<RenderedShpSprite> {
     // Load effect palette (anim.pal).
     let pal_data: &[u8] = match asset_manager.get_ref("anim.pal") {
         Some(d) => d,
@@ -2047,6 +2167,10 @@ fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedSh
         real_frames,
     );
 
+    let Some(palette_row) = palettes.row(&palette) else {
+        log::warn!("Sprite atlas palette rows are full — skipping harvest overlay");
+        return Vec::new();
+    };
     let hc: HouseColorIndex = HouseColorIndex::default();
     let mut sprites: Vec<RenderedShpSprite> = Vec::with_capacity(real_frames);
 
@@ -2058,11 +2182,6 @@ fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedSh
         if frame.frame_width == 0 || frame.frame_height == 0 {
             continue;
         }
-        // Render with effect palette — no house color remap.
-        let frame_rgba: Vec<u8> = match shp.frame_to_rgba(frame_idx, &palette) {
-            Ok(rgba) => rgba,
-            Err(_) => continue,
-        };
 
         // Use per-frame dimensions instead of the full SHP canvas.
         // oregath.shp's canvas encompasses all 8 facings, so it's much larger
@@ -2085,7 +2204,8 @@ fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedSh
                 frame: frame_idx as u16,
                 house_color: hc,
             },
-            rgba: frame_rgba,
+            // The effect palette, with no house color remap.
+            palette: palette_row,
             indices: frame.pixels.clone(),
             width: fw,
             height: fh,
@@ -2102,7 +2222,7 @@ fn render_harvest_overlay_frames(asset_manager: &AssetManager) -> Vec<RenderedSh
 #[cfg(test)]
 pub(crate) use tests::native_palette_probe_page;
 
-/// RGBA bytes of rows at which a map-load upload band closes. A band holds
+/// Index bytes of rows at which a map-load upload band closes. A band holds
 /// whole shelves, so it exceeds this by less than its last shelf.
 const PACK_BAND_BYTES: u64 = 64 << 20;
 
@@ -2113,13 +2233,15 @@ const PACK_BAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10
 ///
 /// Sprites are packed into pages of at most `max_texture_dim × max_texture_dim`
 /// pixels each; a page is added when the shelves outgrow the GPU texture limit.
-/// Each page is created blank and filled by [`upload_shelves`], so the pack
-/// never holds a whole page of texels or its staging copy.
+/// Each page holds only palette indices, resolved through `palettes`. It is
+/// created blank and filled by [`upload_shelves`], so the pack never holds a
+/// whole page of texels or its staging copy.
 fn pack_sprites(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     batch: &BatchRenderer,
     mut sprites: Vec<RenderedShpSprite>,
+    mut palettes: ShpPalettes,
 ) -> SpriteAtlas {
     // Sort by height descending for shelf packing efficiency.
     let mut indices: Vec<usize> = (0..sprites.len()).collect();
@@ -2186,6 +2308,7 @@ fn pack_sprites(
     }
 
     let num_pages: usize = current_page as usize + 1;
+    let palette_rows = palettes.upload(device, queue);
 
     // Build each page's GPU texture.
     let mut pages: Vec<SpriteAtlasPage> = Vec::with_capacity(num_pages);
@@ -2204,7 +2327,7 @@ fn pack_sprites(
             .max()
             .unwrap_or(1);
         let (texture, source_indices) =
-            batch.create_blank_texture_with_indices(device, atlas_width, page_height);
+            batch.create_indexed_page(device, atlas_width, page_height, &palette_rows);
         for &(idx, origin) in &placed {
             let sprite = &sprites[idx];
             if let Some(entry) = atlas_entry(
@@ -2219,7 +2342,6 @@ fn pack_sprites(
         upload_shelves(
             device,
             queue,
-            texture.view.texture(),
             &source_indices,
             &mut sprites,
             &placed,
@@ -2228,7 +2350,7 @@ fn pack_sprites(
         pages.push(SpriteAtlasPage { texture });
     }
 
-    // RGBA plus the palette-index companion: five bytes a texel.
+    // One palette index a texel.
     let texels: u64 = pages
         .iter()
         .map(|page| u64::from(page.texture.width) * u64::from(page.texture.height))
@@ -2238,25 +2360,25 @@ fn pack_sprites(
         .map(|page| format!("{}x{}", page.texture.width, page.texture.height))
         .collect();
     log::info!(
-        "Sprite atlas packed into {} page(s) of at most {max_texture_dim} px: {} ({:.0} MiB)",
+        "Sprite atlas packed into {} page(s) of at most {max_texture_dim} px: {} ({:.0} MiB), {} palette row(s)",
         pages.len(),
         sizes.join(", "),
-        (texels * 5) as f64 / (1024.0 * 1024.0),
+        texels as f64 / (1024.0 * 1024.0),
+        palettes.colors.len(),
     );
-    SpriteAtlas::new(pages, entries)
+    SpriteAtlas::new(pages, entries, palettes)
 }
 
-/// Upload the sprites `placed` on a blank page (sprite index and origin, shelf
-/// by shelf from the top) in bands of whole shelves. A band takes shelves
-/// until its rows reach `band_bytes` of RGBA, so it holds at least one shelf.
-/// Bands share no row, as [`atlas_growth::write_band`] requires. Each band's
-/// sprites give up their pixels once written, and the band's staging copy is
-/// retired before the next band is gathered, so the upload holds one band
-/// beside the sprites still to go.
+/// Upload the sprites `placed` on a blank index page (sprite index and origin,
+/// shelf by shelf from the top) in bands of whole shelves. A band takes shelves
+/// until its rows reach `band_bytes`, so it holds at least one shelf. Bands
+/// share no row, as [`atlas_growth::write_band`] requires. Each band's sprites
+/// give up their indices once written, and the band's staging copy is retired
+/// before the next band is gathered, so the upload holds one band beside the
+/// sprites still to go.
 fn upload_shelves(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    rgba: &wgpu::Texture,
     indices: &wgpu::Texture,
     sprites: &mut [RenderedShpSprite],
     placed: &[(usize, [u32; 2])],
@@ -2266,7 +2388,7 @@ fn upload_shelves(
         placed.windows(2).all(|pair| pair[0].1[1] <= pair[1].1[1]),
         "placements must run shelf by shelf from the top"
     );
-    let row_bytes = u64::from(rgba.width()) * 4;
+    let row_bytes = u64::from(indices.width());
     let mut rest = placed;
     while let Some(&(_, [_, top])) = rest.first() {
         // Whole shelves (runs of one row origin) until the band's rows reach `band_bytes`.
@@ -2285,14 +2407,11 @@ fn upload_shelves(
         let (band, tail) = rest.split_at(len);
         write_sprite_band(
             queue,
-            rgba,
             indices,
             band.iter().map(|&(idx, origin)| (origin, &sprites[idx])),
         );
         for &(idx, _) in band {
-            let sprite = &mut sprites[idx];
-            sprite.rgba = Vec::new();
-            sprite.indices = Vec::new();
+            sprites[idx].indices = Vec::new();
         }
         let submission_index = queue.submit(std::iter::empty());
         if let Err(error) = device.poll(wgpu::PollType::Wait {
@@ -2305,23 +2424,17 @@ fn upload_shelves(
     }
 }
 
-/// Upload sprites placed on rows of a page that hold no other sprite: one
-/// [`atlas_growth::write_band`] each for the RGBA texture and its palette-index
-/// companion.
+/// Upload sprites placed on rows of an index page that hold no other sprite,
+/// in one [`atlas_growth::write_band`].
 fn write_sprite_band<'a>(
     queue: &wgpu::Queue,
-    rgba: &wgpu::Texture,
     indices: &wgpu::Texture,
-    sprites: impl Iterator<Item = ([u32; 2], &'a RenderedShpSprite)> + Clone,
+    sprites: impl Iterator<Item = ([u32; 2], &'a RenderedShpSprite)>,
 ) {
-    let rects = |texels: fn(&RenderedShpSprite) -> &[u8]| {
-        sprites
-            .clone()
-            .map(|(origin, sprite)| (origin, [sprite.width, sprite.height], texels(sprite)))
-            .collect::<Vec<_>>()
-    };
-    atlas_growth::write_band(queue, rgba, 4, &rects(|s| &s.rgba));
-    atlas_growth::write_band(queue, indices, 1, &rects(|s| &s.indices));
+    let rects: Vec<_> = sprites
+        .map(|(origin, sprite)| (origin, [sprite.width, sprite.height], &sprite.indices[..]))
+        .collect();
+    atlas_growth::write_band(queue, indices, 1, &rects);
 }
 
 /// Simulate shelf-packing to determine total height without allocating buffers.
@@ -2358,6 +2471,25 @@ mod projectile_tests;
 #[cfg(test)]
 impl SpriteAtlas {
     pub(crate) fn from_test_pages(pages: Vec<SpriteAtlasPage>) -> Self {
-        Self::new(pages, HashMap::new())
+        Self::new(pages, HashMap::new(), ShpPalettes::default())
+    }
+
+    /// A one-page atlas whose page holds `indices` resolved through
+    /// `palette`, with the `source_palette` its instances carry.
+    pub(crate) fn from_test_indexed_page(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        batch: &BatchRenderer,
+        size: [u32; 2],
+        indices: &[u8],
+        palette: &Palette,
+    ) -> (Self, u32) {
+        let mut palettes = ShpPalettes::default();
+        let row = palettes.row(palette).expect("an empty atlas has free rows");
+        let palette_rows = palettes.upload(device, queue);
+        let (texture, page) = batch.create_indexed_page(device, size[0], size[1], &palette_rows);
+        atlas_growth::write_texels(queue, &page, [0, 0], size, 1, indices);
+        let atlas = Self::new(vec![SpriteAtlasPage { texture }], HashMap::new(), palettes);
+        (atlas, row + 1)
     }
 }

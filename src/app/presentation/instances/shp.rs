@@ -499,6 +499,7 @@ pub(crate) fn build_shp_instances(
                 size: entry.pixel_size,
                 uv_origin: entry.uv_origin,
                 uv_size: entry.uv_size,
+                source_palette: entry.source_palette,
                 depth,
                 tint: body_tint,
                 palette_light: palette_light.with_colour_word(
@@ -862,6 +863,7 @@ fn emit_building_bib(
             size: bib_entry.pixel_size,
             uv_origin: bib_entry.uv_origin,
             uv_size: bib_entry.uv_size,
+            source_palette: bib_entry.source_palette,
             depth: building_depth,
             tint,
             palette_light: palette_light.with_colour_word(
@@ -1034,6 +1036,7 @@ fn emit_building_anims(
                 size: anim_entry.pixel_size,
                 uv_origin: anim_entry.uv_origin,
                 uv_size: anim_entry.uv_size,
+                source_palette: anim_entry.source_palette,
                 depth: anim_depth,
                 tint: anim_tint,
                 palette_light,

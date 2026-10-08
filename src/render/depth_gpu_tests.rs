@@ -39,12 +39,15 @@ enum Shader {
 
 impl Shader {
     fn source(self) -> String {
-        super::tactical_shader::world_source(match self {
-            Self::Batch => include_str!("batch_shader.wgsl"),
-            Self::Terrain => include_str!("zdepth_shader.wgsl"),
-            Self::SpriteRead | Self::SpriteWrite => include_str!("zsprite_shader.wgsl"),
-            Self::Voxel => include_str!("sprite_voxel_shader.wgsl"),
-        })
+        use super::tactical_shader::{sprite_source, world_source};
+        match self {
+            Self::Batch => sprite_source(include_str!("batch_shader.wgsl")),
+            Self::Terrain => world_source(include_str!("zdepth_shader.wgsl")),
+            Self::SpriteRead | Self::SpriteWrite => {
+                sprite_source(include_str!("zsprite_shader.wgsl"))
+            }
+            Self::Voxel => world_source(include_str!("sprite_voxel_shader.wgsl")),
+        }
     }
 
     fn writes_depth(self) -> bool {
@@ -61,6 +64,9 @@ struct Layer {
     source_size: [u32; 2],
     indices: Vec<u8>,
     palette_override: Option<Vec<u8>>,
+    /// A palette-indexed SHP page: these palette rows take the colour binding
+    /// in place of `rgba`, and the instance's `source_palette` picks the row.
+    palette_rows: Option<Vec<u8>>,
 }
 
 impl Layer {
@@ -83,6 +89,7 @@ impl Layer {
             source_size: [SIDE; 2],
             indices: vec![33; (SIDE * SIDE) as usize],
             palette_override: None,
+            palette_rows: None,
         }
     }
 
@@ -274,6 +281,12 @@ impl Gpu {
                     wgpu::TextureFormat::R8Uint,
                     &layer.indices,
                     layer.source_size,
+                )
+            } else if let Some(rows) = &layer.palette_rows {
+                self.texture(
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    rows,
+                    [256, (rows.len() / 1024) as u32],
                 )
             } else {
                 self.texture(
@@ -1346,7 +1359,7 @@ fn colour_word_ors_into_every_ordinary_shader_pixel() {
 #[ignore = "requires a GPU adapter"]
 fn native_shp_loader_atlas_palette_indices_reach_production_pixels() {
     let gpu = Gpu::new();
-    let (rgba, indices, size) = super::sprite_atlas::native_palette_probe_page();
+    let probe = super::sprite_atlas::native_palette_probe_page();
     let fixture = super::palette_light::native_fixtures()
         .into_iter()
         .find(|f| f.house && f.rows == 53 && f.rgb == [992, 768, 512])
@@ -1354,10 +1367,11 @@ fn native_shp_loader_atlas_palette_indices_reach_production_pixels() {
     let profile = super::native_surface_format::ACTIVE_RETAIL_RGB565_PRESENTATION;
     for shader in [Shader::Batch, Shader::SpriteRead, Shader::SpriteWrite] {
         let mut layer = Layer::solid(shader, RED, 0.0);
-        layer.rgba = rgba.clone();
-        layer.indices = indices.clone();
-        layer.source_size = size;
-        layer.z_bytes = vec![0; (size[0] * size[1]) as usize];
+        layer.palette_rows = Some(probe.palette_row.clone());
+        layer.instance.source_palette = 1;
+        layer.indices = probe.indices.clone();
+        layer.source_size = probe.size;
+        layer.z_bytes = vec![0; (probe.size[0] * probe.size[1]) as usize];
         layer.instance.size = [256.0, 1.0];
         layer.instance.uv_origin = [3.0 / 262.0, 1.0 / 3.0];
         layer.instance.uv_size = [256.0 / 262.0, 1.0 / 3.0];
@@ -1382,6 +1396,45 @@ fn native_shp_loader_atlas_palette_indices_reach_production_pixels() {
     }
 }
 
+#[test]
+#[ignore = "requires a GPU adapter"]
+fn indexed_shp_pages_draw_the_pixels_their_rgba_pages_drew() {
+    // The probe page through each SHP shader: once from the RGBA that
+    // `ShpFile::frame_to_rgba` converts its frame to, once from its indices
+    // and palette row. The row sits behind a decoy row, so the row selection
+    // is exercised. The precomposed path and a native palette conversion must
+    // both agree pixel for pixel, holes included.
+    let gpu = Gpu::new();
+    let probe = super::sprite_atlas::native_palette_probe_page();
+    let rows = [vec![255; 1024], probe.palette_row.clone()].concat();
+    let fixture = super::palette_light::native_fixtures()
+        .into_iter()
+        .find(|f| f.house && f.rows == 53 && f.rgb == [992, 768, 512])
+        .unwrap();
+    for shader in [Shader::Batch, Shader::SpriteRead, Shader::SpriteWrite] {
+        for palette_light in [
+            super::palette_light::PaletteLight::default(),
+            super::palette_light::PaletteLight::new(fixture.rgb, 53, 1000, true),
+        ] {
+            let mut rgba = Layer::solid(shader, RED, 0.0);
+            rgba.rgba = probe.rgba.clone();
+            rgba.indices = probe.indices.clone();
+            rgba.source_size = probe.size;
+            rgba.z_bytes = vec![0; (probe.size[0] * probe.size[1]) as usize];
+            rgba.instance.size = probe.size.map(|v| v as f32);
+            rgba.instance.palette_light = palette_light;
+            let mut indexed = rgba.clone();
+            indexed.palette_rows = Some(rows.clone());
+            indexed.instance.source_palette = 2;
+            assert_eq!(
+                gpu.render_sized(&[indexed], probe.size),
+                gpu.render_sized(&[rgba], probe.size),
+                "{shader:?}, {palette_light:?}"
+            );
+        }
+    }
+}
+
 /// Offscreen consumer seam for app-layer tests of production lighting inputs.
 /// Uses the ordinary terrain WGSL and real TMP pixels; no CPU color substitute.
 pub(crate) fn render_terrain_lighting_probe(
@@ -1396,6 +1449,7 @@ pub(crate) fn render_terrain_lighting_probe(
         source_size: [tile.width, tile.height],
         indices: Vec::new(),
         palette_override: None,
+        palette_rows: None,
     };
     Gpu::new().render_sized(&[layer], [tile.width, tile.height])
 }
