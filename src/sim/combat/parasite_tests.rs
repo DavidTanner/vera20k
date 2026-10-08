@@ -16,7 +16,7 @@ const RULES: &str = "\
 [General]\nRepairPercent=15%\nRepairStep=8\n\
 [Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nFloat=0%\nHover=50%\nAmphibious=80%\nFloatBeach=0%\n\
 Buildable=yes\n\
-[CombatDamage]\nC4Warhead=Super\n\
+[CombatDamage]\nC4Warhead=Super\nIronCurtainDuration=750\n\
 [InfantryTypes]\n0=DOG\n1=E1\n\
 [VehicleTypes]\n0=DRON\n1=MTNK\n2=DLPH\n3=MCV\n4=TRAN\n\
 [AircraftTypes]\n[BuildingTypes]\n0=YARD\n\
@@ -589,7 +589,11 @@ fn iron_curtain_strips_the_drone_and_kills_an_organic_vehicle() {
     let dolphin = arena.spawn(&rules, "DLPH", "Americans", (12, 10));
     arena.infect(&rules, drone, tank);
     let owner = arena.sim.interner.intern("Americans");
-    let sw = arena.sim.interner.intern("IronCurtainSpecial");
+    let sw = crate::sim::superweapon::chronosphere_tests::charge_super(
+        &mut arena.sim,
+        owner,
+        "IronCurtainSpecial",
+    );
     crate::sim::superweapon::iron_curtain::launch(&mut arena.sim, &rules, owner, 11, 10, sw, None);
 
     let frame = arena.frame();

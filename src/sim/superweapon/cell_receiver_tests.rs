@@ -33,7 +33,7 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
          [IC]\nType=IronCurtain\nRechargeTime=1\n\
          [GM]\nType=GeneticConverter\nRechargeTime=1\n\
          [General]\nMutateExplosion=no\n\
-         [CombatDamage]\nC4Warhead=Super\n[SpecialWeapons]\nMutateWarhead=Mutate\n\
+         [CombatDamage]\nC4Warhead=Super\nIronCurtainDuration=750\n[SpecialWeapons]\nMutateWarhead=Mutate\n\
          [Warheads]\n0=Super\n1=Mutate\n2=DeathWH\n\
          [Super]\nInfDeath=2\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
          [Mutate]\nInfDeath=9\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\

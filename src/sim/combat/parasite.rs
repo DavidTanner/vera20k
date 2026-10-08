@@ -106,6 +106,11 @@ impl ParasiteState {
         self.victim
     }
 
+    #[cfg(test)]
+    pub(crate) fn suppression(&self) -> &CdTimer {
+        &self.suppression
+    }
+
     pub(crate) fn suppress(&mut self, frame: u32, duration: i32) {
         self.suppression = CdTimer::started(frame as i32, duration);
     }

@@ -2375,6 +2375,41 @@ mod tests {
     }
 
     #[test]
+    fn iron_curtain_example_curtains_a_tank_under_fire() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.iron-curtain.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The second HTNK (id 2) fires on the first (id 1); the Iron Curtain,
+        // charged for 4500 frames from the first step, then curtains the
+        // first and kills the E2 beside it.
+        let [attack, launch] = profile.commands() else {
+            panic!("an attack and a launch");
+        };
+        assert_eq!(
+            (attack.issue_after_step, launch.issue_after_step),
+            (4440, 4510)
+        );
+        assert!(matches!(
+            attack.payload,
+            Command::ForceAttack {
+                attacker_id: 2,
+                target_id: 1
+            }
+        ));
+        assert!(matches!(
+            launch.payload,
+            Command::LaunchSuperWeapon {
+                target_rx: 44,
+                target_ry: 54,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn computer_nuclear_missile_example_leaves_the_launch_to_the_computer() {
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.ai-nuclear-missile.example.json",
