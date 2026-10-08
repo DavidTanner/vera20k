@@ -849,12 +849,6 @@ mod tests {
                 row["result"].as_u64().unwrap(),
                 "{input}"
             );
-            sim.fog.build_merged_for(owner, &sim.interner);
-            assert_eq!(
-                u64::from(sim.aircraft_can_enter(1, cell)),
-                row["result"].as_u64().unwrap(),
-                "{input}"
-            );
         }
     }
 

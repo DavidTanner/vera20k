@@ -3997,15 +3997,15 @@ impl Simulation {
         }
     }
 
-    /// Pre-merge the named owner's fog visibility so render-side queries hit
-    /// the O(1) merged cache (F10 boundary method: the app requests, sim owns
-    /// the write). Returns false when the owner name is not interned yet —
-    /// no view is built and the per-query slow path stays in effect.
+    /// Tell the fog that presentation prepared a view for the named owner
+    /// (F10 boundary method: the app requests, sim owns the write). Bumps the
+    /// view generation render dirty-gates on. Returns false, and bumps
+    /// nothing, when the owner name is not interned yet.
     pub(crate) fn prepare_fog_view_for(&mut self, owner: &str) -> bool {
-        let Some(owner_id) = self.interner.get(owner) else {
+        if self.interner.get(owner).is_none() {
             return false;
-        };
-        self.fog.build_merged_for(owner_id, &self.interner);
+        }
+        self.fog.bump_view_generation();
         true
     }
 

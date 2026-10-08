@@ -440,9 +440,7 @@ fn shroud_current_sight_fresh_direct_allied_psychic_reaches_authoritative_view()
         &mut sim, &rules, a, 12, 12, sw
     ));
     sim.reconcile_active_vision_structures(&rules);
-    sim.fog.build_merged_for(b, &sim.interner);
     assert!(sim.fog.is_cell_revealed(b, 12, 12));
-    sim.fog.build_merged_for(c, &sim.interner);
     assert!(
         !sim.fog.is_cell_revealed(c, 12, 12),
         "A's fresh reveal may reach B, never B's ally C"
@@ -451,7 +449,6 @@ fn shroud_current_sight_fresh_direct_allied_psychic_reaches_authoritative_view()
         &mut sim, &rules, b, 12, 12, sw
     ));
     sim.reconcile_active_vision_structures(&rules);
-    sim.fog.build_merged_for(a, &sim.interner);
     assert!(
         sim.fog.is_cell_revealed(a, 12, 12),
         "fresh direct ally mapping opens the current gap"
@@ -460,13 +457,11 @@ fn shroud_current_sight_fresh_direct_allied_psychic_reaches_authoritative_view()
     sim.fog.flush_pending_gap_conceal(120);
     sim.uninit(1);
     sim.reconcile_active_vision_structures(&rules);
-    sim.fog.build_merged_for(a, &sim.interner);
     assert!(!sim.fog.is_cell_revealed(a, 12, 12));
     assert!(crate::sim::superweapon::psychic_reveal::launch(
         &mut sim, &rules, b, 12, 12, sw
     ));
     sim.reconcile_active_vision_structures(&rules);
-    sim.fog.build_merged_for(a, &sim.interner);
     assert!(
         sim.fog.is_cell_revealed(a, 12, 12),
         "fresh direct ally mapping also reaches retained post-gap knowledge authority"
@@ -507,12 +502,10 @@ fn shroud_current_sight_psychic_never_gapped_and_mixed_views_are_nontransitive()
         ));
         for _ in 0..3 {
             sim.reconcile_active_vision_structures(&rules);
-            sim.fog.build_merged_for(b, &sim.interner);
             for x in [12, 20] {
                 assert!(sim.fog.is_cell_revealed(b, x, 12));
                 assert!(sim.fog.is_cell_visible(b, x, 12));
             }
-            sim.fog.build_merged_for(c, &sim.interner);
             for x in [12, 20] {
                 assert!(
                     !sim.fog.is_cell_revealed(c, x, 12),
@@ -525,9 +518,7 @@ fn shroud_current_sight_psychic_never_gapped_and_mixed_views_are_nontransitive()
         let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
             .unwrap()
             .sim;
-        restored.fog.build_merged_for(c, &restored.interner);
         assert!(!restored.fog.is_cell_revealed(c, 20, 12));
-        restored.fog.build_merged_for(b, &restored.interner);
         assert!(restored.fog.is_cell_revealed(b, 20, 12));
     }
 }
@@ -615,9 +606,8 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         .unwrap()
         .sim;
     assert_eq!(sim.state_hash(), hash);
-    // Passive House and restore/cache materialization cannot consume either clock.
+    // Passive House and restore cannot consume either clock.
     sim.reconcile_active_vision_structures(&rules);
-    sim.fog.build_merged_for(a, &sim.interner);
     assert_eq!(
         sim.substrate
             .entities
@@ -867,7 +857,6 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
         );
         for _ in 0..2 {
             sim.reconcile_active_vision_structures(&rules);
-            sim.fog.build_merged_for(owner, &sim.interner);
             assert_eq!(
                 sim.fog.is_cell_revealed(owner, 12, 12),
                 expected,

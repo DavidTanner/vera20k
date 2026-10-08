@@ -910,11 +910,12 @@ fn advance_one_simulation_frame(
             }
             census_tick = tick_result.frame_committed.then_some(tick_result.tick);
             drained_lifecycle_outputs = frame_lifecycle_outputs;
-            // Pre-merge fog visibility for local owner so render queries are O(1).
+            // Mark the local owner's fog view prepared; render dirty-gates on its
+            // generation.
             // F10: sim owns the write; the app only names the owner.
             if let Some(owner) = &local_owner_for_fog {
                 if sim.session.tick == 1 {
-                    log::info!("Fog merged for local owner: '{}'", owner);
+                    log::info!("Fog view prepared for local owner: '{}'", owner);
                 }
                 sim.prepare_fog_view_for(owner);
             }

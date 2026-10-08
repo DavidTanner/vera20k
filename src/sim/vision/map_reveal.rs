@@ -111,7 +111,6 @@ impl FogState {
         }
         {
             let vis = self.by_owner.get_mut(&owner).unwrap();
-            vis.ensure_cell_runtime();
             for (x, y) in cells {
                 let Some(index) = vis.index(x, y) else {
                     continue;
@@ -145,6 +144,5 @@ impl FogState {
         if reset {
             self.whole_map_revealed_owners.remove(&owner);
         }
-        self.view_cache.merged = None;
     }
 }

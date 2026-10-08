@@ -10535,9 +10535,7 @@ fn current_rust_frame_call_order_is_preserved() {
     // Once-per-pass drain: nothing left for a second consumer.
     assert!(sim.take_due_commands().is_empty());
 
-    // Post-frame reads (fog merge, digest) observe the committed frame.
-    let owner = sim.interner.get("Americans").expect("owner interned");
-    sim.fog.build_merged_for(owner, &sim.interner);
+    // Post-frame reads (the digest) observe the committed frame.
     let _ = sim.parity_digest();
 }
 

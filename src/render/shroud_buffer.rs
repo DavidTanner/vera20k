@@ -843,9 +843,7 @@ mod tests {
         );
         for _ in 0..3 {
             apply_gap_generators(&mut fog, &[(gapper, 6, 6, 2)], &interner);
-            fog.build_merged_for(b, &interner);
             assert_eq!(cell_fill(&fog, b, 6, 6, &SHROUD_EDGE_LUT), CellFill::None);
-            fog.build_merged_for(c, &interner);
             assert_eq!(
                 cell_fill(&fog, c, 6, 6, &SHROUD_EDGE_LUT),
                 CellFill::Frame(15)
@@ -853,7 +851,6 @@ mod tests {
             assert!(!fog.is_cell_visible(c, 6, 6));
         }
         apply_gap_generators(&mut fog, &[], &interner);
-        fog.build_merged_for(c, &interner);
         assert_eq!(
             cell_fill(&fog, c, 6, 6, &SHROUD_EDGE_LUT),
             CellFill::Frame(15)
