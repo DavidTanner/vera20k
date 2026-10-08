@@ -73,9 +73,15 @@ pub fn find_paradrop_edge_cell(
     let twice_height = bounds.off_108.wrapping_mul(2);
 
     let start = match edge {
-        Edge::North | Edge::South => random_ranged_i32(scenario_rng, 1, width).wrapping_sub(1),
-        Edge::East => random_ranged_i32(scenario_rng, 1, twice_height).wrapping_sub(1),
-        Edge::West => random_ranged_i32(scenario_rng, 0, twice_height).wrapping_sub(1),
+        Edge::North | Edge::South => scenario_rng
+            .next_range_i32_inclusive(1, width)
+            .wrapping_sub(1),
+        Edge::East => scenario_rng
+            .next_range_i32_inclusive(1, twice_height)
+            .wrapping_sub(1),
+        Edge::West => scenario_rng
+            .next_range_i32_inclusive(0, twice_height)
+            .wrapping_sub(1),
     };
     let fallback = local_to_packed_cell(bounds, 1, width / 2);
 
@@ -116,8 +122,7 @@ pub fn find_paradrop_edge_cell(
             if candidates.is_empty() {
                 return Some((0, 0));
             }
-            let index = random_ranged_i32(
-                scenario_rng,
+            let index = scenario_rng.next_range_i32_inclusive(
                 0,
                 i32::try_from(candidates.len() - 1).expect("native candidate count fits i32"),
             );
@@ -136,20 +141,6 @@ fn candidate_is_outside(
 
 const fn pack_cell(cell: (i32, i32)) -> (u16, u16) {
     (cell.0 as i16 as u16, cell.1 as i16 as u16)
-}
-
-fn random_ranged_i32(rng: &mut SimRng, low: i32, high: i32) -> i32 {
-    let (lo, hi) = if low <= high {
-        (low, high)
-    } else {
-        (high, low)
-    };
-    let span = i64::from(hi) - i64::from(lo);
-    if span == 0 {
-        return lo;
-    }
-    let span = u32::try_from(span).expect("MapClass ranged span fits native u32");
-    lo.wrapping_add(rng.next_range_u32_inclusive(0, span) as i32)
 }
 
 #[cfg(test)]
