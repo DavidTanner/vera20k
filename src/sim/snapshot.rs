@@ -886,7 +886,9 @@ use crate::sim::world::Simulation;
 // SightAdmission drops its fog_of_war copy. Prior records cannot resume.
 // 306 -> 307: ScenarioSession drops its LocalSize copy; playfield_bounds owns
 // it. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 307;
+// 307 -> 308: ProductionState drops terrain_occupation_bits, a per-cell copy of
+// the terrain objects' occupation that nothing read. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 308;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3912,7 +3914,8 @@ mod tests {
         // 304 -> 305: write-only power transition latch and miner return flag.
         // 305 -> 306: ground bits replace the legacy visibility counters.
         // 306 -> 307: the session's LocalSize copy.
-        assert_eq!(super::SNAPSHOT_VERSION, 307);
+        // 307 -> 308: the unread terrain occupation copy.
+        assert_eq!(super::SNAPSHOT_VERSION, 308);
     }
 
     #[test]
@@ -8314,11 +8317,7 @@ mod tests {
 
         let mut original_occupied_grid = flat_terrain(3, 3);
         for terrain in [&damaged, &destroyed, &spawner] {
-            mark_terrain_occupation(
-                &mut sim.production,
-                terrain,
-                Some(&mut original_occupied_grid),
-            );
+            mark_terrain_occupation(terrain, Some(&mut original_occupied_grid));
         }
         let stale_original_grid = original_occupied_grid.clone();
         assert!(

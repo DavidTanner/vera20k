@@ -2628,10 +2628,7 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(gsi_04_10_clear_terrain(2, 1));
     let tree = gsi_04_10_terrain_object(&mut sim, 1, (0, 0), 7);
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        mark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     sim.terrain_costs = build_canonical_terrain_cost_grids(
         sim.resolved_terrain.as_ref().expect("resolved terrain"),
     );
@@ -2642,10 +2639,7 @@ fn gsi_04_10_in_tick_refresh_updates_tail_path_and_cost_before_consumers() {
     assert!(!input_path_grid.is_walkable(0, 0));
     assert_eq!(sim.terrain_costs[&SpeedType::Track].cost_at(0, 0), 0);
 
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        unmark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     sim.path_grid = Some(Arc::new(input_path_grid));
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
@@ -2677,10 +2671,7 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(gsi_04_10_clear_terrain(1, 1));
     let tree = gsi_04_10_terrain_object(&mut sim, 1, (0, 0), 0);
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        mark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     assert_eq!(
         sim.resolved_terrain
             .as_ref()
@@ -2709,10 +2700,7 @@ fn gsi_04_10_zero_occupation_removal_forces_ground_zone_with_same_walkability() 
         "OccupationBits=0 is a reduced Building zone even though PathGrid is walkable"
     );
 
-    {
-        let (production, terrain) = (&mut sim.production, &mut sim.resolved_terrain);
-        unmark_terrain_occupation(production, &tree, terrain.as_mut());
-    }
+    unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     sim.finish_terrain_navigation_changes(&rules, &[(0, 0)]);
     let tail_path_grid = sim.path_grid_snapshot().expect("tail grid");

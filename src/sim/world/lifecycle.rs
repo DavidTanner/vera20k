@@ -4343,7 +4343,6 @@ impl Simulation {
             if self.production.terrain_object_cells.get(&cell) == Some(&stable_id) {
                 self.production.terrain_object_cells.remove(&cell);
                 self.production.terrain_animations.remove(&cell);
-                self.production.terrain_occupation_bits.remove(&cell);
                 self.production
                     .tiberium_spawning_terrain_cells
                     .remove(&cell);

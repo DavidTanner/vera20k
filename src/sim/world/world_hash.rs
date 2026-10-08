@@ -970,11 +970,6 @@ impl Simulation {
             ry.hash(hasher);
             stable_id.hash(hasher);
         }
-        for (&(rx, ry), &bits) in &self.production.terrain_occupation_bits {
-            rx.hash(hasher);
-            ry.hash(hasher);
-            bits.hash(hasher);
-        }
         for &(rx, ry) in &self.production.tiberium_spawning_terrain_cells {
             rx.hash(hasher);
             ry.hash(hasher);

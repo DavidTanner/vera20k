@@ -1606,10 +1606,7 @@ mod tests {
             terrain.occupation_bits = 7;
             terrain
         };
-        {
-            let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);
-            mark_terrain_occupation(production, &tree, resolved.as_mut());
-        }
+        mark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
 
         assert!(sim.rebuild_dynamic_navigation(&rules));
         assert!(!sim.path_grid().expect("terrain").is_walkable(0, 0));
@@ -1619,10 +1616,7 @@ mod tests {
             "terrain object must block both navigation caches before removal"
         );
 
-        {
-            let (production, resolved) = (&mut sim.production, &mut sim.resolved_terrain);
-            unmark_terrain_occupation(production, &tree, resolved.as_mut());
-        }
+        unmark_terrain_occupation(&tree, sim.resolved_terrain.as_mut());
         assert!(sim.rebuild_dynamic_navigation(&rules));
 
         assert!(sim.path_grid().expect("terrain").is_walkable(0, 0));
