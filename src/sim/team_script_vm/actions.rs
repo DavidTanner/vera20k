@@ -48,7 +48,7 @@
 //!   clear, so an `Aggressive=` team's fighting member keeps fighting.
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::ScanMission;
 use crate::sim::combat::fire_error::FireError;

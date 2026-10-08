@@ -9,7 +9,7 @@
 //! receipt.
 
 use crate::map::houses::HouseRoster;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::crates::CratePlacement;
 #[cfg(test)]

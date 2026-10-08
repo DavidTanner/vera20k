@@ -375,7 +375,7 @@ fn a_restored_destination_warps_at_the_teleport_process_entry() {
 /// registry before changing Mission, NavCom, reservations or any RNG stream.
 #[test]
 fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
-    use crate::map::overlay_types::OverlayTypeRegistry;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::sim::components::NavTargetRef;
     use crate::sim::mission::authority::MissionAuthorityError;
     use crate::sim::mission::state::MissionTestFixture;

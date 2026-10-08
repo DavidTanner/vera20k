@@ -273,7 +273,7 @@ pub struct CanEnterCellContext<'a> {
 #[derive(Clone, Copy)]
 pub struct WallArmTables<'a> {
     pub overlay_grid: Option<&'a crate::sim::overlay_grid::OverlayGrid>,
-    pub overlay_registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    pub overlay_registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     pub alliances: Option<&'a crate::map::houses::HouseAllianceMap>,
     /// Map-global like the other three: the ally test resolves the wall's owner
     /// name through it before `HouseClass::Is_Ally_ByIndex @ 0x004F9A10`. It
@@ -292,7 +292,7 @@ pub struct WallArmTables<'a> {
 #[derive(Clone, Copy)]
 pub struct WallArmContext<'a> {
     pub overlay_grid: Option<&'a crate::sim::overlay_grid::OverlayGrid>,
-    pub overlay_registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    pub overlay_registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     pub alliances: Option<&'a crate::map::houses::HouseAllianceMap>,
     pub interner: Option<&'a crate::sim::intern::StringInterner>,
     /// The mover's owning house, compared with the wall's owner through
@@ -1491,7 +1491,7 @@ mod tests {
     #[test]
     fn the_wall_arm_answers_seven_where_the_land_row_refuses() {
         use crate::rules::ini_parser::IniFile;
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
             &IniFile::from_str("[OverlayTypes]\n0=GAWALL\n\n[GAWALL]\nWall=yes\n"),
             None,
         );

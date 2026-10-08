@@ -16,7 +16,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     fn seeded_world() -> (
         Simulation,
         RuleSet,
-        crate::map::overlay_types::OverlayTypeRegistry,
+        crate::rules::overlay_types::OverlayTypeRegistry,
         crate::sim::intern::InternedId,
     ) {
         let (rules, overlays) = gsi_04_07_wall_sell_rules(false, false);
@@ -149,7 +149,7 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
     fn apply_raw(
         sim: &mut Simulation,
         rules: &RuleSet,
-        overlays: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlays: &crate::rules::overlay_types::OverlayTypeRegistry,
         x: i16,
         y: i16,
     ) -> bool {

@@ -32,7 +32,7 @@ use target_scan::{can_acquire_target, passive_acquire_step};
 
 use super::Simulation;
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::particle_system_type::ParticleSystemBehavesLike;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::miner::MinerConfig;

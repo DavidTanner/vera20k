@@ -134,7 +134,7 @@ pub(crate) fn dispatch_native_mission(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     use crate::sim::mission::MissionType;
     let now = sim.session.binary_frame;
@@ -230,7 +230,7 @@ pub(crate) fn dispatch_aircraft_mission(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(e) = sim.substrate.entities.get(id) else {
         return false;
@@ -339,7 +339,7 @@ pub(crate) fn enter_idle_mode_now(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     if enter_idle_mode_for(sim, id, rules, registry) != IdleEntry::Vera {
         return;
@@ -417,7 +417,7 @@ fn mission_step(
     rules: &RuleSet,
     id: u64,
     mission: &AircraftMission,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<MissionMutation> {
     let now = sim.session.binary_frame;
     let mut m = MissionMutation::new(id, mission.clone());
@@ -800,7 +800,7 @@ fn apply_mission_mutation(
     sim: &mut Simulation,
     rules: &RuleSet,
     m: MissionMutation,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     // No "Unit lost" here: `AircraftClass::Enter_Idle_Mode @ 0x004176F0`
     // handles the AirportBound-without-airfield case by calling the

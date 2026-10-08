@@ -10,9 +10,9 @@
 
 use super::Simulation;
 use super::lifecycle::UninitContext;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::map::retail_trig::{TrigTable, required_math_tables};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::components::DriveCoord;

@@ -20,11 +20,11 @@ use std::path::Path;
 
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::map::map_file::MapFile;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater;
 use crate::map::tile_variant_selector::TileVariantSelectorCache;
 use crate::map::waypoints;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::sim::scenario_bootstrap::ScenarioBootstrapRng;
 use crate::sim::scenario_session::ScenarioDescriptor;
 use crate::sim::world::Simulation;

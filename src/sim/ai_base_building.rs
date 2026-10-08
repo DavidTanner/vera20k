@@ -66,8 +66,8 @@
 //!   slot is dereferenced (`0x004FE8A9`, `0x00505368`). VERA makes no choice
 //!   for such a node and splices nothing for a missing plant.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_site::{SiteKey, find_base_building_site, reserved_near};
 use crate::sim::ai_unit_choice::{self, UnitChoiceKind};

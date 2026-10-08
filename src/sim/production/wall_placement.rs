@@ -4,8 +4,8 @@
 //! consumes the ready product, `FUN_00588750 @ 0x00588750` scans and commits
 //! ordinary fillers, and `OverlayClass::Mark @ 0x005FC570` stamps each overlay.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::ObjectType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::overlay_grid::{

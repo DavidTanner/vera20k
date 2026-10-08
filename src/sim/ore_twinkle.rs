@@ -1,12 +1,12 @@
 //! Post-load `OreTwinkle` pass using the shared map-owned resource value helper.
 //!
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
-//! `map::overlay_types`, `rules`, `sim::anim_class`, and `util::lepton`;
+//! `rules` (including `rules::overlay_types`), `sim::anim_class`, and `util::lepton`;
 //! never on render/, ui/, app/, audio/, or net/.
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::tiberium_cell::tiberium_value;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 #[cfg(test)]
 use crate::rules::tiberium_type::TiberiumTypeRegistry;

@@ -41,10 +41,10 @@ mod tests;
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::is_allied_with;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::object_type::{FactoryType, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::game_entity::GameEntity;

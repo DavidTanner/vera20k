@@ -71,8 +71,8 @@
 //! waypoint-planning token (`0x00705D20`) VERA never has.
 
 use super::{AircraftMission, IdleEntry};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;

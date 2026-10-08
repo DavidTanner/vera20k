@@ -57,7 +57,7 @@ fn build_ordinary_c4_sim(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     use crate::sim::house_state::HouseState;
 
@@ -256,7 +256,7 @@ fn step(sim: &mut Simulation, rules: &RuleSet) -> TickResult {
 fn step_with_overlay_registry(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
 ) -> TickResult {
     let due = sim.take_due_commands();
     sim.advance_tick(&due, Some(rules), None, Some(registry), 67)
@@ -275,7 +275,7 @@ fn advance_until_c4_claim(
     sim: &mut Simulation,
     rules: &RuleSet,
     target_id: u64,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
 ) -> u64 {
     // SEAL/Tanya at Speed=4 covers ~10 lep/tick (gamemd-faithful), so a
     // one-cell enter (256 leptons) takes ~26 ticks; 32 leaves headroom.
@@ -1021,7 +1021,7 @@ const LIVE_REPAIR_STRIP: &[(u16, u16)] = &[(17, 14), (17, 15), (17, 16)];
 fn live_repair_fixture() -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
     let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture();

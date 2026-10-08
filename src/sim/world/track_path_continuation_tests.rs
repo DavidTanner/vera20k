@@ -67,7 +67,7 @@ fn unit(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
     u64,
 ) {
     let (mut sim, mut rules, registry) = fixture_with_rules(UNITS);
@@ -796,7 +796,7 @@ fn first_process_request_waits_for_the_movement_timer_and_keeps_power() {
 fn visit(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     id: u64,
     frame: u32,
 ) {
@@ -1136,7 +1136,7 @@ fn after_active_rows_gate_the_same_call_continuation() {
 fn drive_to_first_head(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     id: u64,
 ) -> (DriveCoord, u32) {
     use crate::sim::movement::track_head::committed_track_head;
@@ -1160,7 +1160,7 @@ fn drive_to_first_head(
 fn visit_until_head_changes(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     id: u64,
     head: DriveCoord,
     mut frame: u32,
@@ -1514,7 +1514,7 @@ const WALK_AND_HOVER: &str = "[HOV]\nStrength=300\nSpeed=6\nSpeedType=Hover\n\
 fn walk_and_hover_fixture() -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     fixture_with_rules(&format!(
         "{}{WALK_AND_HOVER}",
@@ -1525,7 +1525,7 @@ fn walk_and_hover_fixture() -> (
 fn advance_until_order_ends(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     id: u64,
 ) -> (u16, u16) {
     for _ in 0..900 {

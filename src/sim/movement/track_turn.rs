@@ -51,7 +51,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get_mut(id) else {

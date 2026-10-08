@@ -947,7 +947,7 @@ mod tests {
         // while production still refused every wall a few lines further on.
         let costs = TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Track);
 
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
             &IniFile::from_str("[OverlayTypes]\n0=GAWALL\n\n[GAWALL]\nWall=yes\n"),
             None,
         );
@@ -1072,7 +1072,7 @@ mod tests {
         let zone_grid = ZoneGrid::build_with_terrain(&grid, &terrain, &[], 5, 3);
         let counts = crate::sim::pathfinding::BlockerNeighborCounts::new(5, 3);
 
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
             &IniFile::from_str("[OverlayTypes]\n0=GAWALL\n\n[GAWALL]\nWall=yes\n"),
             None,
         );

@@ -340,7 +340,7 @@ impl Simulation {
         x: i16,
         y: i16,
         rules: &RuleSet,
-        overlays: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlays: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> bool {
         // EventClass rejects only the exact packed null CellStruct. Every
         // other signed pair is resolved by MapClass' fixed 512-wide linear
@@ -569,7 +569,7 @@ impl Simulation {
         command_owner: &str,
         cmd: &Command,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         match cmd {
             Command::Select { entity_ids, .. } => self.apply_selection_snapshot(entity_ids, rules),
@@ -2429,7 +2429,7 @@ impl Simulation {
         entity_id: u64,
         target_id: Option<u64>,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         if !self.entity_owned_by_id(command_owner, entity_id) {
             return false;
@@ -2563,7 +2563,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         self.queue_megamission_with_teardown(
             id,

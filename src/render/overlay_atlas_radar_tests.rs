@@ -1,8 +1,8 @@
 use super::compute_overlay_radar_colors;
 use crate::assets::asset_manager::AssetManager;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

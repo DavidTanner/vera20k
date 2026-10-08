@@ -12,12 +12,12 @@ use super::{
     publish_production_changes, ready_buildings_for_owner,
 };
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{
     RampDirection, ResolvedTerrainCell, ResolvedTerrainGrid, zone_class,
 };
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
 use crate::sim::combat::AttackTarget;

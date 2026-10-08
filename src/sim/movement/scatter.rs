@@ -19,8 +19,8 @@
 //! globals (`0x00B1CFE8`, `0x00A8F200`).
 
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::veterancy::RANK_ELITE_U16;
 use crate::sim::components::NavTargetRef;

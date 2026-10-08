@@ -14,10 +14,10 @@
 //! covers Rust snapshot persistence of this supplied world, not a whole native
 //! file load or object COM Load sequence.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::retail_trig::required_math_tables;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::retail_ini_fixture::retail_battle_rules_for_map;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainRules;

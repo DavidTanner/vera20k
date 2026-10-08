@@ -18,8 +18,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::{InternedId, StringInterner};
@@ -680,9 +680,9 @@ mod tests {
         BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION,
     };
     use crate::map::entities::EntityCategory;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::entity_store::EntityStore;

@@ -191,7 +191,7 @@ impl crate::sim::world::Simulation {
         stable_id: u64,
         max_fall_rate: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;

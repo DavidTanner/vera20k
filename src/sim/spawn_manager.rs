@@ -792,7 +792,7 @@ pub(crate) fn spawn_manager_ai(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner_id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     if let Some(mut host) =
         WorldSpawn::new(sim, owner_id, UninitContext::new(Some(rules), registry))
@@ -834,7 +834,7 @@ pub fn notify_pointer_expired(
     listener_id: u64,
     expired_id: u64,
     rules: Option<&RuleSet>,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     if let Some(mut host) = WorldSpawn::new(sim, listener_id, UninitContext::new(rules, registry)) {
         pointer_expired(&mut host, expired_id);
@@ -851,7 +851,7 @@ pub(crate) fn clear_all_spawn_targets(
     sim: &mut Simulation,
     owner_id: u64,
     rules: Option<&RuleSet>,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     if let Some(mut host) = WorldSpawn::new(sim, owner_id, UninitContext::new(rules, registry)) {
         clear_all_targets(&mut host);

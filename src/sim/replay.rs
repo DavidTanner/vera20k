@@ -822,7 +822,7 @@ impl ReplayRunner {
         replay: &ReplayLog,
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
     ) -> Vec<u64> {
         Self::run_fixture_master_frame(
@@ -847,7 +847,7 @@ impl ReplayRunner {
         replay: &ReplayLog,
         rules: Option<&RuleSet>,
         path_grid: Option<&PathGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
         trigger_inputs: Option<TriggerInputs<'_>>,
     ) -> Vec<u64> {

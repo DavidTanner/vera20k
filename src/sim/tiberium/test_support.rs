@@ -7,9 +7,9 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::StringInterner;

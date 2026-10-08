@@ -238,7 +238,7 @@ pub(crate) fn update_repair_and_power(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -275,7 +275,7 @@ fn low_credit_sale(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;

@@ -6,7 +6,7 @@
 //! Compare all represented outputs, the retained Foot+68A byte and full
 //! Scenario RNG, excluding only native timer padding.
 use super::tests::fixture_with_rules;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cloak_disguise::CloakRuntime;
 use crate::sim::combat::TargetKind;

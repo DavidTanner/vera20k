@@ -483,7 +483,7 @@ pub(crate) fn build_bridge_railing_instances(
 /// Resolve `(BridgeKind, tile_index, caller_sub_tile)` for a bridge cell.
 ///
 /// Mapping per RE doc §3.4.1 + verified against the codebase
-/// (src/map/resolved_terrain.rs:48-55, src/map/overlay_types.rs:25-28):
+/// (src/map/resolved_terrain.rs:48-55, `map::bridge_facts::high_bridge_stamp_for_overlay`):
 /// - `BRIDGE1`, `BRIDGEB1`, `BRIDGE2`, `BRIDGEB2` → Concrete (HIGH bridges).
 ///   The `1` vs `2` suffix is axis (EW vs NS), not material — all four are
 ///   concrete.

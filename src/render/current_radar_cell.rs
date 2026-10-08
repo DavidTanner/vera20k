@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::runtime::SimRuntime;

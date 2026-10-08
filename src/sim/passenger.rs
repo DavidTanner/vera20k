@@ -464,7 +464,7 @@ const BOARD_DISTANCE: u32 = 1;
 pub fn tick_passenger_system(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let order = sim.live_object_order_snapshot();
     tick_boarding_and_garrison_reconciliation_in_order(sim, rules, registry, &order)
@@ -479,7 +479,7 @@ pub fn tick_passenger_system(
 fn tick_boarding_and_garrison_reconciliation_in_order(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     order: &[u64],
 ) -> bool {
     let mut ownership_changed = false;
@@ -515,7 +515,7 @@ fn process_boarding_passenger(
     sim: &mut Simulation,
     rules: &RuleSet,
     pax_id: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let transport_id = match sim
         .substrate
@@ -903,7 +903,7 @@ fn is_at_or_below_red_hp(current: i32, strength: i32, condition_red: f64) -> boo
 fn reconcile_civilian_garrison_owner_for_building(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
 ) -> bool {
     let Some((type_ref, mut current_owner, mut first_passenger, mut cargo_empty, red_hp_occupied)) =

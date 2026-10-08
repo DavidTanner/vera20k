@@ -44,9 +44,9 @@
 //! - Crates (0x00481A00 at 0x005153E9) answer as a cell without a crate, as in Drive.
 
 use super::HoverRuntime;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::mission_data::MissionType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::{native_xy_distance, native_xyz_distance};
 use crate::sim::components::{DriveCoord, NavTargetRef};

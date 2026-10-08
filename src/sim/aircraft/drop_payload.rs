@@ -62,8 +62,8 @@
 
 use crate::map::bridge_facts::{BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{
     IsClearToMoveResult, LiveCellPassabilityQuery, cell_is_in_playfield_leptons,

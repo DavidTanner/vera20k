@@ -5,7 +5,7 @@
 //! state 3 returns a one-tick delay. States 4..9 run in the combat phase
 //! (`combat::aircraft_release`).
 use super::Simulation;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::{AircraftMission, IdleEntry, attack_mission, enter_idle_mode_for};
 use crate::sim::combat::TargetKind;

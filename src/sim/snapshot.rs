@@ -2327,7 +2327,7 @@ impl Simulation {
     pub(crate) fn restore_map_authority_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Result<SnapshotMapRestoreOutput, SnapshotRestoreError> {
         let (overlay_width, overlay_height, overlay_cell_count, retained_wall_count) = self
             .overlay_grid
@@ -2471,7 +2471,7 @@ impl Simulation {
     fn rebuild_native_tiberium_queues_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Result<crate::sim::ore_growth::NativeTiberiumRebuildStats, SnapshotRestoreError> {
         let overlay_grid = self.overlay_grid.as_ref().ok_or(
             SnapshotRestoreError::MissingMapAuthorityComponent {
@@ -2560,8 +2560,8 @@ mod tests {
         use crate::map::basic::{BasicSection, SpecialFlagsSection};
         use crate::map::entities::EntityCategory;
         use crate::map::map_file::MapHeader;
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::components::Health;
         use crate::sim::game_entity::GameEntity;
@@ -3106,8 +3106,8 @@ mod tests {
     #[test]
     fn snapshot_restore_replays_overlay_passability_and_publishes_canonical_navigation() {
         use crate::map::overlay::OverlayEntry;
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::overlay_grid::{OverlayGrid, recalc_overlay_passability};
         use crate::sim::pathfinding::zone_map::ZONE_INVALID;
@@ -3280,7 +3280,7 @@ mod tests {
              [OverlayTypes]\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("truncated-grid rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
         let mut sim = Simulation::new();
         sim.overlay_grid = Some(malformed);
         sim.resolved_terrain = Some(flat_terrain(2, 1));
@@ -3322,7 +3322,7 @@ mod tests {
              [OverlayTypes]\n",
         );
         let rules = RuleSet::from_ini(&ini).expect("truncated-retained-grid rules");
-        let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+        let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
         let mut sim = Simulation::new();
         sim.overlay_grid = Some(malformed);
         sim.resolved_terrain = Some(flat_terrain(2, 1));
@@ -7469,8 +7469,8 @@ mod tests {
             BRIDGE_FLAG_STRUCTURAL, BridgeFlagStamp, BridgeStampSlot,
             MODELED_CELLCLASS_BRIDGE_FLAG_MASK,
         };
-        use crate::map::overlay_types::OverlayTypeRegistry;
         use crate::rules::ini_parser::IniFile;
+        use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
         use crate::sim::overlay_grid::OverlayGrid;
 

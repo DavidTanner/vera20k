@@ -9,12 +9,12 @@
 
 use super::{PlacementEvidence, Simulation, entry_test_fixture};
 use crate::map::entities::parse_map_entities;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::retail_ini_fixture::retail_rules_and_art;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainRules;

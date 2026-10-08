@@ -347,7 +347,7 @@ impl Simulation {
         firer: u64,
         target: TemporalShotTarget,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if !self.substrate.entities.contains(firer) {
             return;
@@ -405,7 +405,7 @@ impl Simulation {
         attacker: u64,
         target: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         if let Some(target) = target {
             // 0x0071AF2F..0x0071AF48: the target's spawns die and its captives
@@ -605,7 +605,7 @@ impl Simulation {
         &mut self,
         head: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(link) = self.temporal_link(head).cloned() else {
             return;
@@ -707,7 +707,7 @@ impl Simulation {
         head: u64,
         target: Option<u64>,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(target) = target.filter(|&target| self.substrate.entities.contains(target)) else {
             // 0x0071A895..0x0071A8B5: no target — clear and idle; then the

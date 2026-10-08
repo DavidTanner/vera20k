@@ -17,10 +17,10 @@
 use super::Simulation;
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::retail_trig::{TrigTable, required_math_tables};
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::movement::air_movement::AirMovementTickStats;

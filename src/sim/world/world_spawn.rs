@@ -16,10 +16,10 @@ use super::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
 };
 use crate::map::entities::{EntityCategory, MapEntity};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::foundation::foundation_dimensions;
 use crate::rules::object_type::{Ability, ObjectCategory, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::pack_base_plan_cell;
 use crate::sim::base_plan_generation::{preflight_recalc, recalc_base_plan};
@@ -289,7 +289,7 @@ impl Simulation {
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> u32 {
         self.spawn_from_map_with_constructor_inits(
             entities,
@@ -325,7 +325,7 @@ impl Simulation {
         entities: &[MapEntity],
         rules: Option<&RuleSet>,
         resolved_terrain: Option<&ResolvedTerrainGrid>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         constructor_inits: Option<&GeneratedTechnoInitTable>,
     ) -> Result<u32, GeneratedTechnoInitError> {
         let generated_inits = constructor_inits
@@ -799,7 +799,7 @@ impl Simulation {
         ry: u16,
         facing: u8,
         rules: &RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Option<u64> {
         let z = self.terrain_cell_level(rx, ry).unwrap_or(0);
         self.spawn_object_at_height_with_overlay_registry(
@@ -839,7 +839,7 @@ impl Simulation {
         facing: u8,
         z: u8,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Option<u64> {
         self.spawn_object_at_height_with_init(
             type_id,
@@ -865,7 +865,7 @@ impl Simulation {
         facing: u8,
         z: u8,
         rules: &RuleSet,
-        overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+        overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     ) -> Option<u64> {
         self.spawn_object_at_height_with_overlay_context(
             type_id,
@@ -889,7 +889,7 @@ impl Simulation {
         facing: u8,
         z: u8,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         init: TechnoConstructorInit,
     ) -> Result<Option<u64>, GeneratedTechnoInitError> {
         let Some(ge) =
@@ -1025,7 +1025,7 @@ impl Simulation {
         facing: u8,
         placement: PlacementEvidence,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Option<u64> {
         let mut position = self.substrate.entities.get(stable_id)?.position;
         crate::sim::movement::ground_pose::put_location(&mut position, coord);
@@ -1050,7 +1050,7 @@ impl Simulation {
         z: u8,
         placement: PlacementEvidence,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Option<u64> {
         let requested_position = RevealPosition {
             exact_z_leptons: None,
@@ -1083,7 +1083,7 @@ impl Simulation {
         facing: u8,
         placement: PlacementEvidence,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Option<u64> {
         let is_infantry = self
             .substrate
@@ -1351,7 +1351,7 @@ impl Simulation {
         &mut self,
         ge: GameEntity,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> (u64, RevealOutcome) {
         let (stable_id, position) = self.store_with_constructor_managers(ge, rules);
         self.unlimbo_constructed_parent(stable_id, position, rules, overlay_registry, false)
@@ -1376,7 +1376,7 @@ impl Simulation {
         stable_id: u64,
         position: RevealPosition,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         scenario_initialization: bool,
     ) -> (u64, RevealOutcome) {
         // ScenarioFullInit686B4F raises A8E7AC before InfantryRead51FB00
@@ -1470,7 +1470,7 @@ impl Simulation {
         stable_id: u64,
         position: RevealPosition,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> PlacementEvidence {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return PlacementEvidence::RejectedEarly;
@@ -1625,7 +1625,7 @@ impl Simulation {
         &mut self,
         stable_id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         // Native early exits on a NavCom (0x7393E4) or the locomotor's
         // Is_Moving (vt+0x10 at 0x00739405, 0x73940A) retain runtime +0x68C.
@@ -2034,7 +2034,7 @@ impl Simulation {
         &mut self,
         sid: u64,
         rules: &RuleSet,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some((unit_type, owner_id, rx, ry, z, was_selected)) =
             self.substrate.entities.get(sid).and_then(|entity| {

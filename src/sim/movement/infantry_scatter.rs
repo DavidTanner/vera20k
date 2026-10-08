@@ -5,9 +5,9 @@
 use super::bump_crush::{InfantryDamageScatter, scatter_movement_speed};
 use super::infantry_entry::InfantryEntryArgs;
 use super::scatter::{ScatterFlags, mission_permits_scatter};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::{MissionId, MissionType};

@@ -56,7 +56,7 @@ pub(super) fn spawn_selection_at_producer(
     produced_type_id: Option<&str>,
     produced_category: ObjectCategory,
     require_water: bool,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<ProductionSpawnSelection> {
     let (producer_id, bx, by, structure_id) = producer;
     let path_grid = sim.path_grid();
@@ -546,7 +546,7 @@ pub(super) fn unlimbo_held_naval_unit(
     rules: &RuleSet,
     stable_id: u64,
     cell: (u16, u16),
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<u64> {
     let coord = resolve_produced_unit_cell_coords(sim, cell)?;
     sim.reveal_constructed_object_at_coord_with_overlay_context(

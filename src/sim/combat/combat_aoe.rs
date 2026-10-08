@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use super::{EntityDamageEvent, TerrainDamageEvent, cell_spread};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
 use crate::sim::entity_store::EntityStore;

@@ -810,7 +810,7 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
 pub fn tick_active_superweapon_effects(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if sim
         .session

@@ -896,7 +896,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let saved_base_return = self.foot_enter_idle_base(id, Some(rules), registry);
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -971,7 +971,7 @@ pub(crate) fn foot_unlimbo_idle_mode(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;

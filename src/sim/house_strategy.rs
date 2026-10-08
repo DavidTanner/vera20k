@@ -93,7 +93,7 @@ pub(crate) fn update_strategy(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let frame = sim.session.binary_frame as i32;
     let Some(house) = sim.houses.get(&owner) else {
@@ -117,7 +117,7 @@ fn building_strategy(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> i32 {
     pick_enemy(sim, owner);
     forget_defeated_enemy(sim, owner);
@@ -165,7 +165,7 @@ fn sell_off_and_hunt(
     rules: &RuleSet,
     owner: InternedId,
     why: &str,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     log::debug!(
         "{} sells off and hunts ({why})",
@@ -266,7 +266,7 @@ pub(crate) fn fire_sale(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(house) = sim.houses.get(&owner) else {
         return;
@@ -313,7 +313,7 @@ pub(crate) fn all_to_hunt(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let technos: Vec<u64> = sim
         .substrate

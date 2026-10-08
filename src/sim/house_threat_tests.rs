@@ -68,7 +68,7 @@ fn fixture(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     fixture_with_additions(threat, "", &crate::rules::ini_parser::IniFile::from_str(""))
 }
@@ -80,7 +80,7 @@ fn fixture_with_additions(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     let mut extra = format!(
         "[VehicleTypes]\n0=MTNK\n[MTNK]\nStrength=400\nSpeed=6\nSpeedType=Track\nMovementZone=Normal\nThreatPosed={threat}\nThreatAvoidanceCoefficient=0.5\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\n[CABHUT]\nThreatPosed=7\n"

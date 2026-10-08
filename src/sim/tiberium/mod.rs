@@ -10,8 +10,8 @@ pub(crate) mod test_support;
 use crate::map::bridge_facts::{BRIDGE_FLAG_DESTROYED_OR_RAMP, BRIDGE_FLAG_STRUCTURAL};
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::tiberium_type::{TiberiumTypeId, TiberiumTypeRegistry};
 use crate::sim::entity_store::EntityStore;
@@ -714,9 +714,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use crate::map::overlay::{OverlayDataPack, OverlayEntry};
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::LandType;
     use crate::rules::tiberium_type::TiberiumTypeRegistry;

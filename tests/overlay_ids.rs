@@ -10,9 +10,9 @@ use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::assets::pal_file::Palette;
 use vera20k::assets::shp_file::ShpFile;
 use vera20k::map::map_file;
-use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::map::terrain::{self, LocalBounds};
 use vera20k::rules::ini_parser::IniFile;
+use vera20k::rules::overlay_types::OverlayTypeRegistry;
 
 fn ra2_dir() -> String {
     std::env::var("RA2_DIR")

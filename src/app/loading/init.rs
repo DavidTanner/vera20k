@@ -45,7 +45,6 @@ use crate::map::houses::{self, HouseColorMap, HouseRoster};
 use crate::map::lighting::{self, CellLightGrid, LightingConfig};
 use crate::map::map_file::MapFile;
 use crate::map::overlay::{OverlayEntry, TerrainObject};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::source::{
     LoadedMap, LoadedMapSource, load_map_by_name_or_path_with_assets, try_load_mmx,
@@ -69,6 +68,7 @@ use crate::render::tile_atlas::TileAtlas;
 use crate::render::unit_atlas::UnitAtlas;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 

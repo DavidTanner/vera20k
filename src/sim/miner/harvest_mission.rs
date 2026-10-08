@@ -9,7 +9,7 @@
 //! returns 105 without drawing. The slave-master prologue73E5E9 runs returned
 //! slaves before its Rate tail; a non-harvester returns450 at73E62F.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 

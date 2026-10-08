@@ -134,13 +134,13 @@ pub(crate) struct RepresentedConcreteMissionEffects<'r> {
     /// Class setter type/contact/timer inputs; overlay data belongs to the
     /// moving Infantry receiver's current-cell admission query.
     rules: Option<&'r crate::rules::ruleset::RuleSet>,
-    overlay_registry: Option<&'r crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&'r crate::rules::overlay_types::OverlayTypeRegistry>,
 }
 
 impl<'r> RepresentedConcreteMissionEffects<'r> {
     pub(crate) fn new(
         rules: Option<&'r crate::rules::ruleset::RuleSet>,
-        overlay_registry: Option<&'r crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&'r crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Self {
         Self {
             rules,

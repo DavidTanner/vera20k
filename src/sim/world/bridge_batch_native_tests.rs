@@ -129,7 +129,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
     .unwrap();
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let registry =
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     let mut checked = 0;
     for case in corpus["cases"].as_array().unwrap() {
         let input = &case["input"];
@@ -341,7 +341,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
     let before = sim.zone_grid.as_mut().unwrap().base_topology_mut().clone();
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let registry =
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     let mut live = LivePublication {
         sim: &mut sim,
         rules: &rules,
@@ -500,7 +500,7 @@ fn live_bridge_batch_recovers_rust_append_capacity_without_replacing_base_connec
     assert_eq!(fine.record_slot_count(), usize::from(u16::MAX) + 1);
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let registry =
-        crate::map::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
+        crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     LivePublication {
         sim: &mut sim,
         rules: &rules,

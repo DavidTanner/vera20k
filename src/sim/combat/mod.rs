@@ -113,9 +113,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use self::combat_weapon::{WeaponSlot, select_weapon_against};
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseAllianceMap;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::object_type::ObjectType;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::{HouseCostFactors, RuleSet};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
@@ -712,7 +712,7 @@ fn wall_overlay_flags_at<'a>(
     overlay_registry: Option<&'a OverlayTypeRegistry>,
     rx: u16,
     ry: u16,
-) -> Option<&'a crate::map::overlay_types::OverlayTypeFlags> {
+) -> Option<&'a crate::rules::overlay_types::OverlayTypeFlags> {
     let (Some(grid), Some(registry)) = (overlay_grid, overlay_registry) else {
         return None;
     };
@@ -724,7 +724,7 @@ fn wall_overlay_flags_at<'a>(
 
 fn warhead_damages_wall(
     warhead: &WarheadType,
-    wall_flags: &crate::map::overlay_types::OverlayTypeFlags,
+    wall_flags: &crate::rules::overlay_types::OverlayTypeFlags,
 ) -> bool {
     warhead.wall || warhead.wall_absolute_destroyer || (warhead.wood && wall_flags.armor_is_wood)
 }

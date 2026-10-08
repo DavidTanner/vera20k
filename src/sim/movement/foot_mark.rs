@@ -50,8 +50,8 @@
 
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::occupancy::{CellListInsertion, OBJECT_OCCUPATION_BIT};

@@ -8,7 +8,7 @@
 
 use super::{Simulation, entry_test_fixture};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags, TargetKind};
 use crate::sim::components::DriveCoord;

@@ -560,7 +560,7 @@ pub(crate) fn choose_next_production(
     rules: &RuleSet,
     owner: InternedId,
     index: usize,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     let Some(choice) = DefenseChoice::of_house(sim, rules, owner, index) else {
         return false;

@@ -66,7 +66,7 @@
 //!   kept (see `mplayer_defeated`). Trigger: the local player is defeated.
 //!   Effect: the shroud stays in place for the loser.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::intern::InternedId;

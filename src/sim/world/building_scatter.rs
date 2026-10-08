@@ -6,7 +6,7 @@
 
 use super::{FrameAdvanceError, Simulation};
 use crate::map::cell_index::NativeCellIdentity;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::movement::{ScatterFlags, locomotor::MovementLayer};

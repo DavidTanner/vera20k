@@ -395,7 +395,7 @@ fn same_frame_ore_terrain_ai_publishes_path_costs_before_return() {
         "[Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nBuildable=yes\n\
          [Tiberium]\nFoot=90%\nTrack=70%\nWheel=50%\nBuildable=yes\n",
     ));
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let tree = s
         .sim
         .production
