@@ -41,8 +41,7 @@ med 30 spelare och 20 000 enheter.
 
 Du behöver:
 
-- **Spelet:** Red Alert 2: Yuri's Revenge 1.001. Alla utgåvor fungerar; på macOS kopierar du
-  spelmappen från en Windows-installation.
+- **Spelet:** Red Alert 2: Yuri's Revenge.
 - **Rust och Git:** den senaste stabila versionen av [Rust](https://rustup.rs/), installerad med
   rustup, och [Git](https://git-scm.com/).
 - **Byggverktyg:** på Windows Visual Studios C++-byggverktyg, som Rusts installationsprogram

@@ -40,7 +40,7 @@ VERA20k من صنع اللاعبين ومن أجلهم، وللاعبين الك
 
 تحتاج إلى:
 
-- **اللعبة:** Red Alert 2: Yuri's Revenge 1.001. يعمل أي إصدار؛ وعلى macOS انسخ مجلد اللعبة من تثبيت على Windows.
+- **اللعبة:** Red Alert 2: Yuri's Revenge.
 - **Rust وGit:** أحدث إصدار مستقر من [Rust](https://rustup.rs/) مثبتًا عبر rustup، و[Git](https://git-scm.com/).
 - **أدوات البناء:** على Windows أدوات بناء C++ من Visual Studio، ويعرض مثبّت Rust تثبيتها؛ وعلى macOS الأمر
   `xcode-select --install`؛ وعلى Debian وUbuntu الأمر `sudo apt install build-essential libasound2-dev pkg-config`.

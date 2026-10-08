@@ -40,8 +40,7 @@ ve çeşitli silahlar ile efektler üzerinde daha fazla çalışmamız gerekiyor
 
 Gerekenler:
 
-- **Oyun:** Red Alert 2: Yuri's Revenge 1.001. Her sürüm çalışır; macOS'te oyun klasörünü bir
-  Windows kurulumundan kopyalayın.
+- **Oyun:** Red Alert 2: Yuri's Revenge.
 - **Rust ve Git:** rustup ile kurulmuş güncel kararlı [Rust](https://rustup.rs/) sürümü ve
   [Git](https://git-scm.com/).
 - **Derleme araçları:** Windows'ta, Rust kurulum programının kurmayı önerdiği Visual Studio C++

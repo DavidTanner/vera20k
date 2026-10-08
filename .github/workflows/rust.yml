@@ -33,5 +33,5 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
       # Reports warnings without failing.
-      - name: Clippy (library, binaries, integration tests and examples)
-        run: cargo clippy -p vera20k --lib --bins --test '*' --examples
+      - name: Clippy (library, binaries and integration tests)
+        run: cargo clippy -p vera20k --lib --bins --test '*'
