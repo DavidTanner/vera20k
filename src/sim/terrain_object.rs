@@ -326,6 +326,8 @@ pub fn occupation_bits_for(terrain_type: &TerrainObjectType, snow_theater: bool)
     }) & 0x07
 }
 
+/// Terrain-object INI occupation bits (`1|2|4`) shifted into the cell
+/// occupation plane (`0x04|0x08|0x10`).
 pub(crate) fn terrain_raw_occupation_mask(source_mask: u8) -> u8 {
     (source_mask & 0x07) << 2
 }

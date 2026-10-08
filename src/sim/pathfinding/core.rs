@@ -1732,12 +1732,6 @@ pub struct PathCell {
 /// tree cells hold two infantry; only `=7` closes the cell.
 pub const INFANTRY_SUBCELL_MASK: u8 = 0x1C;
 
-/// Terrain-object INI occupation bits (`1|2|4`) shifted into the cell occupation
-/// plane (`0x04|0x08|0x10`). Mirrors `sim::terrain_object::terrain_raw_occupation_mask`.
-pub fn terrain_object_cell_bits_from_ini(ini_bits: u8) -> u8 {
-    (ini_bits & 0x07) << 2
-}
-
 /// Whether a terrain object with these cell-plane bits closes the cell to infantry.
 pub fn terrain_object_blocks_infantry(cell_bits: u8) -> bool {
     cell_bits & INFANTRY_SUBCELL_MASK == INFANTRY_SUBCELL_MASK
@@ -1944,7 +1938,7 @@ fn project_terrain_path_cell(
     (
         path_cell,
         cell.terrain_object_occupation
-            .map_or(0, terrain_object_cell_bits_from_ini),
+            .map_or(0, crate::sim::terrain_object::terrain_raw_occupation_mask),
         walkable_without_terrain_object,
     )
 }

@@ -1116,7 +1116,10 @@ fn loose_lookup_key(name: &str) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
-fn retail_enumerated_file(path: &Path) -> bool {
+/// Whether a retail directory listing keeps `path`: a regular file without the
+/// hidden, system, directory or temporary attribute (`0x116`). The asset search
+/// and the scenario listings share it.
+pub(crate) fn retail_enumerated_file(path: &Path) -> bool {
     let Ok(metadata) = path.metadata() else {
         return false;
     };

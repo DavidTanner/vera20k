@@ -14,6 +14,7 @@
 //! - Part of assets/ — no dependencies on game modules.
 
 use crate::assets::error::AssetError;
+use crate::assets::vxl_decode::read_null_string;
 use crate::util::read_helpers::{read_f32_le, read_u32_le};
 
 /// Minimum file size: 16 (name) + 4 (frames) + 4 (sections) = 24 bytes.
@@ -127,12 +128,6 @@ impl HvaFile {
         let idx: usize = frame as usize * self.section_count as usize + section as usize;
         self.transforms.get(idx)
     }
-}
-
-/// Read a null-terminated ASCII string from a fixed-size byte slice.
-fn read_null_string(bytes: &[u8]) -> String {
-    let end: usize = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).to_string()
 }
 
 #[cfg(test)]
