@@ -1,8 +1,8 @@
 //! Combo-box item, dropdown, scrollbar, and selection helpers for the skirmish shell.
 
 use crate::map::scenario_menu::MapMenuEntry;
-use crate::skirmish_launch::{HOUSE_COLOR_COUNT, SKIRMISH_PLAYER_SLOT_COUNT};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
+use crate::skirmish_launch::{HOUSE_COLOR_COUNT, LaunchCountry, SKIRMISH_PLAYER_SLOT_COUNT};
+use crate::ui::main_menu::StartPosition;
 
 use super::super::layout::{
     COMBO_ARROW_RESERVE_W, COMBO_DROPDOWN_ROW_H, COMBO_DROPDOWN_SCROLLBAR_BUTTON_H,
@@ -241,7 +241,7 @@ pub fn combo_items(
         .collect(),
         SkirmishComboId::Side(_) => std::iter::once(SkirmishCountryChoice::Random)
             .chain(
-                SkirmishCountry::ALL
+                LaunchCountry::ALL
                     .into_iter()
                     .map(SkirmishCountryChoice::Country),
             )

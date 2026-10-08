@@ -52,8 +52,8 @@ pub use trackbars::{
     handle_option_mouse_wheel, trackbar_visual_value,
 };
 
-use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
+use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT, LaunchCountry};
+use crate::ui::main_menu::StartPosition;
 
 use self::player_name::inactive_ai_team_default;
 #[cfg(test)]
@@ -97,7 +97,7 @@ pub enum SkirmishComboId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkirmishCountryChoice {
     Random,
-    Country(SkirmishCountry),
+    Country(LaunchCountry),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,7 +229,7 @@ impl SkirmishAiRowType {
 pub struct SkirmishShellOpponent {
     pub enabled: bool,
     pub row_type: SkirmishAiRowType,
-    pub country: SkirmishCountry,
+    pub country: LaunchCountry,
     pub country_random: bool,
     pub color_index: usize,
     pub color_claimed: bool,
@@ -262,15 +262,15 @@ impl SkirmishShellOpponent {
 /// opponent. When persisted slot reading is added, the per-row fallbacks must be
 /// the Easy code for row 1 and the None code for rows 2-7, mapped through the
 /// slot type-code table, not hardcoded all-None.
-fn default_opponents(first_country: SkirmishCountry) -> Vec<SkirmishShellOpponent> {
+fn default_opponents(first_country: LaunchCountry) -> Vec<SkirmishShellOpponent> {
     let countries = [
         first_country,
-        SkirmishCountry::Cuba,
-        SkirmishCountry::Libya,
-        SkirmishCountry::Iraq,
-        SkirmishCountry::America,
-        SkirmishCountry::Korea,
-        SkirmishCountry::Germany,
+        LaunchCountry::Cuba,
+        LaunchCountry::Libya,
+        LaunchCountry::Iraq,
+        LaunchCountry::America,
+        LaunchCountry::Korea,
+        LaunchCountry::Germany,
     ];
 
     countries

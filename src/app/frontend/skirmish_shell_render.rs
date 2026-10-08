@@ -40,7 +40,7 @@ use crate::render::shell_text::ShellAlign;
 use crate::render::shell_transition_pass::ShellRenderTarget;
 use crate::render::skirmish_shell_chrome::{SkirmishShellChromeAtlas, SkirmishShellChromeEntry};
 use crate::rules::color_scheme::ColorSchemeEntry;
-use crate::ui::main_menu::SkirmishCountry;
+use crate::skirmish_launch::LaunchCountry;
 use crate::ui::shell::modal::body_ok_layout;
 #[cfg(test)]
 use crate::ui::skirmish_shell::{
@@ -137,18 +137,18 @@ fn shell_text_origin(
     (x, y)
 }
 
-fn side_item_data_for_country(country: SkirmishCountry) -> i32 {
+fn side_item_data_for_country(country: LaunchCountry) -> i32 {
     match country {
-        SkirmishCountry::America => 0,
-        SkirmishCountry::Korea => 1,
-        SkirmishCountry::France => 2,
-        SkirmishCountry::Germany => 3,
-        SkirmishCountry::GreatBritain => 4,
-        SkirmishCountry::Libya => 5,
-        SkirmishCountry::Iraq => 6,
-        SkirmishCountry::Cuba => 7,
-        SkirmishCountry::Russia => 8,
-        SkirmishCountry::Yuri => 9,
+        LaunchCountry::America => 0,
+        LaunchCountry::Korea => 1,
+        LaunchCountry::France => 2,
+        LaunchCountry::Germany => 3,
+        LaunchCountry::GreatBritain => 4,
+        LaunchCountry::Libya => 5,
+        LaunchCountry::Iraq => 6,
+        LaunchCountry::Cuba => 7,
+        LaunchCountry::Russia => 8,
+        LaunchCountry::Yuri => 9,
     }
 }
 
@@ -170,11 +170,11 @@ fn flag_pcx_for_side_item_data(item_data: i32) -> Option<&'static str> {
     }
 }
 
-fn flag_name_for_country(country: SkirmishCountry) -> Option<&'static str> {
+fn flag_name_for_country(country: LaunchCountry) -> Option<&'static str> {
     flag_pcx_for_side_item_data(side_item_data_for_country(country))
 }
 
-fn flag_name_for_country_choice(random: bool, country: SkirmishCountry) -> Option<&'static str> {
+fn flag_name_for_country_choice(random: bool, country: LaunchCountry) -> Option<&'static str> {
     if random {
         flag_pcx_for_side_item_data(-2)
     } else {
@@ -1292,21 +1292,18 @@ mod tests {
 
     #[test]
     fn country_flags_preserve_side_item_data_order() {
-        assert_eq!(side_item_data_for_country(SkirmishCountry::Korea), 1);
+        assert_eq!(side_item_data_for_country(LaunchCountry::Korea), 1);
         assert_eq!(
-            flag_name_for_country(SkirmishCountry::Korea),
+            flag_name_for_country(LaunchCountry::Korea),
             Some("japi.pcx")
         );
-        assert_eq!(side_item_data_for_country(SkirmishCountry::GreatBritain), 4);
+        assert_eq!(side_item_data_for_country(LaunchCountry::GreatBritain), 4);
         assert_eq!(
-            flag_name_for_country(SkirmishCountry::GreatBritain),
+            flag_name_for_country(LaunchCountry::GreatBritain),
             Some("gbri.pcx")
         );
-        assert_eq!(side_item_data_for_country(SkirmishCountry::Cuba), 7);
-        assert_eq!(
-            flag_name_for_country(SkirmishCountry::Cuba),
-            Some("lati.pcx")
-        );
+        assert_eq!(side_item_data_for_country(LaunchCountry::Cuba), 7);
+        assert_eq!(flag_name_for_country(LaunchCountry::Cuba), Some("lati.pcx"));
     }
 
     #[test]

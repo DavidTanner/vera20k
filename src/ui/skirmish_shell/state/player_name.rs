@@ -2,9 +2,9 @@
 
 use crate::map::scenario_menu::MapMenuEntry;
 use crate::sim::game_options::GameOptions;
-use crate::skirmish_launch::{SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions};
+use crate::skirmish_launch::{LaunchCountry, SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions};
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
+use crate::ui::main_menu::StartPosition;
 use crate::ui::shell::trackbar::TrackbarHold;
 
 use super::super::SkirmishStatics;
@@ -237,7 +237,7 @@ pub struct SkirmishShellState {
     pub selected_map_idx: usize,
     pub selected_mode_id: i32,
     pub player_name_edit: PlayerNameEditState,
-    pub player_country: SkirmishCountry,
+    pub player_country: LaunchCountry,
     pub player_country_random: bool,
     pub player_color_index: usize,
     pub player_color_claimed: bool,
@@ -322,7 +322,7 @@ impl Default for SkirmishShellState {
             selected_map_idx: 0,
             selected_mode_id: 1,
             player_name_edit: PlayerNameEditState::default(),
-            player_country: SkirmishCountry::default(),
+            player_country: LaunchCountry::default(),
             player_country_random: false,
             player_color_index: 0,
             player_color_claimed: true,
@@ -341,7 +341,7 @@ impl Default for SkirmishShellState {
             crates: options.crates,
             mcv_redeploy: options.mcv_redeploy,
             zoom_enabled: true,
-            opponents: default_opponents(SkirmishCountry::Russia),
+            opponents: default_opponents(LaunchCountry::Russia),
             selected_mode_allies_allowed: true,
             selected_mode_must_ally: false,
             pressed_owner_draw_button: None,

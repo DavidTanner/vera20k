@@ -708,15 +708,15 @@ fn status_help_side_row_uses_item_specific_stt() {
     for (country, key) in [
         (SkirmishCountryChoice::Random, "STT:PlayerSideRandom"),
         (
-            SkirmishCountryChoice::Country(crate::ui::main_menu::SkirmishCountry::America),
+            SkirmishCountryChoice::Country(LaunchCountry::America),
             "STT:PlayerSideAmerica",
         ),
         (
-            SkirmishCountryChoice::Country(crate::ui::main_menu::SkirmishCountry::GreatBritain),
+            SkirmishCountryChoice::Country(LaunchCountry::GreatBritain),
             "STT:PlayerSideBritain",
         ),
         (
-            SkirmishCountryChoice::Country(crate::ui::main_menu::SkirmishCountry::Yuri),
+            SkirmishCountryChoice::Country(LaunchCountry::Yuri),
             "STT:PlayerSideYuriCountry",
         ),
     ] {
@@ -1088,7 +1088,7 @@ fn launch_session_packs_selected_map_and_enabled_slots() {
     let mut shell = SkirmishShellState::default();
     shell.selected_map_idx = 1;
     shell.player_name_edit.text = "Commander".to_string();
-    shell.player_country = SkirmishCountry::Korea;
+    shell.player_country = LaunchCountry::Korea;
     shell.player_color_index = 3;
     shell.player_start_position = StartPosition::Position(2);
     shell.player_team = 0;
@@ -1100,7 +1100,7 @@ fn launch_session_packs_selected_map_and_enabled_slots() {
     shell.build_off_ally = false;
     shell.crates = false;
     shell.mcv_redeploy = false;
-    shell.opponents[0].country = SkirmishCountry::Yuri;
+    shell.opponents[0].country = LaunchCountry::Yuri;
     shell.opponents[0].color_index = 6;
     shell.opponents[0].start_position = StartPosition::Position(4);
     shell.opponents[0].team = 1;
@@ -1237,10 +1237,10 @@ fn skirmish_launch_random_country_succeeds_and_flags_slot_for_resolution() {
 fn skirmish_concrete_country_color_launch_session_still_succeeds() {
     let mut shell = SkirmishShellState::default();
     shell.player_country_random = false;
-    shell.player_country = SkirmishCountry::Germany;
+    shell.player_country = LaunchCountry::Germany;
     shell.player_color_index = 2;
     shell.opponents[0].country_random = false;
-    shell.opponents[0].country = SkirmishCountry::Iraq;
+    shell.opponents[0].country = LaunchCountry::Iraq;
     shell.opponents[0].color_index = 4;
     let maps = [test_map_entry("map.mmx")];
 
@@ -1583,7 +1583,7 @@ fn ai_type_none_applies_inactive_combo_defaults() {
     shell.opponents[0].row_type = SkirmishAiRowType::Hard;
     shell.opponents[0].enabled = true;
     shell.opponents[0].country_random = false;
-    shell.opponents[0].country = SkirmishCountry::Yuri;
+    shell.opponents[0].country = LaunchCountry::Yuri;
     shell.opponents[0].color_index = 4;
     shell.opponents[0].color_claimed = true;
     shell.opponents[0].start_position = StartPosition::Position(5);
@@ -1598,7 +1598,7 @@ fn ai_type_none_applies_inactive_combo_defaults() {
     assert_eq!(shell.opponents[0].row_type, SkirmishAiRowType::None);
     assert!(!shell.opponents[0].enabled);
     assert!(shell.opponents[0].country_random);
-    assert_eq!(shell.opponents[0].country, SkirmishCountry::Yuri);
+    assert_eq!(shell.opponents[0].country, LaunchCountry::Yuri);
     assert_eq!(shell.opponents[0].color_index, 4);
     assert!(!shell.opponents[0].color_claimed);
     assert_eq!(shell.opponents[0].start_position, StartPosition::Auto);
@@ -1749,7 +1749,7 @@ fn side_combo_exposes_random_country_and_verified_dropdown_cap() {
         items.first().copied(),
         Some(SkirmishComboItem::Country(SkirmishCountryChoice::Random))
     );
-    assert_eq!(items.len(), SkirmishCountry::ALL.len() + 1);
+    assert_eq!(items.len(), LaunchCountry::ALL.len() + 1);
 
     let dropdown = combo_dropdown_rect(&shell, &layout, &maps, SkirmishComboId::Side(0)).unwrap();
     assert_eq!(dropdown.y, layout.rows.side_combos[0].y + COMBO_FACE_H + 1);

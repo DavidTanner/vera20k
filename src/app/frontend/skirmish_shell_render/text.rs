@@ -10,8 +10,8 @@ use crate::render::batch::SpriteInstance;
 use crate::render::bit_font::BitFont;
 use crate::render::shell_paint::{self, PaintLabel};
 use crate::render::shell_text::{self, ShellAlign, ShellTextDraw, TextRect};
+use crate::skirmish_launch::LaunchCountry;
 use crate::skirmish_modes::mode_by_id;
-use crate::ui::main_menu::SkirmishCountry;
 use crate::ui::shell::modal::BodyOkLayout;
 use crate::ui::shell::static_reveal::StaticPaint;
 use crate::ui::shell::trackbar::value_text_rect;
@@ -97,7 +97,7 @@ pub(super) fn combo_item_label(state: &AppState, item: SkirmishComboItem) -> Str
 pub(super) fn country_choice_label(
     state: &AppState,
     random: bool,
-    country: SkirmishCountry,
+    country: LaunchCountry,
 ) -> String {
     if random {
         localized_label(state, "GUI:RandomAsSymbols", "Random")
