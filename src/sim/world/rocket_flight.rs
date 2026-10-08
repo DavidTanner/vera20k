@@ -503,19 +503,25 @@ pub(super) mod retail_tests {
                  detonation frame {detonated} near {impact:?}, target health {strength} -> \
                  {health}, anims {anim_names:?}"
             );
-            // Launched at the tank with Move queued, commenced the next frame;
-            // the first Mission_Move visit's Find_Attack_Cell moves the NavCom
-            // to a free cell beside the tank (Spawned, the missile may share
-            // only a spawner's cell), which the flying Rocket's Move_To ignores.
-            // The tracker's Attack commences the same frame, restarting the
-            // mission state at Mission_Attack's 0.
+            // The V3's own AI launches the missile at the tank with Move
+            // queued; its Unlimbo appends it to the logic vector
+            // (`0x0055BAA0`), so it commences Move later in the same pass. The
+            // next frame's first Mission_Move visit's Find_Attack_Cell moves
+            // the NavCom to a free cell beside the tank (Spawned, the missile
+            // may share only a spawner's cell), which the flying Rocket's
+            // Move_To ignores. The tracker's Attack, pushed in the launching
+            // pass, commences two frames after it, restarting the mission
+            // state at Mission_Attack's 0.
             use crate::sim::components::NavTargetRef;
             use crate::sim::mission::MissionType::{Attack, Move, Retreat};
             let tank = Some(NavTargetRef::Entity { id: target });
-            assert_eq!(moves[0].1, ((None, Some(0)), tank), "{moves:?}");
-            assert_eq!(moves[1].1, ((Some(Move), Some(0)), tank), "{moves:?}");
-            let (_, (mission, nav)) = moves[2];
-            assert_eq!(mission, (Some(Attack), Some(0)), "{moves:?}");
+            assert_eq!(
+                moves[0],
+                (launched, ((Some(Move), Some(0)), tank)),
+                "{moves:?}"
+            );
+            let (_, (mission, nav)) = moves[1];
+            assert_eq!(mission, (Some(Move), Some(1)), "{moves:?}");
             let Some(NavTargetRef::Cell { rx, ry }) = nav else {
                 panic!("Find_Attack_Cell picks a cell: {moves:?}");
             };
@@ -524,6 +530,11 @@ pub(super) mod retail_tests {
                     && rx.abs_diff(target_cell.0) <= 2
                     && ry.abs_diff(target_cell.1) <= 2,
                 "a free cell beside the tank: {moves:?}"
+            );
+            assert_eq!(
+                moves[2],
+                (launched + 2, ((Some(Attack), Some(0)), nav)),
+                "{moves:?}"
             );
             // Once TechnoClass::AI drops the target the weaponless missile cannot
             // fire at, state 10 enters idle mode, which drops the destination

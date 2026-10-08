@@ -33,8 +33,9 @@
 //!   reads the nodes (`0x0067F6BE`, after the frame is restored). Save
 //!   (`0x0054E750`) writes the nodes, not the timer.
 //! - `+0x6CA` has no field here: the tracker's membership stands in for it
-//!   (`spawn_manager::notify_pointer_expired`, the only active reader of a
-//!   missile's; `AircraftClass::Fire_At @ 0x0041659E` and
+//!   (the slot guard of `SpawnManagerClass::PointerExpired` in
+//!   `spawn_manager`, the only active reader of a missile's;
+//!   `AircraftClass::Fire_At @ 0x0041659E` and
 //!   `TechnoClass::SelectWeaponAgainst @ 0x006F3658` read it for a weapon,
 //!   and no `MissileSpawn=` type in retail rules has one).
 //!

@@ -19,7 +19,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::missile_spawn::MissileFamily;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
-use crate::sim::spawn_manager::{SpawnManagerMode, SpawnSlotState, tick_spawn_managers};
+use crate::sim::spawn_manager::{SpawnManagerMode, SpawnSlotState, spawn_manager_ai};
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
@@ -411,7 +411,7 @@ fn set_target_queues_and_the_ai_pass_promotes_it() {
         manager.update_timer = CdTimer::default();
     }
 
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
 
     let manager = sim
         .substrate
@@ -466,7 +466,7 @@ fn hornet_launcher_maximum_matches_native_distance_ties() {
         manager.update_timer = CdTimer::default();
 
         move_target_to_x_distance(&mut sim, target, distance);
-        tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+        spawn_manager_ai(&mut sim, &rules, carrier, None);
 
         let manager = sim
             .substrate
@@ -520,7 +520,7 @@ fn gsi_05_08_idle_legality_uses_effective_3d_distance() {
         .expect("target remains live")
         .position
         .exact_z_leptons = Some(TARGET_Z_LEPTONS);
-    tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+    spawn_manager_ai(&mut sim, &rules, carrier, None);
 
     let manager = sim
         .substrate
@@ -558,7 +558,7 @@ fn gsi_05_08_v3_minimum_accepts_1280_and_clears_1279() {
         manager.update_timer = CdTimer::default();
 
         move_target_to_x_distance(&mut sim, target, distance);
-        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+        spawn_manager_ai(&mut sim, &rules, v3, None);
 
         let manager = sim
             .substrate
@@ -602,7 +602,7 @@ fn update_timer_gates_the_whole_ai_pass() {
 
     // Frame 0 with the constructor's 20-frame first delay still pending: no
     // promotion, no launch.
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
     let manager = sim
         .substrate
         .entities
@@ -649,7 +649,7 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
     }
     // Pass 1: Idle → Launching (the slot walk runs before the mode block, so
     // nothing launches while the manager is still Idle).
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -668,7 +668,7 @@ fn v3_launches_its_rocket_into_the_kamikaze_window() {
     {
         manager.update_timer = CdTimer::default();
     }
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
 
     let child = sim.substrate.entities.get(child_id).expect("child alive");
     assert!(!child.lifecycle.in_limbo, "rocket is out in the world");
@@ -754,7 +754,7 @@ fn a_missile_that_lost_its_target_retreats_for_good() {
             manager.set_target(Some(TargetKind::Entity(target)));
         }
         manager.update_timer = CdTimer::default();
-        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+        spawn_manager_ai(&mut sim, &rules, v3, None);
     }
     let entity = sim.substrate.entities.get_mut(missile).unwrap();
     assert!(!entity.lifecycle.in_limbo, "the missile is launched");
@@ -857,7 +857,7 @@ fn missile_held_after(setup: impl FnOnce(&mut crate::sim::game_entity::GameEntit
         manager.set_target(Some(TargetKind::Entity(target)));
         manager.update_timer = CdTimer::default();
     }
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
 
     let frame = sim.session.binary_frame;
     let entity = sim.substrate.entities.get_mut(v3).expect("V3");
@@ -869,7 +869,7 @@ fn missile_held_after(setup: impl FnOnce(&mut crate::sim::game_entity::GameEntit
         "the first pass promoted the target"
     );
     manager.update_timer = CdTimer::default();
-    tick_spawn_managers(&mut sim, &rules, &[v3], None);
+    spawn_manager_ai(&mut sim, &rules, v3, None);
     sim.substrate
         .entities
         .get(child_id)
@@ -1215,7 +1215,7 @@ fn launcher_death_destroys_a_missile_already_in_flight() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+        spawn_manager_ai(&mut sim, &rules, v3, None);
     }
     assert_eq!(
         sim.substrate
@@ -1282,7 +1282,7 @@ fn a_missile_shot_down_in_flight_explodes_where_it_is() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+        spawn_manager_ai(&mut sim, &rules, v3, None);
     }
     // The tilt holds the missile still; its climb is the first moving turn.
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(40, 32);
@@ -1414,7 +1414,7 @@ fn missile_flight_speed_uses_the_ra2_conversion() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[v3], None);
+        spawn_manager_ai(&mut sim, &rules, v3, None);
     }
 
     let speed = |sim: &Simulation| {
@@ -1500,7 +1500,7 @@ fn reload_due_restores_actual_and_estimated_health_from_child_type() {
         aircraft.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-123);
         let strength = rules.object("HORNET").unwrap().strength;
 
-        tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+        spawn_manager_ai(&mut sim, &rules, carrier, None);
 
         let aircraft = sim.substrate.entities.get(child).unwrap();
         assert_eq!(aircraft.health.current, strength);
@@ -1542,7 +1542,7 @@ fn hornets_hold_over_the_carrier_until_the_whole_wing_is_up() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+        spawn_manager_ai(&mut sim, &rules, carrier, None);
     }
 
     let launched: Vec<u64> = sim
@@ -1609,7 +1609,7 @@ fn a_dead_carriers_airborne_hornet_crashes() {
             manager.set_target(Some(TargetKind::Entity(target)));
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+        spawn_manager_ai(&mut sim, &rules, carrier, None);
     }
     let (slot, hornet) = sim
         .substrate
@@ -1704,7 +1704,7 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
             // The launch pacing between Hornets.
             manager.reload_timer = CdTimer::default();
         }
-        tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+        spawn_manager_ai(&mut sim, &rules, carrier, None);
     }
     let wing = airborne(&sim);
     assert!(wing.len() >= 2, "two Hornets off the deck: {wing:?}");
@@ -1782,7 +1782,7 @@ fn a_landing_hornet_keeps_its_slot_and_reloads() {
         {
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(sim, &rules, &[carrier], None);
+        spawn_manager_ai(sim, &rules, carrier, None);
     };
 
     // Launch the first Hornet (Idle -> Launching, then off the deck).
@@ -1910,7 +1910,7 @@ fn target_death_clears_the_wing_target() {
         manager.set_target(Some(TargetKind::Entity(target)));
         manager.update_timer = CdTimer::default();
     }
-    tick_spawn_managers(&mut sim, &rules, &[carrier], None);
+    spawn_manager_ai(&mut sim, &rules, carrier, None);
     assert_eq!(
         sim.substrate
             .entities
@@ -2014,7 +2014,7 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
             }
             manager.update_timer = CdTimer::default();
         }
-        tick_spawn_managers(sim, &rules, &[carrier], None);
+        spawn_manager_ai(sim, &rules, carrier, None);
     };
     for _ in 0..2 {
         pass(&mut sim, Some(target));
@@ -2340,7 +2340,7 @@ fn retail_launches(
             .unwrap();
         manager.update_timer = CdTimer::default();
         manager.reload_timer = CdTimer::default();
-        tick_spawn_managers(&mut sim, rules, &[owner], None);
+        spawn_manager_ai(&mut sim, rules, owner, None);
         let frame = sim.session.binary_frame;
         let owner_entity = sim.substrate.entities.get(owner).unwrap();
         let child = owner_entity.spawn_manager.as_ref().unwrap().slots[slot]
