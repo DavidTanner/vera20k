@@ -854,10 +854,13 @@ use crate::sim::world::Simulation;
 // Deferment, Duration, StartTime, Coords, Owner) and its two cloud lists in
 // place of VERA's storm record; a House's power state saves its radar outage
 // timer (+0x2B0). Prior records lack them.
-// 297 -> 298: an aircraft's mission leaf saves its paradrop passes (+0x6D3);
+// 297 -> 298: remove cached cloak Rules/query fields and visual phase; retain
+// Techno+24C raw f32 displacement bits. The unmerged first-reveal candidate
+// also used version297 for a different layout; neither layout can resume.
+// 298 -> 299: an aircraft's mission leaf saves its paradrop passes (+0x6D3);
 // the paradrop carrier's two AircraftMission states are removed, its flight
 // now the native missions 26 and 27. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 298;
+const SNAPSHOT_VERSION: u32 = 299;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3875,9 +3878,10 @@ mod tests {
         // 295 -> 296: the Force Shield's fade countdown and coordinate.
         // 296 -> 297: the Lightning Storm's globals and cloud lists; a House's
         // radar outage timer.
-        // 297 -> 298: the aircraft's paradrop passes; no paradrop carrier
+        // 297 -> 298: canonical cloak query and retained native displacement.
+        // 298 -> 299: the aircraft's paradrop passes; no paradrop carrier
         // AircraftMission states.
-        assert_eq!(super::SNAPSHOT_VERSION, 298);
+        assert_eq!(super::SNAPSHOT_VERSION, 299);
     }
 
     #[test]
@@ -6382,7 +6386,7 @@ mod tests {
             5,
             false,
         );
-        let mut cloak = CloakRuntime::new(0, 9);
+        let mut cloak = CloakRuntime::new(0);
         cloak.establish_unlimbo_fully_cloaked();
         entity.cloak = Some(cloak);
         entity.sensor_deposit = Some(SensorDeposit {

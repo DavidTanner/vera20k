@@ -482,6 +482,35 @@ class MapObservationTests(unittest.TestCase):
                 actor['foot']['pending_entry_500'] = value
                 observation._actor(actor, 'actor')
 
+    def test_cloak_projection_preserves_signed_native_inputs_and_nullable_runtime(self):
+        observation._cloak(None, 'cloak')
+        row = dict(state_i32=1, progress_i32=0, cloaking_stages_i32=9,
+                   voxel=True, no_shadow=False)
+        observation._cloak(row, 'cloak')
+        for key in ('state_i32', 'progress_i32', 'cloaking_stages_i32'):
+            for value in (-(1 << 31), (1 << 31) - 1):
+                observation._cloak(dict(row, **{key: value}), 'cloak')
+            for value in (True, 1 << 31, -(1 << 31) - 1):
+                with self.subTest(key=key, value=value), self.assertRaises(ValidationError):
+                    observation._cloak(dict(row, **{key: value}), 'cloak')
+        with self.assertRaises(ValidationError):
+            observation._cloak(dict(row, voxel=1), 'cloak')
+        with self.assertRaises(ValidationError):
+            observation._cloak(dict(row, derived_phase=1), 'cloak')
+
+    def test_cloak_projection_round_trips_in_sealed_actor_receipts(self):
+        self.scripted_profile()
+        for step, actors in self.actor_frames.items():
+            actors[0]['cloak'] = None if step == 3 else dict(
+                state_i32=1, progress_i32=step, cloaking_stages_i32=9,
+                voxel=True, no_shadow=False)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        for frame in report['capture']['observations']['frames']:
+            self.assertEqual(frame['actors'][0]['cloak'],
+                             self.actor_frames[frame['completed_steps']][0]['cloak'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
     @staticmethod
     def action_line_inputs():
         # Schema fixture only; native coordinate values come from the original
@@ -773,6 +802,35 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual([row['field'] for row in report['differences']], [
             'observations.frames[1].actors[0].building.animation_slots[0].animation.runtime.frame_timer.duration',
             'observations.frames[1].terrain[0].overlay.density'])
+
+    def test_terrain_visibility_is_retained_and_compared(self):
+        self.production_profile()
+        cell = self.unallocated_cell([87, 53])
+        cell['local_visibility'] = dict(owner='Observer', revealed=False,
+                                        visible=False, gap_covered=False)
+        self.terrain_frames[1] = [cell]
+        before = self.valid_capture('visibility-before')
+        def change(manifest):
+            manifest['observations']['frames'][1]['terrain'][0]['local_visibility']['revealed'] = True
+        self.change = change
+        after = self.valid_capture('visibility-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[1].terrain[0].local_visibility.revealed'])
+
+    def test_terrain_visibility_accepts_legacy_or_missing_viewer_and_rejects_bad_states(self):
+        cell = self.unallocated_cell([87, 53])
+        observation._terrain(cell, [87, 53], 'terrain')
+        cell['local_visibility'] = None
+        observation._terrain(cell, [87, 53], 'terrain')
+        visibility = dict(owner='Observer', revealed=False, visible=False, gap_covered=False)
+        for key, value in [('owner', ''), ('owner', 7), ('revealed', 0),
+                           ('visible', None), ('gap_covered', 'false')]:
+            with self.subTest(key=key, value=value):
+                cell['local_visibility'] = dict(visibility, **{key: value})
+                with self.assertRaises(ValidationError):
+                    observation._terrain(cell, [87, 53], 'terrain')
 
     def refinery_profile(self):
         self.scripted_profile()
