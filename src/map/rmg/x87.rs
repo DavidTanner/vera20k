@@ -13,9 +13,9 @@
 //! 3. The Gaussian caches its second variate, so alternate calls consume no
 //!    random draws at all.
 //!
-//! `util::native_x87` covers similar ground but cannot be reused: its value
-//! type has private fields, it offers no division, and it is not yet committed.
-//! This module is deliberately self-contained.
+//! `util::native_x87` models the same FPU for the simulation. The generator
+//! keeps its own truncating double (`TruncF64`), but its square root runs the
+//! shared `Sqrt_Approx` table step (`native_x87::sqrt_approx_bits`).
 
 use super::rng::RmgRng;
 
@@ -230,29 +230,6 @@ fn narrow_to_f32_bits(value: TruncF64) -> u32 {
     sign | ((exponent as u32) << 23) | fraction
 }
 
-/// One entry of the square-root lookup table.
-///
-/// The table is pure arithmetic, so it is computed rather than shipped: index
-/// `i` encodes a significand, and the entry is the truncated mantissa of its
-/// square root. Not shipping it also keeps the retail bytes out of this repo.
-///
-/// That all 16384 entries come out identical to the original's table is checked
-/// by `map::rmg::sqrt_table`, exhaustively, against the player's own
-/// `gamemd.exe`. It needs `RA2_DIR` and so is `#[ignore]`d; the spot values in
-/// this module's tests guard the formula on a plain `cargo test`.
-pub(crate) fn sqrt_table_entry(index: u32) -> u32 {
-    let significand = if index < 8192 {
-        // Even exponent: the significand lies in [1, 2).
-        1.0 + f64::from(index) / 8192.0
-    } else {
-        // Odd exponent: the implicit bit is set, so it lies in [2, 4).
-        2.0 * (1.0 + f64::from(index - 8192) / 8192.0)
-    };
-    // The root always lands in [1, 2), so the exponent field is zero and only
-    // the mantissa varies.
-    ((significand.sqrt() - 1.0) * 8_388_608.0) as u32
-}
-
 /// The generator's square root: a table approximation.
 ///
 /// Deliberately **not** `f64::sqrt`. The input significand is quantised to the
@@ -262,20 +239,7 @@ pub fn approx_sqrt(value: TruncF64) -> TruncF64 {
     if value.is_zero() {
         return TruncF64::zero();
     }
-    let bits = narrow_to_f32_bits(value);
-    let mut mantissa = bits & 0x007F_FFFF;
-    let biased = ((bits >> 23) & 0xFF) as i32;
-    let unbiased = biased - 127;
-
-    // An odd exponent borrows a factor of two into the significand.
-    if unbiased & 1 != 0 {
-        mantissa |= 0x0080_0000;
-    }
-    // Arithmetic halving, matching the original's 16-bit shift.
-    let half_exponent = unbiased >> 1;
-
-    let index = mantissa >> 10;
-    let result_bits = sqrt_table_entry(index).wrapping_add(((half_exponent + 127) as u32) << 23);
+    let result_bits = crate::util::native_x87::sqrt_approx_bits(narrow_to_f32_bits(value));
     TruncF64::from_f64(f64::from(f32::from_bits(result_bits)))
 }
 
@@ -378,7 +342,11 @@ mod tests {
     #[test]
     fn sqrt_table_matches_retail_at_the_pinned_points() {
         for &(index, retail) in RETAIL_SQRT_SPOT {
-            assert_eq!(sqrt_table_entry(index), retail, "sqrt table entry {index}");
+            assert_eq!(
+                crate::util::native_x87::sqrt_approx_table_entry(index),
+                retail,
+                "sqrt table entry {index}"
+            );
         }
     }
 

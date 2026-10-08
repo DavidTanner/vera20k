@@ -890,7 +890,9 @@ use crate::sim::world::Simulation;
 // the terrain objects' occupation that nothing read. Prior records cannot resume.
 // 308 -> 309: Factory drops its special item, which every writer set to the
 // -1 "none" and nothing read. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 309;
+// 309 -> 310: GameEntity drops blocked_scatter_timer, which nothing wrote
+// after construction or read. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 310;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3918,7 +3920,8 @@ mod tests {
         // 306 -> 307: the session's LocalSize copy.
         // 307 -> 308: the unread terrain occupation copy.
         // 308 -> 309: the Factory special item.
-        assert_eq!(super::SNAPSHOT_VERSION, 309);
+        // 309 -> 310: the dead infantry scatter timer.
+        assert_eq!(super::SNAPSHOT_VERSION, 310);
     }
 
     #[test]

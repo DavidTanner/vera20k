@@ -1748,8 +1748,8 @@ fn outbound_contract_matches_selected_retail_hills_battle() {
         contract_miner.chrono_miner_capacity
     );
     assert_eq!(
-        retail_miner.unload_tick_interval,
-        contract_miner.unload_tick_interval
+        rules.general.harvester_dump_frames,
+        miner_contract_rules.general.harvester_dump_frames
     );
     assert_eq!(
         rules.general.harvester_too_far_distance,

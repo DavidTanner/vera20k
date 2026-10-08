@@ -2026,6 +2026,7 @@ impl ResolvedTerrainGrid {
         self.width
     }
 
+    #[cfg(test)]
     pub(crate) fn projectile_water_set_base(&self) -> i32 {
         self.water_tiles.water_base
     }
@@ -2056,9 +2057,16 @@ impl ResolvedTerrainGrid {
     /// `CellClass @ 0x00485060`: the cell's tile (`+0x38`) is one of the 14
     /// open-water tiles from the theater's WaterSet base (`0x00AA0738`), a
     /// signed window that the -1 base of a theater without one (Lunar) does
-    /// not disable: there tiles -1..12 answer true.
+    /// not disable: there tiles -1..12 answer true. CellClass vt+0x50
+    /// (`0x004867E0`) answers its negation, and Is_Clear_To_Build inlines it
+    /// for a Naval building (`0x0047CA0F..0x0047CA25`).
     pub(crate) fn native_cell_is_water_set_tile(&self, cell: NativeCellIdentity) -> bool {
-        let tile = self.native_cell_tile_index(cell);
+        self.tile_is_water_set(self.native_cell_tile_index(cell))
+    }
+
+    /// [`Self::native_cell_is_water_set_tile`] on a tile already read from a
+    /// cell's `+0x38`.
+    pub(crate) fn tile_is_water_set(&self, tile: i32) -> bool {
         let base = self.water_tiles.water_base;
         tile >= base && tile < base.wrapping_add(14)
     }

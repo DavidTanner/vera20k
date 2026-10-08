@@ -47,9 +47,6 @@ const OVERLAY_LASER_FENCE: u8 = 0x7E;
 /// The overlay data a wall reaches once damaged (`0x0047C8D4`, `0x0047C926`):
 /// the high nibble is the damage stage.
 const WALL_DAMAGED_DATA: u8 = 0x10;
-/// WaterSet tiles a `Naval=` building accepts: the set's first 14 tiles
-/// (`0x0047CA20`).
-const WATER_SET_OPEN_WATER_TILES: i32 = 0xE;
 
 /// The SpeedType a building type carries into Is_Clear_To_Build.
 /// `BuildingTypeClass::ReadINI` overwrites TechnoType+0x67C with
@@ -158,9 +155,8 @@ pub(crate) fn is_clear_to_build(
                 return false;
             }
             if ty.is_some_and(|ty| ty.naval) {
-                let tile = terrain.native_cell_tile_index(cell);
-                let base = terrain.projectile_water_set_base();
-                tile >= base && tile < base + WATER_SET_OPEN_WATER_TILES
+                // `0x0047CA0F..0x0047CA25`: a Naval type needs a WaterSet tile.
+                terrain.native_cell_is_water_set_tile(cell)
             } else {
                 semantics.is_some_and(|land| land.buildable)
             }

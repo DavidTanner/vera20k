@@ -1007,3 +1007,51 @@ fn a_parasite_is_placed_at_a_falling_victim_below_the_air_line() {
     );
     assert!(!place_at_height(208), "at 208 the victim is in the air");
 }
+
+/// `tools/spatial_oracle/parasite_water_gate.json`: the original CanInfect
+/// with a Naval, a land or no owner, and the victim on a tile around the
+/// theater's WaterSet base or on the shared dummy. VERA's grid has no NULL
+/// slot inside its bounds, so both dummy rows put the victim past the grid.
+#[test]
+fn naval_owner_water_gate_matches_original_can_infect() {
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/parasite_water_gate.json",
+    ))
+    .unwrap();
+    let rules = rules();
+    let rows = corpus["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 14);
+    for row in rows {
+        let name = row["name"].as_str().unwrap();
+        let mut arena = Arena::new(&rules);
+        let victim = arena.spawn(&rules, "MTNK", "Americans", (5, 2));
+        // The owner's type supplies only `Naval=`; an id with no object is
+        // the parasite without an owner.
+        let owner = match (
+            row["owner"].as_bool().unwrap(),
+            row["naval"].as_bool().unwrap(),
+        ) {
+            (true, true) => arena.spawn(&rules, "DLPH", "Russians", (9, 9)),
+            (true, false) => arena.spawn(&rules, "DRON", "Russians", (9, 9)),
+            (false, _) => u64::MAX,
+        };
+        let terrain = arena.sim.resolved_terrain.as_mut().unwrap();
+        terrain.set_projectile_water_set_base(row["water_set"].as_i64().unwrap() as i32);
+        terrain.cell_mut(5, 2).unwrap().final_tile_index = row["tile"].as_i64().unwrap() as i32;
+        if row["victim_cell"] != serde_json::json!([5, 2]) {
+            arena
+                .sim
+                .substrate
+                .entities
+                .get_mut(victim)
+                .unwrap()
+                .position
+                .rx = 200;
+        }
+        assert_eq!(
+            arena.sim.parasite_can_infect(owner, Some(victim), &rules),
+            row["admits"].as_bool().unwrap(),
+            "{name}"
+        );
+    }
+}
