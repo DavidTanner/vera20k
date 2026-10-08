@@ -307,7 +307,10 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // drops fog_of_war. A control binary (main with a hash that skips only those
 // fields) gives this value in the same test, with every tripwire above green.
 // Control removed.
-const SLICE6_BASELINE_HASH: u64 = 0x47E4_B3F0_EED8_EE5C;
+// Snapshot307: the session's LocalSize copy leaves the hash. A control binary
+// (main with a hash that skips only that tuple) gives this value in the same
+// test, with every tripwire above green. Control removed.
+const SLICE6_BASELINE_HASH: u64 = 0xDCFC_6D0F_1E2C_4BDA;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
