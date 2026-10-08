@@ -1,10 +1,10 @@
 # Ghidra working notes
 
-[AGENTS.md](../../AGENTS.md) defines evidence and delivery. These notes cover tool
+[AGENTS.md](../AGENTS.md) defines evidence and delivery. These notes cover tool
 behavior and recurring interpretation errors; choose the investigation method yourself.
 
 For repeatable static byte reads, disassembly, direct caller candidates and field
-scans beside Ghidra, use [the shared native inspection tool](../../tools/native_inspect.md).
+scans beside Ghidra, use [the shared native inspection tool](../tools/native_inspect.md).
 It checks the original executable identity and maps file-backed PE ranges through
 the oracle owner. Its linear sweeps do not establish instruction boundaries,
 reachability or exhaustive aliases; preserve those limits in findings.
@@ -18,7 +18,7 @@ zeroes from a loaded image does not establish the current contents of mutable da
 
 For read-only before/rehearsal comparisons of decompilation artifacts, known
 callers and native-versus-p-code stack frames, use
-[`python -m tools.ghidra_compare`](../../tools/ghidra_compare.md). Supply explicit
+[`python -m tools.ghidra_compare`](../tools/ghidra_compare.md). Supply explicit
 programs and census paths. Incomplete reads cannot pass; findings still require
 instruction-level interpretation rather than automatic acceptance.
 
@@ -131,7 +131,7 @@ when cloned into their own manager. Do not use this route to fork a callback typ
   (0x7CA650) is MSVC's `_chkstk`, which Ghidra's stack analysis does not model, so the
   decompiles of its 30 callers place their locals above the return address. The
   repository's [`ghidra_compare
-  frames`](../../tools/ghidra_compare.md#stack-frames-against-the-native-instructions)
+  frames`](../tools/ghidra_compare.md#stack-frames-against-the-native-instructions)
   command compares the decompiler's offsets with ESP computed from the code. Typing the
   function pointer does not change the pop: the decompiler applies a pointer's prototype
   only after its stack analysis (`ActionDeindirect`). A user
@@ -189,7 +189,7 @@ verified role and reproducible evidence together, naming uncertainty honestly.
 ## Names and their sources
 
 For recorded name/comment passes, use the
-[annotation replay runner](../../tools/ghidra_pass.md). Check both `pending=0`
+[annotation replay runner](../tools/ghidra_pass.md). Check both `pending=0`
 and `conflict=0` after saving: a non-atomic pass can skip conflicts while reaching
 zero pending operations. Existing names and comments remain evidence leads;
 transferring them does not establish class layouts or receiver types.
@@ -293,7 +293,7 @@ was checked:
   initializers and helpers such as `Shell__`, `Rmg__` and `Planning__`) are module
   labels, not class claims. The pass is recorded for replay on other copies of the
   database as
-  [`2026-10-04-vera-cited-names.json`](../../tools/ghidra_pass/passes/2026-10-04-vera-cited-names.json).
+  [`2026-10-04-vera-cited-names.json`](../tools/ghidra_pass/passes/2026-10-04-vera-cited-names.json).
 
 Destructor and COM-interface method names rest on the bytes. For the 2,356 method
 names taken from YRpp's declaration order, each body's `ret N` was compared with
@@ -587,7 +587,7 @@ repairs immediately, including layout/offsets and affected decompilation. Byte p
 bulk reanalysis and unrelated database changes need their own task scope.
 
 Several copies of the database exist. Record a pass as a ledger for
-[`ApplyGhidraPass.java`](../../tools/ghidra_pass.md) so the other copies can replay it
+[`ApplyGhidraPass.java`](../tools/ghidra_pass.md) so the other copies can replay it
 instead of redoing it.
 
 Use one writer per shared program and coordinate changes affecting other workers'

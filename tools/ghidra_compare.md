@@ -30,7 +30,7 @@ shared oracle owner against SHA-256
 
 Coordinate with the project owner and compare stable saved/rehearsal projects.
 Do not open the same project concurrently in GUI and headless Ghidra. Follow
-[the shared Ghidra workflow](../docs/research/ghidra-workflow.md) for the separate
+[the shared Ghidra workflow](../docs/ghidra-workflow.md) for the separate
 annotation, save and readback process.
 
 ## Decompilation and callers

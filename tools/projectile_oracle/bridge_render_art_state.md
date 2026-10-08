@@ -104,7 +104,7 @@ The Rust checks are in:
   the fixed-ART processing constructor before their other-family merge.
 
 Native regeneration and independent `--check` pass. On the canonical focused
-candidate recorded in [the chain receipt](../../docs/research/bridge-projectile-render.md),
+candidate recorded in the chain receipt,
 all three retained ART tests pass, including39 registered production types out
 of54 physically referenced native types. The atlas group passes6 with its actual
 retail-archive test ignored; all40 full native shape cases pass in both GPU
