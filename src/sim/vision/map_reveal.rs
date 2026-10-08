@@ -145,6 +145,5 @@ impl FogState {
         if reset {
             self.whole_map_revealed_owners.remove(&owner);
         }
-        self.view_cache.merged = None;
     }
 }

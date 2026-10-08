@@ -263,7 +263,6 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
             "{}",
             case["name"]
         );
-        live.fog.build_merged_for(viewer, &live.interner);
         views.push((live.fog, viewer, shrouded));
     }
     views

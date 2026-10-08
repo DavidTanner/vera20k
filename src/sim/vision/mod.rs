@@ -441,14 +441,6 @@ impl OwnerVisibility {
         }
     }
 
-    /// Zero all flags (visible + revealed). Used when reusing the merged
-    /// grid buffer in `build_merged_for`.
-    fn clear_all(&mut self) {
-        for cell in &mut self.cells {
-            *cell = 0;
-        }
-    }
-
     /// Return the raw cells slice for deterministic hashing.
     pub fn cells_raw(&self) -> &[u8] {
         &self.cells
@@ -561,22 +553,6 @@ pub struct FoggedObjectFootprintRecord {
     pub occupied_cells: Vec<(u16, u16)>,
 }
 
-/// Nonserialized merged-visibility cache for one owner (F10 `FogViewCache`).
-///
-/// Presentation-only: discarded by every snapshot load (serde skip) and
-/// rebuilt before the first tactical render; never part of save bytes or the
-/// state hash, so building it any number of times cannot affect determinism.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct FogViewCache {
-    /// The owner the merged grid was built for, plus the merged grid. All
-    /// alliance-aware queries (is_cell_visible, edge masks) use this for
-    /// O(1) lookups instead of iterating all owners per cell.
-    pub(crate) merged: Option<(InternedId, OwnerVisibility)>,
-    /// Bumps on every rebuild. The fog mask renderer and minimap dirty-gate
-    /// on this runtime counter, never on the serialized wire shadow.
-    pub(crate) generation: u64,
-}
-
 /// Last admitted generator identity/geometry, retained to distinguish a new
 /// native6FB170 write from repeat Rust view materialization. Not a second map
 /// authority: production always supplies the live entity's identity and facts.
@@ -591,10 +567,9 @@ pub(crate) struct GapGeneratorSource {
 
 /// Global fog/shroud state keyed by owner name.
 ///
-/// Stores per-viewer knowledge grids plus a lazily-copied presentation cache
-/// for fast queries. Direct alliance admission happens at fresh source writers,
-/// never by merging derived viewer knowledge. The cache is built via
-/// `build_merged_for()` and then used by `is_cell_visible`, edge masks, etc.
+/// Stores per-viewer knowledge grids. Direct alliance admission happens at
+/// fresh source writers, never by merging derived viewer knowledge, so every
+/// query reads the viewer's own plane.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FogState {
     pub width: u16,
@@ -607,9 +582,11 @@ pub struct FogState {
     /// Per-viewer hostile admission receipts; preserved across save/load so a
     /// continuing generator does not become a fresh write after restoration.
     pub(crate) gap_sources: BTreeMap<InternedId, std::collections::BTreeSet<GapGeneratorSource>>,
-    /// The merged local-owner view (F10): nonserialized presentation cache.
+    /// Bumps each time presentation prepares a view (F10); the fog mask
+    /// renderer and minimap dirty-gate on it. Runtime only: never saved or
+    /// hashed, so it restarts at 0 after a load.
     #[serde(skip)]
-    pub(crate) view_cache: FogViewCache,
+    pub(crate) view_generation: u64,
     /// Native CellClass::FoggedObjects vectors, keyed by viewer and cell. IDs
     /// may be shared across every cell in one building footprint.
     #[serde(default)]
@@ -676,7 +653,6 @@ impl FogState {
                 vis.publish_knowledge(index);
             }
         }
-        self.view_cache.merged = None;
     }
 
     fn reconcile_sight_admission(
@@ -715,7 +691,6 @@ impl FogState {
         if changed {
             self.sight_admissions.insert(key, admission);
         }
-        self.view_cache.merged = None;
     }
 
     /// Insert one shared frozen-building footprint record. Named location:
@@ -1116,54 +1091,17 @@ impl FogState {
         current_player == object_owner || !self.has_sensor_for_house(current_player, rx, ry)
     }
 
-    /// Cache the selected viewer's already-resolved knowledge. The historical
-    /// method/cache name is retained for callers; this does not merge another
-    /// viewer's derived knowledge or visibility.
-    /// Fresh Techno/Psychic writers own direct-alliance publication at5678E0.
-    pub fn build_merged_for(&mut self, owner: InternedId, _interner: &StringInterner) {
-        // Reuse existing buffer if dimensions match; otherwise allocate.
-        let mut merged = match self.view_cache.merged.take() {
-            Some((_, mut vis)) if vis.width == self.width && vis.height == self.height => {
-                vis.clear_all();
-                vis
-            }
-            _ => OwnerVisibility::new(self.width, self.height),
-        };
-        //5678E0 applies each fresh source's direct-alliance gate before the
-        //Cell writer. Stored planes already belong to viewers; OR-ing another
-        //viewer here would re-export derived knowledge through A-B-C alliances.
-        if let Some(viewer) = self.by_owner.get(&owner) {
-            if viewer.width == self.width && viewer.height == self.height {
-                merged.cells.copy_from_slice(&viewer.cells);
-            } else {
-                // Fixture auto-expansion can leave an older viewer rectangle.
-                for y in 0..viewer.height.min(self.height) {
-                    for x in 0..viewer.width.min(self.width) {
-                        merged.cells[usize::from(y) * usize::from(self.width) + usize::from(x)] =
-                            viewer.cells
-                                [usize::from(y) * usize::from(viewer.width) + usize::from(x)];
-                    }
-                }
-            }
-        }
-        self.view_cache.merged = Some((owner, merged));
-        self.view_cache.generation = self.view_cache.generation.wrapping_add(1);
+    /// Presentation prepared a view (F10): bump the runtime generation the
+    /// fog mask renderer and minimap dirty-gate on. Queries read the viewer
+    /// plane directly, so there is nothing to copy.
+    pub fn bump_view_generation(&mut self) {
+        self.view_generation = self.view_generation.wrapping_add(1);
     }
 
-    /// The runtime view-cache generation render dirty-gates on (F10). Resets
-    /// with the cache on every load; never the serialized wire shadow.
+    /// The runtime view generation render dirty-gates on (F10). Restarts at 0
+    /// on every load.
     pub fn view_generation(&self) -> u64 {
-        self.view_cache.generation
-    }
-
-    /// Get the selected viewer cache; callers fall back to its authoritative plane.
-    fn merged_vis(&self, owner: InternedId) -> Option<&OwnerVisibility> {
-        if let Some((cached_owner, ref vis)) = self.view_cache.merged {
-            if cached_owner == owner {
-                return Some(vis);
-            }
-        }
-        None
+        self.view_generation
     }
 
     /// Native586360 tests Cell+12C bit8, which persists independently of the
@@ -1178,7 +1116,7 @@ impl FogState {
     }
 
     /// Aircraft FindFireLocation419986 reads Cell+12C bit16 directly. This is
-    /// independent of bit8 and of the presentation's merged sight cache.
+    /// independent of bit8.
     pub(crate) fn is_ground_open(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
         self.by_owner.get(&owner).is_some_and(|view| {
             view.index(rx, ry)
@@ -1189,11 +1127,6 @@ impl FogState {
 
     /// Returns true if the owner (or a friendly ally) currently sees the cell.
     pub fn is_cell_visible(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
-        // Fast path: use pre-merged grid.
-        if let Some(vis) = self.merged_vis(owner) {
-            return vis.is_visible(rx, ry);
-        }
-        // Identical viewer authority when no presentation cache has been built.
         self.by_owner
             .get(&owner)
             .is_some_and(|s| s.is_visible(rx, ry))
@@ -1201,9 +1134,6 @@ impl FogState {
 
     /// Returns true if the owner (or a friendly ally) has revealed the cell.
     pub fn is_cell_revealed(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
-        if let Some(vis) = self.merged_vis(owner) {
-            return vis.is_revealed(rx, ry);
-        }
         self.by_owner
             .get(&owner)
             .is_some_and(|s| s.is_revealed(rx, ry))
@@ -1211,9 +1141,6 @@ impl FogState {
 
     /// Returns true if the cell is covered by an enemy gap generator for this owner.
     pub fn is_cell_gap_covered(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
-        if let Some(vis) = self.merged_vis(owner) {
-            return vis.is_gap_covered(rx, ry);
-        }
         self.by_owner
             .get(&owner)
             .is_some_and(|s| s.is_gap_covered(rx, ry))
@@ -1221,9 +1148,6 @@ impl FogState {
 
     /// Returns true if the cell is covered by a friendly gap generator for this owner.
     pub fn is_cell_gap_fog(&self, owner: InternedId, rx: u16, ry: u16) -> bool {
-        if let Some(vis) = self.merged_vis(owner) {
-            return vis.is_gap_fog(rx, ry);
-        }
         self.by_owner
             .get(&owner)
             .is_some_and(|s| s.is_gap_fog(rx, ry))
@@ -1252,7 +1176,6 @@ impl FogState {
         for visibility in self.by_owner.values_mut() {
             visibility.clear_gap_flags();
         }
-        self.view_cache.merged = None;
     }
 
     /// Original Logic55B29A/55B2AD ->578100: signed native frame modulo120.
@@ -1268,7 +1191,6 @@ impl FogState {
                 vis.publish_knowledge(index);
             }
         }
-        self.view_cache.merged = None;
     }
 
     /// Lift unexplored shroud for one viewer without granting current sight.
@@ -1579,7 +1501,6 @@ pub fn recompute_owner_visibility_in_place(
     }
 
     fog.alliances = alliances.clone();
-    fog.view_cache.merged = None;
 
     let admitted: Vec<_> = entities
         .values()
@@ -2228,7 +2149,6 @@ fn fire_reveal_cells(fog: &mut FogState, owner: InternedId, cells: Vec<(u16, u16
         vis.shroud_knowledge[index].transient_visible = true;
         vis.publish_knowledge(index);
     }
-    fog.view_cache.merged = None;
 }
 
 /// Every house with a map or an alliance entry, and `owner`: the houses a
@@ -2316,8 +2236,7 @@ pub(crate) fn allied_viewers(
 /// reduces each cell's shroud counter, then final 1 (`0x006CD79C`) raises it
 /// again, through the leaf MapCell `0x00653830` -> `0x004A9CA0`, so the
 /// cells end mapped with no lasting sight source. Only the launcher's gate
-/// is asked: a viewer's own allies gain nothing, and no merged view stands
-/// in for this writer.
+/// is asked: a viewer's own allies gain nothing.
 pub(crate) fn psychic_reveal(
     fog: &mut FogState,
     owner: InternedId,
@@ -2357,7 +2276,6 @@ pub(crate) fn psychic_reveal(
             }
         }
     }
-    fog.view_cache.merged = None;
 }
 
 /// Materialize active SpySat house latches by marking every synthetic-grid cell
@@ -2483,7 +2401,6 @@ pub(crate) fn apply_gap_generator_sources_with_spy_sat(
         }
         *previous = admitted;
     }
-    fog.view_cache.merged = None;
 }
 
 fn gap_footprint(generator: GapGeneratorSource, width: usize, height: usize) -> Vec<usize> {
@@ -2562,7 +2479,6 @@ pub(crate) fn publish_gap_generator_event(
             }
         }
     }
-    fog.view_cache.merged = None;
 }
 
 /// Passive projection of retained deposits. It must never reclassify power or
@@ -2601,7 +2517,6 @@ pub(crate) fn materialize_gap_generator_sources(
             vis.publish_knowledge(index);
         }
     }
-    fog.view_cache.merged = None;
 }
 
 #[cfg(test)]

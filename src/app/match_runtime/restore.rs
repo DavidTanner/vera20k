@@ -82,10 +82,9 @@ pub(crate) fn commit_prepared_load(
         committed.occupied_overlays,
     );
 
-    // F10: the fog view cache was discarded with the load (nonserialized) —
-    // rebuild it for the restored session.current_house BEFORE the first
-    // tactical render (the owner query derives from the committed simulation), and
-    // invalidate the render dirty-gates: the view generation restarts from
+    // F10: prepare the restored session.current_house's view BEFORE the first
+    // tactical render (the owner query derives from the committed simulation),
+    // and invalidate the render dirty-gates: the view generation restarts from
     // zero, so an equal counter no longer proves an unchanged view.
     if let Some(owner) = crate::app::input::commands::preferred_local_owner_name(state) {
         if let Some(sim) = state

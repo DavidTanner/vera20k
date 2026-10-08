@@ -343,8 +343,7 @@ fn test_allied_visibility_is_shared() {
         &default_config(),
         &ti(),
     );
-    // Cache construction copies the already-published direct viewer knowledge.
-    fog.build_merged_for(alliance, &ti());
+    // The viewer plane already holds the direct ally's published knowledge.
     assert!(fog.is_cell_visible(intern::test_intern("Alliance"), 4, 4));
     assert!(fog.is_friendly("Alliance", "Americans"));
 }
@@ -564,32 +563,6 @@ fn test_elevation_sight_bonus_disabled_when_zero() {
     // Cell at distance 5 east of the shifted center (7,2) is visible; 6 (8,2) not.
     assert!(fog.is_cell_visible(intern::test_intern("Americans"), 7, 2));
     assert!(!fog.is_cell_visible(intern::test_intern("Americans"), 8, 2));
-}
-
-#[test]
-fn test_merged_visibility_fast_path() {
-    let mut store = EntityStore::new();
-    spawn_with_vision(&mut store, 1, "Americans", 5, 5, 3);
-
-    let mut fog = recompute_owner_visibility(
-        &store,
-        Some(&PathGrid::new(16, 16)),
-        &Default::default(),
-        &default_config(),
-        &ti(),
-    );
-
-    // Before building merged, queries still work (slow fallback).
-    assert!(fog.is_cell_visible(intern::test_intern("Americans"), 5, 5));
-
-    // Build merged cache for "Americans".
-    fog.build_merged_for(intern::test_intern("Americans"), &ti());
-
-    // Fast path should return the same results.
-    assert!(fog.is_cell_visible(intern::test_intern("Americans"), 5, 5));
-    assert!(fog.is_cell_visible(intern::test_intern("Americans"), 7, 5));
-    assert!(!fog.is_cell_visible(intern::test_intern("Americans"), 9, 5));
-    assert!(fog.is_cell_revealed(intern::test_intern("Americans"), 6, 6));
 }
 
 #[test]
@@ -992,7 +965,6 @@ fn test_gap_generator_sets_gap_covered_flag() {
     // Before gap: cell is revealed and visible, NOT gap-covered.
     assert!(fog.is_cell_revealed(intern::test_intern("Soviet"), 12, 10));
     assert!(fog.is_cell_visible(intern::test_intern("Soviet"), 12, 10));
-    fog.build_merged_for(intern::test_intern("Soviet"), &ti());
     assert!(!fog.is_cell_gap_covered(intern::test_intern("Soviet"), 12, 10));
 
     // Release the sustained source first: original past_sight retains mapped
@@ -1015,7 +987,6 @@ fn test_gap_generator_sets_gap_covered_flag() {
     let americans_id = intern::test_intern("Americans");
     let interner = ti();
     apply_gap_generators(&mut fog, &[(americans_id, 12, 10, 5)], &interner);
-    fog.build_merged_for(intern::test_intern("Soviet"), &ti());
 
     // Cell should now be gap-covered AND not visible for Soviet.
     assert!(fog.is_cell_gap_covered(intern::test_intern("Soviet"), 12, 10));
@@ -1037,7 +1008,6 @@ fn test_gap_covered_not_set_for_friendly() {
     let americans_id = intern::test_intern("Americans");
     let interner = ti();
     apply_gap_generators(&mut fog, &[(americans_id, 10, 10, 5)], &interner);
-    fog.build_merged_for(intern::test_intern("Americans"), &ti());
 
     assert!(!fog.is_cell_gap_covered(intern::test_intern("Americans"), 10, 10));
 }
@@ -1689,53 +1659,24 @@ fn an_aircrafts_altitude_moves_its_revealed_disc() {
     assert!(!fog.is_cell_visible(owner, 30, 30));
 }
 
-/// F10: the merged view lives in a nonserialized cache — a bincode round trip
-/// (the snapshot serializer) discards it, and building for a different owner
-/// replaces the cached owner and bumps only the runtime view generation.
+/// F10: the view generation render dirty-gates on is runtime-only. A bincode
+/// round trip (the snapshot serializer) restarts it, and each prepared view
+/// bumps it once.
 #[test]
-fn fog_view_cache_is_discarded_and_rebuilt_after_load_or_owner_change() {
-    let mut store = EntityStore::new();
-    spawn_with_vision(&mut store, 1, "Americans", 4, 4, 3);
-    let mut fog = recompute_owner_visibility(
-        &store,
-        Some(&PathGrid::new(16, 16)),
-        &Default::default(),
-        &default_config(),
-        &ti(),
-    );
-    let americans = intern::test_intern("Americans");
-    fog.build_merged_for(americans, &ti());
-    assert!(fog.view_cache.merged.is_some());
-    let built_generation = fog.view_generation();
-    assert!(built_generation > 0);
+fn fog_view_generation_restarts_after_load_and_bumps_per_view() {
+    let mut fog = FogState::default();
+    fog.bump_view_generation();
+    assert_eq!(fog.view_generation(), 1);
 
-    // Snapshot-style round trip: the cache is discarded.
     let bytes = bincode::serialize(&fog).expect("fog serializes");
-    let restored: FogState = bincode::deserialize(&bytes).expect("fog deserializes");
-    assert!(
-        restored.view_cache.merged.is_none(),
-        "the merged view cache must not survive a load"
-    );
+    let mut restored: FogState = bincode::deserialize(&bytes).expect("fog deserializes");
     assert_eq!(
         restored.view_generation(),
         0,
         "the runtime view generation restarts after a load"
     );
-
-    // Rebuild after the load: queries work again through the fast path.
-    let mut restored = restored;
-    restored.build_merged_for(americans, &ti());
-    assert!(restored.is_cell_visible(americans, 4, 4));
-    assert_eq!(restored.view_generation(), 1);
-
-    // Owner change: the cache is replaced for the new owner and bumped.
-    let russians = intern::test_intern("Russians");
-    restored.build_merged_for(russians, &ti());
-    assert_eq!(
-        restored.view_cache.merged.as_ref().map(|(owner, _)| *owner),
-        Some(russians),
-        "an owner change replaces the cached owner"
-    );
+    restored.bump_view_generation();
+    restored.bump_view_generation();
     assert_eq!(restored.view_generation(), 2);
 }
 
@@ -1908,7 +1849,6 @@ fn shroud_current_sight_allied_gap_and_pending_survive_serialization() {
         None,
     );
     apply_gap_generators(&mut fog, &[(gapper, 10, 10, 3)], &interner);
-    fog.build_merged_for(owner, &interner);
     assert!(fog.is_cell_visible(owner, 10, 10));
     assert!(!fog.is_cell_gap_covered(owner, 10, 10));
     let encoded = bincode::serialize(&fog).unwrap();
@@ -1933,7 +1873,6 @@ fn shroud_current_sight_allied_gap_and_pending_survive_serialization() {
     restored.flush_pending_gap_conceal(119);
     assert!(restored.is_cell_revealed(owner, 10, 10));
     restored.flush_pending_gap_conceal(120);
-    restored.build_merged_for(owner, &interner);
     assert!(!restored.is_cell_revealed(owner, 10, 10));
     assert!(!restored.is_cell_revealed(ally, 10, 10));
 }
@@ -2015,9 +1954,7 @@ fn shroud_current_sight_direct_allies_do_not_reexport_immunity() {
     );
     for _ in 0..3 {
         apply_gap_generators(&mut fog, &[(hostile, 10, 10, 3)], &interner);
-        fog.build_merged_for(b, &interner);
         assert!(!fog.is_cell_gap_covered(b, 10, 10));
-        fog.build_merged_for(c, &interner);
         assert!(
             fog.is_cell_gap_covered(c, 10, 10),
             "A's sight must not become B's local source on the next House publication"
@@ -2026,33 +1963,27 @@ fn shroud_current_sight_direct_allies_do_not_reexport_immunity() {
         assert!(!fog.is_cell_revealed(c, 10, 10));
     }
     apply_gap_generators(&mut fog, &[], &interner);
-    fog.build_merged_for(c, &interner);
     assert!(!fog.is_cell_visible(c, 10, 10));
     assert!(!fog.is_cell_revealed(c, 10, 10));
     assert!(!fog.is_cell_gap_covered(c, 10, 10));
 }
 
 #[test]
-fn shroud_current_sight_view_cache_observes_fresh_viewer_writers() {
+fn shroud_current_sight_queries_observe_fresh_viewer_writers() {
     let owner = intern::test_intern("Americans");
-    let interner = ti();
     let mut fog = FogState {
         width: 16,
         height: 16,
         ..Default::default()
     };
-    fog.build_merged_for(owner, &interner);
     assert!(!fog.is_cell_revealed(owner, 6, 6));
     fog.reveal_all_for_owner(owner);
     assert!(fog.is_cell_revealed(owner, 6, 6));
-    fog.build_merged_for(owner, &interner);
     fog.reset_explored_for_owner(owner);
     assert!(!fog.is_cell_revealed(owner, 6, 6));
-    fog.build_merged_for(owner, &interner);
     fog.reveal_cells_for_owner(owner, [(6, 6)]);
     assert!(fog.is_cell_revealed(owner, 6, 6));
     assert!(!fog.is_cell_revealed(owner, 7, 6));
-    fog.build_merged_for(owner, &interner);
     reveal_radius(&mut fog, owner, 7, 6, 2);
     assert!(fog.is_cell_visible(owner, 7, 6));
     assert!(fog.is_cell_revealed(owner, 7, 6));
@@ -2108,7 +2039,6 @@ fn shroud_current_sight_unchanged_refresh_does_not_invent_a_return_event() {
     for _ in 0..3 {
         refresh(&mut fog, &store);
         apply_gap_generators(&mut fog, &both, &interner);
-        fog.build_merged_for(owner, &interner);
     }
     fog.flush_pending_gap_conceal(120);
     assert!(
