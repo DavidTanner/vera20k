@@ -134,7 +134,11 @@ when cloned into their own manager. Do not use this route to fork a callback typ
   frames`](../tools/ghidra_compare.md#stack-frames-against-the-native-instructions)
   command compares the decompiler's offsets with ESP computed from the code. Typing the
   function pointer does not change the pop: the decompiler applies a pointer's prototype
-  only after its stack analysis (`ActionDeindirect`). A user
+  only after its stack analysis (`ActionDeindirect`). Typed slots can cost more than they
+  show. With Surface's 38 vtable slots typed as function definitions, 5 of 144 surface
+  decompiles hit `Exceeded maximum restarts with more pending`, and others gained values
+  from a wrong frame. Compare before keeping slot types; Surface's slots stay `void *`
+  fields that only name the call. A user
   `CALL_OVERRIDE_UNCONDITIONAL` reference on the call does: the decompile then shows a
   direct call with the target's prototype and pop. Add one only where the target is
   proven to be a single function ([Virtual-call references](#virtual-call-references)).
