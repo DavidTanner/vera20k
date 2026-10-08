@@ -1225,6 +1225,15 @@ impl Simulation {
                     inst.chrono_cell().hash(hasher);
                     inst.placement_anim().hash(hasher);
                 }
+                // The Force Shield's countdown and where its sound plays
+                // (`+0x50`, `+0x54`); the tag keeps every Super never armed on
+                // its established stream.
+                let (countdown, coords) = inst.fade();
+                if countdown != -1 || coords != [0; 3] {
+                    b"force-shield-fade-v1".hash(hasher);
+                    countdown.hash(hasher);
+                    coords.hash(hasher);
+                }
             }
         }
         // Hash lightning storm global state.

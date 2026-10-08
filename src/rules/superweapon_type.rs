@@ -140,9 +140,13 @@ pub struct SuperWeaponType {
     pub weapon_type: Option<String>,
     /// Required secondary building (e.g., NukeSilo for nuke).
     pub aux_building: Option<String>,
-    /// Sound played when fully charged.
+    /// `SpecialSound=` (`+0xC0`, `0x006CEB74`; VocClass::FindIndex
+    /// `0x007514D0`, an unknown name keeping the constructor's -1): the cue
+    /// SuperClass::AI plays when a Force Shield's countdown runs out
+    /// (`0x006CBCCF`).
     pub special_sound: Option<String>,
-    /// Sound played on launch/activation.
+    /// `StartSound=` (`+0xC4`, `0x006CEBB0`, read as `SpecialSound=`): the
+    /// cue the Force Shield's launch plays (`0x006CD176`).
     pub start_sound: Option<String>,
     /// Sidebar tab flash duration in frames on activation.
     pub flash_sidebar_tab_frames: i32,

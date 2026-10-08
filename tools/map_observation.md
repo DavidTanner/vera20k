@@ -48,7 +48,8 @@ an observer-off replay proving unchanged frame bytes and gameplay boundaries.
 Optional v2 `observe_super_weapons: true` adds a `super_weapons` list to each
 observed House row: every Super the House holds, ordered by the interned type id
 an ordinary `LaunchSuperWeapon` command names, with its grant, readiness, hold,
-charge start, duration and remaining frames. The rows count toward the sample
+charge start, duration and remaining frames, and the Force Shield's fade countdown
+(`SuperClass+0x50`, -1 when idle) and its coordinate. The rows count toward the sample
 budget. `false` or an absent field adds nothing; version 1 rejects the option,
 and present null/nonboolean values are invalid.
 

@@ -62,6 +62,7 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
+use crate::sim::superweapon::deck_coords;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// Leptons case 3, CreateChronoAnim and case 4 each raise their anims
@@ -74,17 +75,6 @@ const CHRONO_ANIM_Z_LIFT: i32 = 5;
 /// for the next click (the display's selected Super `0x008809A0` = 4 at
 /// `0x006CC46E`), a literal: retail ChronoWarpSpecial.
 pub(crate) const CHRONO_WARP_SELECTION_INDEX: usize = 4;
-
-/// A cell's GetCoords (vt+0x48, `0x00486840`) raised by the bridge height
-/// global (`0x00B0C07C`, initializer `0x006CAD80`: four levels) when the
-/// cell carries flag `0x100` (`0x006CC409..0x006CC41F`).
-pub(super) fn deck_coords(sim: &Simulation, (x, y): (u16, u16)) -> [i32; 3] {
-    let mut coords = super::fire::cell_coords(sim, (x, y));
-    if super::cell_grid::cell_has_bridge_flag(sim, x as i16, y as i16) {
-        coords[2] = coords[2].wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
-    }
-    coords
-}
 
 impl Simulation {
     /// Every Super's held ChronoPlacement anim with its owner.

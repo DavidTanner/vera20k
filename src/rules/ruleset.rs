@@ -1469,16 +1469,22 @@ pub struct GeneralRules {
     /// Mutator launch constructs (`SuperClass::Launch 0x006CD8A5`). Retail
     /// `RING1`. The constructor default is a null type: no key, no animation.
     pub ion_blast_anim: String,
-    // --- ForceShield ([General]) ---
-    /// Cell radius of ForceShield AoE (ForceShieldRadius= in [General]).
-    pub force_shield_radius: u32,
-    /// ForceShield invulnerability duration in frames (ForceShieldDuration= in [General]).
+    // --- ForceShield ([General], RulesClass::ReadGeneral) ---
+    /// `ForceShieldRadius=` (`Rules+0x17B8`, `0x0067109F`), in cells; the
+    /// constructor's 10 (`0x006676C8`).
+    pub force_shield_radius: i32,
+    /// `ForceShieldDuration=` (`+0x17BC`, `0x006710BE`), the shield's frames;
+    /// the constructor's 400 (`0x006676CE`).
     pub force_shield_duration: i32,
-    /// Power blackout duration triggered by ForceShield (ForceShieldBlackoutDuration= in [General]).
-    pub force_shield_blackout_duration: u32,
-    /// Frames before fade sound plays (ForceShieldPlayFadeSoundTime= in [General]).
-    pub force_shield_fade_sound_time: u32,
-    /// Animation played on FS target (ForceShieldInvokeAnim= in [General]). Default FORCSHLD.
+    /// `ForceShieldBlackoutDuration=` (`+0x17C0`, `0x006710DE`), the
+    /// launcher's power outage; the constructor's 800 (`0x006676DD`).
+    pub force_shield_blackout_duration: i32,
+    /// `ForceShieldPlayFadeSoundTime=` (`+0x17C4`, `0x006710FE`): how long
+    /// before the shield ends its type's `SpecialSound=` plays; the
+    /// constructor's 50 (`0x006676E7`).
+    pub force_shield_fade_sound_time: i32,
+    /// `ForceShieldInvokeAnim=` (`+0x34C`, `0x0066E282`). The constructor's
+    /// null type (`0x00665B20`): no key, no animation.
     pub force_shield_invoke_anim: String,
     // --- PsychicReveal ([CombatDamage]) ---
     /// Cell radius revealed by PsychicReveal
@@ -2030,11 +2036,11 @@ impl Default for GeneralRules {
             dominator_capture_range: 2,
             dominator_damage: 50,
             ion_blast_anim: String::new(),
-            force_shield_radius: 4,
-            force_shield_duration: 500,
-            force_shield_blackout_duration: 1000,
-            force_shield_fade_sound_time: 75,
-            force_shield_invoke_anim: "FORCSHLD".to_string(),
+            force_shield_radius: 10,
+            force_shield_duration: 400,
+            force_shield_blackout_duration: 800,
+            force_shield_fade_sound_time: 50,
+            force_shield_invoke_anim: String::new(),
             psychic_reveal_radius: 15,
             mutate_warhead: "Mutate".to_string(),
             mutate_explosion_warhead: "MutateExplosion".to_string(),
@@ -3018,17 +3024,11 @@ impl GeneralRules {
             dominator_capture_range: general.read_int("DominatorCaptureRange", 2),
             dominator_damage: general.read_int("DominatorDamage", 50),
             ion_blast_anim: general.read_string("IonBlast", "", 0x80),
-            force_shield_radius: general.read_int("ForceShieldRadius", 4) as u32,
-            force_shield_duration: general.read_int("ForceShieldDuration", 500),
-            force_shield_blackout_duration: general.read_int("ForceShieldBlackoutDuration", 1000)
-                as u32,
-            force_shield_fade_sound_time: general.read_int("ForceShieldPlayFadeSoundTime", 75)
-                as u32,
-            force_shield_invoke_anim: general.read_string(
-                "ForceShieldInvokeAnim",
-                "FORCSHLD",
-                0x80,
-            ),
+            force_shield_radius: general.read_int("ForceShieldRadius", 10),
+            force_shield_duration: general.read_int("ForceShieldDuration", 400),
+            force_shield_blackout_duration: general.read_int("ForceShieldBlackoutDuration", 800),
+            force_shield_fade_sound_time: general.read_int("ForceShieldPlayFadeSoundTime", 50),
+            force_shield_invoke_anim: general.read_string("ForceShieldInvokeAnim", "", 0x80),
             psychic_reveal_radius: combat_damage.read_int("PsychicRevealRadius", 15) as u32,
             mutate_warhead: special_weapons.read_string("MutateWarhead", "Mutate", 0x80),
             mutate_explosion_warhead: special_weapons.read_string(
@@ -6365,7 +6365,10 @@ MutateWarhead=MyMutate\n\
         assert!(!general.mutate_explosion);
         // Unspecified keys fall back to defaults.
         assert_eq!(general.iron_curtain_invoke_anim, "IRONBLST");
-        assert_eq!(general.force_shield_invoke_anim, "FORCSHLD");
+        // The constructor's null type (`Rules+0x34C`, `0x00665B20`).
+        assert_eq!(general.force_shield_invoke_anim, "");
+        assert_eq!(general.force_shield_blackout_duration, 800);
+        assert_eq!(general.force_shield_fade_sound_time, 50);
         assert_eq!(general.mutate_explosion_warhead, "MutateExplosion");
     }
 

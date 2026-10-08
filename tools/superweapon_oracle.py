@@ -18,7 +18,8 @@ send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (drawshp_curtain_arm, building_colour_word, anim_colour_word,
 building_anim_light, blit_pickers, blitters) and
 src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
-nuke_lighting_read).
+nuke_lighting_read) and src/sim/superweapon/force_shield_tests.rs
+(force_shield_launch, super_fade).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -156,6 +157,14 @@ fixture machinery):
 - nuke_lighting_read: Read_INI_Basic's NukeAmbientChangeRate=
   (0x68AAD5..0x68AAFD): Set_Defaults' value, ReadDouble's default and the
   ftol of authored tokens.
+- force_shield_launch: Launch 0x6CC390 from its entry for a Type= 10 Super,
+  case 10 (0x6CD072..0x6CD2EB): the charge gate, the deck coordinate, the
+  invoke anim's arguments, the fade countdown and coordinate (+0x50, +0x54),
+  StartSound, the blackout, the walk's sentinels and the BuildingClass::Array
+  walk (IsAlliedWith 0x4F9A50, CoordStruct 0x41C230 and Distance3D 0x41C380
+  run natively) with each IronCurtain call, and the player's tail.
+- super_fade: SuperClass::AI 0x6CBCA0's head (0x6CBCA8..0x6CBCD4) called once
+  a frame: the countdown, the frame SpecialSound plays and where.
 """
 from pathlib import Path
 import math
@@ -4068,6 +4077,245 @@ def nuke_lighting_read():
                 default_units=converted(emu, default, 0x68AAF8, 0x68AAFD), authored=authored)
 
 
+# ------------------------------------------------------- force_shield_launch
+
+TYPE_FORCE_SHIELD = 10
+FORCE_SHIELD = BASE + 0x3B0000
+FS_CELLS = FORCE_SHIELD
+FS_CELL_STRIDE = 0x200
+FS_CELL_VT = FORCE_SHIELD + 0x1000
+# Houses 0x10 apart: IsAlliedWith reads only +0x30 (ArrayIndex) and +0x5788
+# (the ally bits), which stay disjoint at this stride.
+FS_HOUSES = FORCE_SHIELD + 0x2000
+FS_HOUSE_STRIDE = 0x10
+FS_BUILDINGS = FORCE_SHIELD + 0x8000
+FS_BUILDING_STRIDE = 0x400
+FS_BUILDING_VT = FORCE_SHIELD + 0xE000
+FS_ITEMS = FORCE_SHIELD + 0xF000
+FS_ANIM_TYPE = FORCE_SHIELD + 0xF800
+FS_CELL_ARG = FORCE_SHIELD + 0xFC00
+
+BUILDING_ARRAY_ITEMS = 0xA8EB44
+BUILDING_ARRAY_COUNT = 0xA8EB50
+STUB_FS_CELL_COORDS = STUBS + 0xB00
+STUB_FS_BUILDING_COORDS = STUBS + 0xB10
+STUB_FS_CURTAIN = STUBS + 0xB20
+
+FS_START_SOUND = 41
+FS_SPECIAL_SOUND = 37
+FS_TARGET = (40, 40)
+FS_CENTRE = (40 * 256 + 128, 40 * 256 + 128)
+
+
+def fs_house(index):
+    return FS_HOUSES + FS_HOUSE_STRIDE * index
+
+
+def fs_house_index(address):
+    return (address - FS_HOUSES) // FS_HOUSE_STRIDE
+
+
+def install_fs_houses(emu, allies):
+    """House k: ArrayIndex k (+0x30) and the row's ally bits (+0x5788)."""
+    for index, bits in enumerate(allies):
+        emu.write32(fs_house(index) + 0x30, index)
+        emu.write32(fs_house(index) + 0x5788, bits)
+
+
+def install_fs_buildings(emu, buildings):
+    """BuildingClass::Array (0xA8EB44 items, 0xA8EB50 count) holding the
+    row's buildings, each an owner house (+0x21C) whose GetCoords (vt+0x48)
+    answers its coordinate and whose IronCurtain (vt+0x154) is recorded."""
+    emu.write32(FS_BUILDING_VT + 0x48, STUB_FS_BUILDING_COORDS)
+    emu.write32(FS_BUILDING_VT + 0x154, STUB_FS_CURTAIN)
+    for index, (owner, _coords) in enumerate(buildings):
+        this = FS_BUILDINGS + FS_BUILDING_STRIDE * index
+        emu.write32(this, FS_BUILDING_VT)
+        emu.write32(this + 0x21C, fs_house(owner))
+        emu.write32(FS_ITEMS + 4 * index, this)
+    emu.write32(BUILDING_ARRAY_ITEMS, FS_ITEMS)
+    emu.write32(BUILDING_ARRAY_COUNT, len(buildings))
+
+    def building(e):
+        return (e.uc.reg_read(UC_X86_REG_ECX) - FS_BUILDINGS) // FS_BUILDING_STRIDE
+
+    def coords(e):
+        out = e.arg(0)
+        write_coord(e, out, buildings[building(e)][1])
+        return out
+
+    def curtain(e):
+        e.events.append(['curtain', building(e), i32(e.arg(0)), fs_house_index(e.arg(1)),
+                         e.arg(2)])
+
+    emu.hook(STUB_FS_BUILDING_COORDS, coords, 4)
+    emu.hook(STUB_FS_CURTAIN, curtain, 0xC)
+
+
+def record_play_at(emu):
+    """VocClass::PlayAt 0x7509E0 (ECX the index, EDX the coordinate, one
+    stack argument)."""
+    emu.hook(0x7509E0, lambda e: e.events.append(
+        ['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), e.arg(0)]), 4)
+
+
+def force_shield_launch_row(*, buildings, allies=(1,), cell=FS_TARGET, level=0,
+                            bridge=False, coords=None, charged=True, start_sound=FS_START_SOUND,
+                            radius=4, duration=500, blackout=1000, fade=75, player=False):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 10:
+    case 10 (0x6CD072..0x6CD2EB) with BuildingClass::Array holding
+    `buildings` ((owner house, GetCoords) each, house 0 launching), the walk's
+    IsAlliedWith 0x4F9A50, CoordStruct 0x41C230 and Distance3D 0x41C380 run
+    natively. Every map lookup answers the row's cell, whose GetCoords is its
+    centre raised 104 leptons per level (or `coords`) and whose +0x140
+    carries the bridge bit 0x100 when `bridge`."""
+    emu = Emu()
+    for initializer in (0x6CADC0, 0x6CADE0):
+        emu.invoke(initializer)
+    emu.write32(0xB0C07C, BRIDGE_HEIGHT)
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, fs_house(0))
+    emu.write32(SUPER + 0x50, -1)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.write32(SW_TYPE + 0xB4, TYPE_FORCE_SHIELD)
+    emu.write32(SW_TYPE + 0xC4, start_sound)
+    emu.write32(RULES + 0x34C, FS_ANIM_TYPE)
+    emu.write32(RULES + 0x17B8, radius)
+    emu.write32(RULES + 0x17BC, duration)
+    emu.write32(RULES + 0x17C0, blackout)
+    emu.write32(RULES + 0x17C4, fade)
+    emu.write32(SELECTED_SUPER, 9)
+    emu.uc.mem_write(FS_CELL_ARG, struct.pack('<hh', *cell))
+    install_fs_houses(emu, allies)
+    install_fs_buildings(emu, buildings)
+    answer = coords or [cell[0] * 256 + 128, cell[1] * 256 + 128, level * LEVEL_LEPTONS]
+    lookups = []
+
+    def lookup(e):
+        this = FS_CELLS + FS_CELL_STRIDE * len(lookups)
+        lookups.append(this)
+        e.write32(this, FS_CELL_VT)
+        e.write32(this + 0x140, 0x100 if bridge else 0)
+        e.events.append(['cell', read_cell(e, e.arg(0))])
+        return this
+
+    def anim(e):
+        e.events.append(['anim', e.arg(0) == FS_ANIM_TYPE, read_coord(e, e.arg(1)),
+                         [i32(e.arg(n)) for n in range(2, 7)]])
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    emu.write32(FS_CELL_VT + 0x48, STUB_FS_CELL_COORDS)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(STUB_FS_CELL_COORDS, coords_stub(answer), 4)
+    emu.hook(0x421EA0, anim, 0x1C)
+    record_play_at(emu)
+    emu.hook(0x50BC90, lambda e: e.events.append(
+        ['blackout', fs_house_index(e.uc.reg_read(UC_X86_REG_ECX)), i32(e.arg(0))]), 4)
+    emu.hook(0x753250, lambda e: e.events.append(
+        ['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))]) or 33, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[FS_CELL_ARG, int(player)])
+    return dict(buildings=[[owner, list(at)] for owner, at in buildings], allies=list(allies),
+                cell=list(cell), level=level, bridge=bridge, cell_coords=answer,
+                charged=charged, start_sound=start_sound, radius=radius, duration=duration,
+                blackout=blackout, fade=fade, player=player, events=emu.events,
+                fade_countdown=emu.read_i32(SUPER + 0x50), fade_coords=read_coord(emu, SUPER + 0x54),
+                selected_super=emu.read_i32(SELECTED_SUPER),
+                sentinels=[read_coord(emu, 0xB0C020), read_coord(emu, 0xB0C070)])
+
+
+def fs_near(dx=0, dy=0, dz=0, owner=0, level=0):
+    """A building `dx, dy, dz` leptons from the target cell's centre."""
+    return (owner, (FS_CENTRE[0] + dx, FS_CENTRE[1] + dy, level * LEVEL_LEPTONS + dz))
+
+
+# The radius is 4 cells (1024 leptons): at, inside and outside it on each
+# axis, across the diagonal truncation, in 3D, and far away.
+FS_DISTANCES = (fs_near(), fs_near(dx=1023), fs_near(dx=1024), fs_near(dx=1025),
+                fs_near(dy=-1023), fs_near(dy=-1024), fs_near(dx=724, dy=724),
+                fs_near(dx=725, dy=725), fs_near(dx=768, dy=677), fs_near(dx=768, dy=678),
+                fs_near(dx=1000, dz=300), fs_near(dx=900, dz=-416), fs_near(dx=-1000, dz=104),
+                fs_near(dx=5120, dy=5120))
+# House 0 launches. House 1 and it are mutual allies; house 2 lists house 0
+# but not the reverse; house 0 lists house 3 but not the reverse; house 4 is
+# no one's ally. Every building is within the radius.
+FS_ALLIES = (0b01011, 0b00011, 0b00101, 0b01000, 0b10000)
+FS_OWNERS = tuple(fs_near(dx=200 * owner, owner=owner) for owner in range(5))
+
+
+def force_shield_launch():
+    rows = [force_shield_launch_row(buildings=FS_DISTANCES),
+            force_shield_launch_row(buildings=FS_OWNERS, allies=FS_ALLIES),
+            force_shield_launch_row(buildings=FS_OWNERS, allies=FS_ALLIES, player=True),
+            force_shield_launch_row(buildings=FS_OWNERS, allies=FS_ALLIES, charged=False,
+                                    player=True),
+            force_shield_launch_row(buildings=FS_OWNERS, allies=FS_ALLIES, start_sound=-1),
+            force_shield_launch_row(buildings=(), player=True)]
+    # The bridge raises the anim, the stored coordinate and the sound, not
+    # the walk's centre.
+    for bridge in (False, True):
+        rows.append(force_shield_launch_row(
+            buildings=(fs_near(dx=1000), fs_near(dx=1000, dz=416), fs_near(dz=416)),
+            bridge=bridge))
+    for level in (1, 2):
+        rows.append(force_shield_launch_row(
+            buildings=(fs_near(dx=1000), fs_near(dx=1000, level=level),
+                       fs_near(dx=900, dy=400)), level=level))
+    for radius in (0, 1, 2, 10):
+        rows.append(force_shield_launch_row(buildings=FS_DISTANCES, radius=radius))
+    for duration, fade in ((500, 0), (75, 75), (100, 600), (1, 2), (0, 0)):
+        rows.append(force_shield_launch_row(buildings=(fs_near(),), duration=duration,
+                                            fade=fade))
+    # The walk's sentinels: the zero coordinate and cell (0, 0)'s centre at
+    # level 0 (the static initializers 0x6CADC0 and 0x6CADE0).
+    origin = (0, (128, 128, 0))
+    rows.append(force_shield_launch_row(buildings=(origin,), cell=(0, 0)))
+    rows.append(force_shield_launch_row(buildings=(origin,), cell=(0, 0), level=1))
+    rows.append(force_shield_launch_row(buildings=((0, (0, 0, 0)),), coords=[0, 0, 0]))
+    rows.append(force_shield_launch_row(buildings=((0, (128, 128, 0)),), cell=(0, 0),
+                                        bridge=True))
+    return rows
+
+
+# ---------------------------------------------------------------- super_fade
+
+FS_FADE_COORDS = (10368, 10368, 416)
+
+
+def super_fade_row(*, start, calls):
+    """SuperClass::AI 0x6CBCA0 called `calls` times on a Super whose +0x50
+    starts at `start`: its head (0x6CBCA8..0x6CBCD4) and, ungranted
+    (+0x6D clear), the early return 0x6CBE9D. The value after each call and
+    every PlayAt."""
+    emu = Emu()
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SW_TYPE + 0xC0, FS_SPECIAL_SOUND)
+    emu.write32(SUPER + 0x50, start)
+    write_coord(emu, SUPER + 0x54, FS_FADE_COORDS)
+    write8(emu, SUPER + 0x6D, 0)
+    emu.write32(SUPER + 0x68, 0)
+    emu.write32(SELECTED_SUPER, -1)
+    record_play_at(emu)
+    values = []
+    plays = []
+    for call in range(1, calls + 1):
+        before = len(emu.events)
+        emu.invoke(0x6CBCA0, ecx=SUPER, args=[0])
+        values.append(emu.read_i32(SUPER + 0x50))
+        plays += [[call] + event[1:] for event in emu.events[before:]]
+    return dict(start=start, calls=calls, values=values, plays=plays)
+
+
+def super_fade():
+    """Case 10 leaves 425 under retail rules (ForceShieldDuration=500 less
+    ForceShieldPlayFadeSoundTime=75); the others are the edges."""
+    return [super_fade_row(start=start, calls=calls)
+            for start, calls in ((425, 428), (3, 6), (1, 3), (0, 2), (-1, 2), (-100, 2),
+                                 (-2147483648, 2))]
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -4104,6 +4352,8 @@ def generate():
             'nuke_wait': nuke_wait(),
             'nuke_flash': nuke_flash(),
             'nuke_lighting_read': nuke_lighting_read(),
+            'force_shield_launch': force_shield_launch(),
+            'super_fade': super_fade(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -4149,7 +4399,10 @@ if __name__ == '__main__':
                'its warhead test, ground clamp, flash, radar event, NUKEBALL '
                'arguments, holder list and committed cell, the wait at the AI\'s '
                'head, the flash\'s statuses, timers and relights, and the map\'s '
-               'NukeAmbientChangeRate'),
+               'NukeAmbientChangeRate; the Force Shield\'s launch: its gate, anim, '
+               'countdown and coordinate, StartSound, blackout, the buildings its walk '
+               'shields by owner, distance and radius, its sentinels and the player\'s '
+               'tail, and the countdown\'s SpecialSound frame'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -4305,7 +4558,21 @@ if __name__ == '__main__':
                        '0x4F42F0 are recorded stubs; status 3 has no writer but the save '
                        'stream (0x53993E)',
                        'nuke_lighting_read: as dominator_lighting_read, ReadDouble 0x5283D0 '
-                       'is not run'],
+                       'is not run',
+                       'force_shield_launch: MapClass::operator[] 0x5657A0 answers a '
+                       'fixture cell whose GetCoords vt+0x48 answers the row\'s centre '
+                       'raised 104 leptons per level (or the row\'s coordinate) and whose '
+                       '+0x140 holds the row\'s bridge bit; the bridge height 0xB0C07C '
+                       'holds 416 and the sentinels come from their static initializers '
+                       '0x6CADC0/0x6CADE0; BuildingClass::Array holds fixture buildings '
+                       'whose GetCoords vt+0x48 answers the row and whose IronCurtain '
+                       'vt+0x154 is a recorded stub; houses hold only ArrayIndex (+0x30) '
+                       'and their ally bits (+0x5788); the anim constructor 0x421EA0, '
+                       'VocClass::PlayAt 0x7509E0, the blackout 0x50BC90 and the EVA calls '
+                       '0x753250/0x752A40 are recorded stubs',
+                       'super_fade: an ungranted Super (+0x6D clear) holding no anim '
+                       '(+0x68) with no Super selected; VocClass::PlayAt 0x7509E0 is a '
+                       'recorded stub'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -4344,4 +4611,6 @@ if __name__ == '__main__':
                       'BulletClass::AI_head': 0x4666F2,
                       'ScreenNukeFlash': 0x53AB70,
                       'LightningStorm::Process_nuke_flash': 0x53A6C0,
-                      'ScenarioClass::Read_INI_Basic_nuke_rate': 0x68AAD5}))
+                      'ScenarioClass::Read_INI_Basic_nuke_rate': 0x68AAD5,
+                      'SuperClass::Launch_case10': 0x6CC390,
+                      'SuperClass::AI_fade': 0x6CBCA0}))

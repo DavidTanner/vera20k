@@ -85,10 +85,12 @@ fn super_weapon_rows(sim: &crate::sim::world::Simulation, owner: &str) -> Value 
         .into_iter()
         .flatten()
         .map(|(&type_id, inst)| {
+            let (fade_countdown, fade_coords) = inst.fade();
             json!({"type": sim.interner.resolve(type_id), "interned_id": type_id.index(),
                 "granted": inst.is_active, "ready": inst.is_ready, "on_hold": inst.is_suspended,
                 "charge_start": inst.charge_start_tick, "charge_duration": inst.charge_duration,
-                "remaining": inst.charge_remaining(frame)})
+                "remaining": inst.charge_remaining(frame), "fade_countdown": fade_countdown,
+                "fade_coords": fade_coords})
         })
         .collect()
 }

@@ -61,21 +61,20 @@ const INVOKE_ANIM_DRAW_FLAGS: u32 = 0x600;
 /// `LightningStorm::GroundStrike @ 0x0053A300` passes the same row for its bolt
 /// (`0x0053A387`).
 ///
-/// The two differ in Z. Read at `0x006CCE76..0x006CCF09` for Iron Curtain: the
-/// invoke `coord` is the target cell's own coordinate (`vtable+0x48`), raised
-/// by the bridge height global (`0x00B0C07C`) when the cell carries flag
-/// `0x100`, then `+5` leptons. The bolt takes
-/// `CellClass::Get_Center_Coords @ 0x00480A30`, which is the ground with no
-/// bridge term. `on_bridge_deck` selects between them: `true` is an invoke
-/// row (deck-aware, `+5` leptons), `false` the bolt.
+/// The two differ in Z. An invoke row (`on_bridge_deck`) takes the cell's
+/// [`deck_coords`] plus 5 leptons: Iron Curtain `0x006CCE76..0x006CCF09`,
+/// Force Shield `0x006CD07D..0x006CD130` (executed in
+/// `tools/superweapon_oracle.py` `force_shield_launch`), Genetic Mutator
+/// `0x006CD7F9..0x006CD8A5`. The bolt takes `CellClass::Get_Center_Coords @
+/// 0x00480A30`, the ground with no bridge term.
 ///
 /// A real `AnimClass` plays the art type's `Report=` from `AnimClass::Start`
 /// (retail `[IRONBLST] Report=IronCurtainBlast`) and follows its `Rate=` and
 /// `Translucent=`. The store does not build native `Middle @ 0x00424F00`
 /// (particles, `Scorch=`, `Crater=`).
 ///
-/// RESIDUAL: the cell's own Z is taken as `level * 104`; on a ramp cell
-/// native's cell coordinate carries the sloped height at the centre.
+/// RESIDUAL: the bolt's Z is taken as `level * 104`; Get_Center_Coords asks
+/// `0x0047B3A0` for the height at the centre, which carries a ramp's slope.
 pub(super) fn spawn_cell_anim(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -84,32 +83,37 @@ pub(super) fn spawn_cell_anim(
     ry: u16,
     on_bridge_deck: bool,
 ) {
-    let level = sim.resolved_terrain.as_ref().map_or(0, |terrain| {
-        let flagged = on_bridge_deck
-            && terrain.native_cell_flags(terrain.native_cell_identity((rx as i16, ry as i16)))
-                & 0x100
-                != 0;
-        terrain.cell(rx, ry).map_or(0, |cell| {
-            if flagged {
-                cell.bridge_deck_level_if_any().unwrap_or(cell.level)
-            } else {
-                cell.level
-            }
-        })
-    });
-    let mut world = crate::sim::anim_class::AnimWorldCoord::from_cell_sub_z(
-        rx,
-        ry,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        crate::util::lepton::CELL_CENTER_LEPTON,
-        level,
-    );
-    if on_bridge_deck {
-        // The invoke rows add 5 leptons (`0x006CCE76..0x006CCF09`); the bolt's
-        // `Get_Center_Coords` does not.
-        world.z = world.z.wrapping_add(INVOKE_ANIM_Z_LIFT_LEPTONS);
+    let coords = if on_bridge_deck {
+        let [x, y, z] = deck_coords(sim, (rx, ry));
+        [x, y, z.wrapping_add(INVOKE_ANIM_Z_LIFT_LEPTONS)]
+    } else {
+        let level = sim
+            .resolved_terrain
+            .as_ref()
+            .and_then(|terrain| terrain.cell(rx, ry))
+            .map_or(0, |cell| cell.level);
+        let world = crate::sim::anim_class::AnimWorldCoord::from_cell_sub_z(
+            rx,
+            ry,
+            crate::util::lepton::CELL_CENTER_LEPTON,
+            crate::util::lepton::CELL_CENTER_LEPTON,
+            level,
+        );
+        [world.x, world.y, world.z]
+    };
+    spawn_super_anim(sim, rules, anim_name, coords);
+}
+
+/// A cell's GetCoords (vt+0x48, `0x00486840`) raised by the bridge height
+/// global (`0x00B0C07C`, initializer `0x006CAD80`: four levels) when the
+/// cell carries flag `0x100`. Launch inlines it in cases 1, 3
+/// (`0x006CC3C4..0x006CC41F`), 4, 9 and 10 (`0x006CD07D..0x006CD0D3`).
+fn deck_coords(sim: &Simulation, (x, y): (u16, u16)) -> [i32; 3] {
+    let mut coords = fire::cell_coords(sim, (x, y));
+    if cell_grid::cell_has_bridge_flag(sim, x as i16, y as i16) {
+        coords[2] = coords[2].wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
-    spawn_super_anim(sim, rules, anim_name, [world.x, world.y, world.z]);
+    coords
 }
 
 /// `AnimClass::AnimClass @ 0x00421EA0` with the superweapons' row `(type,
@@ -185,6 +189,20 @@ pub struct SuperWeaponInstance {
     /// release winds it down ([`Simulation::release_super_anim`]).
     #[serde(default)]
     placement_anim: Option<crate::sim::anim_class::AnimId>,
+    /// `SuperClass+0x50`: SuperClass::AI calls left until the type's
+    /// `SpecialSound=` plays (`step_fade`); -1, the constructor's
+    /// (`0x006CAFC4`), is idle. Only the Force Shield's launch arms it
+    /// (`0x006CD14F`); a grant leaves it.
+    #[serde(default = "idle_fade")]
+    fade_countdown: i32,
+    /// `SuperClass+0x54`: where that sound plays, the launch's deck
+    /// coordinate (leptons).
+    #[serde(default)]
+    fade_coords: [i32; 3],
+}
+
+fn idle_fade() -> i32 {
+    -1
 }
 
 impl SuperWeaponInstance {
@@ -218,7 +236,34 @@ impl SuperWeaponInstance {
             ready_tick: -1,
             chrono_cell: (0, 0),
             placement_anim: None,
+            fade_countdown: idle_fade(),
+            fade_coords: [0; 3],
         }
+    }
+
+    /// Launch case 10's arm (`0x006CD135..0x006CD162`).
+    fn arm_fade(&mut self, frames: i32, coords: [i32; 3]) {
+        self.fade_countdown = frames;
+        self.fade_coords = coords;
+    }
+
+    /// The head of `SuperClass::AI @ 0x006CBCA0` (`0x006CBCA8..0x006CBCCF`):
+    /// a positive countdown drops by one; one at zero goes idle and returns
+    /// where `SpecialSound=` plays (`VocClass::PlayAt @ 0x007509E0`).
+    fn step_fade(&mut self) -> Option<[i32; 3]> {
+        if self.fade_countdown > 0 {
+            self.fade_countdown -= 1;
+        }
+        if self.fade_countdown != 0 {
+            return None;
+        }
+        self.fade_countdown = idle_fade();
+        Some(self.fade_coords)
+    }
+
+    /// `SuperClass+0x50` and `+0x54` for the world hash.
+    pub(crate) fn fade(&self) -> (i32, [i32; 3]) {
+        (self.fade_countdown, self.fade_coords)
     }
 
     /// `SuperClass+0x62`, the Chronosphere's source cell.
@@ -517,6 +562,7 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
     let owners: Vec<InternedId> = sim.super_weapons.keys().copied().collect();
     let mut became_ready: Vec<(InternedId, InternedId)> = Vec::new();
     let mut hold_changed: Vec<(InternedId, InternedId)> = Vec::new();
+    let mut faded: Vec<(InternedId, [i32; 3])> = Vec::new();
     for owner_id in owners {
         let is_low_power = sim
             .power_states
@@ -527,6 +573,11 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
             continue;
         };
         for (_, inst) in weapons.iter_mut() {
+            // SuperClass::AI's head runs for every Super, granted or not,
+            // ahead of its grant test (`0x006CBCFE`).
+            if let Some(coords) = inst.step_fade() {
+                faded.push((inst.type_id, coords));
+            }
             if !inst.is_active {
                 continue;
             }
@@ -559,6 +610,27 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
                 }
             }
         }
+    }
+    // `0x006CBCBA..0x006CBCCF`: the type's `SpecialSound=` at the stored
+    // coordinate, for every player.
+    for (sw_type, [x, y, z]) in faded {
+        let Some(sound_id) = rules
+            .super_weapon(sim.interner.resolve(sw_type))
+            .and_then(|sw| sw.special_sound.clone())
+        else {
+            continue;
+        };
+        let (rx, ry, sub_x, sub_y, _) =
+            crate::sim::anim_class::AnimWorldCoord { x, y, z }.to_cell_sub_z();
+        sim.sound_events.push(SimSoundEvent::VocAt {
+            sound_id,
+            audible_to: None,
+            rx,
+            ry,
+            sub_x,
+            sub_y,
+            world_z_leptons: z,
+        });
     }
     for (owner, sw_type) in hold_changed {
         sim.sound_events
@@ -656,19 +728,25 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
     let weapons = sim.super_weapons.entry(owner).or_default();
 
     // Grant each weapon the owner does not hold: a new one, or one revoked
-    // when its building was lost.
+    // when its building was lost. Grant keeps the Super's countdown and cell
+    // (`+0x50`, `+0x54`, `+0x62`); a type that is not `ManualControl=`
+    // (`+0xF5`) releases its held anim (`0x006CB6B4..0x006CB6D2`).
+    let mut released = Vec::new();
     for &sw_iid in &granted {
         if weapons.get(&sw_iid).is_some_and(|inst| inst.is_active) {
             continue;
         }
         let sw_str = sim.interner.resolve(sw_iid).to_string();
-        let recharge = rules
-            .super_weapon(&sw_str)
-            .map_or(4500, |sw| sw.recharge_time_frames);
-        let mut inst = SuperWeaponInstance::new(sw_iid, owner);
-        inst.activate(recharge, sim.session.binary_frame);
+        let sw = rules.super_weapon(&sw_str);
+        let recharge = sw.map_or(4500, |sw| sw.recharge_time_frames);
+        weapons
+            .entry(sw_iid)
+            .or_insert_with(|| SuperWeaponInstance::new(sw_iid, owner))
+            .activate(recharge, sim.session.binary_frame);
+        if !sw.is_some_and(|sw| sw.manual_control) {
+            released.push(sw_iid);
+        }
         log::info!("SuperWeapon '{}' granted to '{}'", sw_str, owner_str);
-        weapons.insert(sw_iid, inst);
     }
 
     // Deactivate revoked (building destroyed, no other provides it).
@@ -687,6 +765,9 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
     for sw_type in revoke_ids {
         sim.sound_events
             .push(SimSoundEvent::SuperWeaponStatusChanged { owner, sw_type });
+    }
+    for sw_type in released {
+        sim.release_super_anim(owner, sw_type);
     }
 }
 

@@ -601,7 +601,8 @@ def _super_weapons(value: Any, label: str) -> int:
         row_label = f'{label}[{index}]'
         row = require_object(value, row_label)
         require_exact_keys(row, ('type', 'interned_id', 'granted', 'ready', 'on_hold', 'charge_start',
-                                 'charge_duration', 'remaining'), row_label)
+                                 'charge_duration', 'remaining', 'fade_countdown', 'fade_coords'),
+                           row_label)
         if not require_string(row['type'], f'{row_label}.type'):
             raise ValidationError(f'{row_label}.type is empty')
         identity = _bounded_int(row['interned_id'], f'{row_label}.interned_id', 0, (1 << 32) - 1)
@@ -611,8 +612,13 @@ def _super_weapons(value: Any, label: str) -> int:
         for key in ('granted', 'ready', 'on_hold'):
             if type(row[key]) is not bool:
                 raise ValidationError(f'{row_label}.{key} must be a boolean')
-        for key in ('charge_start', 'charge_duration', 'remaining'):
+        for key in ('charge_start', 'charge_duration', 'remaining', 'fade_countdown'):
             _bounded_int(row[key], f'{row_label}.{key}', -(1 << 31), (1 << 31) - 1)
+        coords = require_array(row['fade_coords'], f'{row_label}.fade_coords')
+        if len(coords) != 3:
+            raise ValidationError(f'{row_label}.fade_coords must hold three coordinates')
+        for axis, coord in enumerate(coords):
+            _bounded_int(coord, f'{row_label}.fade_coords[{axis}]', -(1 << 31), (1 << 31) - 1)
     return len(rows)
 
 

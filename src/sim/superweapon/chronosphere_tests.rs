@@ -238,10 +238,7 @@ fn retail_chrono_warp_moves_the_source_block() {
     assert_eq!(sim.interner.resolve(anim.type_id), "CHRONOAR");
     // Case 3 lifts the cell 5 leptons and CreateChronoAnim 5 more
     // (`0x006CC423`, `0x006CB43B`).
-    assert_eq!(
-        anim.world_coord.z,
-        super::chronosphere::deck_coords(&sim, SOURCE)[2] + 10
-    );
+    assert_eq!(anim.world_coord.z, super::deck_coords(&sim, SOURCE)[2] + 10);
     step(&mut sim, &rules);
     assert!(sim.super_weapons[&americans][&sphere].is_ready);
 

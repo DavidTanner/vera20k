@@ -991,7 +991,8 @@ fn base_under_attack_siren(
 /// its own (`0x006CCE52`, `EVA_PsychicDominatorReady`), and cases 5, 6 and 8
 /// theirs through the shared tail `0x006CD51E`: the paradrops
 /// `EVA_ReinforcementsReady` (`0x006CD519`), the Spy Plane
-/// `EVA_SpyPlaneReady` (`0x006CD702`). Each tail also clears the local
+/// `EVA_SpyPlaneReady` (`0x006CD702`); the Force Shield's case 10 its own
+/// (`0x006CD2C6`, `EVA_ForceShieldReady`). Each tail also clears the local
 /// selection (`super_selection::follow_selection_writes`, whose RESIDUAL
 /// lists the cases whose tails neither owner ports yet).
 fn launch_drops_ready_line(
@@ -1003,6 +1004,7 @@ fn launch_drops_ready_line(
         K::PsychicDominator => Some("EVA_PsychicDominatorReady"),
         K::ParaDrop | K::AmerParaDrop => Some("EVA_ReinforcementsReady"),
         K::SpyPlane => Some("EVA_SpyPlaneReady"),
+        K::ForceShield => Some("EVA_ForceShieldReady"),
         _ => None,
     }
 }
