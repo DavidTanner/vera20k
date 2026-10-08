@@ -4120,9 +4120,6 @@ fn commit_fire_bookkeeping(
         }
         if let Some(drainer) = world.substrate.entities.get_mut(drainer_id) {
             represented_assign_target(drainer, None);
-            if let Some(manager) = drainer.spawn_manager.as_mut() {
-                manager.set_target(None);
-            }
         }
     }
 }
