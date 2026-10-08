@@ -9,7 +9,9 @@
 use std::collections::BTreeSet;
 
 use crate::util::lepton::lepton_to_cell;
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::{
+    NativeF32Bits, NativeF64Bits, X87Chop53, distance_3d_leptons, sqrt_approx_f32,
+};
 
 const MAX_CANDIDATE_PROBES: usize = 6;
 
@@ -74,9 +76,9 @@ where
 
     let centroid = centroid_3d(members);
     let mut anchor_index = members.len() - 1;
-    let mut anchor_distance = distance_3d(members[anchor_index].coord, centroid);
+    let mut anchor_distance = distance_3d_leptons(members[anchor_index].coord, centroid);
     for index in (0..anchor_index).rev() {
-        let distance = distance_3d(members[index].coord, centroid);
+        let distance = distance_3d_leptons(members[index].coord, centroid);
         if distance < anchor_distance {
             anchor_index = index;
             anchor_distance = distance;
@@ -87,7 +89,7 @@ where
 
     let mut sorted_indices = (0..members.len()).collect::<Vec<_>>();
     sorted_indices.sort_unstable_by_key(|&index| {
-        distance_3d(members[index].coord, anchor_coord)
+        distance_3d_leptons(members[index].coord, anchor_coord)
             .wrapping_mul(1000)
             .wrapping_add(index as i32)
     });
@@ -193,19 +195,6 @@ fn centroid_3d(members: &[GroupDestinationMember]) -> [i32; 3] {
     }
     let count = members.len() as i32;
     [sum[0] / count, sum[1] / count, sum[2] / count]
-}
-
-fn distance_3d(lhs: [i32; 3], rhs: [i32; 3]) -> i32 {
-    let mut squared = X87Chop53::load_i32(0);
-    for axis in 0..3 {
-        let delta = X87Chop53::load_i32(lhs[axis].wrapping_sub(rhs[axis]));
-        squared = X87Chop53::add(squared, X87Chop53::mul(delta, delta));
-    }
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
 }
 
 fn normalized_step(direction: (i32, i32)) -> (NativeF32Bits, NativeF32Bits) {

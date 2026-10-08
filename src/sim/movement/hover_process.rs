@@ -48,7 +48,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::mission_data::MissionType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::cell_kernel::{native_coord_distance, native_xy_distance, native_xyz_distance};
+use crate::sim::cell_kernel::{native_xy_distance, native_xyz_distance};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::foot_path::{FindPathResult, coord_cell};
@@ -60,6 +60,7 @@ use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::direction_tables::facing16_from_delta;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
+use crate::util::native_x87::distance_3d_leptons;
 
 /// Foot+64C after a found route (0x00516BCD).
 const FOUND_ROUTE_RETRIES: u32 = 10;
@@ -1135,10 +1136,9 @@ impl Simulation {
                 //51581D..5158F4: close enough and in the stop band ends it.
                 let entity = self.substrate.entities.get(id).expect("same Hover Foot");
                 let destination = null_coord(runtime(entity).and_then(|hover| hover.destination));
-                let close = native_coord_distance(
-                    location.x.wrapping_sub(destination.x),
-                    location.y.wrapping_sub(destination.y),
-                    location.z.wrapping_sub(destination.z),
+                let close = distance_3d_leptons(
+                    [location.x, location.y, location.z],
+                    [destination.x, destination.y, destination.z],
                 ) < rules.general.close_enough;
                 if close && self.track_stop_band(location, destination) {
                     if let Some(entity) = self.substrate.entities.get_mut(id) {
