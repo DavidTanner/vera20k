@@ -352,31 +352,16 @@ fn crate_random_frame(sim: &Simulation) -> Option<CrateRandomFrame> {
     })
 }
 
-/// Signed `Random__RandomRanged` projection used by the crate rectangle.
-/// Reversed endpoints are compared and swapped as signed dwords before the
-/// shared native mask/rejection sampler sees their nonnegative span.
-fn crate_random_ranged_i32(rng: &mut crate::sim::rng::SimRng, low: i32, high: i32) -> i32 {
-    let (lo, hi) = if low <= high {
-        (low, high)
-    } else {
-        (high, low)
-    };
-    let span = (i64::from(hi) - i64::from(lo)) as u32;
-    lo.wrapping_add(rng.next_range_u32_inclusive(0, span) as i32)
-}
-
 /// `MapClass__PlaceCrateAtRandomCell @ 0x0056BD8B..0x0056BDD3` always draws
 /// X then Y, adds the signed rectangle origin with dword wrapping, and stores
 /// each result through a 16-bit word before the later MOVSX reads it back.
 fn draw_crate_candidate(rng: &mut crate::sim::rng::SimRng, frame: CrateRandomFrame) -> (i32, i32) {
     let x = frame
         .left
-        .wrapping_add(crate_random_ranged_i32(rng, 0, frame.width.wrapping_sub(1)));
-    let y = frame.top.wrapping_add(crate_random_ranged_i32(
-        rng,
-        0,
-        frame.height.wrapping_sub(1),
-    ));
+        .wrapping_add(rng.next_range_i32_inclusive(0, frame.width.wrapping_sub(1)));
+    let y = frame
+        .top
+        .wrapping_add(rng.next_range_i32_inclusive(0, frame.height.wrapping_sub(1)));
     (x as i16 as i32, y as i16 as i32)
 }
 

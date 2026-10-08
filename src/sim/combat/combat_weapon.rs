@@ -307,8 +307,8 @@ pub(crate) fn weapon_for_index(
     if slot_index >= WEAPON_SLOT_COUNT {
         return None;
     }
-    let weapon_id = if veterancy >= ELITE_VETERANCY {
-        elite_weapon_at(obj, slot_index).or_else(|| base_weapon_at(obj, slot_index))
+    let weapon_id = if uses_elite_weapon(obj, veterancy, slot_index) {
+        elite_weapon_at(obj, slot_index)
     } else {
         base_weapon_at(obj, slot_index)
     }?;
@@ -318,6 +318,13 @@ pub(crate) fn weapon_for_index(
         WeaponSlot::Primary
     };
     Some((weapon_id, slot))
+}
+
+/// Whether `TechnoClass::GetWeapon @ 0x0070E140` answers slot `index` with the
+/// elite record: an elite object whose `EliteWeapon[index]` names a weapon.
+/// Callers that read the record's other fields (the elite FLH) ask this too.
+pub(crate) fn uses_elite_weapon(obj: &ObjectType, veterancy: u16, index: usize) -> bool {
+    veterancy >= ELITE_VETERANCY && elite_weapon_at(obj, index).is_some()
 }
 
 /// `GetWeapon(0)` weapon id at the given veterancy.

@@ -250,12 +250,9 @@ pub(crate) fn fire_coordinate(
         .and_then(|art| {
             // GetFLH6F3B28 calls GetWeapon70E140. Its elite FLH belongs to
             // the elite weapon record, which is used only when nonnull.
-            let use_elite = snap.veterancy >= 200
-                && usize::try_from(weapon_index).ok().is_some_and(|index| {
-                    obj.elite_weapon_list
-                        .get(index)
-                        .is_some_and(Option::is_some)
-                });
+            let use_elite = usize::try_from(weapon_index).is_ok_and(|index| {
+                super::combat_weapon::uses_elite_weapon(obj, snap.veterancy, index)
+            });
             let flh = art.weapon_flh(obj.turret_count, obj.weapon_count, weapon_index, use_elite);
             let flh = Flh {
                 forward: flh.forward.wrapping_add(base_coords.forward),

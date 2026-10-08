@@ -592,9 +592,7 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
     }
 
     fn random_ranged(&mut self, min: i32, max: i32) -> i32 {
-        self.sim
-            .scenario_rng
-            .next_range_u32_inclusive(min as u32, max as u32) as i32
+        self.sim.scenario_rng.next_range_i32_inclusive(min, max)
     }
 
     fn targeting_delay(&self, area_guard: bool) -> i32 {
