@@ -128,11 +128,7 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         })
         .collect::<Vec<_>>();
         let owner_iid = sim.interner.get(&owner_name).unwrap_or_default();
-        let sw_views = if sim.session.game_options.super_weapons {
-            crate::sim::superweapon::superweapon_views_for_owner(sim, rules, &owner_iid)
-        } else {
-            Vec::new()
-        };
+        let sw_views = crate::sim::superweapon::superweapon_views_for_owner(sim, rules, &owner_iid);
         let (power_produced, power_drained) =
             production::power_balance_for_owner(sim, rules, &owner_name);
         Some((

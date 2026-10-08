@@ -4914,7 +4914,6 @@ impl Simulation {
         // (`0x004F92F6`, `0x004F92FD`); VERA refreshes at the event, as for
         // a death or a sale.
         if category == EntityCategory::Structure
-            && self.session.game_options.super_weapons
             && let Some(rules) = rules
         {
             crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, old_owner);
@@ -6400,9 +6399,7 @@ impl Simulation {
             // --- Phase 4.5: Superweapons ---
             // DEPENDS ON: power state (suspend/resume gating).
             // PRODUCES: AnimClass bolts and explosions, damage to entities, sound_events.
-            if self.session.game_options.super_weapons {
-                crate::sim::superweapon::tick_superweapon_instances(self, rules);
-            }
+            crate::sim::superweapon::tick_superweapon_instances(self, rules);
 
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).

@@ -653,9 +653,7 @@ fn place_building(
         return false;
     }
     sim.mission_spawned_entities = true;
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     sim.slave_manager_hand_off(product, rules);
     // The choice clear at `0x0044531F` compares the product with the choice
     // the exit cleared at its start; nothing in between sets it.

@@ -529,9 +529,7 @@ pub(crate) fn sell_complete(
         crate::sim::credit_income::add_credits(sim, owner, refund);
     }
     sim.uninit_with_context(id, UninitContext::new(Some(rules), registry));
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     false
 }
 
