@@ -627,7 +627,12 @@ fn fly_stop_matches_native_rows() {
         "tools/spatial_oracle/fly_stop.json",
     ))
     .unwrap();
-    let rows = oracle["stop"].as_array().unwrap();
+    let rows: Vec<_> = oracle["stop"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["stun"].as_bool() != Some(true))
+        .collect();
     assert_eq!(rows.len(), 30);
     let mut failures = Vec::new();
     for row in rows {
@@ -654,6 +659,75 @@ fn fly_stop_matches_native_rows() {
         };
         if order != expected {
             failures.push(format!("{name}: {order:?} vs native {expected:?}"));
+        }
+        if u64::from(sim.scenario_rng.next_u32()) != row["next_random"].as_u64().unwrap() {
+            failures.push(format!("{name}: Scenario RNG diverged"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The death arm's Stun (`FootClass::Stun @ 0x004D5660`, then
+/// `TechnoClass::Stun @ 0x006FCD40`) on the Stop rows' aircraft at Health 0:
+/// the re-targets Fly's Stop_Moving makes through both NULL destinations and
+/// Stop_Driver, in order (none for an Attack aircraft's first NULL while it
+/// holds its TarCom), and the Scenario draws Find_Attack_Cell takes around
+/// an occupied cell each time.
+#[test]
+fn fly_death_stun_matches_native_rows() {
+    use crate::sim::world::LifecycleTestEvent;
+    use crate::sim::world::fly_orders::FlyStopOrder;
+    let oracle: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/fly_stop.json",
+    ))
+    .unwrap();
+    let rows: Vec<_> = oracle["stop"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["input"]["stun"].as_bool() == Some(true))
+        .collect();
+    assert_eq!(rows.len(), 6);
+    let cell = |at: &serde_json::Value| {
+        FlyStopOrder::Destination(Some(NavTargetRef::cell(
+            at[1].as_u64().unwrap() as u16,
+            at[2].as_u64().unwrap() as u16,
+        )))
+    };
+    let mut failures = Vec::new();
+    for row in rows {
+        let input = &row["input"];
+        let name = input["name"].as_str().unwrap();
+        let (mut sim, rules) = stop_fixture(input);
+        let entity = sim.substrate.entities.get_mut(AIRCRAFT).unwrap();
+        entity.health.current = 0;
+        if let Some(n) = input["target"].as_u64() {
+            entity.attack_target = Some(AttackTarget {
+                target: TargetKind::Entity(10 + n),
+            });
+        }
+        sim.clear_lifecycle_test_events_for_test();
+        sim.techno_death_stun(
+            AIRCRAFT,
+            crate::sim::world::UninitContext::new(Some(&rules), None),
+        );
+        let orders: Vec<_> = sim
+            .lifecycle_test_events_for_test()
+            .iter()
+            .filter_map(|event| match event {
+                LifecycleTestEvent::FlyStopOrdered { id: AIRCRAFT, order } => Some(*order),
+                _ => None,
+            })
+            .collect();
+        let native: Vec<_> = row["calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|call| call[0] == "assign_destination" && !call[1].is_null())
+            .map(|call| cell(&call[1]))
+            .collect();
+        if orders != native {
+            failures.push(format!("{name}: {orders:?} vs native {native:?}"));
         }
         if u64::from(sim.scenario_rng.next_u32()) != row["next_random"].as_u64().unwrap() {
             failures.push(format!("{name}: Scenario RNG diverged"));

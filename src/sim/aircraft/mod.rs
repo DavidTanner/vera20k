@@ -681,8 +681,21 @@ fn mission_step(
                 // Idle mode will handle AirportBound self-destruct.
                 sim.release_airfield_pad(id);
                 m.new_mission = AircraftMission::Idle;
+            } else if sim.substrate.entities.get(id).is_some_and(|entity| {
+                attack_mission::aircraft_target_present(
+                    entity.attack_target.as_ref(),
+                    &sim.substrate.entities,
+                )
+            }) {
+                // Mission_Guard's Target arm (`0x0041A822`): a landed aircraft
+                // whose Ammo is back that still holds a Target (a computer
+                // aircraft keeps it through Mission_Attack's state 10) queues
+                // Attack, whose state 0 sends it off its pad.
+                sim.release_airfield_pad(id);
+                queue_mission(sim, id, crate::sim::mission::MissionType::Attack);
+                m.new_mission = AircraftMission::Attack { sub_state: 0 };
             }
-            // Otherwise: stay parked, do nothing.
+            // Otherwise it stays parked.
         }
     }
     Some(m)

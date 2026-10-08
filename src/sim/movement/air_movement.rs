@@ -436,6 +436,25 @@ pub(crate) fn fly_mission_phase(
     Some(state.mission_phase(current_fly_height(entity, terrain)))
 }
 
+/// The type's FlightLevel (type vt+0xBC): its `FlightLevel=`, else
+/// `[General] FlightLevel=`. A world without rules has no type to ask; its
+/// Fly flies at 500 (headless fixtures).
+pub(crate) fn type_flight_level(
+    entity: &crate::sim::game_entity::GameEntity,
+    rules_context: Option<(
+        &crate::rules::ruleset::RuleSet,
+        &crate::sim::intern::StringInterner,
+    )>,
+) -> i32 {
+    rules_context.map_or(500, |(rules, interner)| {
+        rules
+            .object(interner.resolve(entity.type_ref()))
+            .map_or(rules.general.flight_level, |object| {
+                object.flight_level(rules.general.flight_level)
+            })
+    })
+}
+
 /// Process's height step (`0x004CDD0D..0x004CDFB6`) on the object: GetHeight
 /// from the placed Location, [`FlyRuntime::step_height`] and its SetHeight.
 ///
@@ -456,11 +475,7 @@ pub(crate) fn update_fly_height(
     });
     let object = rules_context
         .and_then(|(rules, interner)| rules.object(interner.resolve(entity.type_ref())));
-    let flight_level = rules_context.map_or(500, |(rules, _)| {
-        object.map_or(rules.general.flight_level, |o| {
-            o.flight_level(rules.general.flight_level)
-        })
-    });
+    let flight_level = type_flight_level(entity, rules_context);
     let has_passenger = entity.category == crate::map::entities::EntityCategory::Aircraft
         && entity
             .passenger_role

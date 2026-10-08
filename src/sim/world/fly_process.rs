@@ -139,19 +139,11 @@ pub(crate) fn fly_map_edge(
 }
 
 impl Simulation {
-    /// The type's FlightLevel (type vt+0xBC); 500 for an owner without rules
-    /// (headless fixtures), as the other Fly callers read it.
+    /// The type's FlightLevel of live object `id`
+    /// ([`air_movement::type_flight_level`]).
     fn fly_type_flight_level(&self, id: u64, rules: Option<&RuleSet>) -> i32 {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return 500;
-        };
-        rules.map_or(500, |rules| {
-            rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(rules.general.flight_level, |object| {
-                    object.flight_level(rules.general.flight_level)
-                })
-        })
+        let entity = self.substrate.entities.get(id).expect("Fly owner");
+        air_movement::type_flight_level(entity, rules.map(|rules| (rules, &self.interner)))
     }
 
     /// One Process visit of a Fly object on the map:
@@ -815,6 +807,11 @@ impl Simulation {
     /// represent. Trigger: a retreating transport aircraft carrying
     /// civilians off the map, in campaigns. Effect: the trigger event that
     /// reads the flag does not fire.
+    ///
+    /// RESIDUAL: each passenger is deleted at once (`0x004CD5AE`); VERA
+    /// UnInits it, which announces the same expiry but removes the object at
+    /// the frame's end. Trigger: the same retreat with passengers. Effect:
+    /// none observed, as nothing reads a cargo passenger in between.
     fn fly_playfield_latch(
         &mut self,
         id: u64,

@@ -47,6 +47,13 @@ BUILDING_TYPES = SCRATCH + 0xE0000     # their types, 0x2000 apart
 ENEMY = SCRATCH + 0xF0000              # another House
 STOP_STUBS = dict(STUB_SLOTS)
 STOP_STUBS.update({0x480: ('assign_destination', 8), 0x16C: ('receive_damage', 0x1C)})
+# FootClass::Stun (Aircraft vt+0x3A0), as TechnoClass::ReceiveDamage's death arm calls it.
+# Its NULL destinations run AircraftClass::Assign_Destination (0x0041AA80); the
+# re-targets Stop_Moving makes are recorded as above.
+STUN, ASSIGN_DESTINATION = 0x4D5660, 0x41AA80
+STUN_STUBS = dict(STOP_STUBS)
+STUN_STUBS.update({0x480: ('assign_destination', 8, ASSIGN_DESTINATION),
+                   0x280: ('broadcast', 4), 0xDC: ('detach_all', 4)})
 
 
 def target(u, pointer):
@@ -95,7 +102,8 @@ def place_techno(u, n, techno):
 
 
 def stop_row(case):
-    f, calls = build(case, STOP_STUBS)
+    stun = case.get('stun', False)
+    f, calls = build(case, STUN_STUBS if stun else STOP_STUBS)
     u = f.u
     zones = []
     # The shared dummy cell as startup leaves it: CellClass::Constructor on it.
@@ -134,7 +142,15 @@ def stop_row(case):
         u.reg_write(UC_X86_REG_EIP, ret)
 
     u.hook_add(UC_HOOK_CODE, on_zone, begin=GET_ZONE_ID, end=GET_ZONE_ID)
-    f.call(STOP_MOVING, 0, [LOCO + 4])
+    if stun:
+        # The death arm's object: Health 0, its TarCom one of the row's technos.
+        u.mem_write(OWNER + 0x6C, dwords(0))
+        if 'target' in case:
+            u.mem_write(OWNER + 0x2B4, dwords(objects[1 + case['target']]))
+        # Up to three Find_Attack_Cell searches around an occupied cell.
+        f.call(STUN, OWNER, [], count=3_000_000)
+    else:
+        f.call(STOP_MOVING, 0, [LOCO + 4])
     recorded = []
     for call in calls:
         if call[0] == 'assign_destination':
@@ -205,6 +221,19 @@ def stop_cases():
         dict(name='outside_loaner_not_clamped', cell=[100, 30], loaner=True),
         dict(name='cell_zero_loaner_self_destructs', cell=[0, 0], loaner=True),
         dict(name='cell_zero_negative_location', location=[-100, -100, 1500], loaner=True),
+        # The death arm's Stun: two NULL destinations around Stop_Driver, each reaching
+        # Stop_Moving unless an Attack aircraft still holds its TarCom.
+        dict(name='stun_move_stops_three_times', stun=True),
+        dict(name='stun_move_over_building', stun=True,
+             buildings=[dict(depot, origin=[59, 63], foundation=(3, 2))]),
+        dict(name='stun_guard_over_building', stun=True, mission=5,
+             buildings=[dict(depot, origin=[59, 63], foundation=(3, 2))]),
+        dict(name='stun_attack_with_target', stun=True, mission=1, docks=[0], target=0,
+             buildings=[dict(pad, origin=[80, 70])],
+             technos=[dict(xyz=at(90, 90, 0), enemy=True)]),
+        dict(name='stun_attack_without_target', stun=True, mission=1, docks=[0],
+             buildings=[dict(pad, origin=[80, 70])]),
+        dict(name='stun_not_moving', stun=True, moving=False),
     ]
     return [stop_row(case) for case in rows]
 

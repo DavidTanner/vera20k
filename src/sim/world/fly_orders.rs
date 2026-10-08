@@ -181,13 +181,8 @@ impl Simulation {
         {
             return false;
         }
-        let flight_level = rules.map_or(500, |rules| {
-            rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(rules.general.flight_level, |o| {
-                    o.flight_level(rules.general.flight_level)
-                })
-        });
+        let flight_level =
+            air_movement::type_flight_level(entity, rules.map(|rules| (rules, &self.interner)));
         let armed_flight_level = (entity.attack_target.is_some()
             && entity
                 .aircraft_ammo
@@ -283,13 +278,8 @@ impl Simulation {
         {
             return false;
         }
-        let level = rules.map_or(500, |rules| {
-            rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(rules.general.flight_level, |o| {
-                    o.flight_level(rules.general.flight_level)
-                })
-        });
+        let level =
+            air_movement::type_flight_level(entity, rules.map(|rules| (rules, &self.interner)));
         self.substrate
             .entities
             .get_mut(id)
@@ -375,7 +365,12 @@ impl Simulation {
                     && crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false)
             });
         };
-        match self.fly_stop_order(id, rules) {
+        let order = self.fly_stop_order(id, rules);
+        #[cfg(test)]
+        if let Some(order) = order {
+            self.trace_lifecycle_for_test(super::LifecycleTestEvent::FlyStopOrdered { id, order });
+        }
+        match order {
             None => {}
             Some(FlyStopOrder::SelfDestruct) => {
                 self.receive_own_health_c4(id, rules, registry);
@@ -456,8 +451,15 @@ impl Simulation {
         if cell == (0, 0) {
             return Some(FlyStopOrder::SelfDestruct);
         }
-        // AircraftMission owns the current aircraft dispatch while it exists
-        // (`foot_null_destination`'s attack gate reads it the same way).
+        // RESIDUAL: native reads Get_Mission (vt+0x184, `0x004CD0DD`). VERA's
+        // own aircraft states (the idle tree, Guard and the docked Target
+        // arm) switch AircraftMission without queueing the native mission,
+        // so it owns the current dispatch while it exists, as in
+        // `foot_null_destination`'s attack gate; the native slot would hold
+        // the ended mission there. Trigger: Stop on an aircraft one of those
+        // states sent to attack, or brought home. Effect: the Stop follows
+        // the stand-in's choice, the mission native would have queued; the
+        // two agree for every order-driven Attack and Move.
         let entity = self.substrate.entities.get(id)?;
         let attack = MissionId::from_known(MissionType::Attack);
         let attacking = entity.aircraft_mission.as_ref().map_or_else(

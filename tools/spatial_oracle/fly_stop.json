@@ -17356,6 +17356,445 @@
       },
       "next_random": 2026076499,
       "zones": []
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            60,
+            64
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            60,
+            64
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            60,
+            64
+          ],
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "name": "stun_move_stops_three_times",
+        "stun": true
+      },
+      "next_random": 2026076499,
+      "zones": []
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "buildings": [
+          {
+            "foundation": [
+              3,
+              2
+            ],
+            "origin": [
+              59,
+              63
+            ],
+            "type": 1
+          }
+        ],
+        "name": "stun_move_over_building",
+        "stun": true
+      },
+      "next_random": 1766806041,
+      "zones": []
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            59,
+            65
+          ],
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "buildings": [
+          {
+            "foundation": [
+              3,
+              2
+            ],
+            "origin": [
+              59,
+              63
+            ],
+            "type": 1
+          }
+        ],
+        "mission": 5,
+        "name": "stun_guard_over_building",
+        "stun": true
+      },
+      "next_random": 1766806041,
+      "zones": []
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            79,
+            72
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            79,
+            72
+          ],
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "buildings": [
+          {
+            "origin": [
+              80,
+              70
+            ],
+            "type": 0
+          }
+        ],
+        "docks": [
+          0
+        ],
+        "mission": 1,
+        "name": "stun_attack_with_target",
+        "stun": true,
+        "target": 0,
+        "technos": [
+          {
+            "enemy": true,
+            "xyz": [
+              23168,
+              23168,
+              0
+            ]
+          }
+        ]
+      },
+      "next_random": 2026076499,
+      "zones": [
+        [
+          80,
+          70,
+          0,
+          0
+        ],
+        [
+          80,
+          70,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            79,
+            72
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            79,
+            72
+          ],
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          [
+            "cell",
+            79,
+            72
+          ],
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "buildings": [
+          {
+            "origin": [
+              80,
+              70
+            ],
+            "type": 0
+          }
+        ],
+        "docks": [
+          0
+        ],
+        "mission": 1,
+        "name": "stun_attack_without_target",
+        "stun": true
+      },
+      "next_random": 2026076499,
+      "zones": [
+        [
+          80,
+          70,
+          0,
+          0
+        ],
+        [
+          80,
+          70,
+          0,
+          0
+        ],
+        [
+          80,
+          70,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "calls": [
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "assign_destination",
+          null,
+          1
+        ],
+        [
+          "broadcast",
+          3
+        ],
+        [
+          "detach_all",
+          1
+        ],
+        [
+          "deselect"
+        ]
+      ],
+      "destination": [
+        20608,
+        16512,
+        0
+      ],
+      "input": {
+        "moving": false,
+        "name": "stun_not_moving",
+        "stun": true
+      },
+      "next_random": 2026076499,
+      "zones": []
     }
   ]
 }

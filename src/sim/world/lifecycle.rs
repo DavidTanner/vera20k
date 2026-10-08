@@ -469,6 +469,11 @@ pub(crate) enum LifecycleTestEvent {
     PendingDeleteQueued {
         stable_id: u64,
     },
+    /// What a Fly `Stop_Moving` decided for aircraft `id`.
+    FlyStopOrdered {
+        id: u64,
+        order: super::fly_orders::FlyStopOrder,
+    },
     BinaryFrameCommitted,
     PendingDeleteDrainStarted,
     FinalizedCommon {
@@ -2903,7 +2908,10 @@ impl Simulation {
     /// `assign_target_commits`, including the Destroy walk's own Restores; the
     /// scans, orders and legacy retaliation filter Health 0 themselves), so no
     /// listener can hold it again. The Foot prelude's contact-0 OVER_OUT is
-    /// covered by the OVER_OUT to every contact.
+    /// covered by the OVER_OUT to every contact. A living object's Stun (a
+    /// sinking hull, a retreating aircraft leaving the map) runs the walk.
+    /// Native execution of an Aircraft's: `tools/spatial_oracle/fly_stop`'s
+    /// Stun rows, replayed by `fly_process_tests::fly_death_stun_matches_native_rows`.
     pub(crate) fn techno_death_stun(&mut self, stable_id: u64, context: UninitContext<'_>) {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
@@ -2951,14 +2959,16 @@ impl Simulation {
             context.rules(),
             context.registry(),
         );
-        // Unit737E58 repeats Stun after restoring Health1/+3CD. Its
-        // Techno6FCD9B Detach_All(1) cannot use the Health0 elision above:
-        // self and other pointer-expiry callbacks observe the restored hull.
+        // A living object's Stun cannot use the Health-0 elision above: its
+        // Techno6FCD9B Detach_All(1) runs, and self and other pointer-expiry
+        // callbacks observe the live object. Unit737E58 repeats Stun after
+        // restoring Health 1/+3CD, warp sinking stuns a living hull, and a
+        // retreating aircraft leaving the map is stunned alive (Fly 4CD5D7).
         if self
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.sinking.is_active())
+            .is_some_and(|entity| entity.health.current != 0)
         {
             self.object_destroy_callback(stable_id, context);
         }

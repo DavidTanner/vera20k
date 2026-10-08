@@ -75,17 +75,22 @@ def build(case, stub_slots=STUB_SLOTS):
     u.mem_write(STUBS, b'\xCC' * 0x100)
     vt = bytearray(u.mem_read(AIRCRAFT_VT, 0x600))
     stub_at = {}
-    for n, (slot, (name, pops)) in enumerate(stub_slots.items()):
+    for n, (slot, stub) in enumerate(stub_slots.items()):
         address = STUBS + 0x10 * n
         vt[slot:slot + 4] = dwords(address)
-        stub_at[address] = (name, pops)
+        stub_at[address] = stub
     u.mem_write(VTABLE, bytes(vt))
     u.mem_write(OWNER, dwords(VTABLE))
 
     def on_stub(_u, address, _size, _data):
-        name, pops = stub_at[address]
+        # A slot given an original body runs it when its first argument is NULL.
+        name, pops, *original = stub_at[address]
         sp = u.reg_read(UC_X86_REG_ESP)
-        calls.append([name] + [i32(u.mem_read(sp + 4 + 4 * k, 4)) for k in range(pops // 4)])
+        args = [i32(u.mem_read(sp + 4 + 4 * k, 4)) for k in range(pops // 4)]
+        calls.append([name] + args)
+        if original and args[0] == 0:
+            u.reg_write(UC_X86_REG_EIP, original[0])
+            return
         u.reg_write(UC_X86_REG_ESP, sp + 4 + pops)
         u.reg_write(UC_X86_REG_EAX, 0)
         u.reg_write(UC_X86_REG_EIP, struct.unpack('<I', u.mem_read(sp, 4))[0])
