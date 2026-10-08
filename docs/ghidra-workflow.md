@@ -275,9 +275,9 @@ was checked:
     the earlier name. Examples are 0x4CD600, which `FlyLocomotionClass__Process`
     0x4CCB40 calls every frame, and 0x718B70, which only
     `TeleportLocomotionClass__Move_To` calls.
-  - Twelve names still belong to more than one function. They are thunks that show
-    their target's name, three identical `CRect` copies, the two `What_Am_I` slots of
-    `CellClass` and `SuperClass`, and the two `VXL_Sort_Rasterize` variants.
+  - Eleven names still belong to more than one function. They are thunks that show
+    their target's name, the two `What_Am_I` slots of `CellClass` and `SuperClass`, and
+    the two `VXL_Sort_Rasterize` variants.
 - `vtable__<Class>` and `vtable__<Class>__secondary_<offset>` (a decimal offset) label
   every vtable that has an RTTI complete object locator. Where an older label existed,
   the older one stays primary, and listings and decompiles show it: `vtable_BuildingClass`,
