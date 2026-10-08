@@ -310,10 +310,7 @@ fn mind_control_area(
     let mut bridge_changed = false;
     if let Some(warhead) = rules.warhead(&general.dominator_warhead) {
         let warhead_id = sim.interner.intern(&general.dominator_warhead);
-        let storm_house = sim
-            .lightning_storm
-            .as_ref()
-            .map(super::lightning_storm::LightningStormState::owner);
+        let storm_house = sim.lightning_storm.owner();
         let [x, y, z] = coords;
         bridge_changed = crate::sim::combat::world_receiver::apply_area_damage(
             sim,
