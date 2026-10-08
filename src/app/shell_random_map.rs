@@ -976,8 +976,7 @@ impl App {
 
     pub(super) fn handle_random_map_setup_mouse_down(state: &mut AppState) -> bool {
         let layout = Self::skirmish_random_map_setup_layout(state);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         let Some(modal) = state
             .frontend
             .skirmish_shell_state
@@ -1035,8 +1034,7 @@ impl App {
 
     pub(super) fn handle_random_map_setup_mouse_move(state: &mut AppState) {
         let layout = Self::skirmish_random_map_setup_layout(state);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         // `0x105`'s proc runs the common handler first (`0x0059631A`): every
         // move writes the help of the control under the pointer, or an empty
         // one, and repaints the status line. An open list holds the mouse
@@ -1105,8 +1103,7 @@ impl App {
             return true;
         }
         let layout = Self::skirmish_random_map_setup_layout(state);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         // RMGMD.INI drives the randomizer's vegetation bounds; without it the
         // derived vegetation collapses to zero and randomized maps lose trees.
         let settings = state

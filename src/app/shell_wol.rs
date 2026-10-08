@@ -77,13 +77,6 @@ impl App {
         )
     }
 
-    fn wol_pointer(state: &AppState) -> (i32, i32) {
-        (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        )
-    }
-
     /// The page's buttons in hit-test (Z) order.
     fn wol_button_feed(layout: &WolWelcomeLayout) -> Vec<LaidOutControl> {
         layout
@@ -116,7 +109,7 @@ impl App {
     }
 
     pub(super) fn handle_wol_mouse_move(state: &mut AppState) {
-        let (x, y) = Self::wol_pointer(state);
+        let (x, y) = state.match_state.input.cursor_px();
         if Self::wol_api_missing_open(state) {
             let feed = Self::wol_api_missing_feed(state);
             state.frontend.shell_controller.on_pointer_move(x, y, &feed);
@@ -140,7 +133,7 @@ impl App {
     }
 
     pub(super) fn handle_wol_mouse_down(state: &mut AppState) {
-        let (x, y) = Self::wol_pointer(state);
+        let (x, y) = state.match_state.input.cursor_px();
         let feed = if Self::wol_api_missing_open(state) {
             Self::wol_api_missing_feed(state)
         } else {
@@ -159,7 +152,7 @@ impl App {
     }
 
     pub(super) fn handle_wol_mouse_up(state: &mut AppState) {
-        let (x, y) = Self::wol_pointer(state);
+        let (x, y) = state.match_state.input.cursor_px();
         if Self::wol_api_missing_open(state) {
             let feed = Self::wol_api_missing_feed(state);
             if state.frontend.shell_controller.on_pointer_up(x, y, &feed)

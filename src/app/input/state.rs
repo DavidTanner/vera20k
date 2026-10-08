@@ -74,3 +74,11 @@ pub(crate) struct MatchInputState {
     /// Current placement preview for the armed building, if any.
     pub(crate) building_placement_preview: Option<crate::sim::production::BuildingPlacementPreview>,
 }
+
+impl MatchInputState {
+    /// The cursor in whole window pixels, rounded to nearest: the position the
+    /// shell screens and the gadget layer hit-test with.
+    pub(crate) fn cursor_px(&self) -> (i32, i32) {
+        (self.cursor_x.round() as i32, self.cursor_y.round() as i32)
+    }
+}

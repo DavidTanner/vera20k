@@ -394,10 +394,7 @@ impl App {
         };
         let layout = Self::skirmish_saved_seed_layout(state, browser.mode);
         let extent = (state.render_width(), state.render_height());
-        let pointer = (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        );
+        let pointer = state.match_state.input.cursor_px();
         let browser = state
             .frontend
             .skirmish_shell_state
@@ -427,10 +424,7 @@ impl App {
         };
         let layout = Self::skirmish_saved_seed_layout(state, browser.mode);
         let extent = (state.render_width(), state.render_height());
-        let pointer = (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        );
+        let pointer = state.match_state.input.cursor_px();
         let browser = state
             .frontend
             .skirmish_shell_state

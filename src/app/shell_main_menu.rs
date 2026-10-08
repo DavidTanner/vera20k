@@ -290,10 +290,7 @@ impl App {
             .frontend
             .shell_controller
             .ensure_active(crate::ui::score_shell::SCORE_DIALOG, false);
-        let cursor = (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        );
+        let cursor = state.match_state.input.cursor_px();
         (layout, feed, cursor)
     }
 
@@ -711,8 +708,7 @@ impl App {
             state.renderer.gpu.config.height,
         );
         let feed = Self::main_menu_shell_button_feed(&layout);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         state
             .frontend
             .shell_controller
@@ -734,8 +730,7 @@ impl App {
             state.renderer.gpu.config.height,
         );
         let feed = Self::main_menu_shell_button_feed(&layout);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         state
             .frontend
             .shell_controller
@@ -755,8 +750,7 @@ impl App {
             state.renderer.gpu.config.height,
         );
         let feed = Self::main_menu_shell_button_feed(&layout);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         state
             .frontend
             .shell_controller
@@ -808,8 +802,7 @@ impl App {
 
     pub(super) fn handle_exit_confirm_modal_mouse_down(state: &mut AppState) {
         let feed = Self::exit_confirm_modal_feed(state);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         if state.frontend.shell_controller.top_id()
             != Some(crate::ui::shell::descriptor::DialogId(0x0120))
         {
@@ -826,8 +819,7 @@ impl App {
 
     pub(super) fn handle_exit_confirm_modal_mouse_up(state: &mut AppState) {
         let feed = Self::exit_confirm_modal_feed(state);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         if state.frontend.shell_controller.top_id()
             != Some(crate::ui::shell::descriptor::DialogId(0x0120))
         {
@@ -891,8 +883,7 @@ impl App {
             return;
         };
         let feed = Self::prepare_menu_page_input(state, page);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         state.frontend.shell_controller.on_pointer_down(x, y, &feed);
         // The owner-draw press cue plays on mouse-down over an enabled button.
         if state.frontend.shell_controller.pressed().is_some() {
@@ -906,8 +897,7 @@ impl App {
             return;
         };
         let feed = Self::prepare_menu_page_input(state, page);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         // Hover is enable-unfiltered: a disabled button still drives 0x695.
         state.frontend.shell_controller.on_pointer_move(x, y, &feed);
         // Every hover message repaints the status line (0x00615EF7).
@@ -920,8 +910,7 @@ impl App {
             return;
         };
         let feed = Self::prepare_menu_page_input(state, page);
-        let x = state.match_state.input.cursor_x.round() as i32;
-        let y = state.match_state.input.cursor_y.round() as i32;
+        let (x, y) = state.match_state.input.cursor_px();
         let Some(activated) = state.frontend.shell_controller.on_pointer_up(x, y, &feed) else {
             return;
         };

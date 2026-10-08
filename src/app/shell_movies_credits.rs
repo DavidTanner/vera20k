@@ -107,7 +107,7 @@ impl App {
 
     pub(super) fn handle_movie_list_mouse_move(state: &mut AppState) {
         let feed = Self::movie_list_feed(state);
-        let (x, y) = Self::shell_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         state.frontend.shell_controller.on_pointer_move(x, y, &feed);
         let layout = Self::movie_list_layout(state);
         if let Some(list) = state.frontend.movie_list.as_mut() {
@@ -122,7 +122,7 @@ impl App {
         if !Self::movie_list_active(state) {
             return None;
         }
-        let (x, y) = Self::shell_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         let layout = Self::movie_list_layout(state);
         let list = state.frontend.movie_list.as_mut()?;
         if list.scroll_poll(layout.list, x, y, Instant::now()) {
@@ -133,7 +133,7 @@ impl App {
 
     pub(super) fn handle_movie_list_mouse_down(state: &mut AppState) {
         let feed = Self::movie_list_feed(state);
-        let (x, y) = Self::shell_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         let layout = Self::movie_list_layout(state);
         if let Some(list) = state.frontend.movie_list.as_mut()
             && layout.list.contains(x, y)
@@ -178,7 +178,7 @@ impl App {
             .into_iter()
             .filter(|control| control.id != crate::ui::movies_credits_shell::MOVIE_LIST_CONTROL)
             .collect();
-        let (x, y) = Self::shell_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         use crate::app::frontend::shell_transition::ShellExitThen;
         match state.frontend.shell_controller.on_pointer_up(x, y, &feed) {
             Some(crate::ui::movies_credits_shell::PLAY_MOVIE_CONTROL) => {
@@ -198,13 +198,6 @@ impl App {
             Some(0x0686) => Self::leave_shell_dialog(state, ShellExitThen::MovieListBack),
             _ => {}
         }
-    }
-
-    fn shell_cursor(state: &AppState) -> (i32, i32) {
-        (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        )
     }
 
     pub(super) fn play_generic_click_sound(state: &mut AppState) {

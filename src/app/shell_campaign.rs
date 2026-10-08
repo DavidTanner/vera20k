@@ -81,13 +81,6 @@ impl App {
         )
     }
 
-    fn campaign_cursor(state: &AppState) -> (i32, i32) {
-        (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        )
-    }
-
     /// Hover targets for the status line: Back, then the emblems and the
     /// slider, which never press through the shared controller.
     fn campaign_feed(state: &mut AppState, layout: &CampaignLayout) -> Vec<LaidOutControl> {
@@ -118,7 +111,7 @@ impl App {
     pub(super) fn handle_campaign_mouse_move(state: &mut AppState) {
         let layout = Self::campaign_layout(state);
         let feed = Self::campaign_feed(state, &layout);
-        let (x, y) = Self::campaign_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         // A slider holding the mouse since a press on it keeps the status
         // line and Back's paint: the dialog's hit test (`0x00622CCB`) sees
         // nothing until the release.
@@ -152,7 +145,7 @@ impl App {
 
     pub(super) fn handle_campaign_mouse_down(state: &mut AppState) {
         let layout = Self::campaign_layout(state);
-        let (x, y) = Self::campaign_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         let emblem = layout.emblem_at(x, y);
         let captured = state
             .frontend
@@ -187,7 +180,7 @@ impl App {
 
     pub(super) fn handle_campaign_mouse_up(state: &mut AppState) {
         let layout = Self::campaign_layout(state);
-        let (x, y) = Self::campaign_cursor(state);
+        let (x, y) = state.match_state.input.cursor_px();
         let back_pressed = state.frontend.shell_controller.pressed().is_some();
         let Some(campaign) = state.frontend.campaign.as_mut() else {
             return;
