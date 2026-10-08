@@ -1714,7 +1714,7 @@ fn classify_foot_entry<'a>(
         //query use actual House alliances, including during crew escape.
         let allied = allied || (infantry && live.sim.object_placement_scope_active());
         if !allied {
-            if b.cloak.as_ref().is_some_and(|s| s.state == 2) {
+            if b.cloak.as_ref().is_some_and(|s| s.is_fully_cloaked()) {
                 entry_result = entry_result.max(1);
                 continue;
             }
