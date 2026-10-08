@@ -252,8 +252,6 @@ pub struct Miner {
     pub cargo: Vec<CargoBale>,
     /// Maximum number of bales this miner can carry.
     pub capacity_bales: u16,
-    /// Whether the player issued a manual return order.
-    pub forced_return: bool,
     /// Unit+0x6D1 unload-active latch.
     #[serde(default)]
     pub unload_active: bool,
@@ -297,7 +295,6 @@ impl Miner {
             reserved_refinery: None,
             cargo: Vec::with_capacity(capacity_bales as usize),
             capacity_bales,
-            forced_return: false,
             unload_active: false,
             harvesting: false,
         }

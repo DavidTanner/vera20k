@@ -952,9 +952,7 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         .is_some_and(|object| object.teleporter);
     let pinned = snap
         .miner
-        .forced_return
-        .then_some(snap.miner.reserved_refinery)
-        .flatten()
+        .reserved_refinery
         .filter(|&bay| sim.substrate.entities.get(bay).is_some());
     let driving = sim
         .substrate
@@ -1003,7 +1001,6 @@ fn handle_return(sim: &mut Simulation, rules: &RuleSet, snap: &mut MinerSnapshot
         ) == RadioResponse::Roger
     {
         snap.state = MinerState::Dock;
-        snap.miner.forced_return = false;
         snap.miner.reserved_refinery = None;
         return;
     }

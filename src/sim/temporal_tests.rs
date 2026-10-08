@@ -837,7 +837,7 @@ fn a_warped_building_goes_offline() {
     let _ = sim.mission_assign_exact(plant, MissionId::from_known(MissionType::Guard), now);
     let americans = sim.interner.get("Americans").unwrap();
     let output = |sim: &mut Simulation| {
-        let _ = crate::sim::power_system::tick_power_states(
+        crate::sim::power_system::tick_power_states(
             &mut sim.power_states,
             &mut sim.substrate.entities,
             &rules,

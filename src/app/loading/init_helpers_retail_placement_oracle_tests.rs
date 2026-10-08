@@ -532,7 +532,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         );
     }
 
-    let _ = tick_power_states(
+    tick_power_states(
         &mut sim.power_states,
         &mut sim.substrate.entities,
         &rules,

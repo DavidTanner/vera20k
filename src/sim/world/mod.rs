@@ -4538,7 +4538,7 @@ impl Simulation {
             return;
         }
         let state = self.power_states.entry(owner).or_default();
-        let (assessed, _) = power_system::assess_house_power(
+        let assessed = power_system::assess_house_power(
             state,
             &self.substrate.entities,
             rules,
