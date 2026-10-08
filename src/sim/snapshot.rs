@@ -872,7 +872,9 @@ use crate::sim::world::Simulation;
 // held the same values. Prior records cannot resume.
 // 301 -> 302: FogState drops the version-81 wire shadow of the view-cache
 // generation, which nothing read. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 302;
+// 302 -> 303: a Super saves its place in the Super timer list (0x00A83D50).
+// Prior records lack it.
+const SNAPSHOT_VERSION: u32 = 303;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3892,7 +3894,8 @@ mod tests {
         // 300 -> 301: guidance reads Airburst/Inaccurate/Level from the
         // collision policy instead of keeping copies.
         // 301 -> 302: FogState drops its unread v81 generation wire shadow.
-        assert_eq!(super::SNAPSHOT_VERSION, 302);
+        // 302 -> 303: a Super's place in the Super timer list.
+        assert_eq!(super::SNAPSHOT_VERSION, 303);
     }
 
     #[test]
