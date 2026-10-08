@@ -20,9 +20,11 @@
 //! Evidence: `tools/superweapon_oracle.py` sections `force_shield_launch` and
 //! `super_fade` (Unicorn on gamemd.exe), replayed in `force_shield_tests.rs`.
 //!
-//! RESIDUAL: `StartSound=` plays at the launch event's cell, natively at the
-//! deck coordinate (`0x006CD172`); over a bridge the source sits 416 leptons
-//! higher. Trigger: a Force Shield on a bridge. Effect: the cue's pan.
+//! RESIDUAL: `StartSound=` plays at the launch cell's centre at height 0
+//! (`SuperWeaponLaunched` carries only the cell), natively at the deck
+//! coordinate (`0x006CD172`), which carries the cell's ground height and,
+//! over a bridge, 416 more leptons. Trigger: a Force Shield on a raised,
+//! sloped or bridge cell. Effect: the cue's position on screen, so its pan.
 //!
 //! Ledger: no RNG draws and no detach calls. Timer writes: the house's
 //! blackout (`0x0050BC90`); each shielded building's curtain
@@ -32,7 +34,8 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/houses, sim/superweapon/invulnerability,
-//!   sim/power_system, sim/game_entity, sim/world.
+//!   sim/movement/ground_pose, sim/power_system, sim/game_entity, sim/world,
+//!   util/native_x87.
 //! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
 
 #[cfg(test)]

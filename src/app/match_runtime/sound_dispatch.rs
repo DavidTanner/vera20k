@@ -331,8 +331,9 @@ pub(super) fn dispatch_sim_sound_events(
                     }
                 });
                 // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`),
-                // 5, 6 and 8 (`0x006CD51E`) and 7 (`0x006CCE3C..0x006CCE52`):
-                // after the case's line, the queued Ready line is dropped.
+                // 5, 6 and 8 (`0x006CD51E`), 7 (`0x006CCE3C..0x006CCE52`)
+                // and 10 (`0x006CD2B7..0x006CD2DC`): after the case's line,
+                // the queued Ready line is dropped.
                 if let Some(ready) = launch_drops_ready_line(sw.kind)
                     && owner_is_local(&sim.interner, owner, local_owner_name)
                 {

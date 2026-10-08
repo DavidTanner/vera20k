@@ -140,13 +140,19 @@ pub struct SuperWeaponType {
     pub weapon_type: Option<String>,
     /// Required secondary building (e.g., NukeSilo for nuke).
     pub aux_building: Option<String>,
-    /// `SpecialSound=` (`+0xC0`, `0x006CEB74`; VocClass::FindIndex
-    /// `0x007514D0`, an unknown name keeping the constructor's -1): the cue
-    /// SuperClass::AI plays when a Force Shield's countdown runs out
-    /// (`0x006CBCCF`).
+    /// `SpecialSound=` (`+0xC0`, `0x006CEB74`): the cue SuperClass::AI
+    /// plays when a Force Shield's countdown runs out (`0x006CBCCF`). A read
+    /// stores VocClass::FindIndex (`0x007514D0`) of the name; an absent key
+    /// or an unknown name keeps the field (`0x006CEB96`), the constructor's
+    /// -1 or an earlier layer's sound.
+    /// RESIDUAL: the last non-empty name wins here, so a later layer naming
+    /// an unknown sound silences a cue an earlier layer set, where native
+    /// keeps it. Trigger: a mode INI or map naming an unknown sound after an
+    /// earlier layer named a known one. Effect: the cue does not play.
     pub special_sound: Option<String>,
-    /// `StartSound=` (`+0xC4`, `0x006CEBB0`, read as `SpecialSound=`): the
-    /// cue the Force Shield's launch plays (`0x006CD176`).
+    /// `StartSound=` (`+0xC4`, `0x006CEBB0`, read as `SpecialSound=` with
+    /// the same residual, `0x006CEBD8`): the cue the Force Shield's launch
+    /// plays (`0x006CD176`).
     pub start_sound: Option<String>,
     /// Sidebar tab flash duration in frames on activation.
     pub flash_sidebar_tab_frames: i32,

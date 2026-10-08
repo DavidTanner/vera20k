@@ -288,6 +288,44 @@ fn retail_force_shield_shields_allied_buildings_and_fades() {
     }
 }
 
+/// Over a bridge the walk still measures from the cell's ground centre while
+/// the countdown keeps the deck (`force_shield_launch` row 7 shields the
+/// ground building 1000 leptons out, not the one 416 leptons above it): a
+/// click on bridge cell (40, 40) shields the Russian GAPOWR 974 leptons from
+/// its ground centre, 1059 from its deck.
+#[test]
+fn a_bridge_cell_walks_from_the_ground_centre() {
+    let Some(rules) = retail_rules_binding(&[("FORCSHLD", 20)]) else {
+        return;
+    };
+    let (rules, mut sim, _) = world_with(rules, 64, &[]);
+    let terrain = sim.resolved_terrain.as_mut().expect("the world has a map");
+    let index = terrain.index(40, 40).unwrap();
+    terrain.cells[index].bridge_facts.raw_flags = crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
+    let russians = sim.interner.intern("Russians");
+    sim.spawn_object_at_height("NATECH", "Russians", 10, 10, 0, 0, &rules)
+        .unwrap();
+    // The 2x2 foundation's centre (11264, 10752).
+    let plant = sim
+        .spawn_object_at_height("GAPOWR", "Russians", 43, 41, 0, 0, &rules)
+        .unwrap();
+    let sw_type = charge_super(&mut sim, russians, FORCE_SHIELD);
+    click(&mut sim, &rules, russians, FORCE_SHIELD, (40, 40));
+
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(plant)
+            .and_then(|entity| entity.invulnerability.as_ref())
+            .map(|state| state.kind),
+        Some(InvulnKind::ForceShield)
+    );
+    assert_eq!(
+        sim.super_weapons[&russians][&sw_type].fade().1,
+        [10368, 10368, 416]
+    );
+}
+
 /// SuperClass::Grant leaves the countdown and its coordinate and releases
 /// the held anim (`0x006CB6B4..0x006CB6D2`): a Force Shield whose provider
 /// was lost and rebuilt still fades where it was launched.

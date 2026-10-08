@@ -108,6 +108,11 @@ pub(super) fn spawn_cell_anim(
 /// global (`0x00B0C07C`, initializer `0x006CAD80`: four levels) when the
 /// cell carries flag `0x100`. Launch inlines it in cases 1, 3
 /// (`0x006CC3C4..0x006CC41F`), 4, 9 and 10 (`0x006CD07D..0x006CD0D3`).
+/// CellClass::GetTargetCoords (vt+0x58 @ `0x00486890`,
+/// `projectile::cell_target_coord`) makes the same sum with CellClass's own
+/// copy of the height (`0x0089E7B4`, the same formula at `0x0047B2C0`), but
+/// Launch never calls it; here the flag is read through the superweapons'
+/// MapClass lookup (`cell_grid`), as Launch reads the cell it looked up.
 fn deck_coords(sim: &Simulation, (x, y): (u16, u16)) -> [i32; 3] {
     let mut coords = fire::cell_coords(sim, (x, y));
     if cell_grid::cell_has_bridge_flag(sim, x as i16, y as i16) {
@@ -261,7 +266,7 @@ impl SuperWeaponInstance {
         Some(self.fade_coords)
     }
 
-    /// `SuperClass+0x50` and `+0x54` for the world hash.
+    /// `SuperClass+0x50` and `+0x54`, for the world hash and map observation.
     pub(crate) fn fade(&self) -> (i32, [i32; 3]) {
         (self.fade_countdown, self.fade_coords)
     }
