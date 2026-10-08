@@ -709,6 +709,82 @@ production observations: the chain's native comparisons are the
 `tools.superweapon_oracle` rows named above and the `ai_*` rows, and no whole-run
 timing or pixel equivalence with gamemd is claimed.
 
+## Paradrop observation
+
+[`map_observation.paradrop.example.json`](map_observation.paradrop.example.json)
+starts America/Battle against a Yuri computer opponent (Easy) with stock rules and
+assets on an [authored map](map_observation/examples/paradrop.map): the Spy Plane
+fixture with the observer's AMRADR at (46,42), GAPOWR at (40,44) and CAAIRP at (42,38)
+in place of its NARADR and two NAPOWR, and the shroud off. `observe_super_weapons` adds
+the Super rows: AmericanParaDropSpecial (interned id 29) and ParaDropSpecial (35) are
+granted on the first step (charge start 0, 3600 frames) and are ready from step 3601.
+Ordinary `LaunchSuperWeapon` commands aim the American paradrop at (52,50) at step 3610
+and the paradrop at (48,54) at step 3620. PDPLANE and E1 are the observed types. The
+loader looks a relative map name up in the retail root: run a profile copy whose
+`launch.selected_map_file` is the tracked map's absolute path.
+
+With release binary SHA-256
+`394b6a6e8b17493a1ffa259d3b679cbc80c13e3a82979af102f3cfef8549413d` (32,111,248 bytes)
+and map SHA-256 `3e950e89c99852abfeacef0948c9be940297add2735083653800bbcb5e2b2499`,
+each launch restarts its charge in its own tick. The run then goes:
+
+- **The planes.** One PDPLANE appears at step 3611 at (63,18) and another at step 3621
+  at (80,35), both on the observer's East edge, in Paradrop Approach (mission 26).
+- **The drops.** The first turns to Paradrop Overfly (27) at step 3867 at (52,47) and
+  drops its eight E1 (`AmerParaDropNum=`) at steps 3868..3903, one every five frames
+  (Overfly's return); the second turns at step 3871 at (51,52) and drops its six
+  (`AllyParaDropNum=`) at steps 3872..3897. Each paratrooper starts at the plane's 1500
+  leptons with Guard queued, its house being human.
+- **The exit.** With their cargo gone the planes queue Retreat (mission 4) at steps 3908
+  and 3902, fly for cells on the East edge and are last seen at step 4266 at (49,8) and
+  step 4216 at (78,35).
+- **The landing.** The paratroopers land about 500 frames after they leave the plane,
+  from step 4370, and stand on Guard.
+- **The losses.** The computer's YAGGUN at (61,58) targets the falling E1 from step 4093
+  (a copy to step 4130 that also observes the computer's types: 30 points a hit on the
+  first, from 870 leptons up). Three die in the air; each explodes as InfDeath 3 and is
+  removed (last seen at steps 4148, 4197 and 4252), as `InfantryClass::ReceiveDamage`
+  treats an infantryman still in its Paradrop action (`0x0051836F..0x0051842F`).
+
+The 5000-step run ends with the eleven survivors on Guard (state hash
+`3709965344246736099`, BGRA SHA-256
+`95cd274f1a661158d569ef4ce0a1c9a4c231b2d0064f66df6591eb2cdacb69bd`); a copy that ends
+at 3900 shows both planes over the drop zone and the paratroopers under their canopies
+(state hash `17481995937663332501`, BGRA SHA-256
+`2dcd177f5550e2f8679411baf017009536fea690e2b881847d8f00d1466e8ca4`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `8142462839629644773`). These are Rust production observations: the chain's
+native comparisons are the `tools.superweapon_oracle` `paradrop_launch`,
+`send_paradrop_planes`, `paradrop_missions`, `drop_payload` and `spawn_parachuted` rows,
+and no whole-run timing or pixel equivalence with gamemd is claimed.
+
+## Computer paradrop observation
+
+[`map_observation.ai-paradrop.example.json`](map_observation.ai-paradrop.example.json)
+starts Russia/Battle against a Russia computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_paradrop.map): the
+computer Spy Plane fixture with the computer's CAAIRP at (42,38) and its two NAPOWR at
+(40,44) and (46,42), the observer's NACNST at (40,62), and no commands.
+`observe_super_weapons` adds the Super rows; PDPLANE, E2 and NACNST are the observed
+types. Run a profile copy whose `launch.selected_map_file` is the tracked map's
+absolute path.
+
+With the same binary and map SHA-256
+`d62eabfda8c7f5a0bb6f9508598b6052428a818eb4da6ed8aa83fafae3515e9a`, the computer's
+ParaDropSpecial is granted on the first step (charge start 0, 3600 frames) and is ready
+from step 3601. Its Strategy tick fires it at frame 3700 (the charge restarts there) at
+(60,36), AI_GroundRallyPoint's cell near the observer's start (59,33)
+(`superweapon/ai_fire.rs`), and one PDPLANE appears at step 3701 at (50,85), on the
+computer's South edge. It turns to Overfly at step 4014 at (59,39), drops nine E2
+(`SovParaDropNum=`) at steps 4015..4055, each with Hunt queued, its house being a
+computer's, queues Retreat at step 4060 and is last seen at step 4518 at (47,87). The
+conscripts land from step 4517 and set off hunting. The 5000-step run ends with state
+hash `6357662348380346706` and BGRA SHA-256
+`cc27e7523d0575a80238ae912e71380d80d579b3815487703ccfca406e793f97` (camera (60,36)).
+These are Rust production observations: the chain's native comparisons are the
+`tools.superweapon_oracle` rows named above and the `ai_*` rows, and no whole-run
+timing or pixel equivalence with gamemd is claimed.
+
 ## Iron Curtain observation
 
 [`map_observation.iron-curtain.example.json`](map_observation.iron-curtain.example.json)
