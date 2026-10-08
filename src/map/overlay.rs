@@ -13,8 +13,8 @@
 
 use std::collections::HashMap;
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::util::base64;
 use crate::util::lcw;
 

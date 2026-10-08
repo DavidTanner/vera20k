@@ -3,8 +3,8 @@
 //! per-overlay sections (with art.ini image overrides).
 //!
 //! Declaration order is authoritative: `[OverlayTypes]` list position IS the
-//! overlay ID, and every name/first-match lookup preserves it. Bridge-ID
-//! geometry helpers stay in `map::overlay_types`; render-only SHP name
+//! overlay ID, and every name/first-match lookup preserves it. High-bridge
+//! stamp geometry lives in `map::bridge_facts`; render-only SHP name
 //! resolution lives in `render::overlay_assets`.
 //!
 //! ## Dependency rules

@@ -24,10 +24,10 @@
 use std::path::Path;
 use vera20k::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use vera20k::map::map_file::{self, MapFile};
-use vera20k::map::overlay_types::OverlayTypeRegistry;
 use vera20k::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use vera20k::map::theater::{TheaterData, load_theater};
 use vera20k::rules::ini_parser::IniFile;
+use vera20k::rules::overlay_types::OverlayTypeRegistry;
 use vera20k::rules::terrain_rules::TerrainRules;
 
 fn ra2_dir() -> String {

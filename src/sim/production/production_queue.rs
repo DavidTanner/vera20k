@@ -272,7 +272,7 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
 pub(crate) fn dispatch_production_changes_for_tests(
     sim: &mut Simulation,
     rules: &RuleSet,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     sim.session.tick = sim.session.tick.saturating_add(1);
     sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
@@ -296,7 +296,7 @@ pub(in crate::sim) fn exit_produced_object(
     rules: &RuleSet,
     producer_id: u64,
     stable_id: u64,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> crate::sim::ai_base_building::BuildingExit {
     use crate::sim::ai_base_building::{self, BuildingExit};
     use crate::sim::ai_unit_choice::UnitChoiceKind;

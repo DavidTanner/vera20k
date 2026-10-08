@@ -53,7 +53,7 @@
 //! - The refusal message for the player (`PsyDom::PrintMessage @ 0x0053B410`,
 //!   `Msg:DominatorActive`) is not posted.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimId;
 use crate::sim::intern::InternedId;

@@ -37,7 +37,7 @@ const THEATER_BRIGHTNESS_SNOW: f32 = 0.8;
 
 /// Classification of an overlay for minimap coloring.
 ///
-/// Defined in render/ so that the minimap doesn't depend on map/overlay_types.
+/// Defined in render/ so that the minimap doesn't depend on rules::overlay_types.
 /// The caller (app layer) maps `OverlayTypeFlags` to this enum via a closure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayClassification {
@@ -77,7 +77,7 @@ pub(crate) fn minimap_overlay_datum(
     ry: u16,
     overlay_id: u8,
     frame: u8,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     rules: Option<&RuleSet>,
 ) -> MinimapOverlayDatum {
     let flags = overlay_registry.and_then(|registry| registry.flags(overlay_id));
@@ -97,7 +97,7 @@ pub(crate) fn minimap_overlay_datum(
         }
     } else if flags.is_some_and(|flags| flags.wall) {
         OverlayClassification::Wall
-    } else if crate::map::overlay_types::is_bridge_overlay_index(overlay_id) {
+    } else if crate::rules::overlay_types::is_bridge_overlay_index(overlay_id) {
         OverlayClassification::Bridge
     } else {
         OverlayClassification::Other

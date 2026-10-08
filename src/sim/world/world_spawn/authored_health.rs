@@ -64,7 +64,7 @@ impl Simulation {
         entity: GameEntity,
         authored: i32,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> (u64, RevealOutcome) {
         let building = entity.category == EntityCategory::Structure;
         // InitManagers belongs to construction, before the map loader's stores.

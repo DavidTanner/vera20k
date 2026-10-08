@@ -474,7 +474,7 @@ fn project_map_entities(
     entities: &[crate::map::entities::MapEntity],
     rules: Option<&crate::rules::ruleset::RuleSet>,
     resolved_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     generated_inits: Option<&crate::sim::world::GeneratedTechnoInitTable>,
 ) -> Result<u32, crate::sim::world::GeneratedTechnoInitError> {
     if let Some(generated_inits) = generated_inits {
@@ -583,7 +583,7 @@ pub(crate) fn populate_staged_scenario_with_generated_inits<F>(
     resolved_terrain: &crate::map::resolved_terrain::ResolvedTerrainGrid,
     theater_name: &str,
     rules: Option<&crate::rules::ruleset::RuleSet>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
     bridge_destroyability_mode: crate::map::basic::BridgeDestroyabilityMode,
     descriptor: &crate::sim::scenario_session::ScenarioDescriptor,
@@ -622,9 +622,9 @@ fn populate_staged_scenario_inner<F>(
     resolved_terrain: &crate::map::resolved_terrain::ResolvedTerrainGrid,
     theater_name: &str,
     rules: Option<&crate::rules::ruleset::RuleSet>,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-    authored_overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    authored_overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     bridge_destroyability_mode: crate::map::basic::BridgeDestroyabilityMode,
     descriptor: &crate::sim::scenario_session::ScenarioDescriptor,
     generated_inits: Option<&crate::sim::world::GeneratedTechnoInitTable>,
@@ -807,7 +807,7 @@ pub(crate) fn initialize_native_tiberium_queues(
     basic: &crate::map::basic::BasicSection,
     special_flags: &crate::map::basic::SpecialFlagsSection,
     rules: &RuleSet,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
     native_rect: (u16, u16),
 ) -> Option<crate::sim::ore_growth::NativeTiberiumRebuildStats> {
@@ -898,7 +898,7 @@ pub(crate) fn finalize_and_populate_staged_authored_scenario<F>(
     theater_data: &crate::map::theater::TheaterData,
     assets: &crate::assets::asset_manager::AssetManager,
     rules: &mut RuleSet,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     overlay_shp_ids: &std::collections::BTreeSet<u8>,
     signed_new_ini_format: i32,
     lat_enabled: bool,
@@ -1113,7 +1113,7 @@ pub(crate) fn finalize_constructed_scenario(
     sim: &mut Simulation,
     map_data: &crate::map::map_file::MapFile,
     rules: &RuleSet,
-    overlay_registry: &crate::map::overlay_types::OverlayTypeRegistry,
+    overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
     overlay_grid: crate::sim::overlay_grid::OverlayGrid,
     house_roster: &crate::map::houses::HouseRoster,
     skirmish_session: Option<&crate::sim::scenario_bootstrap::MatchLaunchDescriptor>,
@@ -1217,7 +1217,7 @@ fn finalization_keeps_live_neighbor_counts_instead_of_the_loader_copy() {
             b"[Map]\nTheater=TEMPERATE\nSize=0,0,4,4\nLocalSize=0,0,4,4\n[IsoMapPack5]\n1=CAAEABUAAAAAEQAA\n"
         ).unwrap();
     let rules = SimResources::empty().rules;
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
         &crate::rules::ini_parser::IniFile::from_str(""),
         None,
     );

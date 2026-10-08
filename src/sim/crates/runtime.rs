@@ -24,8 +24,8 @@
 //! modules only. Never on render/, ui/, audio/, net/.
 
 use crate::map::lighting::LightingProfileUnits;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::crate_rules::CrateRules;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 

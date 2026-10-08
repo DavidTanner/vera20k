@@ -43,7 +43,7 @@ pub(crate) enum DepartureFailure {
 pub(crate) fn depart_cargo_head(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     transport_id: u64,
     route: DepartureRoute,
     attempt: impl FnOnce(&mut Simulation, u64) -> Result<(), DepartureFailure>,
@@ -97,7 +97,7 @@ pub(crate) fn depart_cargo_head(
 fn restore_departure(
     sim: &mut Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     transport_id: u64,
     open_topped: bool,
     passenger_id: u64,

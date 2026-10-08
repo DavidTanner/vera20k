@@ -234,7 +234,7 @@ pub struct SparkleInput<'a> {
     pub sandbox_full_visibility: bool,
     pub resolved_terrain: &'a ResolvedTerrainGrid,
     pub overlays: &'a OverlayGrid,
-    pub overlay_registry: &'a crate::map::overlay_types::OverlayTypeRegistry,
+    pub overlay_registry: &'a crate::rules::overlay_types::OverlayTypeRegistry,
     pub occupancy: &'a OccupancyGrid,
     pub fog: &'a FogState,
     pub camera_x: f32,

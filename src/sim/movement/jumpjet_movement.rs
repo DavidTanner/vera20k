@@ -744,7 +744,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         if self.object_placement_scope_active() {
             return true;
@@ -783,7 +783,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> bool {
         let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
             return true;

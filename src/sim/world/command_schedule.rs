@@ -173,7 +173,7 @@ impl Simulation {
         &mut self,
         cmd: &CommandEnvelope,
         rules: Option<&RuleSet>,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> (bool, bool) {
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
         let applied =
@@ -303,7 +303,7 @@ impl Simulation {
     fn group_destination_candidate_facts(
         &self,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         terrain: &ResolvedTerrainGrid,
         zones: &ZoneGrid,
         target: &GroupMemberTarget,
@@ -358,7 +358,7 @@ impl Simulation {
         &self,
         commands: &mut [CommandEnvelope],
         rules: Option<&RuleSet>,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let (Some(rules), Some(terrain), Some(zones)) = (
             rules,
@@ -530,7 +530,7 @@ impl Simulation {
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         execute_tick: u64,
-        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> (usize, bool) {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;

@@ -1205,8 +1205,8 @@ fn assert_generated_projection_rejects_before_mutation(
     }
 }
 
-fn constructor_overlay_registry() -> crate::map::overlay_types::OverlayTypeRegistry {
-    crate::map::overlay_types::OverlayTypeRegistry::from_ini(
+fn constructor_overlay_registry() -> crate::rules::overlay_types::OverlayTypeRegistry {
+    crate::rules::overlay_types::OverlayTypeRegistry::from_ini(
         &IniFile::from_str(
             "[OverlayTypes]\n0=TESTORE\n1=TESTWALL\n\
              [TESTORE]\nTiberium=yes\nLand=Tiberium\n\

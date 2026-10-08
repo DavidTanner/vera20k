@@ -68,7 +68,7 @@
 use super::building_missions::building_weapon0_aims;
 use super::target_scan::{can_fire_at, select_weapon};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::combat_weapon::is_ally_by_object;
 use crate::sim::combat::damage::DamageState;

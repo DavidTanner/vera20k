@@ -386,7 +386,7 @@ fn detach_targeters_on_cloak(
     sim: &mut Simulation,
     cloaker_id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     sim.detach_all_pointer_expired(cloaker_id, rules, registry);
 }
@@ -573,7 +573,7 @@ pub(super) fn tick_stock_cloak_producer(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some((category, type_ref, veterancy)) = sim
         .substrate

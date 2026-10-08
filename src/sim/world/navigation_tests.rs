@@ -2,8 +2,8 @@
 
 use super::{gsi_04_10_clear_terrain, make_test_entity};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::production::{ProductionCategory, enqueue_by_type};

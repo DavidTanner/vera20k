@@ -78,7 +78,7 @@ impl Simulation {
         captured: bool,
         scenario_initialization: bool,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;

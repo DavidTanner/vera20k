@@ -35,7 +35,7 @@ mod infantry_entry_priority_tests;
 struct EntryReadContext<'a> {
     sim: &'a Simulation,
     rules: &'a RuleSet,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
 }
 
 impl EntryReadContext<'_> {
@@ -999,7 +999,7 @@ impl Simulation {
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<crate::sim::movement::infantry_entry::InfantryEntryClass, String> {
         if self
             .substrate
@@ -1026,7 +1026,7 @@ impl Simulation {
         cell: Cell,
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
         if self
             .substrate
@@ -1129,7 +1129,7 @@ impl Simulation {
         args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
         _mode: crate::sim::movement::infantry_entry::EntryQueryMode,
         rules: &RuleSet,
-        registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
         let mover = self
             .substrate
@@ -1153,7 +1153,7 @@ impl Simulation {
 pub(super) fn classify_object(
     sim: &Simulation,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     object: CellObjectMember,
     cell: Cell,
     args: crate::sim::movement::infantry_entry::InfantryEntryArgs,
@@ -1300,7 +1300,7 @@ impl Simulation {
         &'a self,
         id: u64,
         rules: &'a RuleSet,
-        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<FootEntryReceiver<'a>, String> {
         if self.resolved_terrain.is_none() {
             return Err("Foot entry requires map cells".into());

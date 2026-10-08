@@ -5,8 +5,8 @@
 
 use crate::map::entities::EntityCategory;
 use crate::map::houses::are_houses_friendly;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;

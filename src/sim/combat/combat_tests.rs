@@ -134,7 +134,7 @@ fn gsi_04_11_tiberium_prelude_gates_and_signed_large_quotient() {
          [CHAINPLAIN]\nTiberium=no\nChainReaction=yes\n",
     );
     let rules = RuleSet::from_ini(&ini).expect("tiberium prelude gate rules");
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let mut overlay = OverlayGrid::new(3, 1);
     overlay.place_overlay(0, 0, registry.id_for_name("DEFAULTORE").unwrap(), 0);
     overlay.place_overlay(1, 0, registry.id_for_name("CHAINORE").unwrap(), 0);
@@ -6031,7 +6031,7 @@ fn test_weak_weapon_partial_ore_reduction() {
 
 // ---- Wall damage integration tests ----------------------------------------
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::sim::overlay_grid::{OverlayGrid, WallDamageEvent};
 use crate::sim::world::Simulation;
 

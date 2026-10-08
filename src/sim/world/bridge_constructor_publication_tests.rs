@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 fn fixture() -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     fixture_with_rules("")
 }
@@ -17,7 +17,7 @@ fn fixture_with_rules(
 ) -> (
     Simulation,
     RuleSet,
-    crate::map::overlay_types::OverlayTypeRegistry,
+    crate::rules::overlay_types::OverlayTypeRegistry,
 ) {
     let mut text = String::from("[Clear]\nWheel=100%\n[Road]\nWheel=100%\n[OverlayTypes]\n");
     for id in 0..=238 {
@@ -32,7 +32,7 @@ fn fixture_with_rules(
     let mut ini = IniFile::from_str(&text);
     ini.merge(&IniFile::from_str(extra));
     let rules = RuleSet::from_ini(&ini).unwrap();
-    let registry = crate::map::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
+    let registry = crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, None);
     let terrain = crate::map::resolved_terrain::bridge_constructor_terrain();
     let mut sim = Simulation::with_seed(31);
     sim.intern_rule_type_ids(&rules);

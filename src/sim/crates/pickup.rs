@@ -2,7 +2,7 @@
 //! dispatch remain under implementation; these routines do not consume crates
 //! until their caller can complete the selected effect.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::{powerups::POWERUP_COUNT, ruleset::RuleSet};
 use crate::sim::rng::SimRng;
 

@@ -15,9 +15,9 @@
 //!   sim/tiberium, rules/.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::MovementZone;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::movement::ground_pose;

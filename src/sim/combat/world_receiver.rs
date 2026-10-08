@@ -1854,7 +1854,7 @@ fn run_special_detonation_arm(
     rules: &RuleSet,
     action: SpecialDetonationAction,
     detonation: &ProjectileDetonation,
-    overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let owner = detonation.source_id;
     let target = match detonation.target {

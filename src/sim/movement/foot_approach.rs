@@ -4,9 +4,9 @@
 
 use super::foot_path::{cell_centre, chebyshev, coord_cell};
 use crate::map::entities::EntityCategory;
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::locomotor_type::LocomotorKind;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{self, CellRect, CellRectPassabilityContext};
 use crate::sim::combat::{self, TargetKind, in_range};

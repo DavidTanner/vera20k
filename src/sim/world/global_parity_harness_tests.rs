@@ -23,8 +23,8 @@
 
 use super::*;
 use crate::map::entities::{EntityCategory, MapEntity};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::mission::{MissionId, MissionType};

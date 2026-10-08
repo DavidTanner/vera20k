@@ -814,7 +814,7 @@ pub(crate) fn building_dock_cell(
     mover_id: u64,
     offered: (i16, i16),
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<(u16, u16)> {
     use crate::sim::movement::infantry_entry::{EntryQueryMode, InfantryEntryArgs};
     let producer = sim.substrate.entities.get(producer_id)?;
@@ -1178,7 +1178,7 @@ fn release_contact(
     depot: u64,
     unit: u64,
     state1: bool,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) {
     let Some(contact) = sim.substrate.entities.get(unit) else {
         return;
@@ -1252,7 +1252,7 @@ pub(crate) fn mission_repair(
     sim: &mut Simulation,
     rules: &RuleSet,
     depot: u64,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<i32> {
     use crate::util::native_x87::{
         MaskedX87Chop53 as X87, MaskedX87Ordering as Ordering, NativeF64Bits,

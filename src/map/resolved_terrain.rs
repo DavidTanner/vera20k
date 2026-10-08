@@ -31,16 +31,16 @@ use crate::map::cell_index::NativeCellIdentity;
 use crate::map::lat;
 use crate::map::map_file::{MapCell, MapFile};
 use crate::map::overlay::OverlayEntry;
-use crate::map::overlay_types::{
-    OverlayTypeFlags, OverlayTypeRegistry, clears_tiberium_on_slope, retained_overlay_land,
-    uses_early_recalc_land_branch,
-};
 use crate::map::playfield::PlayfieldBounds;
 use crate::map::rmg::preview::Playfield;
 use crate::map::theater::{self, TheaterData, TileKey, TilesetLookup};
 use crate::map::tile_variant_selector::TileVariantSelectionContext;
 use crate::map::tube_facts::{NativeTubeCellIndex, TubeFact, TubeId};
 use crate::map::tubes::NativeMapTubeReceipt;
+use crate::rules::overlay_types::{
+    OverlayTypeFlags, OverlayTypeRegistry, clears_tiberium_on_slope, retained_overlay_land,
+    uses_early_recalc_land_branch,
+};
 use crate::rules::terrain_object_type::TerrainObjectType;
 use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass, TerrainRules};
 use crate::util::pixel_conversion::PixelConversionBounds;
@@ -2850,7 +2850,7 @@ impl ResolvedTerrainGrid {
         cell.overlay_zone_type = overlay_zone_type;
         cell.overlay_blocks = overlay_blocks;
         cell.bridge_layer = overlay_id.and_then(|overlay_id| {
-            crate::map::overlay_types::is_bridge_overlay_index(overlay_id).then(|| {
+            crate::rules::overlay_types::is_bridge_overlay_index(overlay_id).then(|| {
                 let direction = match overlay_id {
                     24 | 237 => BridgeDirection::EastWest,
                     25 | 238 => BridgeDirection::NorthSouth,
@@ -3008,7 +3008,7 @@ impl ResolvedTerrainGrid {
         };
         cell.bridge_facts.overlay_id = Some(overlay_id);
         cell.bridge_facts.state_byte = overlay_data;
-        if !crate::map::overlay_types::is_bridge_overlay_index(overlay_id) {
+        if !crate::rules::overlay_types::is_bridge_overlay_index(overlay_id) {
             return;
         }
 
@@ -5915,7 +5915,7 @@ fn classify_overlay_effects(
             .and_then(|reg| reg.name(overlay.overlay_id))
             .unwrap_or("");
         // Bridge overlays identified by hardcoded index, matching original engine.
-        let is_bridge = crate::map::overlay_types::is_bridge_overlay_index(overlay.overlay_id);
+        let is_bridge = crate::rules::overlay_types::is_bridge_overlay_index(overlay.overlay_id);
 
         let flags = overlay_registry.and_then(|reg| reg.flags(overlay.overlay_id));
         if let Some(flags) = flags {
@@ -6125,9 +6125,9 @@ mod tests {
     use crate::assets::mix_hash::mix_hash;
     use crate::assets::tmp_file::TmpTile;
     use crate::map::overlay::{OverlayDataPack, TerrainObject};
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::map::tube_facts::TubeSource;
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::{TerrainClass, TerrainRules};
     use crate::sim::rng::SimRng;

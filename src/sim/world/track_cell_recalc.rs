@@ -7,7 +7,7 @@ use super::{
     Simulation,
     navigation::{self, NavigationCaches},
 };
-use crate::map::overlay_types::OverlayTypeRegistry;
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 
 impl Simulation {

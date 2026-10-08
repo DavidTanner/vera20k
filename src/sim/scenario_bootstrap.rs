@@ -10,11 +10,11 @@ use std::collections::HashMap;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::HouseRoster;
 use crate::map::map_file::{MapFile, MapHeader};
-use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::waypoints::Waypoint;
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
+use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 #[cfg(test)]
 use crate::sim::cell_rect::PlayfieldBounds;

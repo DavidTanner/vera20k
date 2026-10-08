@@ -96,7 +96,7 @@ impl CellReader for LiveCells<'_> {
 pub(super) struct BridgeDamageDrivers<'a> {
     pub(super) sim: &'a mut Simulation,
     pub(super) rules: &'a RuleSet,
-    registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     /// A driver collapsed a span.
     pub(super) collapsed: bool,
 }
@@ -105,7 +105,7 @@ impl<'a> BridgeDamageDrivers<'a> {
     pub(super) fn new(
         sim: &'a mut Simulation,
         rules: &'a RuleSet,
-        registry: Option<&'a crate::map::overlay_types::OverlayTypeRegistry>,
+        registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Self {
         Self {
             sim,
@@ -233,7 +233,7 @@ pub(super) fn run(
     events: &[BridgeDamageEvent],
     strength: i32,
     rules: &RuleSet,
-    registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> bool {
     if sim.resolved_terrain.is_none() || sim.bridge_state.is_none() {
         return false;

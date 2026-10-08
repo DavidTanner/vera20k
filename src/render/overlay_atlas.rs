@@ -17,16 +17,16 @@ use crate::assets::asset_manager::AssetManager;
 use crate::assets::pal_file::Palette;
 use crate::assets::shp_file::ShpFile;
 use crate::map::overlay::{OverlayEntry, TerrainObject};
-use crate::map::overlay_types::{
-    OverlayTypeFlags, OverlayTypeRegistry, is_bridge_overlay_index, is_high_bridge_index,
-    native_mark_overlay_data,
-};
 use crate::render::batch::{BatchRenderer, BatchTexture};
 use crate::render::gpu::GpuContext;
 use crate::render::overlay_assets::resolve_overlay_name_for_render;
 use crate::rules::art_data::{self, ArtRegistry};
 use crate::rules::crate_rules::CrateRules;
 use crate::rules::ini_parser::IniFile;
+use crate::rules::overlay_types::{
+    OverlayTypeFlags, OverlayTypeRegistry, is_bridge_overlay_index, is_high_bridge_index,
+    native_mark_overlay_data,
+};
 use crate::rules::tiberium_type::TiberiumTypeRegistry;
 
 /// Maximum atlas texture width for overlay sprites (pixels).
@@ -1293,9 +1293,9 @@ mod tests {
         wall_body_frame_count,
     };
     use crate::map::overlay::OverlayEntry;
-    use crate::map::overlay_types::OverlayTypeRegistry;
     use crate::rules::crate_rules::CrateRules;
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::overlay_types::OverlayTypeRegistry;
     use crate::rules::tiberium_type::TiberiumTypeRegistry;
 
     #[test]
