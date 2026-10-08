@@ -149,10 +149,7 @@ pub struct ProjectileGuidance {
     pub course_lock_duration: i32,
     pub course_frames: i32,
     pub course_locked: bool,
-    pub airburst: bool,
-    pub inaccurate: bool,
     pub very_high: bool,
-    pub level: bool,
     /// Bullet+110, retained converted Weapon Speed, not current magnitude.
     pub max_speed: i32,
     pub acceleration: i32,
@@ -331,8 +328,9 @@ pub enum TargetExpiryPolicy {
 /// theater WaterSet tile interval, and the target's actual +54/+48 receivers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectileCollisionPolicy {
-    /// `BulletTypeClass::Level`: detonate after entering a non-water cell.
-    pub level_non_water: bool,
+    /// `BulletTypeClass::Level`: an unguided bullet detonates after entering
+    /// a non-water cell; a guided one holds level flight (HomingTrack).
+    pub level: bool,
     /// `BulletTypeClass::SubjectToWalls`: detonate after entering a live wall.
     pub subject_to_walls: bool,
     /// Ordinary non-guided `BulletClass::Update` floor/bridge/content probe.
@@ -356,7 +354,7 @@ pub struct ProjectileCollisionPolicy {
 
 impl ProjectileCollisionPolicy {
     pub const NONE: Self = Self {
-        level_non_water: false,
+        level: false,
         subject_to_walls: false,
         native_cell_collision: false,
         dropping: false,
@@ -1200,12 +1198,8 @@ impl Projectile {
                 guidance.fuse_reference
             }),
             impact_flag,
-            inaccurate: self
-                .guidance
-                .map_or(self.collision.inaccurate, |guidance| guidance.inaccurate),
-            airburst: self
-                .guidance
-                .map_or(self.collision.airburst, |guidance| guidance.airburst),
+            inaccurate: self.collision.inaccurate,
+            airburst: self.collision.airburst,
             arcing: self.collision.arcing,
             homing: self.tracks_target,
         }
@@ -1887,13 +1881,10 @@ impl ProjectileStore {
                 // selects target +0x48 after the Airburst/Inaccurate gates.
                 // Re-read a shared dummy here: earlier ground lookups may
                 // have stamped a different coordinate into that same target.
-                let airburst = projectile
-                    .guidance
-                    .map_or(projectile.collision.airburst, |g| g.airburst);
-                let inaccurate = projectile
-                    .guidance
-                    .map_or(projectile.collision.inaccurate, |g| g.inaccurate);
-                if (fuse_mode == 1 || near_target) && !airburst && !inaccurate {
+                if (fuse_mode == 1 || near_target)
+                    && !projectile.collision.airburst
+                    && !projectile.collision.inaccurate
+                {
                     // +58 is fetched even in the unconditional mode-one arm.
                     let aim = match projectile.target {
                         ProjectileTarget::Entity(id) => match collides_at(
@@ -2650,10 +2641,7 @@ mod tests {
             course_lock_duration: 0,
             course_frames: 0,
             course_locked: true,
-            airburst: false,
-            inaccurate: false,
             very_high: true,
-            level: false,
             max_speed: 0,
             acceleration: 3,
             fuse_reference: ProjectileCoord::new(0, 0, 0),
@@ -3253,10 +3241,7 @@ mod tests {
             course_lock_duration: 0,
             course_frames: 0,
             course_locked: true,
-            airburst: false,
-            inaccurate: false,
             very_high: false,
-            level: false,
             max_speed,
             acceleration,
             fuse_reference: ProjectileCoord::new(0, 0, 0),
