@@ -164,6 +164,26 @@ pub(crate) const fn size_diamond_contains(width: i32, height: i32, cell: (i16, i
         && sum <= width.wrapping_add(height.wrapping_mul(2))
 }
 
+/// `MapClass @ 0x00565660`, the inverse of [`local_to_packed_cell`]: a
+/// cell's LocalSize-relative coordinate. With `w` the `Size=` width
+/// (`+0xF4`), X is `(x - y + (w & 1)) >> 1` (arithmetic shift) plus `w / 2`
+/// (toward zero) less the LocalSize left (`+0xFC`), Y is `y - w + x` less
+/// the LocalSize top (`+0x100`), each kept as a signed 16-bit word.
+pub(crate) const fn cell_to_local_packed(bounds: PlayfieldBounds, cell: (i16, i16)) -> (i16, i16) {
+    let x = cell.0 as i32;
+    let y = cell.1 as i32;
+    let half = x.wrapping_sub(y).wrapping_add(bounds.base & 1) >> 1;
+    let local_x = (half as i16)
+        .wrapping_add((bounds.base / 2) as i16)
+        .wrapping_sub(bounds.off_fc as i16);
+    let local_y = cell
+        .1
+        .wrapping_sub(bounds.base as i16)
+        .wrapping_add(cell.0)
+        .wrapping_sub(bounds.off_100 as i16);
+    (local_x, local_y)
+}
+
 /// Convert one LocalSize-relative coordinate through active
 /// `MapClass::LocalToCell @ 0x005654A0`.
 ///
@@ -179,6 +199,48 @@ pub(crate) const fn local_to_packed_cell(
     let rx = q.wrapping_add(r.wrapping_add(1) >> 1);
     let ry = bounds.base.wrapping_add(r >> 1).wrapping_sub(q);
     (rx as i16 as i32, ry as i16 as i32)
+}
+
+/// `MapClass @ 0x00586AC0`: the LocalSize edge cell Fly's `Stop_Moving`
+/// (`0x004CD06B`, `inset` set) and the ChemLauncher trigger action bring a
+/// cell to. The cell's LocalSize-relative coordinate is formed as
+/// [`cell_to_local_packed`] forms it, kept in 32 bits. When X lies strictly
+/// nearer its half-span (`+0x104 / 2`) than Y does to its own (`+0x108 /
+/// 2`, both halves toward zero), X is set to the edge on its side: `inset`
+/// below the half, else the span less `inset`; otherwise Y is. The result
+/// goes back through [`local_to_packed_cell`].
+pub(crate) const fn playfield_edge_cell(
+    bounds: PlayfieldBounds,
+    cell: (i16, i16),
+    inset: bool,
+) -> (i16, i16) {
+    let x = cell.0 as i32;
+    let y = cell.1 as i32;
+    let mut local_x = (x.wrapping_sub(y).wrapping_add(bounds.base & 1) >> 1)
+        .wrapping_add(bounds.base / 2)
+        .wrapping_sub(bounds.off_fc);
+    let mut local_y = y
+        .wrapping_sub(bounds.base)
+        .wrapping_add(x)
+        .wrapping_sub(bounds.off_100);
+    let half_x = bounds.off_104 / 2;
+    let half_y = bounds.off_108 / 2;
+    let inset = inset as i32;
+    if local_x.wrapping_sub(half_x).wrapping_abs() < local_y.wrapping_sub(half_y).wrapping_abs() {
+        local_x = if local_x < half_x {
+            inset
+        } else {
+            bounds.off_104.wrapping_sub(inset)
+        };
+    } else {
+        local_y = if local_y < half_y {
+            inset
+        } else {
+            bounds.off_108.wrapping_sub(inset)
+        };
+    }
+    let (x, y) = local_to_packed_cell(bounds, local_x, local_y);
+    (x as i16, y as i16)
 }
 
 /// Packed corner coordinates for `MapClass::IsRectInPlayfield @ 0x00578390`.
@@ -263,5 +325,32 @@ mod tests {
         // verdict is the ordered wrapping-i32 formula from 0x005784AA..0x00578523.
         assert!(bounds.contains_geometry_packed(i16::MIN.into(), i16::MIN.into()));
         assert!(!bounds.contains_height_aware_packed(i16::MIN.into(), i16::MIN.into(), -128, 1,));
+    }
+
+    /// `0x00586AC0` run natively over four Size/LocalSize rectangles, cells
+    /// in and around each and both insets: `tools/spatial_oracle/fly_stop`'s
+    /// edge rows `[width, left, top, span x, span y, x, y, inset, x', y']`.
+    #[test]
+    fn playfield_edge_cell_matches_native_rows() {
+        let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/fly_stop.json",
+        ))
+        .unwrap();
+        let rows = corpus["edge"].as_array().unwrap();
+        assert_eq!(rows.len(), 1352);
+        for row in rows {
+            let v: Vec<i32> = row
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| value.as_i64().unwrap() as i32)
+                .collect();
+            let bounds = PlayfieldBounds::from_normalized_local_size(v[0], v[1], v[2], v[3], v[4]);
+            assert_eq!(
+                playfield_edge_cell(bounds, (v[5] as i16, v[6] as i16), v[7] != 0),
+                (v[8] as i16, v[9] as i16),
+                "{row}"
+            );
+        }
     }
 }

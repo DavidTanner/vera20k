@@ -145,12 +145,12 @@ class Fixture:
         u.mem_write(0xA8B230, dwords(SCENARIO))
         self.call(0x65C6D0, SCENARIO + 0x218, [case.get('seed', 31)])
 
-    def call(self, entry, receiver, args):
+    def call(self, entry, receiver, args, count=500000):
         u = self.u
         u.mem_write(self.sp, dwords(RET_MAGIC, *args))
         u.reg_write(UC_X86_REG_ESP, self.sp)
         u.reg_write(UC_X86_REG_ECX, receiver)
-        run_checked(u, entry, RET_MAGIC, count=500000)
+        run_checked(u, entry, RET_MAGIC, count=count)
         assert u.reg_read(UC_X86_REG_ESP) == self.sp + 4 * (len(args) + 1)
         return u.reg_read(UC_X86_REG_EAX)
 

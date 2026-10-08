@@ -288,13 +288,9 @@ impl Simulation {
 
     /// The class setter's `vt+0x480(NULL, 1)` after a landing (`0x004CEF88`)
     /// or on reaching the ground layer (`0x004CD2A0`'s layer arm), through
-    /// [`Simulation::assign_null_destination`]; the Fly's order adapter
-    /// retires with it.
+    /// [`Simulation::assign_null_destination`].
     fn clear_fly_foot_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
         self.assign_null_destination(id, rules, None);
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.movement_target = None;
-        }
     }
 
     /// `FootClass::IsLandZoneClear @ 0x004DDC60` (vt+0x550) for `destination`:
@@ -489,11 +485,7 @@ impl Simulation {
         let coord = ground_pose::position_world_coord(&e.position);
         self.begin_fly_takeoff(id, Some(rules));
         let grid = self.path_grid_snapshot();
-        let size = self
-            .playfield_bounds
-            .zip(self.playfield_size_height)
-            .map(|(b, h)| (b.base, h));
-        let Some((width, height)) = size else {
+        let Some((width, height)) = self.map_size_diamond() else {
             return false;
         };
         let target = find_nearby_passable_cell(
@@ -543,23 +535,10 @@ impl Simulation {
                         .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
-            self.move_air_coordinate(id, coord, SIM_ZERO, None, Some(rules));
+            self.move_air_coordinate(id, coord, None, Some(rules));
             true
         } else {
-            let e = self.substrate.entities.get(id).unwrap();
-            let event = crate::sim::combat::EntityDamageEvent::direct_receiver(
-                id,
-                e.health.current,
-                0,
-                crate::sim::combat::RAD_NO_ATTACKER,
-                None,
-                self.interner.intern(&rules.bridge_warheads.c4_name),
-                crate::sim::combat::ReceiverCallFlags {
-                    ignore_defenses: true,
-                    arg6: true,
-                },
-            );
-            self.commit_direct_damage_receiver(rules, None, event);
+            self.receive_own_health_c4(id, rules, None);
             if let Some(state) = self
                 .substrate
                 .entities
@@ -567,7 +546,7 @@ impl Simulation {
                 .and_then(|e| e.locomotor.as_mut())
                 .and_then(|l| l.fly_runtime_mut())
             {
-                state.clear_destination_after_failed_landing();
+                state.clear_destination();
             }
             false
         }
@@ -724,7 +703,6 @@ mod tests {
                         y: 16512,
                         z: 0,
                     },
-                    SimFixed::from_num(10),
                     None,
                     Some(&rules),
                 );

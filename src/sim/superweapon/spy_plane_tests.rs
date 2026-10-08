@@ -374,9 +374,16 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
         )
     })
     .unwrap();
+    // The oracle writes NavCom (`+0x5A4`) and leaves the Fly at rest; a
+    // flying Fly would make the missions' null destination re-target it
+    // (Fly Stop_Moving), which the oracle's recorded setter does not run.
     if flag(row, "nav_com") {
-        let nav = NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1);
-        sim.assign_aircraft_destination(id, Some(nav), rules);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .navigation
+            .nav_com = Some(NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1));
     }
     let mission = if row["mission"] == "approach" {
         MissionType::SpyplaneApproach

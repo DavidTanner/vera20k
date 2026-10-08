@@ -330,6 +330,12 @@ impl AiIonCannonValues {
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
+    /// `[AudioVisual] PoseDir=`, Rules `+0x44`: the constructor's 0
+    /// (`0x006656B9`), then ReadInteger (`0x00669268`) stored raw, without
+    /// DeployDir's shift. An aircraft with no radio contact and no passengers
+    /// lands facing it (`AircraftClass::Landing_Direction @ 0x0041B760`,
+    /// which Fly shifts left by 13).
+    pub pose_dir: i32,
     /// Rules+48, constructor6656BD zero; AudioVisual669272..66929B reads
     /// DeployDir with ReadInteger5276D0 then wrapping SHL5, after PoseDir.
     /// Jumpjet54C765 takes the low byte; retain the raw signed stored dword.
@@ -1763,6 +1769,7 @@ impl PrismSupportRules {
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
+            pose_dir: 0,
             deploy_dir: 0,
             scroll_multiplier: 0.07,
             // RulesClass__Constructor @ 0x00665650 writes the double
@@ -2369,6 +2376,7 @@ impl GeneralRules {
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
         let audio_visual = ini.section_or_empty("AudioVisual");
+        let pose_dir = audio_visual.read_int("PoseDir", defaults.pose_dir);
         let deploy_dir = audio_visual
             .read_int("DeployDir", defaults.deploy_dir >> 5)
             .wrapping_shl(5);
@@ -2403,6 +2411,7 @@ impl GeneralRules {
             ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
         let Some(general) = ini.section("General") else {
             return Self {
+                pose_dir,
                 deploy_dir,
                 iq_production,
                 iq_harvester,
@@ -2469,6 +2478,7 @@ impl GeneralRules {
                 general.read_double("AmbientChangeStep", 0.2),
             );
         Self {
+            pose_dir,
             deploy_dir,
             scroll_multiplier: audio_visual
                 .read_double("ScrollMultiplier", defaults.scroll_multiplier),

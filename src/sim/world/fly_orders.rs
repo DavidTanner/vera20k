@@ -1,11 +1,11 @@
 //! Fly MoveTo4CCC80 and BeginTakeoff4CF950 share the world-owned spatial and
 //! sound transaction. Foot destination timing is an optional enclosing caller;
-//! locomotor retries must not reset those timers.
+//! locomotor retries must not reset those timers. Stop_Moving4CCFD0 re-targets
+//! a moving aircraft through its own class setter.
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{DestinationTiming, air_movement, ground_pose};
-use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
     /// `AircraftClass::Assign_Destination @ 0x0041AA80` (vt+0x480) ->
@@ -110,8 +110,7 @@ impl Simulation {
 
     /// An aircraft's `ILocomotion::Move_To` (`+0x44`), as Foot4D94B0 and
     /// Mission_Move state 1 call it: a spawned missile's Rocket
-    /// (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`) at its order
-    /// speed.
+    /// (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`).
     pub(crate) fn aircraft_locomotor_move_to(
         &mut self,
         id: u64,
@@ -126,13 +125,7 @@ impl Simulation {
         {
             self.rocket_move_to(id, coord, rules);
         } else {
-            let speed = crate::sim::movement::order_speed(
-                entity,
-                self.object_type(entity.type_ref(), rules),
-                Some(rules),
-                &self.houses,
-            );
-            self.move_air_coordinate(id, coord, speed, None, Some(rules));
+            self.move_air_coordinate(id, coord, None, Some(rules));
         }
     }
 
@@ -163,13 +156,15 @@ impl Simulation {
             .map_or(0, |house| house.waypoint_edge)
     }
 
-    /// Non-null coordinate entry. The bool describes the remaining movement
-    /// adapter, not the native void MoveTo or Foot AssignDestination result.
+    /// Fly `Move_To @ 0x004CCC80` with a non-null coordinate. Answers whether
+    /// it took the destination (native MoveTo is void): its refusals are a
+    /// landing toward the same cell, the empty coordinate and an unpowered or
+    /// warping owner. `timing` is an enclosing Foot setter's tail, run on
+    /// acceptance.
     pub(crate) fn move_air_coordinate(
         &mut self,
         id: u64,
         request: DriveCoord,
-        speed: SimFixed,
         timing: Option<DestinationTiming>,
         rules: Option<&RuleSet>,
     ) -> bool {
@@ -186,13 +181,8 @@ impl Simulation {
         {
             return false;
         }
-        let flight_level = rules.map_or(500, |rules| {
-            rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(rules.general.flight_level, |o| {
-                    o.flight_level(rules.general.flight_level)
-                })
-        });
+        let flight_level =
+            air_movement::type_flight_level(entity, rules.map(|rules| (rules, &self.interner)));
         let armed_flight_level = (entity.attack_target.is_some()
             && entity
                 .aircraft_ammo
@@ -266,16 +256,6 @@ impl Simulation {
                 non_landable,
             );
         }
-        // Derived path projection retained for the pending full Process/Stop
-        // migration. Fly XYZ and moving+34 remain the locomotor authority.
-        let target = (
-            (request.x / 256) as i16 as u16,
-            (request.y / 256) as i16 as u16,
-        );
-        entity.movement_target = Some(MovementTarget {
-            speed,
-            final_goal: Some(target),
-        });
         if let Some(timing) = timing {
             timing.accept(entity);
         }
@@ -298,13 +278,8 @@ impl Simulation {
         {
             return false;
         }
-        let level = rules.map_or(500, |rules| {
-            rules
-                .object(self.interner.resolve(entity.type_ref()))
-                .map_or(rules.general.flight_level, |o| {
-                    o.flight_level(rules.general.flight_level)
-                })
-        });
+        let level =
+            air_movement::type_flight_level(entity, rules.map(|rules| (rules, &self.interner)));
         self.substrate
             .entities
             .get_mut(id)
@@ -317,12 +292,19 @@ impl Simulation {
         true
     }
 
-    ///4CFA70. Its first gate (Mission!=Enter and6385C0) only refuses while
-    /// Techno+514 holds a planning path; VERA has no planning mode, so it
-    /// always passes. A live-type AirportBound Aircraft must be in radio
-    /// contact with the building in its current cell (+1BC); otherwise native
-    /// calls Enter_Idle_Mode(0,1) (vtable+484 ->4176F0) and does not land.
-    /// Callers: Horizontal_Step4CF520 arrival, Process4CE43C, null MoveTo4CCDDB.
+    /// `FlyLocomotionClass::Begin_Landing @ 0x004CFA70`. Its first gate
+    /// (Mission != Enter and `0x006385C0`) only refuses while Techno `+0x514`
+    /// holds a planning path; VERA has no planning mode, so it always passes.
+    /// A live-type AirportBound Aircraft must be in radio contact with the
+    /// building in its current cell (`+0x1BC`); otherwise native calls
+    /// Enter_Idle_Mode(0, 1) (vt+0x484, `0x004176F0`) and does not land.
+    /// Callers: Horizontal_Step's arrival (`0x004CF520`), Process's landing
+    /// trigger (`0x004CE43C`), null MoveTo (`0x004CCDDB`).
+    ///
+    /// RESIDUAL: the refusal sets VERA's idle state, whose tree stands in for
+    /// Enter_Idle_Mode's airborne arm (`aircraft::idle_entry`'s RESIDUAL).
+    /// Trigger: an AirportBound aircraft arriving over a cell without a dock
+    /// it is in contact with. Effect: VERA's tree picks its next move.
     pub(crate) fn begin_fly_landing(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -362,6 +344,154 @@ impl Simulation {
             .begin_fly_landing();
         true
     }
+
+    /// `FlyLocomotionClass::Stop_Moving @ 0x004CCFD0` (ILocomotion `+0x48`),
+    /// [`Self::locomotor_stop_moving`]'s Fly arm: [`Self::fly_stop_order`],
+    /// then its effect. A self-destruct is `ReceiveDamage` of the owner's own
+    /// Health with `C4Warhead=` ([`Self::receive_own_health_c4`]), after which
+    /// the Fly loses its destination (`0x004CD273`); a destination goes
+    /// through the owner's class setter (vt+0x480,
+    /// [`Self::assign_aircraft_destination`]). Answers false for a moving
+    /// Aircraft without rules.
+    pub(crate) fn fly_stop_moving(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
+        let Some(rules) = rules else {
+            return !self.substrate.entities.get(id).is_some_and(|entity| {
+                entity.category == crate::map::entities::EntityCategory::Aircraft
+                    && crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false)
+            });
+        };
+        let order = self.fly_stop_order(id, rules);
+        #[cfg(test)]
+        if let Some(order) = order {
+            self.trace_lifecycle_for_test(super::LifecycleTestEvent::FlyStopOrdered { id, order });
+        }
+        match order {
+            None => {}
+            Some(FlyStopOrder::SelfDestruct) => {
+                self.receive_own_health_c4(id, rules, registry);
+                if let Some(state) = self
+                    .substrate
+                    .entities
+                    .get_mut(id)
+                    .and_then(|entity| entity.locomotor.as_mut())
+                    .and_then(|locomotor| locomotor.fly_runtime_mut())
+                {
+                    state.clear_destination();
+                }
+            }
+            Some(FlyStopOrder::Destination(target)) => {
+                self.assign_aircraft_destination(id, target, rules);
+            }
+        }
+        true
+    }
+
+    /// What Fly's `Stop_Moving` (`0x004CCFD0`) does to Aircraft `id`. Nothing
+    /// while the Fly is not moving (Is_Moving, `0x004CCA90`). Otherwise it
+    /// takes the cell of the owner's Location (over 256 toward zero); an owner
+    /// that is no loaner (`+0x3D4`), lies outside the playfield
+    /// (`MapClass::IsCellInPlayfield @ 0x00578460`, mode 1) and may not leave
+    /// the map (vt+0x4DC, [`Self::aircraft_may_leave_map`]) takes the LocalSize
+    /// edge cell instead
+    /// ([`playfield_edge_cell`](crate::map::playfield::playfield_edge_cell),
+    /// inset 1). Then:
+    /// - cell (0, 0) is a self-destruct;
+    /// - with Attack its current mission (vt+0x184), the destination is the
+    ///   cell [`Self::aircraft_find_nearest_friendly_airfield`] answers;
+    /// - otherwise it is the cell Find_Attack_Cell picks from that cell
+    ///   ([`Self::aircraft_find_attack_cell`]), which draws on the Scenario
+    ///   RNG when the cell will not do.
+    ///
+    /// Both cells come through `MapClass::GetCellAt`. Native execution:
+    /// `tools/spatial_oracle/fly_stop`, replayed in
+    /// `fly_process_tests::fly_stop_matches_native_rows`.
+    ///
+    /// RESIDUAL: a cell beyond the MapClass cell array is the shared dummy
+    /// cell, which every later miss restamps. Native's Find_Attack_Cell then
+    /// centres its rings on the dummy's latest coordinate and answers the
+    /// dummy itself, read again by the setter; VERA holds the cell it asked
+    /// for (`aircraft::leave_map`'s RESIDUAL). Trigger: Stop on an aircraft
+    /// whose cell, or edge cell, lies beyond the array; only an aircraft the
+    /// map edge lets past the Size diamond (vt+0x4DC false, or FlyBy) gets
+    /// there. Effect: another destination and Scenario draw count.
+    ///
+    /// RESIDUAL: the arm for an owner that is not an Aircraft
+    /// (`0x004CD132..0x004CD28F`): a 1x1 Track/Fly passable cell, given as its
+    /// ground coordinate through the owner's vt+0x480 twice unless the first
+    /// makes it land, else the C4 self-destruct of a live owner. No retail
+    /// Unit or Infantry type has the Fly locomotor
+    /// (`fly_process_tests::retail_fly_owners_are_aircraft`); VERA leaves such
+    /// an owner flying as it was.
+    pub(crate) fn fly_stop_order(&mut self, id: u64, rules: &RuleSet) -> Option<FlyStopOrder> {
+        use crate::sim::mission::{MissionId, MissionType};
+        let entity = self.substrate.entities.get(id)?;
+        if entity.category != crate::map::entities::EntityCategory::Aircraft
+            || !crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false)
+        {
+            return None;
+        }
+        let location = ground_pose::position_world_coord(&entity.position);
+        let mut cell = ((location.x / 256) as i16, (location.y / 256) as i16);
+        if let Some(bounds) = self.playfield_bounds
+            && !entity.is_mission_only()
+            && !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                (i32::from(cell.0), i32::from(cell.1)),
+                Some(bounds),
+                self.resolved_terrain.as_ref(),
+            )
+            && !self.aircraft_may_leave_map(id)
+        {
+            cell = crate::map::playfield::playfield_edge_cell(bounds, cell, true);
+        }
+        if cell == (0, 0) {
+            return Some(FlyStopOrder::SelfDestruct);
+        }
+        // RESIDUAL: native reads Get_Mission (vt+0x184, `0x004CD0DD`). VERA's
+        // own aircraft states (the idle tree, Guard and the docked Target
+        // arm) switch AircraftMission without queueing the native mission,
+        // so it owns the current dispatch while it exists, as in
+        // `foot_null_destination`'s attack gate; the native slot would hold
+        // the ended mission there. Trigger: Stop on an aircraft one of those
+        // states sent to attack, or brought home. Effect: the Stop follows
+        // the stand-in's choice, the mission native would have queued; the
+        // two agree for every order-driven Attack and Move.
+        let entity = self.substrate.entities.get(id)?;
+        let attack = MissionId::from_known(MissionType::Attack);
+        let attacking = entity.aircraft_mission.as_ref().map_or_else(
+            || entity.mission.effective() == attack,
+            crate::sim::aircraft::AircraftMission::is_attacking,
+        );
+        let cell_at = |sim: &Self, cell: (i16, i16)| {
+            let (x, y) = sim
+                .resolved_terrain
+                .as_ref()
+                .map_or(cell, |t| t.native_cell_coord(t.native_cell_identity(cell)));
+            NavTargetRef::cell(x as u16, y as u16)
+        };
+        Some(FlyStopOrder::Destination(if attacking {
+            let airfield = self.aircraft_find_nearest_friendly_airfield(id, rules);
+            Some(cell_at(self, airfield))
+        } else {
+            let under = cell_at(self, cell);
+            self.aircraft_find_attack_cell(id, Some(under), rules)
+        }))
+    }
+}
+
+/// What Fly's `Stop_Moving` does to a moving Aircraft
+/// ([`Simulation::fly_stop_order`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FlyStopOrder {
+    /// `ReceiveDamage` with `C4Warhead=` (`0x004CD0CD`).
+    SelfDestruct,
+    /// The owner's class setter (vt+0x480) with this target (`0x004CD0F7`,
+    /// `0x004CD124`).
+    Destination(Option<NavTargetRef>),
 }
 
 #[cfg(test)]
