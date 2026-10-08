@@ -38,7 +38,7 @@ pub(crate) use crate::app::types::*;
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::render::batch::InstanceBufferPool;
-use crate::sidebar::SidebarView;
+use crate::ui::sidebar::SidebarView;
 
 use build_instances::{DebugInstances, SidebarInstances, UiInstances, WorldInstances};
 

@@ -14,7 +14,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ and sim/ only. NEVER on render/, ui/,
-//!   sidebar/, audio/ or net/.
+//!   audio/ or net/.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;

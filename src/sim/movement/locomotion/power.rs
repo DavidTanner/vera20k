@@ -68,7 +68,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sibling movement state only.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 mod tests {

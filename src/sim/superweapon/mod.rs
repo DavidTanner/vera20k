@@ -8,7 +8,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/power_system, sim/components.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 pub(crate) mod ai_fire;
 pub mod cell_grid;

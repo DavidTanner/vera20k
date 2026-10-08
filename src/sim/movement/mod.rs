@@ -32,7 +32,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/entity_store, sim/game_entity, sim/pathfinding.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 use std::collections::BTreeMap;

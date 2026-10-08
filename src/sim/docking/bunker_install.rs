@@ -6,7 +6,7 @@
 //! plays entry anims, then installs (deselect + reciprocal link + up sound). The
 //! inter-state waits are turn/track completions — NOT frame-count timers.
 //!
-//! sim/ only — never render/ui/sidebar/audio/net.
+//! sim/ only — never render/ui/audio/net.
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;

@@ -7,7 +7,7 @@
 //! `sim::mission` paths without creating a second data owner.
 //!
 //! Depends on `rules/` for static mission data and otherwise remains in
-//! `sim/` — never render/ui/sidebar/audio/net.
+//! `sim/` — never render/ui/audio/net.
 
 pub(crate) mod authority;
 pub(crate) mod concrete_effects;

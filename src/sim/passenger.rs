@@ -14,7 +14,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ (ObjectType), sim/game_entity, sim/entity_store.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 mod departure;
 pub(crate) use departure::{

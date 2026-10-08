@@ -16,7 +16,7 @@ pub(super) fn sync(state: &mut AppState) {
 fn sync_prepared(
     gadgets: &mut InGameGadgets,
     layout: Option<&(
-        crate::sidebar::command_bar::CommandBarLayout,
+        crate::ui::sidebar::command_bar::CommandBarLayout,
         Vec<Option<usize>>,
     )>,
     closed: bool,
@@ -99,7 +99,7 @@ pub(super) fn publish(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sidebar::command_bar::CommandBarLayout;
+    use crate::ui::sidebar::command_bar::CommandBarLayout;
 
     #[test]
     fn command_bar_open_closed_and_pressed_use_the_real_gadget_driver() {

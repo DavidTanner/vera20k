@@ -13,7 +13,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/ (via entity components).
-//! - NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;

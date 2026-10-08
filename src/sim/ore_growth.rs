@@ -12,7 +12,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/overlay_grid, sim/tiberium, sim/rng
 //!   (SimRng), rules/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};

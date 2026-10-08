@@ -5,7 +5,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ and sim/cell_rect.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::playfield::{PlayfieldBounds, local_to_packed_cell};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;

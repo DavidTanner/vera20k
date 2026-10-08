@@ -12,8 +12,10 @@ use crate::app::AppState;
 use crate::app::presentation::sidebar_render::current_sidebar_chrome;
 use crate::render::batch::SpriteInstance;
 use crate::render::sidebar_chrome::{SidebarChromeAtlas, SidebarChromeEntry};
-use crate::sidebar::power_bar_anim::PowerBarAnimState;
-use crate::sidebar::{Rect, SidebarChromeLayoutSpec, SidebarLayout, SidebarTabButton, SidebarView};
+use crate::ui::sidebar::power_bar_anim::PowerBarAnimState;
+use crate::ui::sidebar::{
+    Rect, SidebarChromeLayoutSpec, SidebarLayout, SidebarTabButton, SidebarView,
+};
 
 #[path = "sidebar_command_bar.rs"]
 pub(crate) mod command_bar;
@@ -350,7 +352,7 @@ fn ready_text_scale(ui_scale: f32) -> f32 {
 /// to be placed, and `TXT_HOLD` while its production is suspended. Both use
 /// the same dark strip and the same anchor rules, and a slot never shows both.
 fn cameo_status_text<'a>(
-    item: &crate::sidebar::SidebarItem,
+    item: &crate::ui::sidebar::SidebarItem,
     ready_text: &'a str,
     hold_text: &'a str,
 ) -> Option<&'a str> {
@@ -367,7 +369,7 @@ fn cameo_status_text<'a>(
 /// flag whenever the cameo's factory exists (`StripClass::Draw`,
 /// `0x006A9812..0x006A981D`) and draws frame `progress + 1`, so a build shows
 /// its clock from the frame it starts, before its first step.
-fn shows_build_clock(item: &crate::sidebar::SidebarItem) -> bool {
+fn shows_build_clock(item: &crate::ui::sidebar::SidebarItem) -> bool {
     !item.is_ready && (item.is_building_this_type || item.is_on_hold || item.progress > 0.0)
 }
 
@@ -673,7 +675,7 @@ pub(crate) fn build_sidebar_text_instances(
 mod tests {
     use super::{build_gclock_instance, place_canvas_crop_in_slot};
     use crate::render::sidebar_chrome::SidebarChromeEntry;
-    use crate::sidebar::Rect;
+    use crate::ui::sidebar::Rect;
 
     #[test]
     fn test_canvas_crop_uses_shared_rounded_edges_with_camera_cancellation() {
@@ -778,7 +780,7 @@ mod tests {
     fn cameo_status_text_covers_ready_and_hold() {
         use super::cameo_status_text;
 
-        let mut item = crate::sidebar::SidebarItem {
+        let mut item = crate::ui::sidebar::SidebarItem {
             rect: Rect {
                 x: 0.0,
                 y: 0.0,
@@ -819,7 +821,7 @@ mod tests {
     fn build_clock_shows_from_the_start_of_a_build() {
         use super::shows_build_clock;
 
-        let mut item = crate::sidebar::SidebarItem {
+        let mut item = crate::ui::sidebar::SidebarItem {
             rect: Rect {
                 x: 0.0,
                 y: 0.0,

@@ -9,7 +9,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/movement/locomotor (MovementLayer).
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::{BTreeMap, BTreeSet};
 

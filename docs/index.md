@@ -16,7 +16,7 @@ A short map of the code. If it disagrees with the code, the code is right. Each 
 - `sim/` — all game state and deterministic gameplay.
 - `render/` — the wgpu renderer.
 - `app/` — window, input, loading and saving; wires sim, render, ui, audio and net together.
-- `ui/` and `sidebar/` — menus, dialogs, in-game screens and the sidebar.
+- `ui/` — menus, dialogs, in-game screens and the sidebar.
 - `audio/` — sound effects and music.
 - `net/` — deterministic lockstep. There is no network transport yet.
 - `rules/` — the retail INI files and their layers.
@@ -28,7 +28,7 @@ A short map of the code. If it disagrees with the code, the code is right. Each 
 
 All mutable game state lives in one struct, `Simulation` (`src/sim/world/mod.rs`). `SimRuntime::advance_frame()` runs one frame in the original game's frame order.
 
-The app turns player input into commands for the simulation. After each frame it hands the new state to the renderer and plays the sounds the frame produced. Rendering only reads simulation state, and `sim/` never depends on `render/`, `ui/`, `sidebar/`, `audio/` or `net/`.
+The app turns player input into commands for the simulation. After each frame it hands the new state to the renderer and plays the sounds the frame produced. Rendering only reads simulation state, and `sim/` never depends on `render/`, `ui/`, `audio/` or `net/`.
 
 ## Determinism
 

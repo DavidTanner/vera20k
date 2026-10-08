@@ -9,7 +9,7 @@
 use crate::render::batch::{BatchTexture, SpriteInstance};
 use crate::render::bit_font::BitFont;
 use crate::render::sidebar_chrome::SidebarTheme;
-use crate::sidebar::Rect;
+use crate::ui::sidebar::Rect;
 
 /// Side highlight colors used as fade endpoint for selected-unit text effect.
 const HIGHLIGHT_ALLIED: [f32; 3] = [164.0 / 255.0, 210.0 / 255.0, 1.0];

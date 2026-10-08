@@ -8,7 +8,7 @@
 //! GADGET_DIALOG_CONTROL_ENGINE_SUBSTRATE_SERVICE_STUDY.md §5.
 //!
 //! ## Dependency rules
-//! - ui/ module: std only — no render/, assets/, sidebar/, audio/, net/.
+//! - ui/ module: std only — no render/, assets/, audio/, net/.
 
 pub mod button;
 pub mod focus;

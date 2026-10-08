@@ -12,7 +12,7 @@
 //!
 //! ## Dependency rules
 //! - net/ depends on: sim/ (feeds commands into simulation, nothing else)
-//! - net/ does NOT depend on: assets/, rules/, map/, render/, ui/, sidebar/, audio/
+//! - net/ does NOT depend on: assets/, rules/, map/, render/, ui/, audio/
 
 // Future modules - uncomment as implemented:
 // pub mod protocol;

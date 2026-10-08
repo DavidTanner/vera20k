@@ -13,7 +13,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/components (Position, Owner, Selected, Category).
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 use crate::sim::entity_store::EntityStore;

@@ -56,7 +56,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/superweapon/{invulnerability,cell_grid},
 //!   sim/combat, sim/radar, sim/game_entity, sim/world.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 #[path = "iron_curtain_tests.rs"]

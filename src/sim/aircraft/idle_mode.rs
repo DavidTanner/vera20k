@@ -14,7 +14,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/components, sim/docking.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::sim::aircraft::AircraftMission;
 

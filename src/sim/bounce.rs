@@ -23,7 +23,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on util/ and the rest of sim/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use glam::IVec3;
 use serde::{Deserialize, Serialize};

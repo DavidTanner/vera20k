@@ -14,7 +14,7 @@
 //! - Per-object animation config is baked into TerrainAnimationState at seed time
 //!   (mirrors OreGrowthConfig pattern); live placement gates still read entity
 //!   and rules state for building exceptions.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::{BTreeMap, BTreeSet};
 

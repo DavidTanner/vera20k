@@ -20,7 +20,7 @@
 //!
 //! ## Dependency rules
 //! Part of `sim/` — depends on `rules/`, `map/` grid types and other `sim/`
-//! modules only. Never on render/, ui/, sidebar/, audio/, net/.
+//! modules only. Never on render/, ui/, audio/, net/.
 
 mod pickup;
 mod runtime;

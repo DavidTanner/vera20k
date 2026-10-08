@@ -112,7 +112,7 @@
 //!   undeploy (`0x00443C07..0x00443C54`, neither key set).
 //!
 //! ## Dependency rules
-//! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
+//! - Part of sim/; sim/ never depends on render/, ui/, audio/, net/.
 
 use super::target_scan::{can_fire_at, fire_error_with_overlay, select_weapon, weapon_at_index};
 use super::{ObjectAiCtx, mission_handlers_run};

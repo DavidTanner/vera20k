@@ -118,7 +118,7 @@ native arithmetic alone is not a requirement to emulate x87. Validate affected
 gameplay, range and overflow behavior. Presentation must not affect simulation
 determinism.
 
-`sim/` never depends on `render/`, `ui/`, `sidebar/`, `audio/` or `net/`.
+`sim/` never depends on `render/`, `ui/`, `audio/` or `net/`.
 App code orchestrates without owning duplicate gameplay. Current module contracts
 and `advance_tick` phases describe the architecture. Name coordinate frames/units.
 

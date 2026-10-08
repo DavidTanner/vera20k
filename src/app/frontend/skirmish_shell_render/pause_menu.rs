@@ -6,7 +6,7 @@ use crate::app::AppState;
 use crate::assets::csf_file::CsfFile;
 use crate::render::bit_font::BitFont;
 use crate::render::shell_text::{self, ShellAlign, ShellTextDraw, TextRect};
-use crate::sidebar::SidebarTheme;
+use crate::ui::sidebar::SidebarTheme;
 use crate::ui::shell::geom::RectPx;
 use crate::ui::shell::pause_menu::{
     PAUSE_MENU_FOOTER, PAUSE_MENU_TITLE, PauseMenuButton, PauseMenuButtonState, PauseMenuLayout,

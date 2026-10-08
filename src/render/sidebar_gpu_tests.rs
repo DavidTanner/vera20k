@@ -350,7 +350,7 @@ fn assert_pixels(actual: &[u8], expected: &[u8], label: &str) {
 #[test]
 #[ignore = "requires original retail archives and a real wgpu adapter"]
 fn retail_command_bar_atlas_and_production_append_match_native_capture() {
-    use crate::sidebar::{command_bar::CommandBarLayout, gadget_flash::SidebarGadgetState};
+    use crate::ui::sidebar::{command_bar::CommandBarLayout, gadget_flash::SidebarGadgetState};
     let root = std::env::var_os("RA2_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {

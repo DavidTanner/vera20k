@@ -26,7 +26,7 @@ use crate::render::sidebar_chrome::SidebarChromeSet;
 use crate::render::sprite_atlas::SpriteAtlas;
 use crate::render::tile_atlas::TileAtlas;
 use crate::render::unit_atlas::UnitAtlas;
-use crate::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
+use crate::ui::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
 
 pub(crate) struct MatchPresentationState {
     /// Native Techno+3CA waterline cache, captured by drawing and retained in
@@ -116,11 +116,11 @@ pub(crate) struct MatchPresentationState {
     /// Overlay instance scratch vec — cleared and refilled each frame.
     pub(crate) cached_overlay_instances: Vec<crate::render::batch::SpriteInstance>,
     /// Animated power bar — segment-by-segment transition matching original PowerClass.
-    pub(crate) power_bar_anim: crate::sidebar::PowerBarAnimState,
+    pub(crate) power_bar_anim: crate::ui::sidebar::PowerBarAnimState,
     /// Persistent flash + mode state for in-game sidebar gadgets. Ticked from
     /// `sidebar_gadgets::update_sidebar_gadget_state` once per sim tick;
     /// read each frame by the sidebar view builder to pick SHP frame indices.
-    pub(crate) sidebar_gadget_state: crate::sidebar::gadget_flash::SidebarGadgetState,
+    pub(crate) sidebar_gadget_state: crate::ui::sidebar::gadget_flash::SidebarGadgetState,
     /// In-game gadget substrate (study §6.1): retained sidebar button list +
     /// capture/focus state + reusable tick output + the mouse-held record.
     pub(crate) in_game_gadgets: crate::app::input::gadget_input::InGameGadgets,

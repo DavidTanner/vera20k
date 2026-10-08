@@ -825,7 +825,7 @@ mod tests {
 
     #[test]
     fn current_profiles_match_compiled_native_geometry_and_reject_old_scale() {
-        use crate::sidebar::{
+        use crate::ui::sidebar::{
             SidebarChromeLayoutSpec, SidebarTheme, compute_layout_with_spec,
             radar_minimap_rect_with_spec,
         };

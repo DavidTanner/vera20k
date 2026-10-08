@@ -15,7 +15,7 @@
 //!
 //! ## Dependency rules
 //! - Part of `sim/` — depends only on `rules/`.
-//! - `sim/` NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - `sim/` NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::object_type::DockPad;
 

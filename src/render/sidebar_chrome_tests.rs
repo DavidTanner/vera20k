@@ -13,7 +13,7 @@ use crate::assets::mix_hash::mix_hash;
 use crate::assets::pal_file::Palette;
 use crate::assets::shp_file::ShpFile;
 use crate::render::sidebar_chrome::SidebarTheme;
-use crate::sidebar::Rect;
+use crate::ui::sidebar::Rect;
 use crate::util::config::GameConfig;
 
 fn retail_ra2_dir() -> PathBuf {

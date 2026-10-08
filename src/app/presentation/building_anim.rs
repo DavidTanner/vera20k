@@ -44,7 +44,7 @@ pub(crate) fn update_power_bar_anim(state: &mut AppState) {
     let spec = state.match_state.match_presentation.sidebar_layout_spec;
     let sw = state.render_width() as f32;
     let sh = state.render_height() as f32;
-    let layout = crate::sidebar::compute_layout_with_spec(spec, sw, sh, 0);
+    let layout = crate::ui::sidebar::compute_layout_with_spec(spec, sw, sh, 0);
     // 63FB20: segment budget is (native strip height + 3) / 3.
     let bar_height_px = (layout.cameo_grid_bottom - layout.cameo_grid_top) as i32 + 3;
 

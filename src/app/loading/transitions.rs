@@ -13,7 +13,7 @@ use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::trigger_graph::TriggerGraph;
 use crate::render::minimap::MinimapRenderer;
 use crate::render::selection_overlay::SelectionOverlay;
-use crate::sidebar::SidebarTab;
+use crate::ui::sidebar::SidebarTab;
 use crate::ui::game_screen::GameScreen;
 
 use crate::app::AppState;

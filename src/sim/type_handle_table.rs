@@ -12,7 +12,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/; depends on rules/ (one-way) and `sim::intern`. NEVER on
-//!   render/ui/sidebar/audio/net.
+//!   render/ui/audio/net.
 
 use crate::rules::ruleset::{RuleSet, TypeHandle};
 use crate::sim::intern::{InternedId, StringInterner};

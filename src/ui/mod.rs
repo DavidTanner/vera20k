@@ -1,15 +1,12 @@
 //! Render-agnostic UI models plus egui-backed menus and dialogs.
 //!
 //! Some screens use egui when they do not need pixel-perfect RA2 art. Pixel
-//! parity shells keep layout and state here, while app/render layers draw them.
-//!
-//! The in-game sidebar is NOT here — it uses custom wgpu rendering
-//! in the sidebar/ module because it needs original RA2 art assets
-//! (cameo icons, custom buttons, progress bars).
+//! parity shells and the in-game sidebar keep layout and state here, while
+//! app/render layers draw them.
 //!
 //! ## Dependency rules
 //! - ui/ depends on: sim/ (reads game state, produces commands)
-//! - ui/ does NOT depend on: assets/, render/, sidebar/, audio/, net/
+//! - ui/ does NOT depend on: assets/, render/, audio/, net/
 
 pub mod campaign_shell;
 pub mod client_theme;
@@ -24,6 +21,7 @@ pub mod movies_credits_shell;
 pub mod pause_menu;
 pub mod score_shell;
 pub mod shell;
+pub mod sidebar;
 pub mod single_player_shell;
 pub mod skirmish_shell;
 pub mod tooltips;

@@ -3,7 +3,7 @@
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
 //! `map::cell_index`, `map::overlay_types`, `map::resolved_terrain`, `rules`,
 //! `map::tiberium_cell`, and `sim::overlay_grid`; never on
-//! render/, ui/, app/, sidebar/, audio/, or net/.
+//! render/, ui/, app/, audio/, or net/.
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::cell_index::canonical_cell_coord;

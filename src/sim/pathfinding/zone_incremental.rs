@@ -6,7 +6,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/zone_map, sim/zone_build, sim/zone_hierarchy.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::PathGrid;
 use super::zone_build::{

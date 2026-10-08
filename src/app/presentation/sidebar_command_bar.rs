@@ -1,7 +1,7 @@
 //! Native bottom bar art and its one layout shared by drawing and gadgets.
 
 use super::*;
-use crate::sidebar::command_bar::CommandBarLayout;
+use crate::ui::sidebar::command_bar::CommandBarLayout;
 
 pub(crate) fn layout_and_slots(state: &AppState) -> Option<(CommandBarLayout, Vec<Option<usize>>)> {
     let art = &current_sidebar_chrome(state)?.command_bar;
@@ -49,7 +49,7 @@ pub(crate) fn append_prepared(
     art: &crate::render::sidebar_chrome::CommandBarArt<SidebarChromeEntry>,
     layout: CommandBarLayout,
     slots: &[Option<usize>],
-    gadgets: &crate::sidebar::gadget_flash::SidebarGadgetState,
+    gadgets: &crate::ui::sidebar::gadget_flash::SidebarGadgetState,
     camera: [f32; 2],
 ) {
     let mut draw = |entry: Option<SidebarChromeEntry>, x: f32, y: f32| {

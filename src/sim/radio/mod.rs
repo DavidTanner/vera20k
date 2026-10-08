@@ -6,7 +6,7 @@
 //! protocol's wire values so dispatch stays a direct discriminant match. Pure
 //! enums + integer slots — no float, no RNG. Native evidence:
 //! tools/spatial_oracle/refinery_dock.json (`radio` and `can_dock` rows).
-//! sim/ only — never render/ui/sidebar/audio/net.
+//! sim/ only — never render/ui/audio/net.
 use serde::{Deserialize, Serialize};
 
 pub mod contacts;

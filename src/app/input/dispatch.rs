@@ -32,7 +32,7 @@ use crate::app::presentation::sidebar_render::current_sidebar_view;
 use crate::app::types::OrderMode;
 use crate::audio::events::GameSoundEvent;
 use crate::map::entities::EntityCategory;
-use crate::sidebar::{SidebarAction, SidebarTab};
+use crate::ui::sidebar::{SidebarAction, SidebarTab};
 use crate::sim::command::Command;
 use crate::sim::selection::SelectAction;
 

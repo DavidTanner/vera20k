@@ -7,7 +7,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/pathfinding, sim/occupancy.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;

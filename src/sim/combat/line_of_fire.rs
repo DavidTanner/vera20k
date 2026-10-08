@@ -23,7 +23,7 @@
 //!
 //! Depends on: rules (WeaponType, ProjectileType, WarheadType, RuleSet,
 //! OverlayTypeRegistry), map (resolved terrain, house alliances), sim
-//! (overlay grid, bridge topology). Does NOT depend on render/ui/sidebar/
+//! (overlay grid, bridge topology). Does NOT depend on render/ui/
 //! audio/net.
 
 use crate::map::houses::{HouseAllianceMap, are_houses_friendly};

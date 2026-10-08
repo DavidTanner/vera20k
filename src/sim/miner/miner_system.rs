@@ -11,7 +11,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/miner, sim/miner_dock, sim/components,
 //!   sim/movement, sim/pathfinding, rules/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};

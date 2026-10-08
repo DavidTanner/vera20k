@@ -10,7 +10,7 @@
 //! remaining per-arm work.
 //!
 //! Depends on: `world::Simulation` (substrate live order + entity store).
-//! Must NOT depend on render/ui/sidebar/audio/net (sim invariant #1).
+//! Must NOT depend on render/ui/audio/net (sim invariant #1).
 //! Dispatch is `match category` only — no trait object / dyn / vtable
 //! (invariant #2).
 

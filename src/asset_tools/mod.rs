@@ -14,7 +14,7 @@
 //! ## Dependency rules
 //! - May depend on `assets/`, `rules/`, `util/`, `map/` source selection, `skirmish_modes`, and the CPU-only parts of
 //!   `render/` (bitmap font glyph data).
-//! - Must NEVER depend on `sim/`, `ui/`, `sidebar/`, `audio/`, `net/`, or any
+//! - Must NEVER depend on `sim/`, `ui/`, `audio/`, `net/`, or any
 //!   `app*` module — and nothing in `sim/` may depend on this.
 
 pub mod args;

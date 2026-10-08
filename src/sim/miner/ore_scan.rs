@@ -13,7 +13,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/world, sim/movement, sim/pathfinding,
 //!   sim/tiberium, rules/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::NativeCellQuery;

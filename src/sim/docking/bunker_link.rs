@@ -4,7 +4,7 @@
 //! the unit, `GameEntity.bunker_occupant` on the building) plus the three distinct
 //! teardown helpers and the admission predicate.
 //!
-//! sim/ only — never render/ui/sidebar/audio/net.
+//! sim/ only — never render/ui/audio/net.
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState};

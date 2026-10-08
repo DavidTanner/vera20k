@@ -78,7 +78,7 @@ Ideen einbringen oder es neben dem Original spielen und uns sagen, was sich fals
 Issue oder auf [Discord](https://discord.gg/kmjRUn5m5F).
 
 Die Spiellogik liegt in `src/sim/`, das Rendering in `src/render/` und Menüs und Eingabe in
-`src/app/`, `src/ui/` und `src/sidebar/`; die Python-Werkzeuge in `tools/` brauchst du nicht.
+`src/app/` und `src/ui/`; die Python-Werkzeuge in `tools/` brauchst du nicht.
 Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, wie die Engine
 aufgebaut ist. Führe die Tests mit `cargo test -p vera20k --lib` aus. Tests, die die INI-Dateien
 des Spiels brauchen, überspringen sich selbst und zählen trotzdem als bestanden, bis du

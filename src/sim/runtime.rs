@@ -6,7 +6,7 @@
 //! per-frame resources. Simulation owns live mutable terrain and gameplay state.
 //! SimView provides immutable access for presentation and diagnostics.
 //!
-//! Dependency rules: part of sim/; never depends on render/, ui/, sidebar/,
+//! Dependency rules: part of sim/; never depends on render/, ui/,
 //! audio/ or net/.
 
 use crate::map::resolved_terrain::TerrainTileAnimation;

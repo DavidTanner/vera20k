@@ -17,7 +17,7 @@ Eine kurze Übersicht über den Code. Wenn sie dem Code widerspricht, hat der Co
 - `sim/` — der gesamte Spielzustand und die deterministische Spiellogik.
 - `render/` — der Renderer auf Basis von wgpu.
 - `app/` — Fenster, Eingabe, Laden und Speichern; verbindet sim, render, ui, audio und net.
-- `ui/` und `sidebar/` — Menüs, Dialoge, Bildschirme im Spiel und die Seitenleiste.
+- `ui/` — Menüs, Dialoge, Bildschirme im Spiel und die Seitenleiste.
 - `audio/` — Soundeffekte und Musik.
 - `net/` — deterministischer Lockstep. Einen Netzwerktransport gibt es noch nicht.
 - `rules/` — die INI-Dateien des Originalspiels und ihre Ebenen.
@@ -29,7 +29,7 @@ Eine kurze Übersicht über den Code. Wenn sie dem Code widerspricht, hat der Co
 
 Der gesamte veränderliche Spielzustand liegt in einer einzigen Struktur, `Simulation` (`src/sim/world/mod.rs`). `SimRuntime::advance_frame()` führt einen Frame in der Reihenfolge des Originalspiels aus.
 
-Die App setzt Spielereingaben in Befehle für die Simulation um. Nach jedem Frame übergibt sie den neuen Zustand an den Renderer und spielt die Sounds ab, die der Frame erzeugt hat. Das Rendering liest den Simulationszustand nur, und `sim/` hängt nie von `render/`, `ui/`, `sidebar/`, `audio/` oder `net/` ab.
+Die App setzt Spielereingaben in Befehle für die Simulation um. Nach jedem Frame übergibt sie den neuen Zustand an den Renderer und spielt die Sounds ab, die der Frame erzeugt hat. Das Rendering liest den Simulationszustand nur, und `sim/` hängt nie von `render/`, `ui/`, `audio/` oder `net/` ab.
 
 ## Determinismus
 

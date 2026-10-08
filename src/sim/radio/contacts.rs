@@ -8,7 +8,7 @@
 //! buildings, else 1. Navigation uses the contact slot index to select a
 //! docking offset; admission queries actual slots through `has_free_or`. Sparse slot
 //! positions are therefore hash-relevant.
-//! sim/ only — never render/ui/sidebar/audio/net.
+//! sim/ only — never render/ui/audio/net.
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 

@@ -23,7 +23,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/aircraft, sim/cell_rect,
 //!   sim/mission, sim/world.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::MissionType;

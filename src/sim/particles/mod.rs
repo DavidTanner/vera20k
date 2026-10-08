@@ -16,7 +16,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ and util/ only.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::particle_system_type::ParticleSystemTypeId;
 use crate::rules::particle_type::{ParticleType, ParticleTypeId};

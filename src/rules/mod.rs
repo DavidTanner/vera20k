@@ -98,8 +98,8 @@
 //!
 //! ## Dependency rules
 //! - rules/ depends on: assets/ (reads INI files extracted from .mix archives)
-//! - rules/ is depended on by: sim/, map/, render/, sidebar/, app/, audio/, ui/, net/
-//! - rules/ does NOT depend on (outside tests): sim/, render/, ui/, sidebar/, audio/, net/
+//! - rules/ is depended on by: sim/, map/, render/, app/, audio/, ui/, net/
+//! - rules/ does NOT depend on (outside tests): sim/, render/, ui/, audio/, net/
 
 pub mod animation_sequence;
 pub mod art_data;

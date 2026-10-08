@@ -17,7 +17,7 @@ En kort karta över koden. Om den säger emot koden är det koden som gäller. K
 - `sim/` — allt speltillstånd och den deterministiska spellogiken.
 - `render/` — renderaren, byggd på wgpu.
 - `app/` — fönster, inmatning, laddning och sparning; kopplar ihop sim, render, ui, audio och net.
-- `ui/` och `sidebar/` — menyer, dialogrutor, skärmar i spelet och sidopanelen.
+- `ui/` — menyer, dialogrutor, skärmar i spelet och sidopanelen.
 - `audio/` — ljudeffekter och musik.
 - `net/` — deterministisk lockstep. Det finns ingen nätverkstransport än.
 - `rules/` — originalspelets INI-filer och deras lager.
@@ -29,7 +29,7 @@ En kort karta över koden. Om den säger emot koden är det koden som gäller. K
 
 Allt föränderligt speltillstånd ligger i en enda struct, `Simulation` (`src/sim/world/mod.rs`). `SimRuntime::advance_frame()` kör en bildruta i samma ordning som originalspelet.
 
-Appen gör om spelarens inmatning till kommandon för simuleringen. Efter varje bildruta lämnar den det nya tillståndet till renderaren och spelar upp ljuden som bildrutan gav upphov till. Renderingen läser bara simuleringens tillstånd, och `sim/` är aldrig beroende av `render/`, `ui/`, `sidebar/`, `audio/` eller `net/`.
+Appen gör om spelarens inmatning till kommandon för simuleringen. Efter varje bildruta lämnar den det nya tillståndet till renderaren och spelar upp ljuden som bildrutan gav upphov till. Renderingen läser bara simuleringens tillstånd, och `sim/` är aldrig beroende av `render/`, `ui/`, `audio/` eller `net/`.
 
 ## Determinism
 

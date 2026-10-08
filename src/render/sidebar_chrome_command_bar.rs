@@ -54,7 +54,7 @@ pub(super) fn load(
     let slots = ["AdvancedCommandBar", "MultiplayerAdvancedCommandBar"].map(|section| {
         ini.as_ref()
             .and_then(|ini| ini.section(section))
-            .map(crate::sidebar::command_bar::read_button_list)
+            .map(crate::ui::sidebar::command_bar::read_button_list)
             .unwrap_or_default()
     });
     CommandBarArt {

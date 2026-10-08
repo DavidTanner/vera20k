@@ -77,7 +77,7 @@ const GENERIC_SIDEBAR_SHP_NAMES: &[&str] = &[
     "gclock2.shp",
 ];
 
-pub use crate::sidebar::SidebarTheme;
+pub use crate::ui::sidebar::SidebarTheme;
 
 /// One logical sidebar input and the archive selected by the existing resolver.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -3,7 +3,7 @@
 //! Deposits count purifier buildings and the AI virtual bonus on demand
 //! (`miner_system::effective_purifier_count`).
 //! `IncomeMult` is read per-deposit from the house's country type. Never depends on
-//! render/ui/sidebar/audio/net (sim invariant #1).
+//! render/ui/audio/net (sim invariant #1).
 //! The balance and statistics are serialized and hashed. Factory kernels borrow
 //! this value directly; income, repair and other house consumers use the same cash.
 

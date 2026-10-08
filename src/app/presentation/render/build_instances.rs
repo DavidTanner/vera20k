@@ -24,7 +24,7 @@ use crate::app::presentation::ui_overlays::{
 use crate::map::terrain::TilePlacement;
 use crate::map::theater::TileKey;
 use crate::render::batch::SpriteInstance;
-use crate::sidebar::SidebarView;
+use crate::ui::sidebar::SidebarView;
 
 // ---------------------------------------------------------------------------
 // Phase structs — group related instance vectors for clean data flow
@@ -972,7 +972,7 @@ fn build_radar_anim_instance(state: &AppState) -> Vec<SpriteInstance> {
     let sw: f32 = state.render_width() as f32;
     let sh: f32 = state.render_height() as f32;
     let spec = state.match_state.match_presentation.sidebar_layout_spec;
-    let layout = crate::sidebar::compute_layout_with_spec(spec, sw, sh, 0);
+    let layout = crate::ui::sidebar::compute_layout_with_spec(spec, sw, sh, 0);
 
     let s = state.match_state.match_presentation.ui_scale;
     vec![SpriteInstance {

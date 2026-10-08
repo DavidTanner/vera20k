@@ -28,7 +28,7 @@ use crate::render::batch::BatchRenderer;
 use crate::render::bit_font::BitFont;
 use crate::render::egui_integration::EguiIntegration;
 use crate::render::gpu::GpuContext;
-use crate::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
+use crate::ui::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
 use crate::sim::selection::SelectionState;
 use crate::ui::game_screen::GameScreen;
 use crate::ui::main_menu::{self};
