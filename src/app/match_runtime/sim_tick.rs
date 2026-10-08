@@ -1147,9 +1147,9 @@ fn apply_trigger_effects(state: &mut AppState, effects: &[TriggerEffect]) {
 fn center_camera_on_waypoint(state: &mut AppState, waypoint_index: u32) {
     let Some(waypoint) = state
         .match_state
-        .match_presentation
-        .waypoints
-        .get(&waypoint_index)
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| rt.resources.waypoints.get(&waypoint_index))
     else {
         log::warn!(
             "Trigger action requested missing waypoint {} for camera centering",

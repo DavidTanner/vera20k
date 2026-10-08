@@ -15,7 +15,6 @@ use crate::map::houses::{HouseColorMap, HouseRoster};
 use crate::map::overlay::TerrainObject;
 use crate::map::tags::TagMap;
 use crate::map::terrain::TerrainGrid;
-use crate::map::waypoints::Waypoint;
 use crate::render::bridge_atlas::BridgeAtlas;
 use crate::render::bridge_railing_atlas::BridgeRailingAtlas;
 use crate::render::minimap::MinimapRenderer;
@@ -64,7 +63,6 @@ pub(crate) struct MatchPresentationState {
     pub(crate) overlays: crate::app::presentation::overlay_index::OverlayRenderIndex,
     /// Terrain objects from map for per-frame instance generation.
     pub(crate) terrain_objects: Vec<TerrainObject>,
-    pub(crate) waypoints: HashMap<u32, Waypoint>,
     pub(crate) cell_tags: CellTagMap,
     pub(crate) tags: TagMap,
     /// Overlay ID → type name mapping for atlas lookups at render time.
