@@ -190,6 +190,21 @@ pub(super) fn dispatch_draw_passes(
         bracket_tex,
         "factory_rally_first",
     );
+    // Original6D4656 IonBlast DrawAll moves terrain pixels after the first
+    // rally pass and before the object loop at 6D465F (render::terrain_draw).
+    if state.renderer.terrain_draw_renderer.has_ion_blasts() {
+        drop(pass);
+        state
+            .renderer
+            .terrain_draw_renderer
+            .note_external_passes(encoder, 1);
+        state
+            .renderer
+            .terrain_draw_renderer
+            .draw_ion_blasts(encoder, view);
+        pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+        pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
+    }
 
     // Building selection bracket back/left edges. Drawn before object bodies so
     // the normal SHP merge naturally occludes the hidden bracket edges.

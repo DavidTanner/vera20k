@@ -254,6 +254,14 @@ pub(crate) fn render_game(
         },
     );
 
+    let ion_blasts = crate::app::presentation::ion_blasts::draws(state);
+    state.renderer.terrain_draw_renderer.prepare_ion_blasts(
+        &state.renderer.gpu.device,
+        &state.renderer.gpu.queue,
+        &ion_blasts,
+        z,
+    );
+
     // Phase 7: Dispatch draw calls in render order.
     draw_passes::dispatch_draw_passes(
         state,

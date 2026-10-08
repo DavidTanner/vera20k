@@ -6,6 +6,7 @@ pub(crate) mod building_anim;
 pub(crate) mod combat_lights;
 pub(crate) mod fire_effects;
 pub(crate) mod instances;
+pub(crate) mod ion_blasts;
 pub(crate) mod line_trails;
 pub(crate) mod overlay_index;
 pub(crate) mod render;

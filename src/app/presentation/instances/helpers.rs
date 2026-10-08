@@ -438,7 +438,11 @@ pub(crate) fn cell_visibility_for_local_owner(
 /// pixels. Set_View_Dimensions4A89B8 / Scenario687620 copy the tactical rectangle
 /// through6D5F60; the sidebar and bottom strip are outside that rectangle.
 /// Native Unit boundaries and retained sinking history: naval_sinking_clip.py.
-pub(super) fn projection_admitted(point: [f32; 2], camera: [f32; 2], viewport: [f32; 2]) -> bool {
+pub(in crate::app::presentation) fn projection_admitted(
+    point: [f32; 2],
+    camera: [f32; 2],
+    viewport: [f32; 2],
+) -> bool {
     let [x, y] = [point[0] - camera[0], point[1] - camera[1]];
     x >= -360.0 && x <= viewport[0] + 360.0 && y >= -180.0 && y <= viewport[1] + 180.0
 }
