@@ -82,9 +82,6 @@ pub enum AircraftMission {
         /// Frame-anchored gate until the next ammo point is restored (during
         /// reloading); was a per-tick `u32` countdown.
         reload_timer: MissionTimer,
-        /// Pad index assigned to this aircraft on the airfield (0-based).
-        /// Meaningful once `sub_state >= 1` (after pad reservation succeeds).
-        pad_index: u32,
     },
 
     /// Parked on helipad pad — freshly built, waiting for player command.
@@ -93,8 +90,6 @@ pub enum AircraftMission {
     DockedIdle {
         /// Airfield entity stable_id this aircraft is docked at.
         airfield_id: u64,
-        /// Pad index this aircraft is parked on (0-based).
-        pad_index: u32,
     },
 }
 
@@ -544,13 +539,11 @@ fn mission_step(
             let dist = dx.max(dy);
 
             if dist <= 2 {
-                // sub_state 0 = WaitForDock; pad_index will be overwritten
-                // by the reservation once a pad is granted.
+                // sub_state 0 = WaitForDock.
                 m.new_mission = AircraftMission::Docking {
                     airfield_id: *airfield_id,
                     sub_state: 0,
                     reload_timer: MissionTimer::default(),
-                    pad_index: 0,
                 };
             } else if entity.movement_target.is_none() {
                 m.move_to = Some((dock_rx, dock_ry));
@@ -561,7 +554,6 @@ fn mission_step(
             airfield_id,
             sub_state,
             reload_timer,
-            pad_index,
         } => {
             let entity = sim.substrate.entities.get(id)?;
             let air_phase = crate::sim::movement::air_movement::fly_mission_phase(
@@ -603,7 +595,6 @@ fn mission_step(
                             airfield_id: *airfield_id,
                             sub_state: 1,
                             reload_timer: MissionTimer::default(),
-                            pad_index: reserved_pad,
                         };
                         // Re-target descent toward the per-pad cell so
                         // multi-pad airfields visibly spread occupants.
@@ -624,12 +615,6 @@ fn mission_step(
                         {
                             m.move_to = Some((px, py));
                         }
-                        // Mirror into AircraftAmmo for downstream consumers.
-                        if let Some(entity) = sim.substrate.entities.get_mut(id)
-                            && let Some(ref mut ammo) = entity.aircraft_ammo
-                        {
-                            ammo.target_pad = Some(reserved_pad);
-                        }
                     }
                 }
                 1 => {
@@ -640,7 +625,6 @@ fn mission_step(
                             airfield_id: *airfield_id,
                             sub_state: 2,
                             reload_timer: MissionTimer::armed(now, reload_rate),
-                            pad_index: *pad_index,
                         };
                     } else if !landing && arrived {
                         m.begin_landing = true;
@@ -658,14 +642,12 @@ fn mission_step(
                                 airfield_id: *airfield_id,
                                 sub_state: 3,
                                 reload_timer: MissionTimer::default(),
-                                pad_index: *pad_index,
                             };
                         } else {
                             m.new_mission = AircraftMission::Docking {
                                 airfield_id: *airfield_id,
                                 sub_state: 2,
                                 reload_timer: MissionTimer::armed(now, reload_rate),
-                                pad_index: *pad_index,
                             };
                         }
                     }
@@ -675,12 +657,6 @@ fn mission_step(
                     // Launching — wait for cruising altitude.
                     if air_phase == Some(AirMovePhase::Cruising) {
                         m.new_mission = AircraftMission::Idle;
-                        // Clear target_pad now that the dock is released.
-                        if let Some(entity) = sim.substrate.entities.get_mut(id)
-                            && let Some(ref mut ammo) = entity.aircraft_ammo
-                        {
-                            ammo.target_pad = None;
-                        }
                     }
                 }
                 _ => {
@@ -700,10 +676,7 @@ fn mission_step(
             }
         }
 
-        AircraftMission::DockedIdle {
-            airfield_id,
-            pad_index: _,
-        } => {
+        AircraftMission::DockedIdle { airfield_id } => {
             // Check if airfield still alive.
             let af_ok = sim
                 .substrate
