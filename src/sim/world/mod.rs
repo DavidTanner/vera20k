@@ -377,12 +377,6 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// A weapon fired — play its Report= sound.
-    WeaponFired {
-        report_sound_id: InternedId,
-        rx: u16,
-        ry: u16,
-    },
     /// An entity was destroyed — play its DieSound=.
     EntityDied {
         die_sound_id: InternedId,
@@ -419,10 +413,6 @@ pub enum SimSoundEvent {
         rx: u16,
         ry: u16,
     },
-    /// A miner docked at a refinery — play the building's deploy sound.
-    /// The app layer should select the healthy or damaged sound variant
-    /// based on the refinery's health ratio vs ConditionYellow.
-    DockDeploy { building_id: u64 },
     /// A building finished construction — play EVA "Construction complete".
     BuildingComplete { owner: InternedId },
     /// `HouseClass::Place_Production 0x004FB5C6..0x004FB644`: a unit left the
@@ -698,11 +688,6 @@ pub enum SimSoundEvent {
     /// First-occupant SFX from rulesmd [AudioVisual] BuildingGarrisonedSound.
     /// Positional cue gated on owner == local human.
     BuildingGarrisonedSfx { owner: InternedId, rx: u16, ry: u16 },
-    /// SFX for conditional reciprocal-link harvester release. Resolved at
-    /// the app layer to [AudioVisual] BunkerWallsDownSound (retail value
-    /// "TankBunkerDown"). Stock zero-link refinery unload completion does
-    /// not emit this event.
-    RefineryExitSfx { rx: u16, ry: u16 },
     /// A struck building crossed a damage-state threshold and its type carries
     /// no `DamageSound=` of its own — the global `[AudioVisual]
     /// BuildingDamageSound=` cue, played at the building's own coordinate.
