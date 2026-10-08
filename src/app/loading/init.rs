@@ -806,6 +806,7 @@ mod map_wall_owner_candidate_tests {
     #[test]
     fn match_lighting_restore_discards_outgoing_pending_samples() {
         use crate::app::presentation::lighting::MatchLighting;
+        use crate::sim::light_sources::LightingEvent;
         let terrain = flat_terrain(128, 128);
         let rules = lighting_rules();
         let mut sim = Simulation::with_seed(0x1b);
@@ -834,12 +835,15 @@ mod map_wall_owner_candidate_tests {
             0,
             &rules.radiation,
             None,
+            &mut sim.lighting_sources.pending,
         );
-        assert_eq!(sim.radiation.clone().take_lighting_events().len(), 1);
+        assert!(matches!(
+            sim.lighting_sources.pending.last(),
+            Some(LightingEvent::Radiation { .. })
+        ));
         sim.session.lighting.current_ambient = 30;
         sim.rebuild_lighting_sources_after_load(&rules);
         assert!(sim.lighting_sources.pending.is_empty());
-        assert!(sim.radiation.take_lighting_events().is_empty());
         assert!(sim.lighting_sources.buildings[&41].active);
         lights.restore(&terrain, &sim, &rules, 2);
         for _ in 0..3 {
@@ -1137,14 +1141,23 @@ mod map_wall_owner_candidate_tests {
             rad_level: 500,
             spread: 1,
         };
-        sim.radiation
-            .apply_detonation(radiation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            radiation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         sim.session.lighting.current_ambient = 250;
         sim.publish_global_lighting();
         sim.set_building_light_active(41, true);
-        sim.radiation
-            .apply_detonation(radiation, 0, &rules.radiation, None);
-        sim.flush_radiation_lighting();
+        sim.radiation.apply_detonation(
+            radiation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         assert!(matches!(
             sim.lighting_sources.pending.as_slice(),
             [
@@ -1260,7 +1273,6 @@ mod map_wall_owner_candidate_tests {
         terrain: &ResolvedTerrainGrid,
         sim: &mut Simulation,
     ) {
-        sim.flush_radiation_lighting();
         let events = std::mem::take(&mut sim.lighting_sources.pending);
         lighting.apply_events(terrain, &events);
     }
@@ -1428,6 +1440,7 @@ mod map_wall_owner_candidate_tests {
             0,
             &rules.radiation,
             None,
+            &mut sim.lighting_sources.pending,
         );
 
         let terrain = flat_terrain(10, 10);
@@ -1471,13 +1484,23 @@ mod map_wall_owner_candidate_tests {
             rad_level: 500,
             spread: 10,
         };
-        sim.radiation
-            .apply_detonation(detonation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            detonation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         let first = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(first.point_lights.len(), 1);
 
-        sim.radiation
-            .apply_detonation(detonation, 0, &rules.radiation, None);
+        sim.radiation.apply_detonation(
+            detonation,
+            0,
+            &rules.radiation,
+            None,
+            &mut sim.lighting_sources.pending,
+        );
         let merged = derive_lighting_view(&LightingConfig::default(), Some(&sim), Some(&rules), 2);
         assert_eq!(merged.point_lights.len(), 1);
         assert_ne!(first, merged);

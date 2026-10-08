@@ -4900,6 +4900,7 @@ pub(crate) fn tick_combat(
                 binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut Vec::new(),
             );
         }
         if !rad.is_empty() && binary_frame.is_multiple_of(rules.radiation.application_delay as u32)
@@ -4980,6 +4981,7 @@ pub(crate) fn tick_combat(
                 binary_frame,
                 &rules.radiation,
                 world.resolved_terrain.as_ref(),
+                &mut Vec::new(),
             );
         }
     }
