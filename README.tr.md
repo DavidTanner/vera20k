@@ -42,7 +42,7 @@ ve çeşitli silahlar ile efektler üzerinde daha fazla çalışmamız gerekiyor
 
 ## Derleme ve çalıştırma
 
-Rust 1.88 veya üzeri, Vulkan, DirectX 12 ya da Metal destekleyen bir GPU ve kurulu oyun gerekiyor.
+Rust'ın güncel kararlı sürümü, Vulkan, DirectX 12 ya da Metal destekleyen bir GPU ve kurulu oyun gerekiyor.
 VERA20k, Windows, Linux ve macOS üzerinde oynandı.
 
 ```sh
@@ -61,7 +61,7 @@ testleri çalıştırma bilgileri için [CONTRIBUTING.md](CONTRIBUTING.md#set-up
 Kodun büyük bölümünü yönlendirdiğim yapay zekâ kodlama ajanları yazıyor. Özgün motoru
 Ghidra ile inceliyor, ardından davranışını Rust'a aktarıyor ve
 [karşılaştırma araçları](tools/native_oracle.md) ile oyun testleri kullanarak kontrol ediyoruz.
-Çalışma kurallarımız [AGENTS.md](AGENTS.md) dosyasında.
+Ajanlarım [AGENTS.md](AGENTS.md) dosyasını, katkıda bulunanlar ise [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını izler.
 
 ## Katkıda bulunma
 

@@ -7,6 +7,9 @@ description: "Build and launch the current branch's normal release game when ask
 
 Open the ordinary menu and leave a visible player session running.
 
+Outside contributors: run `cargo run --release --bin vera20k` from the checkout, as in
+CONTRIBUTING.md. The steps below are the maintainer's workflow.
+
 1. Resolve the checkout with `git rev-parse --show-toplevel`.
 2. Check for an existing `vera20k` process (PowerShell `Get-Process vera20k` or
    Unix `pgrep -x vera20k`). Report an existing game instead of duplicating it.

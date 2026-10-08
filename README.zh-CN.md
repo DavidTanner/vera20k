@@ -39,7 +39,7 @@ VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 
 ## 编译与运行
 
-你需要 Rust 1.88 或更新版本、支持 Vulkan、DirectX 12 或 Metal 的 GPU，以及已安装的原版游戏。
+你需要最新稳定版 Rust、支持 Vulkan、DirectX 12 或 Metal 的 GPU，以及已安装的原版游戏。
 VERA20k 已在 Windows、Linux 和 macOS 上运行游玩过。
 
 ```sh
@@ -56,8 +56,8 @@ cargo run --release --bin vera20k
 ## 我们如何开发
 
 大部分代码由我指导的 AI 编程助手编写。我们用 Ghidra 研究原版引擎，再将其行为移植到 Rust，
-通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。开发规则见
-[AGENTS.md](AGENTS.md)。
+通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。我的 AI 助手遵循
+[AGENTS.md](AGENTS.md)，贡献者请遵循 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 <!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
 ## 致中国玩家和开发者

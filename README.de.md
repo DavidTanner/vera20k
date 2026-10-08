@@ -44,7 +44,7 @@ Schlachten mit 30 Spielern und 20.000 Einheiten haben wir bisher nicht demonstri
 
 ## Kompilieren und starten
 
-Du brauchst Rust 1.88 oder neuer, eine Grafikkarte mit Vulkan, DirectX 12 oder Metal und
+Du brauchst die aktuelle stabile Rust-Version, eine Grafikkarte mit Vulkan, DirectX 12 oder Metal und
 eine installierte Version des Spiels. VERA20k wurde bereits unter Windows, Linux und macOS gespielt.
 
 ```sh
@@ -64,7 +64,7 @@ einzelnen Plattformen und zum Ausführen der Tests.
 Der Großteil des Codes wird von KI-Programmieragenten geschrieben, die ich anleite.
 Wir untersuchen die ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten
 nach Rust und prüfen es mit [Vergleichswerkzeugen](tools/native_oracle.md) und Spieltests.
-Unsere Arbeitsregeln stehen in [AGENTS.md](AGENTS.md).
+Meine Agenten folgen [AGENTS.md](AGENTS.md), Mitwirkende folgen [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Mitmachen
 

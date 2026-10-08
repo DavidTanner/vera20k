@@ -43,7 +43,7 @@ med 30 spelare och 20 000 enheter.
 
 ## Bygg och kör
 
-Du behöver Rust 1.88 eller senare, ett grafikkort med Vulkan, DirectX 12 eller Metal,
+Du behöver den senaste stabila versionen av Rust, ett grafikkort med Vulkan, DirectX 12 eller Metal,
 och spelet installerat. VERA20k har spelats på Windows, Linux och macOS.
 
 ```sh
@@ -61,8 +61,8 @@ Använd `--release` när du spelar; debugbyggen är för långsamma. Se
 
 Större delen av koden skrivs av AI-agenter som jag leder. Vi använder Ghidra för att studera
 originalmotorn, portar sedan dess beteende till Rust och kontrollerar det med
-[jämförelseverktyg](tools/native_oracle.md) och speltester. Arbetsreglerna finns i
-[AGENTS.md](AGENTS.md).
+[jämförelseverktyg](tools/native_oracle.md) och speltester. Mina agenter följer
+[AGENTS.md](AGENTS.md). Bidragsgivare följer [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Bidra
 
