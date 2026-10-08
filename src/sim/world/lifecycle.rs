@@ -3684,7 +3684,6 @@ impl Simulation {
         }
         if clear_airfield && let Some(ammo) = listener.aircraft_ammo.as_mut() {
             ammo.target_airfield = None;
-            ammo.target_pad = None;
         }
         if clear_refinery && let Some(miner) = listener.miner.as_mut() {
             miner.reserved_refinery = None;

@@ -558,7 +558,10 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // Rocket locomotor port: the entity-level absent rocket_state tag is removed;
 // the Rocket payload owns its fold. Restoring only that old 0 tag recovers
 // incoming 0F2CFFB842D8155E in the same test binary. Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x5451_F0CA_2072_01A9;
+// Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
+// binary (main with a hash that skips only those fields) gives this value in
+// the same test, with every tripwire above green. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x23FE_7E6E_6FE5_8561;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
