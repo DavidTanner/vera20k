@@ -150,7 +150,6 @@ fn ground_command_fixture(
             .expect("original non-Deployer component prior parses");
         rules.install_art_data(retail.rules.art().clone());
         rules.replace_animation_sequences_for_test(retail.rules.animation_sequences().clone());
-        rules.general.resolve_art_rates(&retail.fixed_art);
         rules
     } else {
         retail.rules
