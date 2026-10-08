@@ -56,7 +56,7 @@ fn world(seed: u64) -> (Simulation, RuleSet, InternedId) {
 
 pub(super) fn held_id(sim: &Simulation, owner: InternedId, category: ProductionCategory) -> u64 {
     sim.production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .unwrap()
         .object
@@ -171,7 +171,7 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
         assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .view(owner, ProductionCategory::Vehicle)
                 .is_none()
         );
@@ -211,7 +211,7 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
         );
         assert_eq!(
             sim.production
-                .factory_shadow
+                .factories
                 .view(owner, ProductionCategory::Vehicle)
                 .unwrap()
                 .progress,
@@ -237,7 +237,7 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
         let produced = held_id(&sim, owner, ProductionCategory::Vehicle);
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .test_arm_ready(owner, ProductionCategory::Vehicle)
         );
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
@@ -282,7 +282,7 @@ fn produced_infantry_retains_its_barracks_rally_until_exit_handoff() {
     let produced = held_id(&sim, owner, ProductionCategory::Infantry);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
     let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
@@ -339,7 +339,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert_eq!(child_ids.len(), 2);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
@@ -353,7 +353,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert_eq!(held_id(&sim, owner, ProductionCategory::Building), parent);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Building)
             .unwrap()
             .queue
@@ -388,7 +388,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert_constructor_words(&sim, successor, &mut expected);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Building)
             .unwrap()
             .progress,
@@ -411,7 +411,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     let spent = {
         let factory = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(owner, ProductionCategory::Vehicle)
             .unwrap();
         assert!(factory.progress > 0 && factory.progress < 54);
@@ -435,7 +435,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     assert_constructor_words(&sim, successor, &mut expected);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Vehicle)
             .unwrap()
             .progress,
@@ -444,7 +444,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     let (rate, timer) = {
         let factory = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(owner, ProductionCategory::Vehicle)
             .unwrap();
         (factory.step_rate_frames, factory.step_timer)
@@ -453,7 +453,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     assert!(rate > 1);
     let progress = |sim: &Simulation| {
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Vehicle)
             .unwrap()
             .progress
@@ -476,7 +476,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     let held = held_id(&sim, owner, ProductionCategory::Infantry);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Infantry)
     );
     // Supply an absent producer without invoking destruction's separate
@@ -502,7 +502,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     assert_eq!(held_id(&sim, owner, ProductionCategory::Infantry), held);
     let factory = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Infantry)
         .unwrap();
     assert!(factory.ready);
@@ -553,7 +553,7 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
         let spent = {
             let factory = sim
                 .production
-                .factory_shadow
+                .factories
                 .test_factory_mut(owner, ProductionCategory::Vehicle)
                 .unwrap();
             assert!(factory.progress > 0 && factory.progress < 54);
@@ -572,7 +572,7 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
         assert_eq!(sim.scenario_rng.logical_state(), rng);
         assert!(
             sim.production
-                .factory_shadow
+                .factories
                 .view(owner, ProductionCategory::Vehicle)
                 .is_none()
         );
@@ -603,7 +603,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     let held = held_id(&sim, owner, ProductionCategory::Aircraft);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Aircraft)
     );
     // This is FindFactory's absent producer branch, not a present, full pad.
@@ -621,7 +621,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     assert_eq!(held_id(&sim, owner, ProductionCategory::Aircraft), held);
     let factory = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Aircraft)
         .unwrap();
     assert!(factory.ready);
@@ -653,7 +653,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     let held = held_id(&sim, owner, ProductionCategory::Building);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
@@ -678,7 +678,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     );
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Building)
             .is_none()
     );
@@ -694,7 +694,7 @@ fn a_held_vehicle_goes_with_the_last_war_factory() {
     let child_ids = children(&sim, held);
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
     assert_eq!(sim.houses[&owner].tracking.units_for_test(), 1);
@@ -758,7 +758,7 @@ fn a_build_starts_without_money_owing_its_cost_of() {
     }
     let factory = sim
         .production
-        .factory_shadow
+        .factories
         .test_factory_mut(owner, ProductionCategory::Vehicle)
         .unwrap();
     assert_eq!(factory.balance, 675);
@@ -776,7 +776,7 @@ fn a_cancel_refunds_the_cost_of_at_cancel_time() {
     let progress = |sim: &mut Simulation| {
         let factory = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(owner, ProductionCategory::Vehicle)
             .unwrap();
         (factory.progress, factory.balance)
@@ -820,11 +820,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
         cost
     );
-    assert!(
-        sim.production
-            .factory_shadow
-            .test_arm_ready(owner, category)
-    );
+    assert!(sim.production.factories.test_arm_ready(owner, category));
     assert!(dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
@@ -842,7 +838,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert_eq!(producer_entity.dock_entered_with, Some(first));
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .building_factory(producer)
             .is_none()
     );
@@ -857,14 +853,10 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
         cost
     );
-    assert!(
-        sim.production
-            .factory_shadow
-            .test_arm_ready(owner, category)
-    );
+    assert!(sim.production.factories.test_arm_ready(owner, category));
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .test_factory_mut(owner, category)
             .unwrap()
             .balance,
@@ -889,7 +881,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
             .lifecycle
             .in_limbo
     );
-    let completed = sim.production.factory_shadow.view(owner, category).unwrap();
+    let completed = sim.production.factories.view(owner, category).unwrap();
     assert!(completed.ready);
     assert_eq!(completed.queue.len(), 1);
     let credits = sim.houses[&owner].economy.credits;
@@ -916,7 +908,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     );
     assert_eq!(sim.houses[&owner].economy.credits, credits + refund);
     assert_eq!(sim.houses[&owner].economy.spent_credits, spent);
-    let factory = sim.production.factory_shadow.view(owner, category).unwrap();
+    let factory = sim.production.factories.view(owner, category).unwrap();
     let successor = factory.object.unwrap().entity_id.unwrap();
     assert!(successor > refused);
     assert_eq!(factory.progress, 0);
@@ -944,7 +936,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert_eq!(producer_entity.dock_entered_with, Some(first));
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .building_factory(producer)
             .is_none()
     );

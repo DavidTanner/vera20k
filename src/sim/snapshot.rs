@@ -2021,7 +2021,7 @@ fn restore_object_references(
         )?;
     }
 
-    for factory in sim.production.factory_shadow.iter_insertion_ordered() {
+    for factory in sim.production.factories.iter_insertion_ordered() {
         if let Some(object_id) = factory.object.as_ref().and_then(|object| object.entity_id) {
             require_resolved_reference(
                 entity_ids.contains(&object_id),

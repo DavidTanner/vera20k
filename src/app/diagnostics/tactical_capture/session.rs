@@ -829,7 +829,7 @@ impl TacticalCaptureSession {
             .collect();
         let owner_id = sim.interner.get(&owner).unwrap_or_default();
         let mut queued_production = Vec::new();
-        for factory in sim.production.factory_shadow.iter_insertion_ordered() {
+        for factory in sim.production.factories.iter_insertion_ordered() {
             if factory.owner != owner_id {
                 continue;
             }

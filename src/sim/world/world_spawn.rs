@@ -2243,7 +2243,7 @@ impl Simulation {
         // P5d: the registry is the queue-of-record. Busy = an active Building build held OR
         // a non-empty Building tail.
         self.production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Building)
             .is_some_and(|v| v.object.is_some() || !v.queue.is_empty())
     }

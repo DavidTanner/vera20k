@@ -356,23 +356,19 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     );
     let held_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner_id, category)
         .unwrap()
         .object
         .unwrap()
         .entity_id
         .expect("enqueue constructs the held GAPOWR identity");
-    assert!(
-        sim.production
-            .factory_shadow
-            .test_arm_ready(owner_id, category)
-    );
+    assert!(sim.production.factories.test_arm_ready(owner_id, category));
     // The factory owns completion accounting and its ready projection.
     crate::sim::production::publish_production_changes(&mut sim, &rules);
     let completed = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner_id, category)
         .unwrap()
         .object
@@ -442,7 +438,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(ready_buildings_for_owner(&sim, &rules, OWNER).len(), 1);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner_id, category)
             .unwrap()
             .object

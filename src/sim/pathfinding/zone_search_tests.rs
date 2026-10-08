@@ -1052,7 +1052,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         .get_mut(factory)
         .unwrap()
         .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(5, 0)));
-    let started = sim.production.factory_shadow.test_enqueue_kernel(
+    let started = sim.production.factories.test_enqueue_kernel(
         owner,
         ProductionCategory::Vehicle,
         produced_type,
@@ -1070,7 +1070,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
     .expect("production fixture constructs at StartProduction");
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
 
@@ -1132,7 +1132,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         "the rally route must actually traverse the high-bridge deck"
     );
     assert_eq!(route.last().copied(), Some((5, 0)));
-    assert!(sim.production.factory_shadow.is_empty());
+    assert!(sim.production.factories.is_empty());
     assert_eq!(
         sim.substrate.entities.get(factory).unwrap().rally_cell(),
         Some((5, 0))

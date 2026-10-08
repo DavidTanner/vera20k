@@ -696,7 +696,7 @@ fn retail_walk_reads_each_object() {
     // A factory builds the limbo tank: running, it is a Hard house's
     // candidate; idle, held or finished it is not, nor for a Normal house.
     let htnk = sim.interner.intern("HTNK");
-    let factories = &mut sim.production.factory_shadow;
+    let factories = &mut sim.production.factories;
     assert!(factories.test_enqueue_kernel(russians, ProductionCategory::Vehicle, htnk, 1, 900));
     let factory = factories
         .test_factory_mut(russians, ProductionCategory::Vehicle)
@@ -706,7 +706,7 @@ fn retail_walk_reads_each_object() {
     let set = |sim: &mut Simulation, rate, suspended, manual| {
         let factory = sim
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(russians, ProductionCategory::Vehicle)
             .unwrap();
         (factory.step_rate_frames, factory.suspended, factory.manual) = (rate, suspended, manual);

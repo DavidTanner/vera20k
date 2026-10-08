@@ -1813,7 +1813,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
     sim.advance_tick(&commands, Some(&rules), None, Some(&registry), TICK_MS);
     let head = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Infantry)
         .expect("real production event starts the first GI");
     let first = head.object.unwrap().entity_id.unwrap();
@@ -1901,7 +1901,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
         let log = radio::take_transmit_log();
         if let Some(view) = sim
             .production
-            .factory_shadow
+            .factories
             .view(owner, ProductionCategory::Infantry)
             && let Some(held) = view.object.and_then(|object| object.entity_id)
         {
@@ -1986,7 +1986,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                     // factory during this PLACE, before any later Strip visit.
                     assert!(
                         sim.production
-                            .factory_shadow
+                            .factories
                             .view(owner, ProductionCategory::Infantry)
                             .is_none()
                     );
@@ -2146,7 +2146,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
     }
     let factory = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Infantry);
     assert!(factory.is_none_or(|view| view.object.is_none() && view.queue.is_empty()));
     assert!(sim.pending_command_snapshot().is_empty());

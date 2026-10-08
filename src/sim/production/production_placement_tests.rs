@@ -530,19 +530,15 @@ fn ready_building(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &
         .map_or(0, |object| object.cost.max(0));
     let started = sim
         .production
-        .factory_shadow
+        .factories
         .test_enqueue_kernel(owner_id, category, type_id, 0, cost);
     assert!(started, "test fixture arms one fresh factory head");
     super::construct_active_factory_fixture(sim, rules, owner_id, category, type_id)
         .expect("ready-building fixture constructs at StartProduction");
+    assert!(sim.production.factories.test_arm_ready(owner_id, category));
     assert!(
         sim.production
-            .factory_shadow
-            .test_arm_ready(owner_id, category)
-    );
-    assert!(
-        sim.production
-            .factory_shadow
+            .factories
             .account_completed_object_once(owner_id, category),
         "ready projection is already completion-accounted"
     );
@@ -605,14 +601,14 @@ fn completed_building_moves_into_ready_placement_pool() {
     );
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(americans, ProductionCategory::Building)
     );
 
     publish_production_changes(&mut sim, &rules);
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(americans, ProductionCategory::Building)
         .expect("completed building remains held by its Factory");
     assert!(held.ready);
@@ -659,7 +655,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     let built_before = sim.houses[&americans].stats.built();
     let held_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(americans, ProductionCategory::Building)
         .and_then(|view| view.object.and_then(|object| object.entity_id))
         .expect("Factory+0x58 identity exists before placement");
@@ -733,7 +729,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
     );
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(americans, ProductionCategory::Building)
             .unwrap()
             .progress,
@@ -1812,7 +1808,7 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
     let factory_before = {
         let view = overlay_sim
             .production
-            .factory_shadow
+            .factories
             .view(owner, category)
             .expect("completed wall factory");
         (
@@ -1875,7 +1871,7 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
     let factory_after = {
         let view = overlay_sim
             .production
-            .factory_shadow
+            .factories
             .view(owner, category)
             .expect("rejected placement retains completed wall factory");
         (
@@ -1938,7 +1934,7 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
     let cost = rules.object("GAWALL").unwrap().cost.max(0);
     assert!(
         !sim.production
-            .factory_shadow
+            .factories
             .test_enqueue_kernel(owner, category, type_id, 1, cost)
     );
     assert!(matches!(
@@ -1998,7 +1994,7 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, category)
             .unwrap()
             .progress,
@@ -2023,7 +2019,7 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
     let category = super::production_tech::production_category_for_object(wall);
     let held_id = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .and_then(|view| view.object)
         .filter(|object| object.type_id == wall_type)
@@ -2100,7 +2096,7 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
     assert!(successor > held_id);
     assert_eq!(
         sim.production
-            .factory_shadow
+            .factories
             .view(owner, category)
             .unwrap()
             .progress,
@@ -3081,7 +3077,7 @@ fn blocked_active_war_factory_does_not_spawn_from_second_factory() {
     );
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(americans, ProductionCategory::Vehicle)
         .unwrap()
         .object
@@ -3090,7 +3086,7 @@ fn blocked_active_war_factory_does_not_spawn_from_second_factory() {
         .unwrap();
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(americans, ProductionCategory::Vehicle)
     );
     assert!(place_production_with_overlays(
@@ -3134,7 +3130,7 @@ fn stock_war_factory_initial_exit_has_no_nearest_cell_fallback() {
     let owner = sim.interner.get("Americans").unwrap();
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Vehicle)
         .unwrap()
         .object
@@ -3143,7 +3139,7 @@ fn stock_war_factory_initial_exit_has_no_nearest_cell_fallback() {
         .unwrap();
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
     assert!(place_production_with_overlays(
@@ -3185,7 +3181,7 @@ fn stock_war_factory_clear_exitcoord_succeeds() {
     let owner = sim.interner.get("Americans").unwrap();
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Vehicle)
         .unwrap()
         .object
@@ -3194,7 +3190,7 @@ fn stock_war_factory_clear_exitcoord_succeeds() {
         .unwrap();
     assert!(
         sim.production
-            .factory_shadow
+            .factories
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
     assert!(place_production_with_overlays(
@@ -3698,7 +3694,7 @@ fn stock_infantry_fallback_unit_ready_uses_producer_getcoords() {
     let category = ProductionCategory::Infantry;
     let held = sim
         .production
-        .factory_shadow
+        .factories
         .view(owner, category)
         .unwrap()
         .object
@@ -3710,11 +3706,7 @@ fn stock_infantry_fallback_unit_ready_uses_producer_getcoords() {
         sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
         cost
     );
-    assert!(
-        sim.production
-            .factory_shadow
-            .test_arm_ready(owner, category)
-    );
+    assert!(sim.production.factories.test_arm_ready(owner, category));
     // The focused publisher helper increments both clocks before applying
     // due PLACE, so159 ->160 reaches the measured native fallback call frame.
     // No actor/House turns or native completion cadence are asserted here.

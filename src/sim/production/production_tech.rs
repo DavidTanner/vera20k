@@ -238,7 +238,7 @@ fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
     let queued = match (owner_id, type_interned) {
         (Some(oid), Some(tid)) => sim
             .production
-            .factory_shadow
+            .factories
             .iter_insertion_ordered()
             .iter()
             .filter(|f| f.owner == oid)
@@ -271,7 +271,7 @@ fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
     let materialized_ready = match (owner_id, type_interned) {
         (Some(oid), Some(tid)) => {
             sim.production
-                .factory_shadow
+                .factories
                 .iter_insertion_ordered()
                 .iter()
                 .filter(|factory| {

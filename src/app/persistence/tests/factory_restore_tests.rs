@@ -40,12 +40,12 @@ fn factory_fixture(
     assert!(
         saved
             .production
-            .factory_shadow
+            .factories
             .test_enqueue_kernel(owner, category, type_id, 1, cost,)
     );
     saved
         .production
-        .factory_shadow
+        .factories
         .test_factory_mut(owner, category)
         .unwrap()
         .object
@@ -146,7 +146,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         let house = saved.houses.get_mut(&owner).unwrap();
         saved
             .production
-            .factory_shadow
+            .factories
             .test_factory_mut(owner, ProductionCategory::Building)
             .unwrap()
             .advance_one_step(&mut house.economy);
@@ -189,8 +189,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
             "wallet at resumed frame {frame}"
         );
         assert_eq!(
-            runtime.simulation.production.factory_shadow,
-            reference.simulation.production.factory_shadow,
+            runtime.simulation.production.factories, reference.simulation.production.factories,
             "factory at resumed frame {frame}"
         );
     }
@@ -203,7 +202,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     let factory = runtime
         .simulation
         .production
-        .factory_shadow
+        .factories
         .view(owner, ProductionCategory::Building)
         .expect("active factory retained");
     assert!(factory.progress > 5 && factory.progress < PRODUCTION_STEPS);
@@ -283,7 +282,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                 assert!(
                     !saved
                         .production
-                        .factory_shadow
+                        .factories
                         .test_enqueue_kernel(owner, category, type_id, 2, 1000)
                 );
                 saved.production.next_enqueue_order = 3;
@@ -292,12 +291,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
             | "ready-building"
             | "ready-defense"
             | "mobile-awaiting-producer" => {
-                assert!(
-                    saved
-                        .production
-                        .factory_shadow
-                        .test_arm_ready(owner, category)
-                );
+                assert!(saved.production.factories.test_arm_ready(owner, category));
                 if label != "unpublished-complete" {
                     assert!(
                         !crate::sim::production::dispatch_production_changes_for_tests(
@@ -307,7 +301,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     assert!(
                         saved
                             .production
-                            .factory_shadow
+                            .factories
                             .view(owner, category)
                             .unwrap()
                             .object
@@ -333,13 +327,13 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     .unwrap();
             }
             "empty-registry" => {
-                saved.production.factory_shadow = Default::default();
+                saved.production.factories = Default::default();
             }
             _ => unreachable!(),
         }
         let factories: Vec<Factory> = saved
             .production
-            .factory_shadow
+            .factories
             .iter_insertion_ordered()
             .into_iter()
             .cloned()
@@ -382,7 +376,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         assert_eq!(
             restored
                 .production
-                .factory_shadow
+                .factories
                 .iter_insertion_ordered()
                 .into_iter()
                 .cloned()
@@ -477,12 +471,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                 "duplicate-ready" | "early-ready" | "unaccounted-ready"
             )
         {
-            assert!(
-                saved
-                    .production
-                    .factory_shadow
-                    .test_arm_ready(owner, category)
-            );
+            assert!(saved.production.factories.test_arm_ready(owner, category));
             assert!(
                 !crate::sim::production::dispatch_production_changes_for_tests(
                     &mut saved, &rules, None
@@ -492,7 +481,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
         match label {
             "idle-owner-index" => {
                 let invalid_owner = InternedId::from_index(u32::MAX);
-                saved.production.factory_shadow.test_enqueue_kernel(
+                saved.production.factories.test_enqueue_kernel(
                     invalid_owner,
                     category,
                     parent_type,
@@ -501,7 +490,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                 );
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_factory_mut(invalid_owner, category)
                     .unwrap()
                     .object = None;
@@ -519,7 +508,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     "tail-type-index" => InternedId::from_index(u32::MAX),
                     _ => saved.interner.get("E1").unwrap(),
                 };
-                assert!(!saved.production.factory_shadow.test_enqueue_kernel(
+                assert!(!saved.production.factories.test_enqueue_kernel(
                     owner,
                     category,
                     queued_type,
@@ -530,7 +519,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "active-category" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
@@ -539,7 +528,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .type_id = saved.interner.get("E1").unwrap()
             }
             "duplicate-roots" => {
-                saved.production.factory_shadow.test_enqueue_kernel(
+                saved.production.factories.test_enqueue_kernel(
                     foreign,
                     category,
                     parent_type,
@@ -548,7 +537,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                 );
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_factory_mut(foreign, category)
                     .unwrap()
                     .object
@@ -573,7 +562,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "missing-entity" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
@@ -581,18 +570,11 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .unwrap()
                     .entity_id = Some(u64::MAX)
             }
-            "key-owner" => {
-                saved
-                    .production
-                    .factory_shadow
-                    .test_first_mut()
-                    .unwrap()
-                    .owner = foreign
-            }
+            "key-owner" => saved.production.factories.test_first_mut().unwrap().owner = foreign,
             "key-category" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .category = ProductionCategory::Infantry
@@ -600,7 +582,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "no-identity" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
@@ -611,7 +593,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "unknown-active-type" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
@@ -648,29 +630,17 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                 manager.set_for_test(state, frame, nodes, timer);
             }
             "tail-without-head" => {
-                saved.production.factory_shadow.test_enqueue_kernel(
+                saved.production.factories.test_enqueue_kernel(
                     owner,
                     category,
                     parent_type,
                     2,
                     1000,
                 );
-                saved
-                    .production
-                    .factory_shadow
-                    .test_first_mut()
-                    .unwrap()
-                    .object = None;
+                saved.production.factories.test_first_mut().unwrap().object = None;
             }
-            "ready-no-factory" => saved.production.factory_shadow = Default::default(),
-            "ready-no-head" => {
-                saved
-                    .production
-                    .factory_shadow
-                    .test_first_mut()
-                    .unwrap()
-                    .object = None
-            }
+            "ready-no-factory" => saved.production.factories = Default::default(),
+            "ready-no-head" => saved.production.factories.test_first_mut().unwrap().object = None,
             "ready-mismatch" => {
                 *saved
                     .production
@@ -698,7 +668,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "early-ready" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .progress = 1
@@ -706,7 +676,7 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
             "unaccounted-ready" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
@@ -715,14 +685,14 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .completion_accounted = false
             }
             "missing-ready" => {
-                let factory = saved.production.factory_shadow.test_first_mut().unwrap();
+                let factory = saved.production.factories.test_first_mut().unwrap();
                 factory.progress = PRODUCTION_STEPS;
                 factory.object.as_mut().unwrap().completion_accounted = true;
             }
             "early-accounting" => {
                 saved
                     .production
-                    .factory_shadow
+                    .factories
                     .test_first_mut()
                     .unwrap()
                     .object
