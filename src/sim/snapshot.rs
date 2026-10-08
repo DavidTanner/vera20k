@@ -2039,12 +2039,6 @@ fn restore_object_references(
     sim.production.retain_primary_factory_links(&entity_ids);
     sim.production.airfield_docks.cleanup_dead(&entity_ids);
 
-    // The produced-object link was validated above, so this legacy helper is
-    // intentionally a no-op for every admitted snapshot.
-    sim.production
-        .factory_shadow
-        .fixup_object_references(&entity_ids);
-
     Ok(())
 }
 

@@ -380,7 +380,6 @@ fn combat_phase_shot(
         &Default::default(),
         &requests,
         &[],
-        &[],
     );
     result
         .consequences

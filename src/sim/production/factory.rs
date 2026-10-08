@@ -20,7 +20,7 @@
 //! build-time factors), and `sim/world::Simulation` (read-only) for the inputs.
 //! NEVER on render/ui/audio/net (sim invariant #1).
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
@@ -658,21 +658,6 @@ impl FactoryRegistry {
     ) -> bool {
         self.enqueue(owner, category, type_id, enqueue_order, cost, i32::MAX)
             == EnqueueOutcome::Started
-    }
-
-    /// Apply the save/load swizzle result to the optional produced-object
-    /// pointer. An unmatched saved identity becomes null; the Factory and its
-    /// type/progress state remain intact.
-    pub(crate) fn fixup_object_references(&mut self, object_ids: &BTreeSet<u64>) {
-        for factory in self.factories.values_mut() {
-            if let Some(object) = factory.object.as_mut()
-                && object
-                    .entity_id
-                    .is_some_and(|object_id| !object_ids.contains(&object_id))
-            {
-                object.entity_id = None;
-            }
-        }
     }
 
     /// Read-only sidebar projection. Never mutates.

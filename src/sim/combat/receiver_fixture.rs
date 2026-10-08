@@ -341,7 +341,6 @@ pub(crate) fn tick_combat_with_fog(
         binary_frame,
         live_order,
         &[],
-        &[],
         radiation,
         scenario_rng,
         &mut unused_main_rng,
@@ -370,7 +369,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng(
     binary_frame: u32,
     live_order: &[u64],
     projectile_detonations: &[ProjectileDetonation],
-    wave_damage_events: &[WaveDamageEvent],
     radiation: Option<&mut crate::sim::radiation::RadiationState>,
     scenario_rng: &mut SimRng,
     main_rng: &mut SimRng,
@@ -401,7 +399,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng(
         &BTreeSet::new(),
         &BTreeSet::new(),
         projectile_detonations,
-        wave_damage_events,
         radiation,
         scenario_rng,
         main_rng,
@@ -718,7 +715,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
     fire_suppressed: &BTreeSet<u64>,
     active_wave_owners: &BTreeSet<u64>,
     projectile_detonations: &[ProjectileDetonation],
-    wave_damage_events: &[WaveDamageEvent],
     radiation: Option<&mut crate::sim::radiation::RadiationState>,
     scenario_rng: &mut SimRng,
     main_rng: &mut SimRng,
@@ -801,7 +797,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 fire_suppressed,
                 &fire_requests,
                 projectile_detonations,
-                wave_damage_events,
             );
             // The same frame's tail: the shots' bullets take their first AI
             // (an Inviso one detonates). Bullets still in flight are handed

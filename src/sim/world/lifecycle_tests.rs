@@ -5118,7 +5118,6 @@ fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
         &std::collections::BTreeSet::new(),
         &Default::default(),
         &[detonation],
-        &[],
     );
 
     assert_eq!(
@@ -5191,7 +5190,6 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         &std::collections::BTreeSet::new(),
         &Default::default(),
         &[detonation],
-        &[],
     );
 
     let victim = sim
@@ -5328,7 +5326,6 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         &std::collections::BTreeSet::new(),
         &Default::default(),
         &[detonation],
-        &[],
     );
 
     let passenger = sim

@@ -1858,7 +1858,6 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
             &BTreeSet::new(),
             &Default::default(),
             &[detonation],
-            &[],
         );
         let rng = sim.scenario_rng.state();
         (sim, result, rng)
@@ -2046,7 +2045,6 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
         &BTreeSet::new(),
         &Default::default(),
         &[detonation],
-        &[],
     );
 
     assert_eq!(

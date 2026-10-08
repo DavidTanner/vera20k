@@ -366,28 +366,6 @@ impl TilesetLookup {
         self.set_names.get(tileset_idx as usize).map(|s| s.as_str())
     }
 
-    /// Check if a tile belongs to a water tileset (impassable for ground units).
-    ///
-    /// Looks up the tileset's SetName from the theater INI and checks if it
-    /// contains "Water" (case-insensitive). This covers tilesets named
-    /// "Water", "Water Cliffs", "Water Bridge", etc.
-    pub fn is_water(&self, tile_id: u16) -> bool {
-        let idx: u16 = match self.tileset_index(tile_id) {
-            Some(i) => i,
-            None => return false,
-        };
-        if let Some(name) = self.set_names.get(idx as usize) {
-            let lower: String = name.to_ascii_lowercase();
-            lower.contains("water")
-        } else {
-            false
-        }
-    }
-
-    /// Check if a tile belongs to a cliff tileset (impassable for ground units).
-    ///
-    /// Looks up the tileset's SetName and checks for "Cliff" (case-insensitive).
-    /// Note: some cliffs are passable ramps — this is a conservative check.
     /// Number of suffix siblings for a tile_id (0 = pristine only).
     pub fn variant_count(&self, tile_id: u16) -> u8 {
         self.variant_filenames
@@ -419,19 +397,6 @@ impl TilesetLookup {
             self.variant_filenames(tile_id)
                 .get(usize::from(variant - 1))
                 .map(String::as_str)
-        }
-    }
-
-    pub fn is_cliff(&self, tile_id: u16) -> bool {
-        let idx: u16 = match self.tileset_index(tile_id) {
-            Some(i) => i,
-            None => return false,
-        };
-        if let Some(name) = self.set_names.get(idx as usize) {
-            let lower: String = name.to_ascii_lowercase();
-            lower.contains("cliff")
-        } else {
-            false
         }
     }
 

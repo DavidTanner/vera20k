@@ -475,33 +475,6 @@ fn test_theater_def_lookup() {
 }
 
 #[test]
-fn test_is_water_and_cliff() {
-    let ini_str: &str = "\
-[TileSet0000]\nSetName=Grass\nFileName=clear\nTilesInSet=2\n\n\
-[TileSet0001]\nSetName=Water\nFileName=water\nTilesInSet=3\n\n\
-[TileSet0002]\nSetName=Water Cliffs\nFileName=wcliff\nTilesInSet=2\n\n\
-[TileSet0003]\nSetName=Cliffs\nFileName=cliff\nTilesInSet=1\n";
-    let lookup: TilesetLookup = parse_tileset_ini(ini_str.as_bytes(), "tem").expect("Should parse");
-
-    // Grass (tile_ids 0-1): not water, not cliff.
-    assert!(!lookup.is_water(0));
-    assert!(!lookup.is_cliff(0));
-    // Water (tile_ids 2-4): water but not cliff.
-    assert!(lookup.is_water(2));
-    assert!(lookup.is_water(4));
-    assert!(!lookup.is_cliff(2));
-    // Water Cliffs (tile_ids 5-6): both water and cliff.
-    assert!(lookup.is_water(5));
-    assert!(lookup.is_cliff(5));
-    // Cliffs (tile_id 7): cliff but not water.
-    assert!(!lookup.is_water(7));
-    assert!(lookup.is_cliff(7));
-    // Out of range: neither.
-    assert!(!lookup.is_water(99));
-    assert!(!lookup.is_cliff(99));
-}
-
-#[test]
 fn parses_morphable_flag_per_tileset() {
     let ini = b"[TileSet0000]\n\
                 FileName=foo\n\
