@@ -763,6 +763,15 @@ impl Simulation {
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
                 // destination4C75ED, including the Infantry class effects.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
+                // `0x004C762A..0x004C7634`: a spawner's manager drops its
+                // targets, so a queued launch is cancelled and an attacking
+                // wing is recalled at the next pass.
+                crate::sim::spawn_manager::clear_all_spawn_targets(
+                    self,
+                    *entity_id,
+                    rules,
+                    overlay_registry,
+                );
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
                 // as FootAI4DAEC3 / SetDestination742587 (an active Drive's

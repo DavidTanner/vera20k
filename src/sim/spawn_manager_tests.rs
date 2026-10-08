@@ -6,9 +6,8 @@
 //! speed), the impact damage, both `Kill_All_Spawns` entry points, and the
 //! aircraft dock (`ComingHome` → `Reloading` → `ReadyDocked`).
 //!
-//! NOT covered here: the slot's `Regenerating` → `ReadyDocked` rebuild after
-//! `SpawnRegenRate`, the `Attacking` → `ComingHome` hand-off, and the
-//! update timer's positive edge.
+//! The manager's own bodies are compared step by step with the original in
+//! `spawn_manager::oracle_tests`; these tests reach them through production.
 
 #![cfg(test)]
 
@@ -2081,6 +2080,162 @@ fn queued_target_death_clears_only_the_queued_field() {
         .expect("manager");
     assert_eq!(manager.current_target, Some(TargetKind::Entity(live)));
     assert_eq!(manager.queued_target, None);
+}
+
+/// Event IDLE (Stop) runs the manager's ClearAllTargets
+/// (`0x004C762A..0x004C7634`) after its NULL Assign_Target (`0x004C75F8`): a
+/// V3 stopped between its shot and the launch drops the target its fire
+/// queued, and its missile stays docked.
+#[test]
+fn stop_cancels_a_v3s_queued_launch() {
+    let rules = make_spawner_rules();
+    let mut sim = missile_sim();
+    let v3 = sim
+        .spawn_object("V3", "Russians", 10, 10, 0, &rules)
+        .expect("spawn V3");
+    let target = sim
+        .spawn_object("FRAGILE", "Yuri", 16, 10, 0, &rules)
+        .expect("spawn FRAGILE");
+    // As after its fire: the V3 holds the target and its manager queued it.
+    let entity = sim.substrate.entities.get_mut(v3).unwrap();
+    entity.attack_target = Some(crate::sim::combat::AttackTarget::new(target));
+    entity
+        .spawn_manager
+        .as_mut()
+        .unwrap()
+        .set_target(Some(TargetKind::Entity(target)));
+
+    assert!(sim.apply_command(
+        "Russians",
+        &crate::sim::command::Command::Stop { entity_id: v3 },
+        Some(&rules)
+    ));
+    let manager = |sim: &Simulation| {
+        sim.substrate
+            .entities
+            .get(v3)
+            .and_then(|e| e.spawn_manager.clone())
+            .unwrap()
+    };
+    let stopped = manager(&sim);
+    assert_eq!(stopped.queued_target, None);
+    assert_eq!(stopped.current_target, None);
+    assert_eq!(stopped.mode, SpawnManagerMode::Idle);
+
+    for _ in 0..2 {
+        sim.substrate
+            .entities
+            .get_mut(v3)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap()
+            .update_timer = CdTimer::default();
+        spawn_manager_ai(&mut sim, &rules, v3, None);
+    }
+    assert_eq!(manager(&sim).slots[0].state, SpawnSlotState::ReadyDocked);
+}
+
+/// `TechnoClass::Assign_Target` hands a NULL target on to the SpawnManager
+/// (`0x006FCF38..0x006FCF4E`), whose SetTarget (`0x006B7B90`) drops a queued
+/// retarget while the manager keeps launching at its current target.
+#[test]
+fn a_null_target_drops_the_managers_queued_retarget() {
+    let rules = make_spawner_rules();
+    let mut sim = Simulation::new();
+    let dred = sim
+        .spawn_object("DRED", "Russians", 10, 10, 0, &rules)
+        .expect("spawn DRED");
+    let first = sim
+        .spawn_object("TARGET", "Yuri", 20, 10, 0, &rules)
+        .expect("spawn TARGET");
+    let second = sim
+        .spawn_object("TARGET", "Yuri", 22, 10, 0, &rules)
+        .expect("spawn TARGET");
+    let entity = sim.substrate.entities.get_mut(dred).unwrap();
+    entity.attack_target = Some(crate::sim::combat::AttackTarget::new(second));
+    let manager = entity.spawn_manager.as_mut().unwrap();
+    manager.current_target = Some(TargetKind::Entity(first));
+    manager.mode = SpawnManagerMode::Launching;
+    manager.set_target(Some(TargetKind::Entity(second)));
+
+    sim.assign_target_represented(dred, None, Some(&rules))
+        .expect("the DRED takes the setter");
+    let manager = sim
+        .substrate
+        .entities
+        .get(dred)
+        .and_then(|e| e.spawn_manager.as_ref())
+        .unwrap();
+    assert_eq!(manager.queued_target, None);
+    assert_eq!(manager.current_target, Some(TargetKind::Entity(first)));
+    assert_eq!(manager.mode, SpawnManagerMode::Launching);
+}
+
+/// Stop on a Carrier: ClearAllTargets drops the wing's target, so the next
+/// pass sends each attacking Hornet home (state 3 to 4, `0x006B7663`).
+#[test]
+fn stop_recalls_a_carriers_attacking_wing() {
+    let rules = make_spawner_rules();
+    let mut sim = flat_sim();
+    let carrier = sim
+        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
+        .expect("spawn CARRIER");
+    let target = sim
+        .spawn_object("TARGET", "Yuri", 30, 10, 0, &rules)
+        .expect("spawn TARGET");
+    let pass = |sim: &mut Simulation| {
+        let manager = sim
+            .substrate
+            .entities
+            .get_mut(carrier)
+            .and_then(|e| e.spawn_manager.as_mut())
+            .unwrap();
+        manager.update_timer = CdTimer::default();
+        manager.spawn_timer = CdTimer::default();
+        spawn_manager_ai(sim, &rules, carrier, None);
+    };
+    let states = |sim: &Simulation| {
+        sim.substrate
+            .entities
+            .get(carrier)
+            .and_then(|e| e.spawn_manager.as_ref())
+            .unwrap()
+            .slots
+            .iter()
+            .map(|slot| (slot.state, slot.spawn))
+            .collect::<Vec<_>>()
+    };
+    let entity = sim.substrate.entities.get_mut(carrier).unwrap();
+    entity.attack_target = Some(crate::sim::combat::AttackTarget::new(target));
+    entity
+        .spawn_manager
+        .as_mut()
+        .unwrap()
+        .set_target(Some(TargetKind::Entity(target)));
+    for _ in 0..8 {
+        pass(&mut sim);
+    }
+    assert!(
+        states(&sim)
+            .iter()
+            .all(|&(state, _)| state == SpawnSlotState::Attacking),
+        "fixture guard: the whole wing attacks: {:?}",
+        states(&sim)
+    );
+
+    assert!(sim.apply_command(
+        "Americans",
+        &crate::sim::command::Command::Stop { entity_id: carrier },
+        Some(&rules)
+    ));
+    pass(&mut sim);
+    for (state, hornet) in states(&sim) {
+        assert_eq!(state, SpawnSlotState::ComingHome);
+        let hornet = sim.substrate.entities.get(hornet.unwrap()).unwrap();
+        assert!(
+            hornet.attack_target.is_none(),
+            "the recall drops the target"
+        );
+    }
 }
 
 /// The manager re-issues `Assign_Target(CurrentTarget)` and `Queue_Mission(

@@ -500,6 +500,12 @@ pub(crate) fn represented_assign_target_admitted(
     };
 
     if requested.is_none() {
+        // `0x006FCF38..0x006FCF4E`: a NULL target goes on to the
+        // SpawnManager (`SetTarget 0x006B7B90`), which drops a queued
+        // retarget while it keeps a current target.
+        if let Some(manager) = entity.spawn_manager.as_mut() {
+            manager.set_target(None);
+        }
         entity.weapon_burst.reset();
     }
     entity.attack_target = requested.map(|target| match target {

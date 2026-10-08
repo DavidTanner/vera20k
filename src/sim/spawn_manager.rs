@@ -842,10 +842,11 @@ pub fn notify_pointer_expired(
 }
 
 /// [`clear_all_targets`] for one owner. Native callers besides the manager's
-/// own bodies: the owner's target scan and Stun, both wired; the EventClass
-/// execute of a Stop (`0x004C762A..0x004C7634`) and Fire_At_Target, not
-/// wired. The rules-less UnInit adapters (tests and fixtures only) find no
-/// `MissileSpawn=` child, so only the clear runs.
+/// own bodies: the Stop event (`0x004C7634`), Stun (`0x006FCD90`, wired for
+/// its death arm), Retaliate_And_Scan's CANT arm (`0x007098FB`) and
+/// UnitClass::Fire_At_Target's CANT case (`0x0073705E`). The rules-less
+/// UnInit adapters (tests and fixtures only) find no `MissileSpawn=` child, so
+/// only the clear runs.
 pub(crate) fn clear_all_spawn_targets(
     sim: &mut Simulation,
     owner_id: u64,
