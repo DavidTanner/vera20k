@@ -332,6 +332,14 @@ checked:
   
   Three functions were split out of bodies that had absorbed them, including one that
   `AircraftClass__Mission_Move` tail-jumps to.
+
+  These functions were disassembled offline without analysis. Memory operands got
+  references, but immediate addresses did not: `mov edx, 0xB0FD20` in FUN_0072c340 has
+  no reference, while the same instruction in FUN_0072c240 has one. On 2026-10-08, 2,011
+  of the 3,931 immediate operands holding an image address in the 6,341 recovered
+  functions had no reference, against 1 of 1,267 in 600 other functions. So
+  `get_xrefs_to` misses those uses of globals, strings and callbacks. To find every use
+  of an address, also search the image for its 4 little-endian bytes.
 - `[2026-09-30 boundary repair]`: one of these changes.
   - A body that stopped early was completed.
   - A fragment was merged back into its function.
@@ -646,6 +654,9 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   text check. For a 4-byte flag, type the global with `apply_data_type`
   (`WinDef.h/BOOL`) first, then call `set_global` with an empty `type_name`: the check
   then reads the type the global already has (checked 2026-10-08).
+- `set_global` accepts a name another global already has: on 2026-10-08, 0xB0B468 and
+  0xB0FA70 were both `g_pSIDE1_SHP`. Search `list_globals` with `name_substring` before
+  naming a global.
 - Labels inside a struct-typed global stop showing in decompiles. Once
   g_DisplaySingleton (0x87F7E8) was typed MouseClass, CreditsClass__AI's write to
   0x884B90 read `...base_SidebarClass.fCreditsChanged = true`, not the label
