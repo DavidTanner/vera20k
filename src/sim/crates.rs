@@ -3151,10 +3151,6 @@ pub(crate) mod tests {
             1 + replay.next_range_u32_inclusive(0, 21) as u16,
         );
         replay.next_range_u32_inclusive(0, 0x7fff_fffe);
-        sim.session.local_left = 0;
-        sim.session.local_top = 0;
-        sim.session.local_width = 1;
-        sim.session.local_height = 1;
 
         let result = place_scenario_start_crates(&mut sim, &rules, &registry, 1);
 
