@@ -2,9 +2,10 @@
 
 use crate::map::scenario_menu::MapMenuEntry;
 use crate::sim::game_options::GameOptions;
-use crate::skirmish_launch::{SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions};
+use crate::skirmish_launch::{
+    LaunchCountry, LaunchStartPosition, SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions,
+};
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
 use crate::ui::shell::trackbar::TrackbarHold;
 
 use super::super::SkirmishStatics;
@@ -237,11 +238,11 @@ pub struct SkirmishShellState {
     pub selected_map_idx: usize,
     pub selected_mode_id: i32,
     pub player_name_edit: PlayerNameEditState,
-    pub player_country: SkirmishCountry,
+    pub player_country: LaunchCountry,
     pub player_country_random: bool,
     pub player_color_index: usize,
     pub player_color_claimed: bool,
-    pub player_start_position: StartPosition,
+    pub player_start_position: LaunchStartPosition,
     pub player_team: i32,
     pub starting_credits: i32,
     pub game_speed: i32,
@@ -322,13 +323,13 @@ impl Default for SkirmishShellState {
             selected_map_idx: 0,
             selected_mode_id: 1,
             player_name_edit: PlayerNameEditState::default(),
-            player_country: SkirmishCountry::default(),
+            player_country: LaunchCountry::default(),
             player_country_random: false,
             player_color_index: 0,
             player_color_claimed: true,
             // Native population selects Random when the local row owns no
             // numbered start reservation.
-            player_start_position: StartPosition::Auto,
+            player_start_position: LaunchStartPosition::Auto,
             player_team: -2,
             starting_credits: options.starting_credits,
             game_speed: options.game_speed,
@@ -341,7 +342,7 @@ impl Default for SkirmishShellState {
             crates: options.crates,
             mcv_redeploy: options.mcv_redeploy,
             zoom_enabled: true,
-            opponents: default_opponents(SkirmishCountry::Russia),
+            opponents: default_opponents(LaunchCountry::Russia),
             selected_mode_allies_allowed: true,
             selected_mode_must_ally: false,
             pressed_owner_draw_button: None,
@@ -660,7 +661,7 @@ mod tests {
     fn fresh_shell_starts_with_an_unreserved_random_position() {
         assert_eq!(
             SkirmishShellState::default().player_start_position,
-            StartPosition::Auto
+            LaunchStartPosition::Auto
         );
     }
 }

@@ -1,8 +1,9 @@
 //! Combo-box item, dropdown, scrollbar, and selection helpers for the skirmish shell.
 
 use crate::map::scenario_menu::MapMenuEntry;
-use crate::skirmish_launch::{HOUSE_COLOR_COUNT, SKIRMISH_PLAYER_SLOT_COUNT};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
+use crate::skirmish_launch::{
+    HOUSE_COLOR_COUNT, LaunchCountry, LaunchStartPosition, SKIRMISH_PLAYER_SLOT_COUNT,
+};
 
 use super::super::layout::{
     COMBO_ARROW_RESERVE_W, COMBO_DROPDOWN_ROW_H, COMBO_DROPDOWN_SCROLLBAR_BUTTON_H,
@@ -241,7 +242,7 @@ pub fn combo_items(
         .collect(),
         SkirmishComboId::Side(_) => std::iter::once(SkirmishCountryChoice::Random)
             .chain(
-                SkirmishCountry::ALL
+                LaunchCountry::ALL
                     .into_iter()
                     .map(SkirmishCountryChoice::Country),
             )
@@ -269,9 +270,9 @@ pub fn combo_items(
                 .unwrap_or(SKIRMISH_PLAYER_SLOT_COUNT)
                 .min(SKIRMISH_PLAYER_SLOT_COUNT);
             let selected = selected_start_position(state, row);
-            let mut items = vec![SkirmishComboItem::Start(StartPosition::Auto)];
+            let mut items = vec![SkirmishComboItem::Start(LaunchStartPosition::Auto)];
             for position in 0..capacity {
-                let start = StartPosition::Position(position as u8);
+                let start = LaunchStartPosition::Position(position as u8);
                 if selected == Some(start) || !start_position_taken_by_other_row(state, row, start)
                 {
                     items.push(SkirmishComboItem::Start(start));
@@ -398,7 +399,7 @@ pub fn combo_enabled(
     }
 }
 
-fn selected_start_position(state: &SkirmishShellState, row: usize) -> Option<StartPosition> {
+fn selected_start_position(state: &SkirmishShellState, row: usize) -> Option<LaunchStartPosition> {
     if row == 0 {
         Some(state.player_start_position)
     } else {
@@ -412,7 +413,7 @@ fn selected_start_position(state: &SkirmishShellState, row: usize) -> Option<Sta
 fn start_position_taken_by_other_row(
     state: &SkirmishShellState,
     row: usize,
-    start: StartPosition,
+    start: LaunchStartPosition,
 ) -> bool {
     if state.player_start_position == start && row != 0 {
         return true;

@@ -10,8 +10,8 @@ use crate::render::batch::SpriteInstance;
 use crate::render::bit_font::BitFont;
 use crate::render::shell_paint::{self, PaintLabel};
 use crate::render::shell_text::{self, ShellAlign, ShellTextDraw, TextRect};
+use crate::skirmish_launch::{LaunchCountry, LaunchStartPosition};
 use crate::skirmish_modes::mode_by_id;
-use crate::ui::main_menu::SkirmishCountry;
 use crate::ui::shell::modal::BodyOkLayout;
 use crate::ui::shell::static_reveal::StaticPaint;
 use crate::ui::shell::trackbar::value_text_rect;
@@ -85,10 +85,8 @@ pub(super) fn combo_item_label(state: &AppState, item: SkirmishComboItem) -> Str
         }
         SkirmishComboItem::Color(_) => String::new(),
         SkirmishComboItem::Start(start) => match start {
-            crate::ui::main_menu::StartPosition::Auto => {
-                localized_label(state, "GUI:RandomAsSymbols", "Random")
-            }
-            crate::ui::main_menu::StartPosition::Position(idx) => (idx + 1).to_string(),
+            LaunchStartPosition::Auto => localized_label(state, "GUI:RandomAsSymbols", "Random"),
+            LaunchStartPosition::Position(idx) => (idx + 1).to_string(),
         },
         SkirmishComboItem::Team(team) => team_label(state, team),
     }
@@ -97,7 +95,7 @@ pub(super) fn combo_item_label(state: &AppState, item: SkirmishComboItem) -> Str
 pub(super) fn country_choice_label(
     state: &AppState,
     random: bool,
-    country: SkirmishCountry,
+    country: LaunchCountry,
 ) -> String {
     if random {
         localized_label(state, "GUI:RandomAsSymbols", "Random")
@@ -577,7 +575,11 @@ pub(super) fn build_shell_text_draws(
         ("GUI:Players", "Players", layout.column_labels.players),
         ("GUI:Side", "Side", layout.column_labels.side),
         ("GUI:Color", "Color", layout.column_labels.color),
-        ("GUI:StartPosition", "Start", layout.column_labels.start),
+        (
+            "GUI:LaunchStartPosition",
+            "Start",
+            layout.column_labels.start,
+        ),
         ("GUI:Team", "Team", layout.column_labels.team),
     ] {
         let label = localized_label(state, key, fallback);

@@ -7,39 +7,19 @@ use crate::skirmish_launch::{
     SkirmishAiSlot, SkirmishLaunchMode, SkirmishLaunchSession, SkirmishLocalSlot,
 };
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
 
 use super::SkirmishShellState;
 
-/// Map the menu country selection onto a launch country. When the slot is set
-/// to Random this still returns the currently-shown menu country as a
-/// placeholder; the caller flags the slot via `country_random` so the concrete
-/// country is drawn later on the app-owned front-end Scenario cursor.
-fn launch_country_from_menu(country: SkirmishCountry) -> LaunchCountry {
-    match country {
-        SkirmishCountry::America => LaunchCountry::America,
-        SkirmishCountry::Korea => LaunchCountry::Korea,
-        SkirmishCountry::France => LaunchCountry::France,
-        SkirmishCountry::Germany => LaunchCountry::Germany,
-        SkirmishCountry::GreatBritain => LaunchCountry::GreatBritain,
-        SkirmishCountry::Libya => LaunchCountry::Libya,
-        SkirmishCountry::Iraq => LaunchCountry::Iraq,
-        SkirmishCountry::Cuba => LaunchCountry::Cuba,
-        SkirmishCountry::Russia => LaunchCountry::Russia,
-        SkirmishCountry::Yuri => LaunchCountry::Yuri,
-    }
-}
-
 fn launch_start_position(
     slot: usize,
-    start_position: StartPosition,
+    start_position: LaunchStartPosition,
 ) -> Result<LaunchStartPosition, LaunchValidationError> {
     match start_position {
-        StartPosition::Auto => Ok(LaunchStartPosition::Auto),
-        StartPosition::Position(position) if position < SKIRMISH_PLAYER_SLOT_COUNT as u8 => {
+        LaunchStartPosition::Auto => Ok(LaunchStartPosition::Auto),
+        LaunchStartPosition::Position(position) if position < SKIRMISH_PLAYER_SLOT_COUNT as u8 => {
             Ok(LaunchStartPosition::Position(position))
         }
-        StartPosition::Position(position) => {
+        LaunchStartPosition::Position(position) => {
             Err(LaunchValidationError::InvalidStartPosition { slot, position })
         }
     }
@@ -116,7 +96,7 @@ pub fn pack_launch_session_without_start_validation(
         })?;
 
     let local = SkirmishLocalSlot {
-        country: launch_country_from_menu(state.player_country),
+        country: state.player_country,
         country_random: state.player_country_random,
         color_index: launch_color_index(0, state.player_color_index)?,
         color_random: !state.player_color_claimed,
@@ -150,7 +130,7 @@ pub fn pack_launch_session_without_start_validation(
         };
         let slot = idx + 1;
         opponents.push(SkirmishAiSlot {
-            country: launch_country_from_menu(opponent.country),
+            country: opponent.country,
             country_random: opponent.country_random,
             color_index: launch_color_index(slot, opponent.color_index)?,
             color_random: !opponent.color_claimed,

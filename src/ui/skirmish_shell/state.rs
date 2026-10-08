@@ -52,8 +52,7 @@ pub use trackbars::{
     handle_option_mouse_wheel, trackbar_visual_value,
 };
 
-use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT};
-use crate::ui::main_menu::{SkirmishCountry, StartPosition};
+use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT, LaunchCountry, LaunchStartPosition};
 
 use self::player_name::inactive_ai_team_default;
 #[cfg(test)]
@@ -97,7 +96,7 @@ pub enum SkirmishComboId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkirmishCountryChoice {
     Random,
-    Country(SkirmishCountry),
+    Country(LaunchCountry),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +105,7 @@ pub enum SkirmishComboItem {
     Country(SkirmishCountryChoice),
     ColorSentinel(i32),
     Color(usize),
-    Start(StartPosition),
+    Start(LaunchStartPosition),
     Team(i32),
 }
 
@@ -229,11 +228,11 @@ impl SkirmishAiRowType {
 pub struct SkirmishShellOpponent {
     pub enabled: bool,
     pub row_type: SkirmishAiRowType,
-    pub country: SkirmishCountry,
+    pub country: LaunchCountry,
     pub country_random: bool,
     pub color_index: usize,
     pub color_claimed: bool,
-    pub start_position: StartPosition,
+    pub start_position: LaunchStartPosition,
     pub team: i32,
     pub difficulty: AiDifficulty,
 }
@@ -247,7 +246,7 @@ impl SkirmishShellOpponent {
         self.enabled = false;
         self.country_random = true;
         self.color_claimed = false;
-        self.start_position = StartPosition::Auto;
+        self.start_position = LaunchStartPosition::Auto;
         self.team = team_default;
     }
 }
@@ -262,15 +261,15 @@ impl SkirmishShellOpponent {
 /// opponent. When persisted slot reading is added, the per-row fallbacks must be
 /// the Easy code for row 1 and the None code for rows 2-7, mapped through the
 /// slot type-code table, not hardcoded all-None.
-fn default_opponents(first_country: SkirmishCountry) -> Vec<SkirmishShellOpponent> {
+fn default_opponents(first_country: LaunchCountry) -> Vec<SkirmishShellOpponent> {
     let countries = [
         first_country,
-        SkirmishCountry::Cuba,
-        SkirmishCountry::Libya,
-        SkirmishCountry::Iraq,
-        SkirmishCountry::America,
-        SkirmishCountry::Korea,
-        SkirmishCountry::Germany,
+        LaunchCountry::Cuba,
+        LaunchCountry::Libya,
+        LaunchCountry::Iraq,
+        LaunchCountry::America,
+        LaunchCountry::Korea,
+        LaunchCountry::Germany,
     ];
 
     countries
@@ -289,7 +288,7 @@ fn default_opponents(first_country: SkirmishCountry) -> Vec<SkirmishShellOpponen
                 country_random: false,
                 color_index: (idx + 1) % HOUSE_COLOR_COUNT,
                 color_claimed: row_type.is_active(),
-                start_position: StartPosition::Auto,
+                start_position: LaunchStartPosition::Auto,
                 team: 3,
                 difficulty: AiDifficulty::Easy,
             };
