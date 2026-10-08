@@ -33,11 +33,11 @@ mod release_tests;
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
+use crate::rules::foundation::foundation_dimensions;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::MissionTimer;
 use crate::sim::movement::locomotor::AirMovePhase;
-use crate::rules::foundation::foundation_dimensions;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -610,8 +610,9 @@ fn mission_step(
                         if let Some((px, py)) =
                             sim.substrate.entities.get(*airfield_id).and_then(|af| {
                                 let obj = sim.object_type(af.type_ref(), rules)?;
-                                let foundation =
-                                    crate::rules::foundation::foundation_dimensions(&obj.foundation);
+                                let foundation = crate::rules::foundation::foundation_dimensions(
+                                    &obj.foundation,
+                                );
                                 obj.pads.get(reserved_pad as usize).map(|pad| {
                                     crate::sim::docking::pad_geometry::pad_cell_for(
                                         (af.position.rx, af.position.ry),
@@ -717,7 +718,6 @@ fn mission_step(
             }
             // Otherwise: stay parked, do nothing.
         }
-
     }
     Some(m)
 }
@@ -778,7 +778,7 @@ fn idle_stand_in(
     // read is slot 0. UNCHECKED which predicate the native
     // idle/return-to-airfield path uses; zero stock frequency
     // either way.
-    let has_weapon = obj.is_some_and(|o| o.primary.is_some());
+    let has_weapon = obj.is_some_and(|o| o.primary().is_some());
     let airport_bound = obj.is_some_and(|o| o.airport_bound);
     let is_airborne = entity
         .locomotor
@@ -909,4 +909,3 @@ fn apply_mission_mutation(
     // timing; combat will admit once, emit the burst and commit the suffix.
     m.fire_at.is_some()
 }
-

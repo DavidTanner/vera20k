@@ -51,7 +51,7 @@ fn original_cannon_launch_motion_and_live_bridge_draw_form_one_production_chain(
     let source = &corpus["launch"];
     let source_type = &source["native_type"];
     let unit = rules.object("MTNK").unwrap();
-    let weapon = rules.weapon(unit.primary.as_deref().unwrap()).unwrap();
+    let weapon = rules.weapon(unit.primary().unwrap()).unwrap();
     let kind = rules
         .projectile(weapon.projectile.as_deref().unwrap())
         .unwrap();

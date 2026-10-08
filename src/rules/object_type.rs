@@ -440,25 +440,6 @@ pub struct ObjectType {
     pub requires_stolen_soviet_tech: bool,
     /// Requires spy infiltration of a Yuri Battle Lab to unlock.
     pub requires_stolen_third_tech: bool,
-    /// Base weapon-array slot 0 (`TechnoTypeClass+0x898`), the field gamemd
-    /// calls `Primary`. Filled from `Primary=` for an ordinary type and from
-    /// `Weapon1=` for a `TurretCount>0` type — the same storage either way, see
-    /// `ObjectType::read_weapon_arrays`. Read it as the native field, not as
-    /// "the `Primary=` key": for `[SREF]` and `[YAGGUN]` it holds the
-    /// `Weapon1=` weapon even though neither section authors a live `Primary=`.
-    pub primary: Option<String>,
-    /// Base weapon-array slot 1 (`TechnoTypeClass+0x8B4`), gamemd's `Secondary`
-    /// field. `Secondary=` or `Weapon2=`, same storage.
-    pub secondary: Option<String>,
-    /// Elite weapon-array slot 0 (`TechnoTypeClass+0xA94`), gamemd's
-    /// `ElitePrimary` field: `ElitePrimary=` or `EliteWeapon1=`. Replaces
-    /// `primary` when the unit is at Elite tier (veterancy >= 200) and this
-    /// slot names a weapon; Veteran tier (100..199) does NOT swap.
-    pub elite_primary: Option<String>,
-    /// Elite weapon-array slot 1 (`TechnoTypeClass+0xAB0`), gamemd's
-    /// `EliteSecondary` field: `EliteSecondary=` or `EliteWeapon2=`. Replaces
-    /// `secondary` at Elite tier under the same rule.
-    pub elite_secondary: Option<String>,
     /// Art.ini image reference. Defaults to the object's ID if not specified.
     /// Used to look up sprite/voxel filenames in art.ini.
     pub image: String,
@@ -1367,8 +1348,8 @@ pub struct ObjectType {
     /// The native base weapon array (`TechnoTypeClass+0x898`, stride `0x1C`,
     /// `WEAPON_SLOT_COUNT` slots). Always that long; empty slots are `None`.
     ///
-    /// **This array is the storage `primary` and `secondary` live in** —
-    /// `weapon_list[0]` *is* `primary` and `weapon_list[1]` *is* `secondary`,
+    /// **This array is the storage `Primary` and `Secondary` live in** —
+    /// slot 0 *is* [`Self::primary`] and slot 1 *is* [`Self::secondary`],
     /// because `Primary=` and `Weapon1=` write the same field in gamemd. Which
     /// INI keys fill it is decided by the mutually exclusive `TurretCount`
     /// branch in `ObjectType::read_weapon_arrays`, where the full ReadINI
@@ -1377,8 +1358,8 @@ pub struct ObjectType {
     pub weapon_list: Vec<Option<String>>,
 
     /// The native elite weapon array (`TechnoTypeClass+0xA94`, stride `0x1C`).
-    /// Same shape and same storage relationship: `elite_weapon_list[0]` is
-    /// `elite_primary`, `[1]` is `elite_secondary`.
+    /// Same shape and same storage relationship: slot 0 is
+    /// [`Self::elite_primary`], slot 1 is [`Self::elite_secondary`].
     pub elite_weapon_list: Vec<Option<String>>,
 
     /// `WeaponCount=` (`TechnoTypeClass+0x80C`, ReadINI `0x00712873`). Bounds
@@ -1789,6 +1770,54 @@ fn native_minutes_to_ticks(value: f64) -> u32 {
 }
 
 impl ObjectType {
+    /// `Weapon[index]` (`TechnoTypeClass+0x898 + index*0x1C`): the weapon in
+    /// base slot `index`, or `None` for an empty slot or an index past the
+    /// array. `TechnoTypeClass::ReadINI @ 0x007128B2` writes `Weapon1=` and
+    /// `Primary=` to the same `+0x898`, so the `TurretCount` branch is decided
+    /// once, at parse time (`read_weapon_arrays`); no reader has to
+    /// know which INI keys a type authored.
+    pub fn weapon_at(&self, index: usize) -> Option<&str> {
+        self.weapon_list.get(index).and_then(|slot| slot.as_deref())
+    }
+
+    /// `EliteWeapon[index]` (`TechnoTypeClass+0xA94 + index*0x1C`).
+    pub fn elite_weapon_at(&self, index: usize) -> Option<&str> {
+        self.elite_weapon_list
+            .get(index)
+            .and_then(|slot| slot.as_deref())
+    }
+
+    /// Base weapon-array slot 0 (`TechnoTypeClass+0x898`), the field gamemd
+    /// calls `Primary`. Filled from `Primary=` for an ordinary type and from
+    /// `Weapon1=` for a `TurretCount>0` type — the same storage either way, see
+    /// `ObjectType::read_weapon_arrays`. Read it as the native field, not as
+    /// "the `Primary=` key": for `[SREF]` and `[YAGGUN]` it holds the
+    /// `Weapon1=` weapon even though neither section authors a live `Primary=`.
+    pub fn primary(&self) -> Option<&str> {
+        self.weapon_at(WEAPON_SLOT_PRIMARY)
+    }
+
+    /// Base weapon-array slot 1 (`TechnoTypeClass+0x8B4`), gamemd's `Secondary`
+    /// field. `Secondary=` or `Weapon2=`, same storage.
+    pub fn secondary(&self) -> Option<&str> {
+        self.weapon_at(WEAPON_SLOT_SECONDARY)
+    }
+
+    /// Elite weapon-array slot 0 (`TechnoTypeClass+0xA94`), gamemd's
+    /// `ElitePrimary` field: `ElitePrimary=` or `EliteWeapon1=`. Replaces
+    /// [`Self::primary`] when the unit is at Elite tier (veterancy >= 200) and
+    /// this slot names a weapon; Veteran tier (100..199) does NOT swap.
+    pub fn elite_primary(&self) -> Option<&str> {
+        self.elite_weapon_at(WEAPON_SLOT_PRIMARY)
+    }
+
+    /// Elite weapon-array slot 1 (`TechnoTypeClass+0xAB0`), gamemd's
+    /// `EliteSecondary` field: `EliteSecondary=` or `EliteWeapon2=`. Replaces
+    /// [`Self::secondary`] at Elite tier under the same rule.
+    pub fn elite_secondary(&self) -> Option<&str> {
+        self.elite_weapon_at(WEAPON_SLOT_SECONDARY)
+    }
+
     /// BuildingType+ED8 is initialized to zero at45DEE6 and has no active-YR
     /// reader/write override. Construction449AFE and Selling449DAA/449DE9
     /// use this raw byte, shifted8, to reset FacingClass's two direction words.
@@ -2191,10 +2220,6 @@ impl ObjectType {
             requires_stolen_allied_tech: section.read_bool("RequiresStolenAlliedTech", false),
             requires_stolen_soviet_tech: section.read_bool("RequiresStolenSovietTech", false),
             requires_stolen_third_tech: section.read_bool("RequiresStolenThirdTech", false),
-            primary: weapon_list[WEAPON_SLOT_PRIMARY].clone(),
-            secondary: weapon_list[WEAPON_SLOT_SECONDARY].clone(),
-            elite_primary: elite_weapon_list[WEAPON_SLOT_PRIMARY].clone(),
-            elite_secondary: elite_weapon_list[WEAPON_SLOT_SECONDARY].clone(),
             image: section.read_string("Image", id, 0x19),
             power: section.read_int("Power", 0),
             extra_power: section.read_int("ExtraPower", 0),
@@ -3131,8 +3156,8 @@ mod tests {
         assert_eq!(obj.required_houses, vec!["Americans"]);
         assert!(obj.allowed_to_start_in_multiplayer);
         assert_eq!(obj.prerequisite, vec!["GAWEAP"]);
-        assert_eq!(obj.primary, Some("105mm".to_string()));
-        assert_eq!(obj.secondary, None);
+        assert_eq!(obj.primary(), Some("105mm"));
+        assert_eq!(obj.secondary(), None);
         assert_eq!(obj.image, "MTNK"); // Defaults to ID when Image= absent.
         assert_eq!(obj.build_cat, None);
         assert_eq!(obj.adjacent, 3);
@@ -3211,7 +3236,7 @@ mod tests {
             ObjectCategory::Infantry,
         );
         assert!(obj.prevent_attack_move);
-        assert_eq!(obj.primary.as_deref(), Some("DefuseKit"));
+        assert_eq!(obj.primary(), Some("DefuseKit"));
 
         // Absent key defaults to false — an ordinary tank still attack-moves.
         let none_ini: IniFile = IniFile::from_str("[MTNK]\nName=Grizzly\nPrimary=90mm\n");
@@ -3414,7 +3439,7 @@ mod tests {
         assert!(obj.owner.is_empty());
         assert!(obj.required_houses.is_empty());
         assert!(obj.prerequisite.is_empty());
-        assert_eq!(obj.primary, None);
+        assert_eq!(obj.primary(), None);
         assert_eq!(obj.image, "BARE");
         assert_eq!(obj.power, 0);
         assert_eq!(obj.foundation, "1x1");
@@ -4032,9 +4057,9 @@ mod tests {
         assert!(obj.weapon_list[3..].iter().all(Option::is_none));
         assert!(obj.elite_weapon_list.iter().all(Option::is_none));
         // Slots 0 and 1 ARE the `Primary`/`Secondary` fields.
-        assert_eq!(obj.primary.as_deref(), Some("Missiles"));
-        assert_eq!(obj.secondary.as_deref(), Some("FlakGun"));
-        assert_eq!(obj.elite_primary, None);
+        assert_eq!(obj.primary(), Some("Missiles"));
+        assert_eq!(obj.secondary(), Some("FlakGun"));
+        assert_eq!(obj.elite_primary(), None);
     }
 
     /// `Primary=` and `Weapon1=` are the same storage in gamemd, so whichever
@@ -4067,32 +4092,31 @@ mod tests {
         // Prism Tank: `Weapon1=` IS the `Primary` field. `WeaponCount=1` stops
         // the loop, so `Weapon2=` never reaches slot 1.
         let sref = obj("SREF");
-        assert_eq!(sref.primary.as_deref(), Some("Comet"));
-        assert_eq!(sref.elite_primary.as_deref(), Some("SuperComet"));
-        assert_eq!(sref.secondary, None);
-        assert_eq!(sref.weapon_list[WEAPON_SLOT_PRIMARY], sref.primary);
+        assert_eq!(sref.primary(), Some("Comet"));
+        assert_eq!(sref.elite_primary(), Some("SuperComet"));
+        assert_eq!(sref.secondary(), None);
 
         // Gattling Cannon: both slots filled, including the elite array.
         let yaggun = obj("YAGGUN");
-        assert_eq!(yaggun.primary.as_deref(), Some("AGGattling"));
-        assert_eq!(yaggun.secondary.as_deref(), Some("AAGattCann"));
-        assert_eq!(yaggun.elite_secondary.as_deref(), Some("AAGattlingE"));
+        assert_eq!(yaggun.primary(), Some("AGGattling"));
+        assert_eq!(yaggun.secondary(), Some("AAGattCann"));
+        assert_eq!(yaggun.elite_secondary(), Some("AAGattlingE"));
 
         // No turret: the `Primary=` block runs and `Weapon1=` is never read.
         let mtnk = obj("MTNK");
-        assert_eq!(mtnk.primary.as_deref(), Some("105mm"));
-        assert_eq!(mtnk.secondary.as_deref(), Some("MachGun"));
+        assert_eq!(mtnk.primary(), Some("105mm"));
+        assert_eq!(mtnk.secondary(), Some("MachGun"));
         assert!(mtnk.weapon_list[2..].iter().all(Option::is_none));
 
         // `ClearAllWeapons=` skips the whole `Primary=` block (`0x007129A5`).
         let wiped = obj("WIPED");
-        assert_eq!(wiped.primary, None);
-        assert_eq!(wiped.secondary, None);
+        assert_eq!(wiped.primary(), None);
+        assert_eq!(wiped.secondary(), None);
 
         // `WeaponCount <= 0` skips the loop AND the `Primary=` block
         // (`0x007128C8` jumps to `0x00712A8F`).
         let noslots = obj("NOSLOTS");
-        assert_eq!(noslots.primary, None);
+        assert_eq!(noslots.primary(), None);
         assert!(noslots.weapon_list.iter().all(Option::is_none));
     }
 
@@ -4186,10 +4210,10 @@ mod tests {
         );
         let section: &IniSection = ini.section("GGI").unwrap();
         let obj = ObjectType::from_ini_section("GGI", section, ObjectCategory::Infantry);
-        assert_eq!(obj.primary.as_deref(), Some("M60"));
-        assert_eq!(obj.secondary.as_deref(), Some("MissileLauncher"));
-        assert_eq!(obj.elite_primary.as_deref(), Some("M60E"));
-        assert_eq!(obj.elite_secondary.as_deref(), Some("MissileLauncherE"));
+        assert_eq!(obj.primary(), Some("M60"));
+        assert_eq!(obj.secondary(), Some("MissileLauncher"));
+        assert_eq!(obj.elite_primary(), Some("M60E"));
+        assert_eq!(obj.elite_secondary(), Some("MissileLauncherE"));
     }
 
     #[test]
@@ -4197,8 +4221,8 @@ mod tests {
         let ini: IniFile = IniFile::from_str("[E1]\nPrimary=M60\n");
         let section: &IniSection = ini.section("E1").unwrap();
         let obj = ObjectType::from_ini_section("E1", section, ObjectCategory::Infantry);
-        assert_eq!(obj.elite_primary, None);
-        assert_eq!(obj.elite_secondary, None);
+        assert_eq!(obj.elite_primary(), None);
+        assert_eq!(obj.elite_secondary(), None);
     }
 
     #[test]

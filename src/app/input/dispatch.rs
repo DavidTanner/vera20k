@@ -32,9 +32,9 @@ use crate::app::presentation::sidebar_render::current_sidebar_view;
 use crate::app::types::OrderMode;
 use crate::audio::events::GameSoundEvent;
 use crate::map::entities::EntityCategory;
-use crate::ui::sidebar::{SidebarAction, SidebarTab};
 use crate::sim::command::Command;
 use crate::sim::selection::SelectAction;
+use crate::ui::sidebar::{SidebarAction, SidebarTab};
 
 /// Click radius for single-click selection (pixels in world space).
 pub(crate) const CLICK_SELECT_RADIUS: f32 = 30.0;
@@ -2203,7 +2203,7 @@ fn insert_selected_id(
         let type_id = sim.interner.resolve(entity.type_ref());
         rules
             .and_then(|rules| rules.object(type_id))
-            .and_then(|object| object.primary.as_deref())
+            .and_then(|object| object.primary())
             .and_then(|weapon_id| rules.and_then(|rules| rules.weapon(weapon_id)))
             .is_some_and(|weapon| weapon.damage > 0)
     });

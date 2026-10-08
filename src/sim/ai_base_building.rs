@@ -884,7 +884,7 @@ fn node_may_replan(
         return true;
     }
     // `TechnoTypeClass::GetWeapon(0) @ 0x007177C0`: the Primary slot.
-    if ty.primary.is_some() {
+    if ty.primary().is_some() {
         return true;
     }
     if ty.wall {

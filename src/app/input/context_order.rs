@@ -384,7 +384,7 @@ const NO_WEAPON_NAMES: [&str; 2] = ["none", "<none>"];
 /// gamemd-derived: `TechnoTypeClass::Can_Attack_Move @ 0x00711E90` (vtable
 /// `+0xA4`) — `Primary(+0x898) != NULL && PreventAttackMove(+0x6C8) == 0`.
 /// Native reads the raw slot-0 *field*, not `GetWeapon`, so the elite tier does
-/// not apply here and `obj.primary` is the exact read: `+0x898` is the storage
+/// not apply here and `obj.primary()` is the exact read: `+0x898` is the storage
 /// `Weapon1=` writes as well (`TechnoTypeClass::ReadINI @ 0x0071294A`, cursor
 /// seeded at `0x007128D6`), which `ObjectType::read_weapon_arrays` reproduces.
 /// That is what lets a Prism Tank (`[SREF]`, whose `Primary=Comet` is commented
@@ -427,7 +427,7 @@ fn entity_can_attack_move(
     if obj.prevent_attack_move {
         return false;
     }
-    obj.primary.as_deref().is_some_and(|primary| {
+    obj.primary().is_some_and(|primary| {
         let primary = primary.trim();
         !primary.is_empty()
             && !NO_WEAPON_NAMES

@@ -936,7 +936,7 @@ fn retail_defence_guards_attacks_and_returns(
         let rules = &scenario.runtime.resources.rules;
         let weapon = rules
             .object(kind)
-            .and_then(|obj| obj.primary.clone())
+            .and_then(|obj| obj.primary().map(str::to_owned))
             .unwrap();
         let spec = rules.weapon(&weapon).unwrap();
         assert_eq!((spec.rof, spec.range_leptons), (26, 1408), "{weapon}");
