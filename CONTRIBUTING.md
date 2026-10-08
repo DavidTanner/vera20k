@@ -50,10 +50,6 @@ follow this file and the issue. These rules matter:
 2. **One owner per piece of state.** Extend the existing owner; delete the old path you replace.
 3. **Deterministic simulation.** Same inputs, same result on every OS and CPU. Use `SimFixed`
    in `src/sim/`, and keep random draws and same-frame effects in the original's order.
-4. **AI tools are welcome.** Say in the PR which parts they wrote, and be ready to answer
-   questions about the change in review. Coding agents such as Codex and Claude Code load
-   `AGENTS.md` or `CLAUDE.md` automatically; their opening lines tell your agent to follow
-   this file and the issue instead.
 
 ## Evidence
 
@@ -62,7 +58,7 @@ saw in the original game. For gameplay changes, add a test. You can open the PR 
 without a critic review, manual play or a comparison with the original game running. The
 maintainer supplies native evidence for starter issues and can run comparisons during review.
 If you do build a native comparison, commit only the harness and the corpus a test reads, with
-its meta sidecar. Test results, captures and logs go in the PR description.
+its meta sidecar.
 
 ## Review and bugs
 
