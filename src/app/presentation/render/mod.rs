@@ -263,7 +263,6 @@ pub(crate) fn render_game(
             overlay_render_z: &world.overlay_render_z,
             bridge_shadows: &world.bridge_body_shadow,
             object_layers: &world.object_layers,
-            ghost_page: ui.ghost_page,
         },
     );
     Ok(GameRenderOutput {
@@ -390,8 +389,6 @@ fn upload_to_gpu(
         "placement_invalid",
         &ui.placement_invalid,
     );
-    pool.upload(&state.renderer.gpu, "placement_ghost", &ui.placement_ghost);
-    pool.upload(&state.renderer.gpu, "placement_wall_ghost", &ui.wall_ghost);
     pool.upload(
         &state.renderer.gpu,
         "factory_rally_first",

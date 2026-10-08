@@ -29,7 +29,6 @@ pub(super) struct DrawPassData<'a> {
     pub overlay_render_z: &'a [RenderZPolicy],
     pub bridge_shadows: &'a [SpriteInstance],
     pub object_layers: &'a [super::draw_plan_lowering::ObjectLayerPass; 5],
-    pub ghost_page: u8,
 }
 
 /// Create the main render pass and dispatch all draw calls in the correct order.
@@ -576,34 +575,7 @@ pub(super) fn dispatch_draw_passes(
         bracket_tex,
         "building_radius_rings",
     );
-    // Placement preview — world-space, uses world camera (zoom).
-    let ghost_tex = state
-        .match_state
-        .match_presentation
-        .sprite_atlas
-        .as_ref()
-        .and_then(|a| a.page(data.ghost_page as usize))
-        .map(|p| &p.texture);
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        ghost_tex,
-        "placement_ghost",
-    );
-    let wall_ghost_tex = state
-        .match_state
-        .match_presentation
-        .overlay_atlas
-        .as_ref()
-        .map(|a| &a.texture);
-    draw_pooled_no_depth(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
-        wall_ghost_tex,
-        "placement_wall_ghost",
-    );
+    // Placement cells — world-space, uses world camera (zoom).
     let valid_tex = state
         .match_state
         .match_presentation
