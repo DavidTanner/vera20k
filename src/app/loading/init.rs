@@ -2638,10 +2638,6 @@ pub(crate) fn load_map_from_initial(
         // Native Resize constructs a square cell-array extent of SizeW+SizeH.
         map_width: scenario_cell_extent,
         map_height: scenario_cell_extent,
-        local_left: map_data.header.local_left as u16,
-        local_top: map_data.header.local_top as u16,
-        local_width: map_data.header.local_width as u16,
-        local_height: map_data.header.local_height as u16,
         mp_start_waypoints: scenario_start_waypoints_for_load(
             &map_data,
             Some(bound_scenario_prefix.projection()),
