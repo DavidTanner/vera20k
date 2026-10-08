@@ -742,6 +742,15 @@ Receiver tools, checked on staging copies:
   made five earlier untyped calls lose their arguments once 0x5C4F30 was typed. A call
   override and a 40-byte prototype for the callee did not restore them, so that
   constructor stays without a prototype until those calls are typed.
+- Typing a callee can let the decompiler fold the vtable of an object built on the
+  stack. It then resolves a virtual call through that object to the slot's function and
+  shows a direct call. If that function has no prototype, the call loses `this` and its
+  arguments, and the object's fields keep the values stored before it. Once the
+  2026-10-08 CRT pass typed strtok and atoi, UnitClass__Read_INI (0x743270) called
+  `DynamicVectorClass<int>__SetCapacity` (0x477E10) at 0x74355F with no arguments and took
+  its local vector's Items as 0; typing 0x477E10 restored the call. After a pass, compare
+  the callers that build such objects for slot calls that became direct calls, and type
+  the functions they now reach.
 - A register `bool` that the body forwards as a whole register (`mov ebx, ecx`, later
   `push ebx`) shows its upper bytes as `in_register_` at the forward, e.g.
   `CONCAT31(in_register_00000005, fOfficial)` in ScenarioClass__Post_Map_Init
@@ -833,7 +842,10 @@ Receiver tools, checked on staging copies:
   compatible unique type and rehearse the actual write; preserve ambiguous aliases
   rather than deleting or recreating them. `validate_data_type_exists` answered false
   for existing types on 2026-10-08; test existence with `search_data_types` (`pattern=`,
-  a large `limit`, exact-name match).
+  a large `limit`, exact-name match). `get_type_size` matches names case-insensitively and
+  answers with the type it found: on 2026-10-08 `point2d` gave `Type: Point2D`, and
+  `bool`, `byte` and `uint` gave the Windows typedefs `BOOL`, `BYTE` and `UINT`. A
+  `Type:` reply confirms a name only when it repeats that name exactly.
 - `set_function_no_return` makes the decompiler end each caller's path at the call
   (`/* WARNING: Subroutine does not return */`) and remove blocks reached only after it.
   It also removes live code where the decompiler wrongly folds an error branch to
