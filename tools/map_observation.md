@@ -800,8 +800,8 @@ overrun the sample budget). Run a profile copy whose `launch.selected_map_file` 
 tracked map's absolute path.
 
 With release binary SHA-256
-`61839cc25813de3c06d7af3bda4d7038190360e5942e56aa8dd57f27aa5021dd`
-(31,951,728 bytes) and map SHA-256
+`e65fac54591a8405192a8d9198eb8a08535da3a0ba330d033f0435e51bb7f857`
+(31,948,912 bytes) and map SHA-256
 `c5b3433fc335d7e2c79367678e7ab0ae886aeb4ff4d640fb748dea85abd434ab`, the computer's
 ForceShieldSpecial is ready from step 4501 and the observer's NukeSpecial from 9001.
 The launch at 9010 alerts the computer (`superweapon/fire.rs`), which defends its first
@@ -822,8 +822,10 @@ warhead has struck under the shield and NATECH keeps its 500 health
 `55f9dd93a2cd06d6670da38845f5721b9835b5f3f574e3bc0dd64e9750881506`). The 9600-step
 run ends after the shield's 500 frames, with the four at their cell's light again
 (`13642096462844057233`,
-`442c7cb04d708ef84db95eccce94c12be2227f7be5e9e5d6c878165f63119c07`). These are Rust
-production observations: the chain's native comparisons are the
+`442c7cb04d708ef84db95eccce94c12be2227f7be5e9e5d6c878165f63119c07`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `8142462839629644773`). These are Rust production observations: the
+chain's native comparisons are the
 `tools.superweapon_oracle` `drawshp_curtain_arm`, `building_colour_word`,
 `anim_colour_word`, `building_anim_light`, `blit_pickers` and `blitters` rows, and no
 pixel equivalence with gamemd is claimed.
