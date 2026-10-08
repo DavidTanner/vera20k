@@ -709,6 +709,39 @@ production observations: the chain's native comparisons are the
 `tools.superweapon_oracle` rows named above and the `ai_*` rows, and no whole-run
 timing or pixel equivalence with gamemd is claimed.
 
+## Iron Curtain observation
+
+[`map_observation.iron-curtain.example.json`](map_observation.iron-curtain.example.json)
+starts Russia/Battle against a Yuri computer opponent (Easy) with stock rules and assets
+on an [authored map](map_observation/examples/iron_curtain.map): the Lightning Storm
+fixture with the observer's NAIRON at (46,42) and two NAPOWR in place of its GAWEAT and
+GAPOWR, and the observer's HTNK at (44,54) with an E2 at (45,55) beside it and a second
+HTNK at (44,58), outside the curtain's block. `observe_super_weapons` adds the Super
+rows: IronCurtainSpecial is granted on the first step (interned id 30, charge start 0,
+4500 frames) and is ready from step 4501. An ordinary `ForceAttack` at step 4440 sets
+the second HTNK (id 2) on the first (id 1), and an ordinary `LaunchSuperWeapon` at step
+4510 aims the curtain at (44,54). Run a profile copy whose `launch.selected_map_file` is
+the tracked map's absolute path.
+
+With release binary SHA-256
+`e4c3d1deb17ea073d26d22176eeac4fee36c4c6ba5cac35b6308e374b8b9bf06` (32,092,672 bytes)
+and map SHA-256 `5f279999b3bb2f19e157c9133f06eef65a8c161b966a6f5d3ce2db72c257ff16`, the
+first shell drops the target from 400 to 310 health at step 4451. Tick 4510 restarts the
+charge (start 4510), and the E2 dies at once (125 to 0 at step 4511: its IronCurtain
+deals it its Strength). The curtained HTNK takes no damage until step 5307, after the
+curtain's 750 frames; the shells then bring it to 220, 130 and 40, and it is gone at
+step 5504. The 5600-step run ends with state hash `16791124723229977466` and BGRA
+SHA-256 `74fb1550f11b8bb56d06604257649724358d55cd685c948f57193a818ab456ae`; a copy that
+ends at 4520 shows the invoke anim over the curtained HTNK and the E2's death (state hash
+`7965985861798852240`, BGRA SHA-256
+`174b8c4b6f929e607c5d51c483bde2a7fac6aadaa95af1726f89d87d636366c4`). The same binary ran
+the computer observation below to its recorded state hash (the computer fires at frame
+7512), and loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300
+steps (state hash `8142462839629644773`). These are Rust production observations: the
+chain's native comparisons are the `tools.superweapon_oracle` `iron_curtain_launch` and
+`curtain_overrides` rows, and no whole-run timing or pixel equivalence with gamemd is
+claimed.
+
 ## Computer Iron Curtain observation
 
 [`map_observation.ai-iron-curtain.example.json`](map_observation.ai-iron-curtain.example.json)

@@ -577,13 +577,14 @@ fn a_computer_engineer_team_attacks_the_enemy_factory() {
 }
 
 /// [`team_fixture`] with armed `HTNK` vehicles, the retail order of the first
-/// five `[SuperWeaponTypes]`, and the computer's `IRON` (Iron Curtain) and
-/// `CHRONO` (Chronosphere and Chrono Warp) at (4,4) and (4,8), each Super
-/// granted and charged; `Human` owns the power plants `PLANTA`
-/// (`Power=100`) at (18,8) and `PLANTB` (`Power=200`) at (18,13).
+/// five `[SuperWeaponTypes]`, the retail `IronCurtainDuration=750`, and the
+/// computer's `IRON` (Iron Curtain) and `CHRONO` (Chronosphere and Chrono
+/// Warp) at (4,4) and (4,8), each Super granted and charged; `Human` owns
+/// the power plants `PLANTA` (`Power=100`) at (18,8) and `PLANTB`
+/// (`Power=200`) at (18,13).
 fn super_team_fixture(script: &str) -> (Simulation, RuleSet, u64, [u64; 2], [u64; 2]) {
     let (mut sim, rules, team, members, plants) = team_fixture(
-        "[General]\nAISafeDistance=4\n\
+        "[General]\nAISafeDistance=4\n[CombatDamage]\nIronCurtainDuration=750\n\
          [VehicleTypes]\n0=HTNK\n[HTNK]\nStrength=400\nPrimary=M60\nSpeed=6\n\
          Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
          [BuildingTypes]\n0=PLANTA\n1=PLANTB\n2=IRON\n3=CHRONO\n\
@@ -665,6 +666,13 @@ fn a_computer_team_iron_curtains_itself() {
             entity.invulnerability.as_ref().map(|state| state.kind),
             Some(crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain),
             "member {member} is under the Iron Curtain"
+        );
+        assert!(
+            crate::sim::superweapon::invulnerability::is_invulnerable(
+                entity.invulnerability.as_ref(),
+                sim.session.binary_frame
+            ),
+            "member {member}'s curtain is still running"
         );
     }
     let owner = sim.interner.get("Computer").unwrap();

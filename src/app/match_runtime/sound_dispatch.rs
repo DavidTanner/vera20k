@@ -325,10 +325,8 @@ pub(super) fn dispatch_sim_sound_events(
                         eva_event,
                     }
                 });
-                // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`),
-                // 5, 6 and 8 (`0x006CD51E`), 7 (`0x006CCE3C..0x006CCE52`)
-                // and 10 (`0x006CD2B7..0x006CD2DC`): after the case's line,
-                // the queued Ready line is dropped.
+                // The player's tail ([`launch_drops_ready_line`]): after
+                // the case's line, the queued Ready line is dropped.
                 if let Some(ready) = launch_drops_ready_line(sw.kind)
                     && owner_is_local(&sim.interner, owner, local_owner_name)
                 {
@@ -346,10 +344,12 @@ pub(super) fn dispatch_sim_sound_events(
                 activated
             }
             SimSoundEvent::SuperWeaponRadarEvent { radar } => {
-                // `SuperClass::Launch` case 4 (`0x006CC4BE`, `0x006CC4D2`):
-                // a type-13 event at the source cell, then the target's, and
-                // a `NUKE` warhead's impact (`0x00467EA7`), with no
-                // local-player test; it plays nothing.
+                // A type-13 event from `SuperClass::Launch` case 1
+                // (`0x006CCF2F`), case 4 (`0x006CC4BE`, `0x006CC4D2`: the
+                // source cell, then the target's) and case 7
+                // (`0x006CCDD7`), a storm's start (`0x00539F89`) or a `NUKE`
+                // warhead's impact (`0x00467EA7`), with no local-player
+                // test; it plays nothing.
                 let _ = admit_radar(radar);
                 continue;
             }
@@ -970,8 +970,9 @@ fn base_under_attack_siren(
 }
 
 /// The Ready line `VoxClass::RemoveFromQueues @ 0x00752A40` drops after the
-/// local player's launch: the Lightning Storm's case 2 drops its own
-/// (`0x006CCDAB`, `EVA_LightningStormReady`), the Chrono Warp's case 4 the
+/// local player's launch: the Iron Curtain's case 1 drops its own
+/// (`0x006CD060`, `EVA_IronCurtainReady`), the Lightning Storm's case 2 its
+/// own (`0x006CCDAB`, `EVA_LightningStormReady`), the Chrono Warp's case 4 the
 /// Chronosphere's (`0x006CCD2D`, `EVA_ChronosphereReady`), the Psychic
 /// Dominator's case 7 its own (`0x006CCE52`, `EVA_PsychicDominatorReady`),
 /// and cases 5, 6 and 8
@@ -986,6 +987,7 @@ fn launch_drops_ready_line(
 ) -> Option<&'static str> {
     use crate::rules::superweapon_type::SuperWeaponKind as K;
     match kind {
+        K::IronCurtain => Some("EVA_IronCurtainReady"),
         K::LightningStorm => Some("EVA_LightningStormReady"),
         K::ChronoWarp => Some("EVA_ChronosphereReady"),
         K::PsychicDominator => Some("EVA_PsychicDominatorReady"),
@@ -1651,6 +1653,78 @@ mod tests {
             ),
             "{emitted:?}"
         );
+    }
+
+    /// Case 1's lines against `tools/superweapon_oracle.json`
+    /// `iron_curtain_launch`: each charged row plays
+    /// `EVA_IronCurtainActivated` (`0x006CCF21`), and the player's then drops
+    /// the queued `EVA_IronCurtainReady` (`0x006CD04A..0x006CD060`). The
+    /// mute row (`0x00A8B538`) is left out: VERA has no such byte
+    /// (`iron_curtain` RESIDUAL).
+    #[test]
+    fn iron_curtain_lines_match_native() {
+        let rules =
+            crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+                "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+                 [BuildingTypes]\n[SuperWeaponTypes]\n0=IronCurtainSpecial\n\
+                 [IronCurtainSpecial]\nType=IronCurtain\n",
+            ))
+            .unwrap();
+        let oracle: serde_json::Value =
+            serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
+                .unwrap();
+        let mut compared = 0;
+        for row in oracle["iron_curtain_launch"].as_array().unwrap() {
+            if row["mute"] == true {
+                continue;
+            }
+            let mut sim = Simulation::new();
+            let owner = sim.interner.intern(if row["player"] == true {
+                "Local"
+            } else {
+                "Remote"
+            });
+            let sw_type = sim.interner.intern("IronCurtainSpecial");
+            let launched = (row["charged"] == true).then_some(SimSoundEvent::SuperWeaponLaunched {
+                owner,
+                sw_type,
+                rx: 40,
+                ry: 40,
+            });
+            let mut output = SoundEventQueue::new();
+            dispatch_sim_sound_events(
+                launched,
+                &sim,
+                &rules,
+                Some("LOCAL"),
+                None,
+                &mut |_| true,
+                &mut output,
+            );
+            let lines: Vec<String> = output
+                .drain()
+                .into_iter()
+                .map(|event| match event {
+                    GameSoundEvent::SuperWeaponActivated {
+                        eva_event: Some(line),
+                        ..
+                    } => format!("eva {line}"),
+                    GameSoundEvent::EvaRemove { event } => format!("remove {event}"),
+                    other => panic!("{other:?}"),
+                })
+                .collect();
+            let mut native = Vec::new();
+            for event in row["events"].as_array().unwrap() {
+                match event[0].as_str().unwrap() {
+                    "eva" => native.push(format!("eva {}", event[1].as_str().unwrap())),
+                    "vox_find" => native.push(format!("remove {}", event[1].as_str().unwrap())),
+                    _ => {}
+                }
+            }
+            assert_eq!(lines, native, "{row}");
+            compared += 1;
+        }
+        assert_eq!(compared, 17);
     }
 
     /// Cases 5, 6 and 8 play nothing, but their player's launch still drops

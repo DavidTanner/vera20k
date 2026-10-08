@@ -665,11 +665,11 @@ pub enum SimSoundEvent {
         rx: u16,
         ry: u16,
     },
-    /// `CreateRadarEvent(13, cell)` from `SuperClass::Launch` case 4
-    /// (`0x006CC4BE` at the Chronosphere's source, `0x006CC4D2` at its
-    /// target), case 7 (`0x006CCDD7`), a storm's start (`0x00539F89`) or a
-    /// `NUKE` warhead's impact (`BulletClass::AI`, `0x00467EA7`), on every
-    /// client: each admits it on its own radar.
+    /// `CreateRadarEvent(13, cell)` from `SuperClass::Launch` case 1
+    /// (`0x006CCF2F`), case 4 (`0x006CC4BE` at the Chronosphere's source,
+    /// `0x006CC4D2` at its target), case 7 (`0x006CCDD7`), a storm's start
+    /// (`0x00539F89`) or a `NUKE` warhead's impact (`BulletClass::AI`,
+    /// `0x00467EA7`), on every client: each admits it on its own radar.
     SuperWeaponRadarEvent { radar: RadarEventRequest },
     /// A Lightning Storm started (`LightningStorm::Start @ 0x00539EB0`'s
     /// undeferred half) under `[General] LightningPrintText=` (`0x0053A014`;

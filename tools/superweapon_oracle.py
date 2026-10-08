@@ -21,7 +21,8 @@ src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
 nuke_lighting_read) and src/sim/superweapon/force_shield_tests.rs
 (force_shield_launch, super_fade) and src/sim/superweapon/lightning_storm_tests.rs
 (storm_start, storm_cloud, storm_pixel_heights, storm_strike, storm_process,
-radar_outage).
+radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
+(iron_curtain_launch, curtain_overrides).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -193,6 +194,16 @@ fixture machinery):
   three tries, with CreateCloudBolt, GroundStrike and Start run natively.
 - radar_outage: HouseClass::Update's outage block 0x4F8490..0x4F84D9 as a
   slice, and 0x508DF0's timer test with FreeRadar set.
+- iron_curtain_launch: Launch 0x6CC390 from its entry for a Type= 1 Super,
+  case 1 (0x6CCE64..0x6CD06F): the charge gate, the deck coordinate and the
+  invoke anim, the EVA line and its mute byte 0xA8B538, radar event 13, the
+  3x3 walk over the offset table 0xB0C038 (each cell's +0x140 choosing its
+  bridge or ground list, the Foot latch skip, +0x30 read after each call)
+  with each IronCurtain call, and the player's tail.
+- curtain_overrides: InfantryClass::IronCurtain 0x522600 and
+  FootClass::IronCurtain 0x4DEAE0: the damage call and its arguments, the
+  Organic test, the parasite's release and timer, Foot+0x6A0 and the
+  TechnoClass::IronCurtain call.
 """
 from pathlib import Path
 import math
@@ -5046,6 +5057,251 @@ def radar_outage():
                               for s, d in timers for f in frames])
 
 
+
+# ------------------------------------------------------- iron_curtain_launch
+
+TYPE_IRON_CURTAIN = 1
+IRON_CURTAIN = BASE + 0x3D0000
+IC_CELLS = IRON_CURTAIN
+IC_CELL_STRIDE = 0x200
+IC_CELL_VT = IRON_CURTAIN + 0x4000
+IC_OBJECTS = IRON_CURTAIN + 0x5000
+IC_OBJECT_STRIDE = 0x300
+IC_OBJECT_VT = IRON_CURTAIN + 0xB000
+IC_HOUSE = IRON_CURTAIN + 0xC000
+IC_ANIM_TYPE = IRON_CURTAIN + 0xD000
+IC_CELL_ARG = IRON_CURTAIN + 0xE000
+STUB_IC_CELL_COORDS = STUBS + 0xD00
+STUB_IC_CURTAIN = STUBS + 0xD10
+
+IC_TARGET = (40, 40)
+IC_DURATION = 750
+ABSTRACT_FOOT = 0x4
+IC_OFFSETS = ((0, 0), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1))
+
+
+def ic_object(index):
+    return IC_OBJECTS + IC_OBJECT_STRIDE * index
+
+
+def ic_obj(offset=(0, 0), *, bridge=False, foot=True, latch=False, unlink=False):
+    """An object in the target cell offset by `offset`, on its bridge (+0xE8)
+    or ground (+0xE4) list; `foot` sets AbstractFlags 4 (+0x14), `latch` the
+    warp latch (+0x27C), and `unlink` clears its +0x30 inside the call."""
+    return dict(offset=list(offset), bridge=bridge, foot=foot, latch=latch, unlink=unlink)
+
+
+def iron_curtain_launch_row(*, objects=(), target=IC_TARGET, bridges=(), levels=None,
+                            charged=True, player=False, mute=False, duration=IC_DURATION):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 1: case
+    1 (0x6CCE64..0x6CD06F). MapClass::operator[] 0x5657A0 answers one fixture
+    cell per coordinate: its GetCoords (vt+0x48) answers the centre raised 104
+    leptons per level (`levels`, by offset), its +0x140 carries the bridge bit
+    for the offsets in `bridges`, and its ground (+0xE4) and bridge (+0xE8)
+    lists link the row's objects, in row order, through +0x30. Each object's
+    IronCurtain (vt+0x154) is recorded."""
+    levels = levels or {}
+    emu = Emu()
+    emu.invoke(0x6CAE00)
+    emu.write32(0xB0C07C, BRIDGE_HEIGHT)
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, IC_HOUSE)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.write32(SW_TYPE + 0xB4, TYPE_IRON_CURTAIN)
+    emu.write32(RULES + 0x348, IC_ANIM_TYPE)
+    emu.write32(RULES + 0xFE8, duration)
+    emu.write32(SELECTED_SUPER, 9)
+    emu.write32(MUTE_LAUNCHES, int(mute))
+    emu.uc.mem_write(IC_CELL_ARG, struct.pack('<hh', *target))
+    cells = {}
+
+    def cell_at(looked):
+        offset = (looked[0] - target[0], looked[1] - target[1])
+        if offset not in cells:
+            this = IC_CELLS + IC_CELL_STRIDE * len(cells)
+            emu.write32(this, IC_CELL_VT)
+            emu.write32(this + 0x140, 0x100 if offset in bridges else 0)
+            cells[offset] = this
+        return cells[offset]
+
+    heads = {}
+    for index, spec in enumerate(objects):
+        this = ic_object(index)
+        emu.write32(this, IC_OBJECT_VT)
+        write8(emu, this + 0x14, ABSTRACT_FOOT if spec['foot'] else 0)
+        write8(emu, this + 0x27C, spec['latch'])
+        key = (tuple(spec['offset']), spec['bridge'])
+        if key in heads:
+            emu.write32(heads[key][-1] + 0x30, this)
+            heads[key].append(this)
+        else:
+            heads[key] = [this]
+    for (offset, bridge), listed in heads.items():
+        cell = cell_at((target[0] + offset[0], target[1] + offset[1]))
+        emu.write32(cell + (0xE8 if bridge else 0xE4), listed[0])
+
+    def lookup(e):
+        looked = read_cell(e, e.arg(0))
+        e.events.append(['cell', looked])
+        return cell_at(looked)
+
+    def coords(e):
+        out = e.arg(0)
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        offset = next(key for key, value in cells.items() if value == this)
+        x, y = target[0] + offset[0], target[1] + offset[1]
+        write_coord(e, out, [x * 256 + 128, y * 256 + 128,
+                             levels.get(offset, 0) * LEVEL_LEPTONS])
+        return out
+
+    def curtain(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        index = (this - IC_OBJECTS) // IC_OBJECT_STRIDE
+        e.events.append(['curtain', index, i32(e.arg(0)), e.arg(1) == IC_HOUSE, i32(e.arg(2))])
+        if objects[index]['unlink']:
+            e.write32(this + 0x30, 0)
+
+    def anim(e):
+        e.events.append(['anim', e.arg(0) == IC_ANIM_TYPE, read_coord(e, e.arg(1)),
+                         [i32(e.arg(n)) for n in range(2, 7)]])
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.write32(IC_CELL_VT + 0x48, STUB_IC_CELL_COORDS)
+    emu.write32(IC_OBJECT_VT + 0x154, STUB_IC_CURTAIN)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(STUB_IC_CELL_COORDS, coords, 4)
+    emu.hook(STUB_IC_CURTAIN, curtain, 0xC)
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(0x752700, lambda e: e.events.append(
+        ['eva', read_name(e, e.uc.reg_read(UC_X86_REG_ECX)), i32(e.uc.reg_read(UC_X86_REG_EDX)),
+         i32(e.arg(0))]), 4)
+    emu.hook(0x65FA70, lambda e: e.events.append(
+        ['radar_event', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         list(struct.unpack('<hh', struct.pack('<I', e.arg(0))))]), 4)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[IC_CELL_ARG, int(player)])
+    return dict(target=list(target), objects=list(objects),
+                bridges=[list(offset) for offset in bridges],
+                levels=[[list(offset), level] for offset, level in levels.items()],
+                charged=charged, player=player, mute=mute, duration=duration,
+                events=emu.events, selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def iron_curtain_launch():
+    # One object in every cell of the block, in table order, then a cell
+    # holding two Foot and a building (AddContent appends a building).
+    spread = tuple(ic_obj(offset) for offset in reversed(IC_OFFSETS))
+    rows = [iron_curtain_launch_row(objects=spread),
+            iron_curtain_launch_row(objects=spread, player=True),
+            iron_curtain_launch_row(objects=spread, charged=False, player=True),
+            iron_curtain_launch_row(objects=spread, mute=True),
+            iron_curtain_launch_row(objects=(), player=True),
+            iron_curtain_launch_row(objects=(ic_obj(), ic_obj(), ic_obj(foot=False)))]
+    # The warp latch skips a Foot only; a building's byte there is not read.
+    rows.append(iron_curtain_launch_row(objects=(
+        ic_obj(latch=True), ic_obj(), ic_obj(foot=False, latch=True), ic_obj((1, 0), latch=True))))
+    # A removal inside the call clears +0x30: the rest of that list is not
+    # visited, the next cell's is.
+    rows.append(iron_curtain_launch_row(objects=(
+        ic_obj(), ic_obj(unlink=True), ic_obj(), ic_obj((1, 0)))))
+    # A bridge cell walks its deck list (+0xE8) only; the target's bridge
+    # raises the anim.
+    on_both = (ic_obj(), ic_obj(bridge=True), ic_obj((1, 0)), ic_obj((1, 0), bridge=True),
+               ic_obj((0, 1), bridge=True))
+    rows.append(iron_curtain_launch_row(objects=on_both))
+    rows.append(iron_curtain_launch_row(objects=on_both, bridges=((0, 0),)))
+    rows.append(iron_curtain_launch_row(objects=on_both, bridges=((1, 0), (0, 1))))
+    for level in (1, 4):
+        rows.append(iron_curtain_launch_row(objects=(ic_obj(),), levels={(0, 0): level},
+                                            bridges=((0, 0),) if level == 4 else ()))
+    # The block wraps each word: a target at the map's edge.
+    rows.append(iron_curtain_launch_row(objects=(ic_obj((-1, -1)), ic_obj((1, 1))),
+                                        target=(0, 0)))
+    for duration in (0, 1, -1, 0x7FFFFFFF):
+        rows.append(iron_curtain_launch_row(objects=(ic_obj(),), duration=duration))
+    return rows
+
+
+# --------------------------------------------------------- curtain_overrides
+
+CURTAIN_OVERRIDES = BASE + 0x3E0000
+CO_TECHNO = CURTAIN_OVERRIDES
+CO_VT = CURTAIN_OVERRIDES + 0x1000
+CO_TYPE = CURTAIN_OVERRIDES + 0x2000
+CO_EATER = CURTAIN_OVERRIDES + 0x3000
+CO_PARASITE = CURTAIN_OVERRIDES + 0x4000
+CO_HOUSE = CURTAIN_OVERRIDES + 0x5000
+CO_C4 = CURTAIN_OVERRIDES + 0x6000
+STUB_CO_TYPE = STUBS + 0xD20
+STUB_CO_DAMAGE = STUBS + 0xD30
+
+CO_STRENGTH = 125
+
+
+def curtain_override_row(*, kind, organic=False, eaten=False, frame=1000, duration=IC_DURATION,
+                         strength=CO_STRENGTH, damage_result=2):
+    """InfantryClass::IronCurtain 0x522600 (`kind` 'infantry') or
+    FootClass::IronCurtain 0x4DEAE0 ('foot') on a fixture Techno: its type
+    (+0x6C0, and GetTechnoType vt+0x84) holds Strength (+0xA0) and Organic
+    (+0xD97); ReceiveDamage vt+0x16C, the parasite's ExitUnit 0x62A4A0 and
+    TechnoClass::IronCurtain 0x70E2B0 are recorded stubs. With `eaten`, the
+    Foot's eater (+0x694) holds a ParasiteClass (+0x69C). The timers each
+    writes ([start, left]; the middle word is a stale local)."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    emu.write32(RULES + 0xFA8, CO_C4)
+    emu.write32(CO_TECHNO, CO_VT)
+    emu.write32(CO_TECHNO + 0x6C0, CO_TYPE)
+    emu.write32(CO_TYPE + 0xA0, strength)
+    write8(emu, CO_TYPE + 0xD97, organic)
+    emu.write32(CO_TECHNO + 0x694, CO_EATER if eaten else 0)
+    emu.write32(CO_EATER + 0x69C, CO_PARASITE)
+    for timer in (CO_PARASITE + 0x2C, CO_TECHNO + 0x6A0):
+        write_coord(emu, timer, [-7, -7, -7])
+    emu.write32(CO_VT + 0x84, STUB_CO_TYPE)
+    emu.write32(CO_VT + 0x16C, STUB_CO_DAMAGE)
+
+    def damage(e):
+        e.events.append(['receive_damage', i32(e.read32(e.arg(0))), i32(e.arg(1)),
+                         e.arg(2) == CO_C4, e.arg(3), e.arg(4) & 0xFF, e.arg(5) & 0xFF,
+                         e.arg(6) == CO_HOUSE])
+        return damage_result
+
+    emu.hook(STUB_CO_TYPE, lambda e: CO_TYPE, 0)
+    emu.hook(STUB_CO_DAMAGE, damage, 0x1C)
+    emu.hook(0x62A4A0, lambda e: e.events.append(
+        ['exit_unit', e.uc.reg_read(UC_X86_REG_ECX) == CO_PARASITE]), 0)
+    emu.hook(0x70E2B0, lambda e: e.events.append(
+        ['techno_curtain', e.uc.reg_read(UC_X86_REG_ECX) == CO_TECHNO, i32(e.arg(0)),
+         e.arg(1) == CO_HOUSE, i32(e.arg(2))]) or 7, 0xC)
+    entry = 0x522600 if kind == 'infantry' else 0x4DEAE0
+    result = emu.invoke(entry, ecx=CO_TECHNO, args=[duration, CO_HOUSE, 0])
+    timer = lambda address: [emu.read_i32(address), emu.read_i32(address + 8)]
+    return dict(kind=kind, organic=organic, eaten=eaten, frame=frame, duration=duration,
+                strength=strength, damage_result=damage_result, events=emu.events,
+                result=i32(result), parasite_timer=timer(CO_PARASITE + 0x2C),
+                foot_timer=timer(CO_TECHNO + 0x6A0))
+
+
+def curtain_overrides():
+    rows = []
+    for strength in (125, 1, 0, 600):
+        rows.append(curtain_override_row(kind='infantry', strength=strength))
+    rows.append(curtain_override_row(kind='infantry', organic=True, eaten=True))
+    for organic in (False, True):
+        for eaten in (False, True):
+            rows.append(curtain_override_row(kind='foot', organic=organic, eaten=eaten))
+    rows.append(curtain_override_row(kind='foot', eaten=True, frame=0, duration=1))
+    rows.append(curtain_override_row(kind='foot', organic=True, strength=300))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -5090,6 +5346,8 @@ def generate():
             'storm_strike': storm_strike(),
             'storm_process': storm_process(),
             'radar_outage': radar_outage(),
+            'iron_curtain_launch': iron_curtain_launch(),
+            'curtain_overrides': curtain_overrides(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -5143,7 +5401,11 @@ if __name__ == '__main__':
                'CreateCloudBolt\'s coordinate and draw, 0x6D2120 over pixel counts, '
                'GroundStrike\'s bolt, sound, explosion, flash, damage and debris, '
                'Process\'s lists, end, countdown, cadences and scatter, and the radar '
-               'outage\'s expiry and availability test'),
+               'outage\'s expiry and availability test; the Iron Curtain\'s launch: '
+               'its gate, anim, EVA, radar event, the 3x3 walk\'s lists, skips and '
+               'IronCurtain calls and the player\'s tail, and the Infantry and Foot '
+               'IronCurtain overrides\' damage, parasite release, timers and Techno '
+               'call'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -5333,7 +5595,21 @@ if __name__ == '__main__':
                        'for 256',
                        'radar_outage: the expiry slice starts with ESI the house; 0x508DF0 '
                        'runs for PlayerPtr with Scenario+0x34A4 set and 0x656DE0 answering '
-                       'neither value, 0x656DF0 recorded'],
+                       'neither value, 0x656DF0 recorded',
+                       'iron_curtain_launch: the offset table\'s initializer 0x6CAE00 runs '
+                       'first and the bridge height 0xB0C07C holds 416; MapClass::operator[] '
+                       '0x5657A0 answers one fixture cell per coordinate (GetCoords vt+0x48 the '
+                       'centre raised 104 leptons per level, +0x140 the row\'s bridge bit, '
+                       '+0xE4/+0xE8 the row\'s lists linked through +0x30); each object\'s '
+                       'IronCurtain vt+0x154 is a recorded stub, clearing its +0x30 for an '
+                       'unlink object; the anim constructor 0x421EA0, PlayEVA 0x752700, '
+                       'CreateRadarEvent 0x65FA70 and the EVA calls 0x753250/0x752A40 are '
+                       'recorded stubs; 0xA8B538 holds the row\'s mute byte',
+                       'curtain_overrides: the fixture Techno\'s type (+0x6C0, and GetTechnoType '
+                       'vt+0x84) holds Strength (+0xA0) and Organic (+0xD97); ReceiveDamage '
+                       'vt+0x16C, ExitUnit 0x62A4A0 and TechnoClass::IronCurtain 0x70E2B0 are '
+                       'recorded stubs; the timers\' middle word, a stale local, is not '
+                       'recorded'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -5381,4 +5657,7 @@ if __name__ == '__main__':
                       'LightningStorm::Process': 0x53A6C0,
                       'pixel_height': 0x6D2120,
                       'HouseClass::Update_radar_outage': 0x4F8490,
-                      'HouseClass::radar_availability': 0x508DF0}))
+                      'HouseClass::radar_availability': 0x508DF0,
+                      'SuperClass::Launch_case1': 0x6CC390,
+                      'InfantryClass::IronCurtain': 0x522600,
+                      'FootClass::IronCurtain': 0x4DEAE0}))
