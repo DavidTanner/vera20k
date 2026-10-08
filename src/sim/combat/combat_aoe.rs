@@ -42,7 +42,6 @@ use crate::sim::terrain_object::{TerrainObjectLifecycle, TerrainObjectState};
 #[cfg(test)]
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::fixed_math::SimFixed;
-use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 use crate::util::lepton::{CELL_CENTER_LEPTON, LEPTONS_PER_LEVEL, ground_height_leptons};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
@@ -326,29 +325,6 @@ fn finalize_receiver_isolation_metadata(
         }
     }
     result
-}
-
-/// Build the caller-owned impact Z used by bridge-aware AoE call sites.
-///
-/// Generic cell-center helpers stay ground-only; verified superweapon callers
-/// add the structural-bridge deck height before entering Apply_area_damage.
-pub(crate) fn bridge_adjusted_impact_z(
-    terrain: Option<&ResolvedTerrainGrid>,
-    impact_rx: u16,
-    impact_ry: u16,
-) -> i32 {
-    let Some(cell) = terrain.and_then(|terrain| terrain.cell(impact_rx, impact_ry)) else {
-        return 0;
-    };
-
-    let mut impact_z = cell.level as i32;
-    if cell.bridge_facts.has_structural_bridge() {
-        // Authoritative deck offset = full deck height (4 levels), not a per-cell
-        // span. Same const the layer selector below compares against, so the
-        // synthesized impact Z and the layer threshold stay consistent.
-        impact_z += BRIDGE_DECK_HEIGHT_LEVELS;
-    }
-    impact_z
 }
 
 /// Apply area-of-effect damage from a warhead detonation at a specific cell.
@@ -2603,16 +2579,6 @@ mod tests {
         .hits;
 
         assert_eq!(hit_ids(&hits), vec![1]);
-    }
-
-    #[test]
-    fn bridge_adjusted_impact_z_adds_height_only_at_call_site() {
-        let (_, _, terrain, _, _, _) = bridge_layer_test_fixture();
-        assert_eq!(bridge_adjusted_impact_z(Some(&terrain), 4, 4), 0);
-        // Structural cell (5,5): ground level 0 + verified full deck height
-        // (BRIDGE_DECK_HEIGHT_LEVELS = 4).
-        assert_eq!(bridge_adjusted_impact_z(Some(&terrain), 5, 5), 4);
-        assert_eq!(bridge_adjusted_impact_z(None, 5, 5), 0);
     }
 
     #[test]

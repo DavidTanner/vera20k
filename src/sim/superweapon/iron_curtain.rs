@@ -65,7 +65,8 @@ mod tests;
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
+#[cfg(test)]
+use crate::sim::combat::EntityDamageEvent;
 use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
@@ -239,12 +240,12 @@ fn foot_iron_curtain(
     }
 }
 
-/// The overrides' ReceiveDamage (vt+0x16C): the type's Strength (`+0xA0`)
-/// as `[CombatDamage] C4Warhead=` (`Rules+0xFA8`) at distance 0, with no
-/// attacker. InfantryClass::IronCurtain (`0x00522600..0x00522632`) ignores
-/// defenses and names the launching house; FootClass's Organic arm
-/// (`0x004DEAF8..0x004DEB2B`) does neither. The shared receiver owns the
-/// death, its attribution and its announcement.
+/// The overrides' ReceiveDamage (vt+0x16C): the type's Strength as
+/// `[CombatDamage] C4Warhead=` (`Rules+0xFA8`)
+/// ([`super::strength_receiver_event`]). InfantryClass::IronCurtain
+/// (`0x00522600..0x00522632`) ignores defenses and names the launching house;
+/// FootClass's Organic arm (`0x004DEAF8..0x004DEB2B`) does neither. The
+/// shared receiver owns the death, its attribution and its announcement.
 fn receive_strength_as_c4(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -253,27 +254,16 @@ fn receive_strength_as_c4(
     house: Option<InternedId>,
     ignore_defenses: bool,
 ) {
-    let Some(strength) = sim
-        .substrate
-        .entities
-        .get(id)
-        .and_then(|entity| rules.object(sim.interner.resolve(entity.type_ref())))
-        .map(|object| object.strength)
-    else {
+    let Some(event) = super::strength_receiver_event(
+        sim,
+        rules,
+        id,
+        &rules.bridge_warheads.c4_name,
+        house,
+        ignore_defenses,
+    ) else {
         return;
     };
-    let event = EntityDamageEvent::direct_receiver(
-        id,
-        strength,
-        0,
-        RAD_NO_ATTACKER,
-        house,
-        sim.interner.intern(&rules.bridge_warheads.c4_name),
-        ReceiverCallFlags {
-            ignore_defenses,
-            arg6: false,
-        },
-    );
     #[cfg(test)]
     observe(Observed::ReceiveDamage(event));
     sim.commit_direct_damage_receiver(rules, overlay_registry, event);

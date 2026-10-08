@@ -40,7 +40,7 @@ mod infantry_terminal;
 mod jumpjet_cruise;
 #[cfg(test)]
 pub(crate) use infantry_terminal::InfantryDeathSequence;
-pub(crate) use infantry_terminal::{InfantryDeathArm, InfantryDeathPostlude, InfantryTerminal};
+pub(crate) use infantry_terminal::{InfantryDeathPostlude, InfantryTerminal};
 mod aircraft_attack;
 mod aircraft_fire_location;
 mod aircraft_move;

@@ -139,6 +139,41 @@ pub(super) fn spawn_super_anim(
     }
 }
 
+/// The direct ReceiveDamage (vt+0x16C) Launch hands an object its type's
+/// Strength (`+0xA0`) through: `warhead` at distance 0 with no source, from
+/// `house`. InfantryClass::IronCurtain (`0x00522600..0x00522632`) and case
+/// 9's walk (`0x006CD9F3..0x006CDA29`) ignore defenses and name the
+/// launching house; FootClass::IronCurtain's Organic arm
+/// (`0x004DEAF8..0x004DEB2B`) does neither. `None` for an object without a
+/// type.
+fn strength_receiver_event(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    warhead: &str,
+    house: Option<InternedId>,
+    ignore_defenses: bool,
+) -> Option<crate::sim::combat::EntityDamageEvent> {
+    let strength = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| rules.object(sim.interner.resolve(entity.type_ref())))
+        .map(|object| object.strength)?;
+    Some(crate::sim::combat::EntityDamageEvent::direct_receiver(
+        id,
+        strength,
+        0,
+        crate::sim::combat::RAD_NO_ATTACKER,
+        house,
+        sim.interner.intern(warhead),
+        crate::sim::combat::ReceiverCallFlags {
+            ignore_defenses,
+            arg6: false,
+        },
+    ))
+}
+
 /// Per-house, per-superweapon-type runtime state.
 ///
 /// Tracks charging progress, readiness, and power suspension.

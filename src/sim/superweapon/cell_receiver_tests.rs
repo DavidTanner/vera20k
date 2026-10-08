@@ -243,58 +243,18 @@ fn animated_mutation_victim_retires(explosion: bool) {
     assert!(object.animation.is_none(), "Doing owns the Infantry pose");
     assert!(object.lifecycle.cell_marked && object.in_logic_vector);
     launch_command(&mut sim, &rules, "GM", 5, 5);
-    let replacements = marked_brutes(&sim);
-    assert_eq!(replacements.len(), 1);
-    for _ in 0..120 {
-        sim.advance_tick(&[], Some(&rules), None, None, 100);
-    }
+    // InfDeath 9's admitted arm UnInits the victim inside its receiver
+    // (`0x005185F1`); no death sequence keeps a corpse.
     assert!(
-        sim.substrate.entities.get(victim).is_none(),
-        "mutation must establish a terminal disposition before the normal dying scheduler takes over"
+        sim.substrate
+            .entities
+            .get(victim)
+            .is_none_or(|object| !object.lifecycle.object_alive)
     );
     assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
     assert!(!sim.live_object_order_snapshot().contains(&victim));
-    assert_eq!(marked_brutes(&sim), replacements);
-}
-
-fn marked_brutes(sim: &Simulation) -> Vec<u64> {
-    sim.substrate
-        .entities
-        .values()
-        .filter(|entity| {
-            sim.interner.resolve(entity.type_ref()) == "BRUTE" && entity.lifecycle.cell_marked
-        })
-        .map(|entity| entity.stable_id())
-        .collect()
-}
-
-#[test]
-fn infantry_terminal_raw_mutation_retires_on_next_visit_with_or_without_art() {
-    for with_art in [false, true] {
-        let art = terminal_art(3, 3);
-        let (mut sim, rules) = fixture_with_art("", with_art.then_some(&art));
-        let victim = sim
-            .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-            .unwrap();
-        launch_command(&mut sim, &rules, "GM", 5, 5);
-        let object = sim.substrate.entities.get(victim).unwrap();
-        assert!(object.lifecycle.cell_marked && object.in_logic_vector);
-        assert_eq!(
-            object.infantry_terminal,
-            Some(crate::sim::world::InfantryTerminal::RetireNextVisit)
-        );
-        let replacements = marked_brutes(&sim);
-        assert_eq!(
-            replacements.len(),
-            1,
-            "whole replacement batch precedes retirement"
-        );
-        sim.advance_tick(&[], Some(&rules), None, None, 100);
-        assert!(sim.substrate.entities.get(victim).is_none());
-        assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
-        assert!(!sim.live_object_order_snapshot().contains(&victim));
-        assert_eq!(marked_brutes(&sim), replacements);
-    }
+    sim.advance_tick(&[], Some(&rules), None, None, 100);
+    assert!(sim.substrate.entities.get(victim).is_none());
 }
 
 #[test]
@@ -595,69 +555,7 @@ fn infantry_terminal_retained_zero_count_death_retires_at_the_native_boundary() 
 }
 
 #[test]
-fn genetic_converter_command_preserves_stable_id_batch_replacement_order() {
-    let (mut sim, rules) = fixture();
-    // Native cell order is center then east; existing Rust replacement order
-    // is stable-ID order. Keep that compatibility decision explicit.
-    // Friendly retained corpses leave room for ordinary class admission.
-    // Enemy corpses instead refuse the immediate compatibility replacement;
-    // that separate regression below records the missing AnimToInfantry chain.
-    let east = sim
-        .spawn_object_at_height("E1", "Americans", 6, 5, 0, 0, &rules)
-        .unwrap();
-    let center = sim
-        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-        .unwrap();
-    launch_command(&mut sim, &rules, "GM", 5, 5);
-    let brutes = marked_brutes(&sim);
-    assert_eq!(brutes, vec![center + 1, center + 2]);
-    let owner = sim.interner.intern("Americans");
-    for (brute, (rx, ry)) in brutes.into_iter().zip([(6, 5), (5, 5)]) {
-        let object = sim.substrate.entities.get(brute).unwrap();
-        assert_eq!(
-            (object.position.rx, object.position.ry, object.position.z),
-            (rx, ry, 0)
-        );
-        assert_eq!(object.owner(), owner);
-        assert_eq!(object.health.current, 200);
-    }
-    for victim in [east, center] {
-        let object = sim.substrate.entities.get(victim).unwrap();
-        assert!(object.health.current == 0 && object.dying);
-        assert!(
-            object.lifecycle.cell_marked && object.in_logic_vector,
-            "legacy per-cell corpse membership is retained by this admission change"
-        );
-    }
-    assert!(sim.substrate.pending_delete.is_empty());
-}
-
-#[test]
-fn genetic_converter_immediate_replacement_refuses_retained_enemy_corpses() {
-    let (mut sim, rules) = fixture();
-    let east = sim
-        .spawn_object_at_height("E1", "Soviet", 6, 5, 0, 0, &rules)
-        .unwrap();
-    let center = sim
-        .spawn_object_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
-        .unwrap();
-    launch_command(&mut sim, &rules, "GM", 5, 5);
-    for victim in [east, center] {
-        let corpse = sim.substrate.entities.get(victim).unwrap();
-        assert!(corpse.health.current == 0 && corpse.dying);
-        assert!(corpse.lifecycle.cell_marked && corpse.in_logic_vector);
-    }
-    assert!(marked_brutes(&sim).is_empty());
-    assert_eq!(sim.allocate_stable_id(), center + 3);
-    // Each attempted constructor consumes an identity, then its ordinary
-    // Unlimbo sees the retained enemy owner and refuses (Infantry51BF90=7).
-    // Immediate BRUTE replacement is existing Rust compatibility policy;
-    // native AnimToInfantry timing/placement remains a required specialized
-    // mechanism, not authority to bypass the shared class query here.
-}
-
-#[test]
-fn genetic_converter_command_uses_selected_bridge_membership_and_original_victims_only() {
+fn genetic_converter_command_uses_selected_bridge_membership() {
     let (mut sim, rules) = fixture();
     let ground = sim
         .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
@@ -703,109 +601,16 @@ fn genetic_converter_command_uses_selected_bridge_membership_and_original_victim
         sim.substrate.entities.get(ground).unwrap().health.current,
         100
     );
+    // Each deck victim's InfDeath 9 arm admits it (its own deck bits are
+    // cleared first; the ground plane keeps a free spot) and UnInits it.
     for &id in &deck {
-        assert_eq!(sim.substrate.entities.get(id).unwrap().health.current, 0);
-    }
-    // Replacement retains legacy Z=0 even for a deck victim. It is not a
-    // native AnimToInfantry placement claim. Both original victims get one attempt.
-    // Shared CanEnter's height=-1 selects the structural bridge list even for
-    // that Z=0 replacement, so friendly deck corpses supply the admitted case.
-    let brutes: Vec<_> = sim
-        .substrate
-        .entities
-        .values()
-        .filter(|e| sim.interner.resolve(e.type_ref()) == "BRUTE")
-        .collect();
-    assert_eq!(brutes.len(), 2);
-    for object in brutes {
-        assert_eq!(object.position.z, 0);
-        assert_eq!(
-            object.health.current, 200,
-            "new replacements never re-enter selection"
+        assert!(
+            sim.substrate
+                .entities
+                .get(id)
+                .is_none_or(|object| !object.lifecycle.object_alive)
         );
-    }
-    assert_eq!(sim.allocate_stable_id(), deck[1] + 3);
-}
-
-#[test]
-fn genetic_converter_command_missing_brute_keeps_kills_and_consumes_readiness() {
-    let (mut sim, rules) =
-        fixture_with_extra("[InfantryTypes]\n1=NO_BRUTE\n[NO_BRUTE]\nStrength=200\nSpeed=4\n");
-    assert!(rules.object("BRUTE").is_none());
-    let victim = sim
-        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-        .unwrap();
-    launch_command(&mut sim, &rules, "GM", 5, 5);
-    let corpse = sim.substrate.entities.get(victim).unwrap();
-    assert!(corpse.health.current == 0 && corpse.dying);
-    assert!(marked_brutes(&sim).is_empty());
-}
-
-#[test]
-fn genetic_converter_explosion_attempts_replacements_after_nested_damage_and_respects_slots() {
-    for (other_x, expected_replacements) in [(5, 1), (6, 1)] {
-        let (mut sim, mut rules) = fixture_with_extra(
-            "[Warheads]\n3=MutationAoE\n[SpecialWeapons]\nMutateExplosionWarhead=MutationAoE\n\
-             [MutationAoE]\nCellSpread=1\nPercentAtMax=1\nInfDeath=1\n\
-             Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        );
-        rules.general.mutate_explosion = true;
-        let boomer = sim
-            .spawn_object_at_height("BOOM", "Americans", 5, 5, 0, 0, &rules)
-            .unwrap();
-        let other = sim
-            .spawn_object_at_height("E1", "Americans", other_x, 5, 0, 0, &rules)
-            .unwrap();
-        let tank = sim
-            .spawn_object_at_height("MTNK", "Soviet", 5, 6, 0, 0, &rules)
-            .unwrap();
-        if other_x == 6 {
-            // The east infantry is (320,-64) leptons from the mutation's
-            // cell-center impact: outside radius256. It is exactly256 from
-            // BOOM's off-center DeathWeapon, so it dies only as collateral.
-            for id in [boomer, other] {
-                let position = &sim.substrate.entities.get(id).unwrap().position;
-                assert_eq!(
-                    (
-                        position.sub_x.to_num::<i32>(),
-                        position.sub_y.to_num::<i32>()
-                    ),
-                    (192, 64)
-                );
-            }
-        }
-        launch_command(&mut sim, &rules, "GM", 5, 5);
-        for victim in [boomer, other, tank] {
-            assert!(
-                sim.substrate
-                    .entities
-                    .get(victim)
-                    .is_some_and(|e| e.health.current == 0 && e.dying)
-            );
-        }
-        let brutes = marked_brutes(&sim);
-        assert_eq!(
-            brutes.len(),
-            expected_replacements,
-            "only original infantry receivers get attempts; ordinary class admission still requires a free raw slot"
-        );
-        assert!(brutes.iter().all(|id| *id > tank));
-        for id in brutes {
-            let object = sim.substrate.entities.get(id).unwrap();
-            assert_eq!(
-                object.health.current, 200,
-                "replacement must not be exposed to the earlier nested DeathWeapon"
-            );
-            assert_eq!((object.position.rx, object.position.ry), (5, 5));
-        }
-        // At other_x=5, two retained corpses plus the first BRUTE fill all
-        // three raw slots, so the second immediate attempt correctly refuses.
-        // At6, only BOOM is in the mutation radius; the other dies as
-        // collateral. Neither case interleaves replacements with nested damage.
-        assert_eq!(
-            sim.allocate_stable_id(),
-            tank + if other_x == 5 { 3 } else { 2 }
-        );
+        assert!(!sim.substrate.occupancy.contains_entity(5, 5, id));
     }
 }
 
@@ -1014,18 +819,18 @@ fn command_uses_packed_aliases_and_stamps_missing_cells(name: &str, object_type:
             .spawn_object_at_height(object_type, "Americans", 0, 2, 0, 0, &rules)
             .unwrap();
         launch_command(&mut sim, &rules, name, x, y);
-        let object = sim.substrate.entities.get(victim).unwrap();
         if name == "GM" {
-            assert!(object.health.current == 0 && object.dying);
-            let brutes = marked_brutes(&sim);
-            assert_eq!(brutes.len(), 1);
-            let replacement = sim.substrate.entities.get(brutes[0]).unwrap();
-            assert_eq!(
-                (replacement.position.rx, replacement.position.ry),
-                (0, 2),
-                "replacement uses the actual victim cell after fixed-stride alias / word wrap"
+            // The fixed-stride alias / independent word wrap reaches actual
+            // cell (0,2), whose victim InfDeath 9 UnInits.
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(victim)
+                    .is_none_or(|object| !object.lifecycle.object_alive)
             );
+            assert!(!sim.substrate.occupancy.contains_entity(0, 2, victim));
         } else {
+            let object = sim.substrate.entities.get(victim).unwrap();
             assert!(
                 object.invulnerability.is_some(),
                 "fixed-stride alias / independent word wrap reaches actual cell (0,2)"
@@ -1053,7 +858,6 @@ fn command_uses_packed_aliases_and_stamps_missing_cells(name: &str, object_type:
         let object = sim.substrate.entities.get(victim).unwrap();
         assert_eq!(object.health.current, original_hp);
         assert!(!object.dying && object.invulnerability.is_none());
-        assert!(marked_brutes(&sim).is_empty());
         assert_eq!(
             sim.effective_shared_cell_dummy().snapshot().coord,
             if mapless { (6, 6) } else { (5, 5) },

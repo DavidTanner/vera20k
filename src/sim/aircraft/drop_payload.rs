@@ -75,8 +75,7 @@ use crate::sim::movement::infantry_action::DO_PARADROP;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::parachute_descent::begin_parachute_descent;
-use crate::sim::movement::{bump_crush, ground_pose, walk_head};
-use crate::sim::occupancy::RawCellKey;
+use crate::sim::movement::{ground_pose, walk_head};
 use crate::sim::passenger::{DepartureFailure, DepartureRoute, PassengerRole, depart_cargo_head};
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
@@ -252,28 +251,7 @@ fn drop_passenger(
 
     #[cfg(test)]
     observe(Observed::Subposition([x, y, z]));
-    let key = match (sim.resolved_terrain.as_ref(), cell) {
-        (Some(terrain), Some(cell)) => RawCellKey::from_native(terrain, cell),
-        _ => RawCellKey::Real((x / 256) as u16, (y / 256) as u16),
-    };
-    let gate_open = bump_crush::native_ground_gate_open(
-        &sim.substrate.raw_cell_occupation,
-        &sim.substrate.occupancy,
-        &sim.substrate.entities,
-        Some(rules),
-        &sim.interner,
-        key,
-        MovementLayer::Ground,
-    );
-    let Some(spot) = bump_crush::place_infantry_in_native_cell(
-        &sim.substrate.raw_cell_occupation,
-        key,
-        MovementLayer::Ground,
-        point,
-        false,
-        gate_open,
-        &mut sim.scenario_rng,
-    ) else {
+    let Some(spot) = sim.place_infantry_in_ground_cell(rules, point) else {
         return Err(DepartureFailure::Placement);
     };
     let spot_xy = walk_head::selected_head(point, spot, z, false);
@@ -1094,7 +1072,7 @@ mod tests {
         let sub_cell = passenger
             .sub_cell
             .expect("placed infantry should have a subcell");
-        assert!(bump_crush::FUNCTIONAL_SUB_CELLS.contains(&sub_cell));
+        assert!(crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS.contains(&sub_cell));
         assert_eq!(
             (passenger.position.sub_x, passenger.position.sub_y),
             lepton::subcell_lepton_offset(Some(sub_cell))

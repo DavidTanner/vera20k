@@ -346,6 +346,48 @@ pub(crate) fn place_infantry_in_native_cell(
     cell_kernel::select_infantry_subcell(preferred, mask, false, random_row)
 }
 
+impl crate::sim::world::Simulation {
+    /// `MapClass::GetCellAt @ 0x00565730` for `point`, then
+    /// [`place_infantry_in_native_cell`] on that cell's ground plane without
+    /// priority: the spot, or `None` where it answers the empty coordinate
+    /// (`0x00A8F200`). AircraftClass::Drop_Payload (`0x00415D9B..0x00415DD1`)
+    /// and InfantryClass::ReceiveDamage's InfDeath 9 arm
+    /// (`0x0051897C..0x00518A0D`) ask it so.
+    pub(crate) fn place_infantry_in_ground_cell(
+        &mut self,
+        rules: &crate::rules::ruleset::RuleSet,
+        point: DriveCoord,
+    ) -> Option<u8> {
+        use crate::sim::occupancy::RawCellKey;
+        let key = match self.resolved_terrain.as_ref() {
+            Some(terrain) => RawCellKey::from_native(
+                terrain,
+                crate::map::resolved_terrain::NativeCellQuery::canonical(terrain)
+                    .lookup_world(point.x, point.y),
+            ),
+            None => RawCellKey::Real((point.x / 256) as u16, (point.y / 256) as u16),
+        };
+        let gate_open = native_ground_gate_open(
+            &self.substrate.raw_cell_occupation,
+            &self.substrate.occupancy,
+            &self.substrate.entities,
+            Some(rules),
+            &self.interner,
+            key,
+            MovementLayer::Ground,
+        );
+        place_infantry_in_native_cell(
+            &self.substrate.raw_cell_occupation,
+            key,
+            MovementLayer::Ground,
+            point,
+            false,
+            gate_open,
+            &mut self.scenario_rng,
+        )
+    }
+}
+
 /// The older cell-list approximation of [`place_infantry_in_cell`], still
 /// used by the walk FindSubCellDest pre-allocation (`movement_step`), the tube
 /// exit and the landed-aircraft unload.

@@ -1694,9 +1694,22 @@ fn finish_concrete_death(
         // `InfantryClass::ReceiveDamage` on result 4 (`0x00518077..0x0051808E`):
         // a dying slave leaves its master's node (RemoveSlave).
         world.remove_slave(dead_id);
+        // The house InfDeath 8 and 9 give their anim (`0x0051887B`,
+        // `0x00518A96`): the source's owner (`+0x21C`), else the house
+        // argument.
+        let anim_house = killing_attacker(world, damage_events, dead_id)
+            .and_then(|attacker| world.substrate.entities.get(attacker))
+            .map(|attacker| attacker.owner())
+            .or_else(|| {
+                damage_events
+                    .iter()
+                    .rfind(|event| event.target_id == dead_id)
+                    .and_then(|event| event.source_house)
+            });
         let postlude = world.begin_infantry_receiver_death(
             dead_id,
             inf_death,
+            anim_house,
             rules,
             overlay_registry,
             &mut effects.immediate_uninit_ids,

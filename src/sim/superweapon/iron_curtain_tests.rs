@@ -7,13 +7,10 @@ use super::{OBSERVED, Observed, launch};
 use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
-use crate::sim::components::DriveCoord;
 use crate::sim::intern::InternedId;
-use crate::sim::movement::ground_pose;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::movement::teleport_movement::ChronoWarp;
 use crate::sim::superweapon::chronosphere_tests::{
-    charge_super, click, retail_rules_binding, world_with,
+    charge_super, click, place, retail_rules_binding, world_with,
 };
 use crate::sim::superweapon::invulnerability::InvulnKind;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -116,58 +113,6 @@ fn curtain(sim: &Simulation, id: u64) -> Option<(i32, i32, InvulnKind)> {
 fn paralysis(sim: &Simulation, id: u64) -> (i32, i32) {
     let timer = &sim.substrate.entities.get(id).unwrap().paralysis_timer;
     (timer.start_frame(), timer.duration())
-}
-
-/// Constructs `kind` for the Americans on `cell`'s ground or bridge list at
-/// `level` (a deck object 416 leptons over the ground), holding the
-/// Chronosphere's warp latch when `latch` (on its Teleport), and reveals it.
-fn place(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    kind: &str,
-    (x, y): (u16, u16),
-    level: u8,
-    bridge: bool,
-    latch: bool,
-) -> u64 {
-    let deck = if bridge { 4 } else { 0 };
-    let id = sim
-        .construct_object_limbo_at_height(kind, "Americans", x, y, 0, level + deck, rules)
-        .unwrap_or_else(|| panic!("{kind} constructs at {x},{y}"));
-    let frame = sim.session.binary_frame;
-    let entity = sim.substrate.entities.get_mut(id).unwrap();
-    ground_pose::put_location(
-        &mut entity.position,
-        DriveCoord {
-            x: i32::from(x) * 256 + 128,
-            y: i32::from(y) * 256 + 128,
-            z: i32::from(level + deck) * 104,
-        },
-    );
-    entity.position.z = level + deck;
-    entity.on_bridge = bridge;
-    if latch {
-        let house = entity.owner();
-        entity
-            .locomotor
-            .as_mut()
-            .and_then(|locomotor| locomotor.teleport_runtime_mut())
-            .expect("a latched Foot on its Teleport")
-            .arm_chrono(ChronoWarp::new(
-                DriveCoord { x: 0, y: 0, z: 0 },
-                house,
-                frame,
-            ));
-    }
-    assert!(matches!(
-        sim.reveal(id),
-        crate::sim::world::RevealOutcome::Revealed { .. }
-    ));
-    assert_eq!(
-        sim.substrate.entities.get(id).unwrap().chrono_warp_latch(),
-        latch
-    );
-    id
 }
 
 /// Case 1 against `iron_curtain_launch`, through the production launch on a

@@ -96,21 +96,49 @@ pub struct DeathAnimSpawn {
     /// The constructor's draws when the producer already took them at their
     /// native point (a death debris piece); otherwise the spawn draws.
     pub draws: Option<crate::sim::anim_class::AnimConstructorDraws>,
+    /// What the producer writes on the anim right after its constructor.
+    pub follow_up: Option<DeathAnimFollowUp>,
+}
+
+impl DeathAnimSpawn {
+    /// A spawn that takes its own constructor draws and has no follow-up.
+    pub const fn at(coord: AnimWorldCoord, delay: u16) -> Self {
+        Self {
+            coord,
+            delay,
+            draws: None,
+            follow_up: None,
+        }
+    }
+}
+
+/// An infantry death arm's writes on its anim after the constructor
+/// (`InfantryClass::ReceiveDamage @ 0x00517FA0`). Each takes the killing
+/// source's owner (`+0x21C`), else the receiver's house argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeathAnimFollowUp {
+    /// InfDeath 8 (`0x0051887B..0x005188A9`): SetOwnerHouse
+    /// (`0x00424CA0`).
+    Owner(InternedId),
+    /// InfDeath 9 (`0x00518A96..0x00518B26`): with a house, SetOwnerHouse
+    /// and the house's colour scheme as the anim's remap (`+0xD4`, the
+    /// scheme's `+0x30C` from the array `0x00B054D4`); then, house or not,
+    /// the anim's MarkCellOccupancy (vt+0xF0 = `0x00426270`).
+    Mutate(Option<InternedId>),
 }
 
 impl Simulation {
     /// Native constructor call, or an explicit callback-disabled fixture's
     /// packet. Production never carries these births to the consequence tail.
-    fn emit_death_anim(
+    pub(crate) fn emit_death_anim(
         &mut self,
         rules: &RuleSet,
         anims: &mut Vec<ExplosionEffect>,
         type_name: &str,
-        coord: AnimWorldCoord,
-        delay: u16,
+        spawn: DeathAnimSpawn,
     ) {
         let shp_name = self.interner.intern(type_name);
-        let (rx, ry, sub_x, sub_y, z) = coord.to_cell_sub_z();
+        let (rx, ry, sub_x, sub_y, z) = spawn.coord.to_cell_sub_z();
         let effect = ExplosionEffect {
             shp_name,
             rx,
@@ -118,12 +146,8 @@ impl Simulation {
             sub_x,
             sub_y,
             z,
-            world_z: coord.z,
-            death: Some(DeathAnimSpawn {
-                coord,
-                delay,
-                draws: None,
-            }),
+            world_z: spawn.coord.z,
+            death: Some(spawn),
         };
         if super::world_receiver::callbacks_enabled(self) {
             crate::sim::world::damage_consequences::admit_explosion_effect(self, rules, effect);
@@ -148,7 +172,7 @@ impl Simulation {
             reverse: false,
             ..AnimClassSpawnDescriptor::new(type_id, rx, ry, sub_x, sub_y, z)
         };
-        if let Err(error) = self.spawn_anim_at_world_with_constructor(
+        let anim = match self.spawn_anim_at_world_with_constructor(
             rules,
             descriptor,
             spawn.coord,
@@ -157,10 +181,27 @@ impl Simulation {
                 crate::sim::anim_class::AnimConstructorInput::Preconsumed,
             ),
         ) {
-            log::debug!(
-                "death anim [{}] did not construct: {error}",
-                self.interner.resolve(type_id)
-            );
+            Ok(anim) => anim,
+            Err(error) => {
+                log::debug!(
+                    "death anim [{}] did not construct: {error}",
+                    self.interner.resolve(type_id)
+                );
+                return;
+            }
+        };
+        match spawn.follow_up {
+            None => {}
+            Some(DeathAnimFollowUp::Owner(house)) => {
+                self.set_anim_owner_house(anim, house);
+            }
+            Some(DeathAnimFollowUp::Mutate(house)) => {
+                if let Some(house) = house {
+                    self.set_anim_owner_house(anim, house);
+                    self.set_anim_house_remap(anim, house);
+                }
+                self.anim_mark_cell_occupancy(anim);
+            }
         }
     }
 
@@ -239,14 +280,14 @@ impl Simulation {
             } else {
                 picked
             };
-            self.emit_death_anim(rules, anims, anim, coord, 0);
+            self.emit_death_anim(rules, anims, anim, DeathAnimSpawn::at(coord, 0));
         }
         // `0x00738749..0x007387FC` sums the stored ore's value into a local
         // nothing reads and calls the ShakeScreen stub (`0x0048DED0`, a bare
         // `RET`): no effect.
         if !object.destroy_anims.is_empty() {
             let anim = self.pick_death_anim(&object.destroy_anims);
-            self.emit_death_anim(rules, anims, anim, coord, 0);
+            self.emit_death_anim(rules, anims, anim, DeathAnimSpawn::at(coord, 0));
         }
     }
 
@@ -275,12 +316,14 @@ impl Simulation {
             rules,
             anims,
             anim,
-            AnimWorldCoord {
-                x: location.x,
-                y: location.y,
-                z: location.z,
-            },
-            0,
+            DeathAnimSpawn::at(
+                AnimWorldCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                },
+                0,
+            ),
         );
     }
 
@@ -337,12 +380,14 @@ impl Simulation {
                     rules,
                     anims,
                     anim,
-                    AnimWorldCoord {
-                        x,
-                        y,
-                        z: location.z,
-                    },
-                    delay,
+                    DeathAnimSpawn::at(
+                        AnimWorldCoord {
+                            x,
+                            y,
+                            z: location.z,
+                        },
+                        delay,
+                    ),
                 );
             }
         }
@@ -365,12 +410,14 @@ impl Simulation {
                 rules,
                 anims,
                 anim,
-                AnimWorldCoord {
-                    x: base.x,
-                    y: base.y,
-                    z: base.z,
-                },
-                0,
+                DeathAnimSpawn::at(
+                    AnimWorldCoord {
+                        x: base.x,
+                        y: base.y,
+                        z: base.z,
+                    },
+                    0,
+                ),
             );
         }
     }

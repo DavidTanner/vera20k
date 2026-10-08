@@ -59461,6 +59461,5680 @@
       "start_sound": 41
     }
   ],
+  "genetic_launch": [
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            0
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ]
+      ],
+      "explosion": true,
+      "levels": [],
+      "mute": false,
+      "objects": [],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            0
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ],
+        [
+          "vox_find",
+          "EVA_GeneticMutatorReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "explosion": true,
+      "levels": [],
+      "mute": false,
+      "objects": [],
+      "player": true,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": false,
+      "events": [],
+      "explosion": true,
+      "levels": [],
+      "mute": false,
+      "objects": [],
+      "player": true,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            0
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ]
+      ],
+      "explosion": true,
+      "levels": [],
+      "mute": true,
+      "objects": [],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          0,
+          0
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            421
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            416
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            416
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ]
+      ],
+      "explosion": true,
+      "levels": [],
+      "mute": false,
+      "objects": [],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            109
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            104
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            104
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ]
+      ],
+      "explosion": true,
+      "levels": [
+        [
+          [
+            0,
+            0
+          ],
+          1
+        ]
+      ],
+      "mute": false,
+      "objects": [],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          0,
+          0
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            837
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            832
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "area_damage",
+          [
+            10368,
+            10368,
+            832
+          ],
+          10000,
+          0,
+          true,
+          0,
+          true
+        ]
+      ],
+      "explosion": true,
+      "levels": [
+        [
+          [
+            0,
+            0
+          ],
+          4
+        ]
+      ],
+      "mute": false,
+      "objects": [],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          8
+        ],
+        [
+          "type",
+          8
+        ],
+        [
+          "damage",
+          8,
+          108,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          7
+        ],
+        [
+          "type",
+          7
+        ],
+        [
+          "damage",
+          7,
+          107,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "what",
+          6
+        ],
+        [
+          "type",
+          6
+        ],
+        [
+          "damage",
+          6,
+          106,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "what",
+          5
+        ],
+        [
+          "type",
+          5
+        ],
+        [
+          "damage",
+          5,
+          105,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          104,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          103,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          102,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          101,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          100,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            1
+          ],
+          "strength": 100,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 101,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "strength": 102,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "strength": 103,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "strength": 104,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "strength": 105,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "strength": 106,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 107,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 108,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          8
+        ],
+        [
+          "type",
+          8
+        ],
+        [
+          "damage",
+          8,
+          108,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          7
+        ],
+        [
+          "type",
+          7
+        ],
+        [
+          "damage",
+          7,
+          107,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "what",
+          6
+        ],
+        [
+          "type",
+          6
+        ],
+        [
+          "damage",
+          6,
+          106,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "what",
+          5
+        ],
+        [
+          "type",
+          5
+        ],
+        [
+          "damage",
+          5,
+          105,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          104,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          103,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          102,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          101,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          100,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "vox_find",
+          "EVA_GeneticMutatorReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            1
+          ],
+          "strength": 100,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 101,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "strength": 102,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "strength": 103,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "strength": 104,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "strength": 105,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "strength": 106,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 107,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 108,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": true,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": false,
+      "events": [],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            1
+          ],
+          "strength": 100,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 101,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "strength": 102,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "strength": 103,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "strength": 104,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "strength": 105,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "strength": 106,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 107,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 108,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          8
+        ],
+        [
+          "type",
+          8
+        ],
+        [
+          "damage",
+          8,
+          108,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          7
+        ],
+        [
+          "type",
+          7
+        ],
+        [
+          "damage",
+          7,
+          107,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "what",
+          6
+        ],
+        [
+          "type",
+          6
+        ],
+        [
+          "damage",
+          6,
+          106,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "what",
+          5
+        ],
+        [
+          "type",
+          5
+        ],
+        [
+          "damage",
+          5,
+          105,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          104,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          103,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          102,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          101,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          100,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": true,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            1
+          ],
+          "strength": 100,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 101,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            1
+          ],
+          "strength": 102,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            0
+          ],
+          "strength": 103,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "strength": 104,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            -1
+          ],
+          "strength": 105,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            -1
+          ],
+          "strength": 106,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 107,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 108,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          0,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          -5,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          2147483647,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 1
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 0,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 6
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": -5,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 2147483647,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": true,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": true,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          0,
+          0
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            421
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            416
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "type",
+          2
+        ],
+        [
+          "damage",
+          2,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10368,
+            10368,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            40
+          ]
+        ],
+        [
+          "what",
+          3
+        ],
+        [
+          "type",
+          3
+        ],
+        [
+          "damage",
+          3,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            39
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            40
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            39,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          4
+        ],
+        [
+          "type",
+          4
+        ],
+        [
+          "damage",
+          4,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ],
+        [
+          "cell",
+          [
+            41,
+            41
+          ]
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            1,
+            0
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": true,
+          "drop_next": false,
+          "offset": [
+            0,
+            1
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridges": [],
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            128,
+            128,
+            5
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "eva",
+          "EVA_GeneticMutatorActivated",
+          -1,
+          -1
+        ],
+        [
+          "play_at",
+          77,
+          [
+            128,
+            128,
+            0
+          ],
+          0
+        ],
+        [
+          "radar_event",
+          13,
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            -1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            -1
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "type",
+          0
+        ],
+        [
+          "damage",
+          0,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ],
+        [
+          "cell",
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            -1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "cell",
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "type",
+          1
+        ],
+        [
+          "damage",
+          1,
+          125,
+          0,
+          true,
+          0,
+          1,
+          0,
+          true
+        ]
+      ],
+      "explosion": false,
+      "levels": [],
+      "mute": false,
+      "objects": [
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            -1,
+            -1
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        },
+        {
+          "bridge": false,
+          "drop_next": false,
+          "offset": [
+            1,
+            1
+          ],
+          "strength": 125,
+          "unlink": false,
+          "what": 15
+        }
+      ],
+      "player": false,
+      "selected_super": 9,
+      "target": [
+        0,
+        0
+      ]
+    }
+  ],
+  "infantry_mutate_death": [
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "house",
+      "anim_remap": 12639751,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": false,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": null,
+      "anim_remap": 0,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": false,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": false,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": false,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [
+        15
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [
+        1,
+        15
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [
+        6
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "what",
+          1
+        ],
+        [
+          "what",
+          2
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [
+        15,
+        6,
+        1
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ]
+      ],
+      "foot_cost": 0.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 0.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": true,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ]
+      ],
+      "foot_cost": -0.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": -0.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": true,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 0.5,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10340,
+            10556,
+            208
+          ]
+        ]
+      ],
+      "foot_cost": 0.5,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": true,
+      "on_bridge": true,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": false
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ]
+      ],
+      "foot_cost": 0.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": false
+    },
+    {
+      "action": [
+        12,
+        1,
+        0
+      ],
+      "anim_owner": null,
+      "anim_remap": null,
+      "events": [
+        [
+          "unmark",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "what",
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10340,
+            10556,
+            208
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [
+        6
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "mutated": false,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": false
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            -100,
+            300,
+            0
+          ]
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            -100,
+            300,
+            0
+          ]
+        ],
+        [
+          "subposition",
+          [
+            -100,
+            300,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            -100,
+            300,
+            0
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            -100,
+            300,
+            0
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            -100,
+            300,
+            0
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        -100,
+        300,
+        0
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    },
+    {
+      "action": null,
+      "anim_owner": "source",
+      "anim_remap": 12639748,
+      "events": [
+        [
+          "unmark",
+          [
+            10495,
+            10240,
+            624
+          ]
+        ],
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "cell_at",
+          [
+            10495,
+            10240,
+            624
+          ]
+        ],
+        [
+          "subposition",
+          [
+            10495,
+            10240,
+            624
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "mark",
+          [
+            10495,
+            10240,
+            624
+          ]
+        ],
+        [
+          "anim",
+          true,
+          [
+            10495,
+            10240,
+            624
+          ],
+          [
+            0,
+            1,
+            1536,
+            0,
+            0
+          ]
+        ],
+        [
+          "anim_mark",
+          true,
+          [
+            10495,
+            10240,
+            624
+          ]
+        ]
+      ],
+      "foot_cost": 1.0,
+      "house": true,
+      "house_scheme": 7,
+      "listed": [],
+      "location": [
+        10495,
+        10240,
+        624
+      ],
+      "mutated": true,
+      "on_bridge": false,
+      "source": true,
+      "source_scheme": 4,
+      "spot": true
+    }
+  ],
   "iron_curtain_launch": [
     {
       "bridges": [],
@@ -65950,6 +71624,1446 @@
           []
         ]
       ]
+    }
+  ],
+  "make_infantry": [
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "plain",
+      "events": [],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": -1,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          1,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 1,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 2,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 0,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          -2,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": -2,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 4,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          3,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 3,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 1,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "create",
+          0,
+          1
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": null,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": null,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          1,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": null,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 1,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "create",
+          0,
+          1
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          true,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          true,
+          false
+        ],
+        [
+          1,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 1,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "create",
+          0,
+          1
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          true,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 1,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": null,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": null,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": null,
+      "bridge": false,
+      "civilian_side": -1,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": null,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          true
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "find_side",
+          "Civilian"
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          3,
+          false,
+          true
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": null,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "retry",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 10,
+      "unlimbo": false
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "retry",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 0,
+      "stage_after": -1,
+      "unlimbo": false
+    },
+    {
+      "anim_owner": 0,
+      "bridge": true,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            208
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            208
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        208
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": true,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            209
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            209
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "mark",
+          0,
+          0
+        ],
+        [
+          "mark",
+          1,
+          1
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        209
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": true,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            624
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            624
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "mark",
+          0,
+          0
+        ],
+        [
+          "mark",
+          1,
+          1
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        624
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            10340,
+            10556,
+            624
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            10340,
+            10556,
+            624
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            40,
+            41
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        10340,
+        10556,
+        624
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
+    },
+    {
+      "anim_owner": 0,
+      "bridge": false,
+      "civilian_side": 3,
+      "count": 1,
+      "end": "uninit",
+      "events": [
+        [
+          "clear",
+          [
+            -100,
+            300,
+            0
+          ]
+        ],
+        [
+          "create",
+          0,
+          0
+        ],
+        [
+          "unlimbo",
+          [
+            -100,
+            300,
+            0
+          ],
+          96
+        ],
+        [
+          "cell",
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "uninit",
+          1
+        ]
+      ],
+      "houses": [
+        [
+          0,
+          false,
+          false
+        ],
+        [
+          3,
+          false,
+          false
+        ]
+      ],
+      "location": [
+        -100,
+        300,
+        0
+      ],
+      "make_infantry": 0,
+      "owner": 0,
+      "stage": 11,
+      "stage_after": 11,
+      "unlimbo": true
     }
   ],
   "mission_missile": [

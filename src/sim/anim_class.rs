@@ -776,9 +776,13 @@ pub enum AnimSpawnError {
 enum VisitAction {
     None,
     Destroy,
-    DestroyAfterMakeInfantryClear,
+    MakeInfantry,
     Next(String),
 }
+
+/// The facing a `MakeInfantry=` anim's infantryman is Unlimbo'd with
+/// (`PUSH 0x60`, `0x00424A23`).
+const MAKE_INFANTRY_UNLIMBO_FACING: u8 = 0x60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AnimOccupationOperation {
@@ -866,6 +870,16 @@ impl Simulation {
             None => (lepton_to_cell_packed(x), lepton_to_cell_packed(y)),
         };
         Some((u16::try_from(rx).ok()?, u16::try_from(ry).ok()?))
+    }
+
+    /// `AnimClass::MarkCellOccupancy` (vt+0xF0 = `0x00426270`) at the anim's
+    /// stored Location, called directly: InfantryClass::ReceiveDamage's
+    /// InfDeath 9 arm marks its new InfantryMutate anim (`0x00518B26`),
+    /// whatever the anim's `MakeInfantry=`.
+    pub(crate) fn anim_mark_cell_occupancy(&mut self, id: AnimId) {
+        if let Some(location) = self.anim(id).map(|anim| anim.world_coord) {
+            self.apply_make_infantry_raw_occupation(location, AnimOccupationOperation::Mark);
+        }
     }
 
     /// `AnimClass::MarkCellOccupancy` (`0x00426270`) and `ClearCellOccupancy`
@@ -1394,7 +1408,7 @@ impl Simulation {
                 action = if let Some(next) = config.next.clone() {
                     VisitAction::Next(next)
                 } else if config.make_infantry != -1 {
-                    VisitAction::DestroyAfterMakeInfantryClear
+                    VisitAction::MakeInfantry
                 } else {
                     VisitAction::Destroy
                 };
@@ -1418,27 +1432,153 @@ impl Simulation {
                 }
                 self.destroy_anim(id, rules);
             }
-            VisitAction::DestroyAfterMakeInfantryClear => {
-                // Native clears before validating AnimToInfantry, resolving an
-                // owner, allocating the infantry, or attempting Unlimbo. The
-                // downstream factory/retry path belongs to the entity-runtime
-                // implementation item; this Phase-3 slice owns its preceding
-                // authoritative cell-byte transition. Clear also reads the
-                // stored Location (`0x0042493E..0x00424963`).
-                if let Some(location) = self.anim(id).map(|anim| anim.world_coord) {
-                    self.apply_make_infantry_raw_occupation(
-                        location,
-                        AnimOccupationOperation::Clear,
-                    );
+            VisitAction::MakeInfantry => {
+                if self.anim_make_infantry(id, config.make_infantry, rules, overlay_registry) {
+                    if let Some(anim) = self.anim_mut_by_id(id) {
+                        anim.completed = true;
+                    }
+                    self.destroy_anim(id, rules);
                 }
-                if let Some(anim) = self.anim_mut_by_id(id) {
-                    anim.completed = true;
-                }
-                self.destroy_anim(id, rules);
             }
             VisitAction::Next(next) => self.switch_anim_type(id, &next, rules, overlay_registry),
         }
         false
+    }
+
+    /// The end of a `MakeInfantry=` anim's last loop with no `Next=`
+    /// (`AnimClass::AI @ 0x00423AC0`, `0x00424932..0x00424B30`), in order:
+    /// 1. ClearCellOccupancy (vt+0xF4 = `0x00426300`) at the stored Location
+    ///    (`0x00424963`).
+    /// 2. A `MakeInfantry=` above `[General] AnimToInfantry=`'s count
+    ///    (`Rules+0xCF4`, signed `JG` at `0x00424982`) creates nothing.
+    /// 3. With no owner (`+0x180`) or a defeated one (`+0x1F5`), the first
+    ///    house in HouseClass::Array order whose side is `Civilian` becomes
+    ///    the owner ([`Simulation::civilian_side_house`],
+    ///    `0x0042499C..0x004249D8`). Without one the owner stays, and with
+    ///    no owner nothing is created (`0x004249E6`).
+    /// 4. `AnimToInfantry=`'s entry's CreateObject (vt+0x8C) for the owner,
+    ///    then Unlimbo (vt+0xD8) at the Location facing `0x60` (`0x00424A42`).
+    /// 5. A refused Unlimbo steps the stage (`+0xAC`) back one and keeps the
+    ///    anim (`0x00424B23`): its next completed frame tries again with a
+    ///    new object. The refused one stays in limbo, as it does natively.
+    /// 6. Placed where the anim's cell (GetCoords, `0x005657A0`) carries the
+    ///    bridge flag (`+0x140 & 0x100`) and the Location is above the cell's
+    ///    GetCoords Z (`0x00486840`), it moves onto the deck: Mark(UP),
+    ///    OnBridge (`+0x8C`), Mark(DOWN) (`0x00424AA0..0x00424AE6`).
+    /// 7. Hunt (`0xF`, Queue_Mission vt+0x1E8) unless the owner's IsHuman
+    ///    (`+0x1EC`, `0x00424AF2`).
+    ///
+    /// Returns whether the anim ends; it then completes (`+0x179`) and
+    /// UnInits (`0x00424B0A..0x00424B15`).
+    ///
+    /// Native execution: `tools/superweapon_oracle.py` section
+    /// `make_infantry`, replayed in `superweapon::genetic_converter_tests`.
+    ///
+    /// RESIDUAL: a `MakeInfantry=` equal to the count, or below -1, reads
+    /// outside the vector (`0x00424A05`); VERA creates nothing. Retail's only
+    /// `MakeInfantry=` anim is GENDEATH (0), and `AnimToInfantry=` holds
+    /// BRUTE (production reader).
+    pub(crate) fn anim_make_infantry(
+        &mut self,
+        id: AnimId,
+        make_infantry: i32,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::map::overlay_types::OverlayTypeRegistry>,
+    ) -> bool {
+        let Some((location, owner)) = self
+            .anim(id)
+            .map(|anim| (anim.world_coord, anim.owner_house))
+        else {
+            return true;
+        };
+        self.apply_make_infantry_raw_occupation(location, AnimOccupationOperation::Clear);
+        let kinds = &rules.general.anim_to_infantry;
+        if i64::from(make_infantry) > kinds.len() as i64 {
+            return true;
+        }
+        let Some(kind) = usize::try_from(make_infantry)
+            .ok()
+            .and_then(|index| kinds.get(index))
+        else {
+            return true;
+        };
+        let defeated = |sim: &Self, house: InternedId| {
+            sim.houses
+                .get(&house)
+                .is_some_and(|state| state.is_defeated)
+        };
+        let owner = if owner.is_none_or(|house| defeated(self, house)) {
+            match self.civilian_side_house(rules) {
+                Some(civilian) => {
+                    self.set_anim_owner_house(id, civilian);
+                    Some(civilian)
+                }
+                None => owner,
+            }
+        } else {
+            owner
+        };
+        let Some(owner) = owner else {
+            return true;
+        };
+        let owner_name = self.interner.resolve(owner).to_string();
+        let (rx, ry, _, _, _) = location.to_cell_sub_z();
+        let Some(infantry) =
+            self.construct_object_limbo_at_height(kind, &owner_name, rx, ry, 0, 0, rules)
+        else {
+            log::debug!("MakeInfantry anim {id}: [{kind}] did not construct");
+            return true;
+        };
+        let placed = self.reveal_constructed_object_at_coord_with_overlay_context(
+            infantry,
+            crate::sim::components::DriveCoord {
+                x: location.x,
+                y: location.y,
+                z: location.z,
+            },
+            MAKE_INFANTRY_UNLIMBO_FACING,
+            crate::sim::world::PlacementEvidence::EvaluateMark,
+            rules,
+            overlay_registry,
+        );
+        if placed.is_none() {
+            if let Some(anim) = self.anim_mut_by_id(id) {
+                anim.runtime.current_frame = anim.runtime.current_frame.wrapping_sub(1);
+            }
+            return false;
+        }
+        let at = self.anim_absolute_coord(id).unwrap_or(location);
+        let lift = self.resolved_terrain.as_ref().is_some_and(|terrain| {
+            let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+            let cell = cells.lookup_world(at.x, at.y);
+            let crate::map::cell_index::NativeCellIdentity::Real(_) = cell else {
+                return false;
+            };
+            let (cell_x, cell_y) = cells.coord(cell);
+            cells.flags(cell) & 0x100 != 0
+                && location.z
+                    > crate::sim::projectile::cell_ground_coord(
+                        Some(terrain),
+                        cell_x as u16,
+                        cell_y as u16,
+                    )
+                    .z
+        });
+        if lift {
+            self.foot_mark_remove(infantry, Some(rules), overlay_registry);
+            if let Some(entity) = self.substrate.entities.get_mut(infantry) {
+                entity.on_bridge = true;
+            }
+            self.foot_mark_put(infantry, Some(rules), overlay_registry);
+        }
+        let human = self.houses.get(&owner).is_some_and(|house| house.is_human);
+        if !human && let Some(entity) = self.substrate.entities.get_mut(infantry) {
+            crate::sim::mission::authority::queue_entity_mission_deferred(
+                entity,
+                crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Hunt),
+            );
+        }
+        true
     }
 
     pub(crate) fn destroy_anim(&mut self, id: AnimId, rules: &RuleSet) {
@@ -1736,11 +1876,14 @@ impl Simulation {
         true
     }
 
-    /// Unit deploy739C1A/739DFE store the palette conversion returned by
-    /// Techno705D70. Freeze its selected house now; later disguise or owner
-    /// changes must not recolor this animation. CustomPalette is not yet
-    /// represented by this owner; stock SCHP uses the house conversion.
-    pub(crate) fn set_deploy_anim_remap(&mut self, id: AnimId, house: InternedId) -> bool {
+    /// A house's colour conversion as the anim's remap (`+0xD4`), frozen at
+    /// the write; later disguise or owner changes must not recolor the anim.
+    /// Unit deploy739C1A/739DFE store the one Techno705D70 returns
+    /// (CustomPalette is not yet represented by this owner; stock SCHP uses
+    /// the house conversion); InfantryClass::ReceiveDamage's InfDeath 9 arm
+    /// the house's colour scheme's (`0x00518AB5..0x00518AC9`,
+    /// `0x00518AE4..0x00518AF9`).
+    pub(crate) fn set_anim_house_remap(&mut self, id: AnimId, house: InternedId) -> bool {
         let Some(anim) = self.anim_mut_by_id(id) else {
             return false;
         };

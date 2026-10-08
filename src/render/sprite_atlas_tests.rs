@@ -1153,7 +1153,7 @@ fn deployed_anim_palette_and_atlas_coverage_share_the_frozen_house() {
     let deployed = spawn(&mut sim);
     let cell = spawn(&mut sim);
     assert!(atlas_covers_anim_remaps(Some(&atlas), &sim, &colors));
-    assert!(sim.set_deploy_anim_remap(deployed, house));
+    assert!(sim.set_anim_house_remap(deployed, house));
     assert!(sim.set_cell_anim_draw_authority(cell, Some(HouseColorIndex(5)), 0));
     assert!(
         !atlas_covers_anim_remaps(Some(&atlas), &sim, &colors),
