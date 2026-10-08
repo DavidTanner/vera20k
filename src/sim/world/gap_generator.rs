@@ -217,15 +217,9 @@ impl Simulation {
             return;
         }
         self.fog.alliances = self.house_alliances.clone();
-        let config = vision::VisionConfig {
-            require_playfield_membership: self.playfield_bounds.is_some(),
-            veteran_sight: rules.map_or(0.0, |r| r.general.veteran_sight),
-            leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
-            reveal_by_height: rules.is_none_or(|r| r.general.reveal_by_height),
-            fog_of_war: self.session.game_options.fog_of_war,
-        };
+        let config = self.sight_reveal_config(rules);
         let heights = config
-            .reveal_by_height
+            .reveal_by_height()
             .then(|| {
                 self.path_grid
                     .as_ref()
@@ -266,6 +260,9 @@ impl Simulation {
                 );
                 // Nonhuman allied Building branch is ordinary-sight ONLY. The
                 //known-own multiplayer discovery domain is shared with the caller.
+                // RESIDUAL: that arm needs AllyReveal= (`0x004ADDB2..0x004ADDD5`);
+                // with it off (retail yes) native takes an allied Building down
+                // the hostile path.
                 (own || !allied).then_some((id, operational, radius))
             })
             .collect();

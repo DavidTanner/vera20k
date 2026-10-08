@@ -3860,7 +3860,7 @@ impl Simulation {
         // the sight reveal immediately, before this action returns.
         let reveal_config = self.sight_reveal_config(rules);
         let height_grid = reveal_config
-            .reveal_by_height
+            .reveal_by_height()
             .then(|| {
                 self.path_grid
                     .as_ref()
@@ -5781,7 +5781,7 @@ impl Simulation {
         // (preserving FLAG_REVEALED) then re-reveals from entity positions.
         // No allocation or merge_revealed_from pass needed.
         let path_grid = self.path_grid.as_deref();
-        let height_grid = if config.reveal_by_height {
+        let height_grid = if config.reveal_by_height() {
             path_grid.map(PathGrid::ground_height_grid)
         } else {
             None
@@ -6398,17 +6398,7 @@ impl Simulation {
         // --- Phase 3: Vision refresh ---
         // DEPENDS ON: movement (positions updated), spawn (new entities need LOS).
         // PRODUCES: fog state used by combat targeting (phase 5).
-        let vision_config = vision::VisionConfig {
-            require_playfield_membership: self.playfield_bounds.is_some(),
-            veteran_sight: rules.map_or(0.0, |r| r.general.veteran_sight),
-            leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
-            // Height-based LOS: terrain 4+ levels above the viewer at the
-            // obstruction cell blocks sight (a unit at a cliff base can't see over
-            // the cliff). Parity review verified the obstruction sampling against
-            // the original (mirror table + the +2 offset); default on, as in YR.
-            reveal_by_height: rules.map_or(true, |r| r.general.reveal_by_height),
-            fog_of_war: self.session.game_options.fog_of_war,
-        };
+        let vision_config = self.sight_reveal_config(rules);
         self.refresh_fog(&vision_config, rules);
 
         if let Some(rules) = rules {

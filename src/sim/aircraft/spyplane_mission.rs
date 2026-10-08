@@ -155,7 +155,7 @@ fn snapshot(sim: &mut Simulation, id: u64, rules: &RuleSet, sound: bool) {
     if plane.in_playfield && !passive {
         let config = sim.sight_reveal_config(Some(rules));
         let heights = config
-            .reveal_by_height
+            .reveal_by_height()
             .then(|| sim.path_grid().map(|grid| grid.ground_height_grid()))
             .flatten();
         let ability =

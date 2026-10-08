@@ -975,11 +975,12 @@ fn base_under_attack_siren(
 /// own (`0x006CCDAB`, `EVA_LightningStormReady`), the Chrono Warp's case 4 the
 /// Chronosphere's (`0x006CCD2D`, `EVA_ChronosphereReady`), the Psychic
 /// Dominator's case 7 its own (`0x006CCE52`, `EVA_PsychicDominatorReady`),
-/// and cases 5, 6, 8 and 9
+/// and cases 5, 6, 8, 9 and 11
 /// theirs through the shared tail `0x006CD51E`: the paradrops
 /// `EVA_ReinforcementsReady` (`0x006CD519`), the Spy Plane
 /// `EVA_SpyPlaneReady` (`0x006CD702`), the Genetic Mutator
-/// `EVA_GeneticMutatorReady` (`0x006CDA5D`); the Force Shield's case 10 its own
+/// `EVA_GeneticMutatorReady` (`0x006CDA5D`), the Psychic Reveal
+/// `EVA_PsychicRevealReady` (`0x006CD7DD`); the Force Shield's case 10 its own
 /// (`0x006CD2C6`, `EVA_ForceShieldReady`). Each tail also clears the local
 /// selection (`super_selection::follow_selection_writes`, whose RESIDUAL
 /// lists the cases whose tails neither owner ports yet).
@@ -996,6 +997,7 @@ fn launch_drops_ready_line(
         K::SpyPlane => Some("EVA_SpyPlaneReady"),
         K::GeneticConverter => Some("EVA_GeneticMutatorReady"),
         K::ForceShield => Some("EVA_ForceShieldReady"),
+        K::PsychicReveal => Some("EVA_PsychicRevealReady"),
         _ => None,
     }
 }
@@ -1657,13 +1659,15 @@ mod tests {
         );
     }
 
-    /// Cases 1 and 9's lines against `tools/superweapon_oracle.json`
-    /// `iron_curtain_launch` and `genetic_launch`: each charged row plays
-    /// `EVA_IronCurtainActivated` (`0x006CCF21`), or
+    /// Cases 1, 9 and 11's lines against `tools/superweapon_oracle.json`
+    /// `iron_curtain_launch`, `genetic_launch` and `psychic_launch`: each
+    /// charged row plays `EVA_IronCurtainActivated` (`0x006CCF21`), or
     /// `EVA_GeneticMutatorActivated` (`0x006CD8BD`) and then
-    /// `GeneticMutatorActivateSound=` (`0x006CD8D3`); the player's then drops
-    /// the queued `EVA_IronCurtainReady` (`0x006CD04A..0x006CD060`) or
-    /// `EVA_GeneticMutatorReady` (`0x006CDA5D`, the shared `0x006CD51E`). The
+    /// `GeneticMutatorActivateSound=` (`0x006CD8D3`), or only
+    /// `PsychicRevealActivateSound=` (`0x006CD7BF`); the player's then drops
+    /// the queued `EVA_IronCurtainReady` (`0x006CD04A..0x006CD060`),
+    /// `EVA_GeneticMutatorReady` (`0x006CDA5D`) or `EVA_PsychicRevealReady`
+    /// (`0x006CD7DD`), the last two through the shared `0x006CD51E`. The
     /// mute rows (`0x00A8B538`) are left out: VERA has no such byte (the
     /// launches' RESIDUAL).
     #[test]
@@ -1672,17 +1676,31 @@ mod tests {
             crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
                 "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
                  [BuildingTypes]\n[SuperWeaponTypes]\n0=IronCurtainSpecial\n\
-                 1=GeneticConverterSpecial\n[IronCurtainSpecial]\nType=IronCurtain\n\
+                 1=GeneticConverterSpecial\n2=PsychicRevealSpecial\n\
+                 [IronCurtainSpecial]\nType=IronCurtain\n\
                  [GeneticConverterSpecial]\nType=GeneticConverter\n\
-                 [AudioVisual]\nGeneticMutatorActivateSound=GeneticMutatorActivate\n",
+                 [PsychicRevealSpecial]\nType=PsychicReveal\n\
+                 [AudioVisual]\nGeneticMutatorActivateSound=GeneticMutatorActivate\n\
+                 PsychicRevealActivateSound=PsychicRevealActivate\n",
             ))
             .unwrap();
         let oracle: serde_json::Value =
             serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
                 .unwrap();
-        for (section, name, expected) in [
-            ("iron_curtain_launch", "IronCurtainSpecial", 17),
-            ("genetic_launch", "GeneticConverterSpecial", 16),
+        for (section, name, sound, expected) in [
+            ("iron_curtain_launch", "IronCurtainSpecial", "", 17),
+            (
+                "genetic_launch",
+                "GeneticConverterSpecial",
+                "GeneticMutatorActivate",
+                16,
+            ),
+            (
+                "psychic_launch",
+                "PsychicRevealSpecial",
+                "PsychicRevealActivate",
+                11,
+            ),
         ] {
             let mut compared = 0;
             for row in oracle[section].as_array().unwrap() {
@@ -1718,10 +1736,12 @@ mod tests {
                     .into_iter()
                     .flat_map(|event| match event {
                         GameSoundEvent::SuperWeaponActivated {
-                            eva_event: Some(line),
+                            eva_event,
                             sound_id,
                             ..
-                        } => std::iter::once(format!("eva {line}"))
+                        } => eva_event
+                            .map(|line| format!("eva {line}"))
+                            .into_iter()
                             .chain((!sound_id.is_empty()).then(|| format!("play {sound_id}")))
                             .collect::<Vec<_>>(),
                         GameSoundEvent::EvaRemove { event } => vec![format!("remove {event}")],
@@ -1732,7 +1752,7 @@ mod tests {
                 for event in row["events"].as_array().unwrap() {
                     match event[0].as_str().unwrap() {
                         "eva" => native.push(format!("eva {}", event[1].as_str().unwrap())),
-                        "play_at" => native.push("play GeneticMutatorActivate".to_string()),
+                        "play_at" => native.push(format!("play {sound}")),
                         "vox_find" => native.push(format!("remove {}", event[1].as_str().unwrap())),
                         _ => {}
                     }

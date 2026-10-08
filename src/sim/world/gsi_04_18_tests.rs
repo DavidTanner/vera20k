@@ -17,7 +17,8 @@ fn spy_sat_rules() -> RuleSet {
          [GASPYSAT]\nName=Spy Satellite\nSpySat=yes\nPowered=yes\nPower=-100\n\
          Strength=100\nCost=1000\nFoundation=1x1\n\
          [GAGAP]\nName=Gap Generator\nGapGenerator=yes\nGapRadiusInCells=3\n\
-         Powered=yes\nPower=-100\nStrength=100\nCost=1000\nFoundation=1x1\n",
+         Powered=yes\nPower=-100\nStrength=100\nCost=1000\nFoundation=1x1\n\
+         [CombatDamage]\nPsychicRevealRadius=15\n",
     );
     RuleSet::from_ini(&ini).expect("GSI-04.18 rules")
 }
@@ -31,6 +32,12 @@ fn fixture() -> (Simulation, RuleSet, InternedId) {
         .insert(owner, HouseState::new(owner, 0, None, true, 10_000, 10));
     sim.session.house_order.push(owner);
     (sim, spy_sat_rules(), owner)
+}
+
+/// A charged Psychic Reveal for `owner`: Launch case 11 runs only for a
+/// charged Super (`+0x6F`, `0x006CD70C`).
+fn charge_psychic_reveal(sim: &mut Simulation, owner: InternedId) -> InternedId {
+    crate::sim::superweapon::chronosphere_tests::charge_super(sim, owner, "PsychicRevealSpecial")
 }
 
 fn insert_structure(
@@ -330,7 +337,7 @@ fn shroud_current_sight_world_collector_and_native_frame_restore() {
 fn shroud_current_sight_psychic_mapping_does_not_gain_gap_immunity() {
     let (mut sim, rules, owner) = fixture();
     let gapper = sim.interner.intern("Soviet");
-    let sw = sim.interner.intern("PsychicRevealSpecial");
+    let sw = charge_psychic_reveal(&mut sim, owner);
     assert!(crate::sim::superweapon::psychic_reveal::launch(
         &mut sim, &rules, owner, 12, 12, sw
     ));
@@ -382,7 +389,7 @@ fn shroud_current_sight_new_generator_identity_consumes_pending() {
 fn shroud_current_sight_psychic_under_existing_gap_waits_for_native_boundary() {
     let (mut sim, rules, owner) = fixture();
     let gapper = sim.interner.intern("Soviet");
-    let sw = sim.interner.intern("PsychicRevealSpecial");
+    let sw = charge_psychic_reveal(&mut sim, owner);
     sim.fog.reveal_all_for_owner(owner);
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
     sim.visit_building_operational(1, &rules, None);
@@ -407,7 +414,8 @@ fn shroud_current_sight_fresh_direct_allied_psychic_reaches_authoritative_view()
     let b = sim.interner.intern("Alliance");
     let c = sim.interner.intern("Soviet");
     let gapper = sim.interner.intern("Neutral");
-    let sw = sim.interner.intern("PsychicRevealSpecial");
+    let sw = charge_psychic_reveal(&mut sim, a);
+    charge_psychic_reveal(&mut sim, b);
     for (left, right) in [
         ("AMERICANS", "ALLIANCE"),
         ("ALLIANCE", "AMERICANS"),
@@ -472,7 +480,7 @@ fn shroud_current_sight_psychic_never_gapped_and_mixed_views_are_nontransitive()
         let b = sim.interner.intern("Alliance");
         let c = sim.interner.intern("Soviet");
         let gapper = sim.interner.intern("Neutral");
-        let sw = sim.interner.intern("PsychicRevealSpecial");
+        let sw = charge_psychic_reveal(&mut sim, a);
         for (left, right) in [
             ("AMERICANS", "ALLIANCE"),
             ("ALLIANCE", "AMERICANS"),

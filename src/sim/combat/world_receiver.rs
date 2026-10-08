@@ -3370,12 +3370,14 @@ fn reveal_on_fire(world: &mut Simulation, rules: &RuleSet, firer_id: u64, target
                 .map(|grid| grid.ground_height_grid())
         })
         .flatten();
+    let map_size = world.map_size_diamond();
     crate::sim::vision::reveal_shroud_on_fire(
         &mut world.fog,
         house,
         coord,
         reveal_by_height,
         height_grid.as_deref(),
+        map_size,
     );
 }
 

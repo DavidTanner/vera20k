@@ -506,6 +506,11 @@ pub struct GeneralRules {
     /// When true, terrain 4+ levels above the viewer at the midpoint blocks sight.
     /// Default true (the standard RA2/YR setting).
     pub reveal_by_height: bool,
+    /// `[AudioVisual] AllyReveal=` (`Rules+0x17E7`, ReadBool at `0x0066B318`
+    /// over the constructor's 1, `0x0066773F`): an allied house's reveals map
+    /// the player's cells too (the house gate of `MapClass::RevealArea @
+    /// 0x005678E0`, `0x00567AEF`). Retail yes.
+    pub ally_reveal: bool,
     /// Low byte of `CliffBackImpassability=` in `[General]`.
     /// Byte 0 skips the scan; only byte 2 can write Rock. Default 2 in standard YR.
     pub cliff_back_impassability: u8,
@@ -1508,9 +1513,11 @@ pub struct GeneralRules {
     /// null type (`0x00665B20`): no key, no animation.
     pub force_shield_invoke_anim: String,
     // --- PsychicReveal ([CombatDamage]) ---
-    /// Cell radius revealed by PsychicReveal
-    /// (`PsychicRevealRadius=` in `[CombatDamage]`).
-    pub psychic_reveal_radius: u32,
+    /// `[CombatDamage] PsychicRevealRadius=` (`Rules+0xFEC`, ReadInteger at
+    /// `0x0066C665` over the constructor's 3, `0x00666BCA`): the radius
+    /// Launch case 11 hands `MapClass::RevealArea @ 0x005678E0`, which
+    /// reveals nothing for 0 and clamps 11 and more to 10. Retail 15.
+    pub psychic_reveal_radius: i32,
     // --- GeneticConverter ([SpecialWeapons] + [General]) ---
     /// `[SpecialWeapons] MutateWarhead=` (`+0xF98`, read at `0x006690BB`
     /// through WarheadTypeClass::FindOrAllocate `0x0075E3B0`): the warhead
@@ -1804,6 +1811,7 @@ impl Default for GeneralRules {
             leptons_per_sight_increase: 0,
             gap_radius: 10,
             reveal_by_height: true,
+            ally_reveal: true,
             tunnel_speed: sim_from_f32(6.0),
             missile_rot_var: 0.25,
             safety_altitude: 500,
@@ -2072,7 +2080,7 @@ impl Default for GeneralRules {
             force_shield_blackout_duration: 800,
             force_shield_fade_sound_time: 50,
             force_shield_invoke_anim: String::new(),
-            psychic_reveal_radius: 15,
+            psychic_reveal_radius: 3,
             mutate_warhead: String::new(),
             mutate_explosion_warhead: String::new(),
             mutate_explosion: false,
@@ -2390,6 +2398,15 @@ impl GeneralRules {
         // ReadAudioVisual too (`0x0066B877..0x0066B891`).
         let force_shield_color =
             audio_visual.read_int("ForceShieldColor", defaults.force_shield_color);
+        let ally_reveal = audio_visual.read_bool("AllyReveal", defaults.ally_reveal);
+        let psychic_reveal_activate_sound = audio_visual
+            .read_name("PsychicRevealActivateSound", 0x80)
+            .map(str::to_owned);
+        // RulesProcess668F36 reaches ReadCombatDamage66BBB0 independently of
+        // ReadGeneral too; it gates on its own section only.
+        let psychic_reveal_radius = ini
+            .section_or_empty("CombatDamage")
+            .read_int("PsychicRevealRadius", defaults.psychic_reveal_radius);
         // Rules ReadAI6739E5..673A31 is independent of ReadGeneral.
         // Constructor66760E..66761E supplies PathDelay0.016 and blockage60.
         let ai = ini.section_or_empty("AI");
@@ -2410,6 +2427,9 @@ impl GeneralRules {
                 bomb_ticking_sound,
                 bomb_attach_sound,
                 force_shield_color,
+                ally_reveal,
+                psychic_reveal_activate_sound,
+                psychic_reveal_radius,
                 ..defaults
             };
         };
@@ -2615,6 +2635,7 @@ impl GeneralRules {
             leptons_per_sight_increase: general.read_int("LeptonsPerSightIncrease", 0),
             gap_radius: general.read_int("GapRadius", 10),
             reveal_by_height: general.read_bool("RevealByHeight", true),
+            ally_reveal,
             tunnel_speed: sim_from_f32(general.read_double("TunnelSpeed", 6.0) as f32),
             missile_rot_var: general.read_double("MissileROTVar", defaults.missile_rot_var),
             safety_altitude: general.read_int("MissileSafetyAltitude", defaults.safety_altitude),
@@ -2753,9 +2774,7 @@ impl GeneralRules {
             genetic_mutator_activate_sound: audio_visual
                 .read_name("GeneticMutatorActivateSound", 0x80)
                 .map(str::to_owned),
-            psychic_reveal_activate_sound: audio_visual
-                .read_name("PsychicRevealActivateSound", 0x80)
-                .map(str::to_owned),
+            psychic_reveal_activate_sound,
             // Constructor -1 until the fixed SOUNDMD catalog resolves it.
             spy_plane_camera: None,
             spy_plane_camera_frames: audio_visual
@@ -3047,7 +3066,7 @@ impl GeneralRules {
             force_shield_blackout_duration: general.read_int("ForceShieldBlackoutDuration", 800),
             force_shield_fade_sound_time: general.read_int("ForceShieldPlayFadeSoundTime", 50),
             force_shield_invoke_anim: general.read_string("ForceShieldInvokeAnim", "", 0x80),
-            psychic_reveal_radius: combat_damage.read_int("PsychicRevealRadius", 15) as u32,
+            psychic_reveal_radius,
             mutate_warhead: special_weapons.read_string("MutateWarhead", "", 0x80),
             mutate_explosion_warhead: special_weapons.read_string(
                 "MutateExplosionWarhead",
@@ -5786,6 +5805,38 @@ SpawnCount=3
         assert_eq!(general.gui_build_sound.as_deref(), Some("MenuClick"));
         assert_eq!(general.building_slam.as_deref(), Some("PlaceBuilding"));
         assert_eq!(general.scold_sound.as_deref(), Some("MenuScold"));
+    }
+
+    /// `[CombatDamage] PsychicRevealRadius=` (ReadInteger at `0x0066C665`)
+    /// and `[AudioVisual] AllyReveal=` (ReadBool at `0x0066B318`) keep the
+    /// constructor's 3 and 1 (`0x00666BCA`, `0x0066773F`) when absent;
+    /// retail RULESMD.INI sets 15 and yes.
+    #[test]
+    fn psychic_reveal_radius_and_ally_reveal_read_over_constructor_defaults() {
+        let absent = GeneralRules::from_ini(&IniFile::from_str("[General]\nFlightLevel=500\n"));
+        assert_eq!(absent.psychic_reveal_radius, 3);
+        assert!(absent.ally_reveal);
+        let off = GeneralRules::from_ini(&IniFile::from_str(
+            "[General]\nFlightLevel=500\n[AudioVisual]\nAllyReveal=no\n",
+        ));
+        assert!(!off.ally_reveal);
+        // Both readers run whether or not [General] exists (`0x00668F36`,
+        // `0x00668F56`), and so does the case's activate sound.
+        let alone = GeneralRules::from_ini(&IniFile::from_str(
+            "[CombatDamage]\nPsychicRevealRadius=7\n[AudioVisual]\nAllyReveal=no\n\
+             PsychicRevealActivateSound=PsychicRevealActivate\n",
+        ));
+        assert_eq!((alone.psychic_reveal_radius, alone.ally_reveal), (7, false));
+        assert_eq!(
+            alone.psychic_reveal_activate_sound.as_deref(),
+            Some("PsychicRevealActivate")
+        );
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let general = GeneralRules::from_ini(&ini);
+        assert_eq!(general.psychic_reveal_radius, 15);
+        assert!(general.ally_reveal);
     }
 
     #[test]

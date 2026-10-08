@@ -7,17 +7,18 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::{pathfinding::PathGrid, vision};
 
 impl Simulation {
-    /// The settings a single object's reveal (`TechnoClass::UpdateReveal @
-    /// 0x0070AF50` and its callers) reads: the stored playfield byte gates
-    /// it, and the rules' sight keys and the game's fog shape it.
+    /// The settings every reveal reads (`TechnoClass::UpdateReveal @
+    /// 0x0070AF50` and its callers, the Psychic Reveal): with a live map the
+    /// stored playfield byte gates a Techno's, the map's `Size=` diamond
+    /// bounds them, the rules' sight keys and `AllyReveal=` shape them, and
+    /// the game's fog decides the first mapping's CleanFog.
     pub(crate) fn sight_reveal_config(&self, rules: Option<&RuleSet>) -> vision::VisionConfig {
-        vision::VisionConfig {
-            require_playfield_membership: true,
-            veteran_sight: rules.map_or(0.0, |r| r.general.veteran_sight),
-            leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
-            reveal_by_height: rules.is_none_or(|r| r.general.reveal_by_height),
-            fog_of_war: self.session.game_options.fog_of_war,
-        }
+        vision::VisionConfig::new(
+            rules,
+            self.map_size_diamond(),
+            self.playfield_bounds.is_some(),
+            self.session.game_options.fog_of_war,
+        )
     }
 
     pub(super) fn refresh_high_flying_sight_before_process(
@@ -59,18 +60,11 @@ impl Simulation {
             return;
         }
         self.fog.alliances = self.house_alliances.clone();
-        let viewers = vision::direct_reveal_viewers(&self.fog, entity.owner(), &self.interner);
+        //4DA6B4 loads SOURCE House before4F9A50; reverse-only alliance
+        //does not admit this event or mutate this viewer's countdown.
+        let viewers = vision::allied_viewers(&self.fog, entity.owner(), &self.interner);
         let due: Vec<_> = viewers
             .into_iter()
-            //4DA6B4 loads SOURCE House before4F9A50; reverse-only alliance
-            //does not admit this event or mutate this viewer's countdown.
-            .filter(|&viewer| {
-                crate::map::houses::is_allied_with(
-                    &self.house_alliances,
-                    self.interner.resolve(entity.owner()),
-                    self.interner.resolve(viewer),
-                )
-            })
             .filter(|&viewer| {
                 entity
                     .sight_refresh_timers
@@ -82,7 +76,7 @@ impl Simulation {
             return;
         }
         let config = self.sight_reveal_config(rules);
-        let height_grid = if config.reveal_by_height {
+        let height_grid = if config.reveal_by_height() {
             self.path_grid().map(PathGrid::ground_height_grid)
         } else {
             None

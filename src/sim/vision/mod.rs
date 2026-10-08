@@ -1409,28 +1409,38 @@ impl FogState {
     }
 }
 
-/// Configuration for visibility computation, passed to `recompute_owner_visibility`.
+/// The settings a reveal reads, from the rules, the map and the game
+/// ([`VisionConfig::new`]; production builds it in
+/// `Simulation::sight_reveal_config`).
 pub struct VisionConfig {
     /// When true, Techno reveal/update readers require the canonical stored
     /// TechnoClass+0x3D5 membership byte. Headless fixtures without live
     /// MapClass authority leave this false.
-    pub require_playfield_membership: bool,
+    require_playfield_membership: bool,
     /// `[General] VeteranSight=` (`RulesClass+0x680`), the multiplier a
     /// `SIGHT`-ability holder applies to its elevation-scaled sight. Stock
     /// `0.0` disables it (see `veterancy::veteran_sight_cells`).
-    pub veteran_sight: f64,
+    veteran_sight: f64,
     /// Leptons of elevation per +1 sight cell (from [General] LeptonsPerSightIncrease=).
     /// 256 leptons = 1 z-level. 0 disables the elevation bonus.
-    pub leptons_per_sight_increase: i32,
+    leptons_per_sight_increase: i32,
     /// Height-based LOS obstruction (from [General] RevealByHeight=).
     /// When true, terrain 4+ levels above the viewer at the midpoint blocks sight.
     /// Default true (the standard RA2/YR setting).
-    pub reveal_by_height: bool,
+    reveal_by_height: bool,
     /// Scenario `FogOfWar=` governs the first-map `CleanFog` transition. It
     /// does not change the compact visibility bitmap's existing semantics.
-    pub fog_of_war: bool,
+    fog_of_war: bool,
+    /// The map `Size=` diamond (`MapClass+0xF4/+0xF8`) that bounds a reveal's
+    /// lifted centre and each of its cells ([`collect_reveal_cells`]). A
+    /// headless fixture without a map has none; the fog grid bounds it alone.
+    map_size: Option<(i32, i32)>,
+    /// `[AudioVisual] AllyReveal=`: an allied house's reveals map this
+    /// house's cells too ([`direct_reveal_viewers`]).
+    ally_reveal: bool,
 }
 
+#[cfg(test)]
 impl Default for VisionConfig {
     fn default() -> Self {
         Self {
@@ -1439,7 +1449,38 @@ impl Default for VisionConfig {
             leptons_per_sight_increase: 0,
             reveal_by_height: true,
             fog_of_war: false,
+            map_size: None,
+            ally_reveal: true,
         }
+    }
+}
+
+impl VisionConfig {
+    /// The rules' sight keys (none in a fixture without rules: no veteran
+    /// or elevation sight, `RevealByHeight=` and `AllyReveal=` at their
+    /// constructor defaults), the map's `Size=` diamond, whether a Techno
+    /// needs the stored playfield byte, and the scenario's `FogOfWar=`.
+    pub(crate) fn new(
+        rules: Option<&crate::rules::ruleset::RuleSet>,
+        map_size: Option<(i32, i32)>,
+        require_playfield_membership: bool,
+        fog_of_war: bool,
+    ) -> Self {
+        Self {
+            require_playfield_membership,
+            veteran_sight: rules.map_or(0.0, |r| r.general.veteran_sight),
+            leptons_per_sight_increase: rules.map_or(0, |r| r.general.leptons_per_sight_increase),
+            reveal_by_height: rules.is_none_or(|r| r.general.reveal_by_height),
+            fog_of_war,
+            map_size,
+            ally_reveal: rules.is_none_or(|r| r.general.ally_reveal),
+        }
+    }
+
+    /// `[General] RevealByHeight=`: whether a sight reveal tests its cells'
+    /// line of sight, so whether the caller needs the height grid.
+    pub(crate) fn reveal_by_height(&self) -> bool {
+        self.reveal_by_height
     }
 }
 
@@ -1726,13 +1767,17 @@ fn update_entity_sight_admission(
         height_leptons,
         config.reveal_by_height,
         height_grid,
-        width,
-        height,
+        (width, height),
+        config.map_size,
     );
-    let viewers = only_viewer.map_or_else(
-        || direct_reveal_viewers(fog, entity.owner(), interner),
-        |viewer| vec![viewer],
-    );
+    let viewers = match only_viewer {
+        // A viewer the caller picked still passes the reveal's house gate.
+        Some(viewer) => reveal_admits(fog, entity.owner(), viewer, config, interner)
+            .then_some(viewer)
+            .into_iter()
+            .collect(),
+        None => direct_reveal_viewers(fog, entity.owner(), config, interner),
+    };
     if only_viewer.is_none() {
         let removed: Vec<_> = fog
             .sight_admissions
@@ -1789,29 +1834,6 @@ fn resolve_bounds(entities: &EntityStore, path_grid: Option<&PathGrid>) -> (u16,
     }
 }
 
-/// Mark all cells within `range` of `(center_rx, center_ry)` as visible+revealed.
-///
-/// Iterates the engine's reveal spiral table — `REVEAL_SPIRAL[0 .. RING_SIZES[sight]]`
-/// — with no special case at any radius. Every entry, ring 10 included, passes
-/// through the same height line-of-sight gate.
-///
-/// ## Elevation Z-shift
-/// The spiral is centered on the viewer's *screen* cell, not its raw foot cell.
-/// A raised object's sprite renders toward isometric north, so the engine shifts
-/// the reveal center by the same whole number of cells to keep the revealed
-/// footprint under the sprite. Without this an elevated unit over-reveals toward
-/// isometric south, and an aircraft lifts shroud under its shadow instead of
-/// under itself. The shift is applied unconditionally (independent of
-/// `reveal_by_height`).
-///
-/// The height-LOS obstruction check is *not* affected by the shift: in the
-/// engine the shift cancels out of the obstruction-cell math, leaving it
-/// relative to the raw foot cell. We reproduce that by adding `z_shift` back when
-/// computing the obstruction cell below.
-///
-/// `viewer_height_leptons` is the viewer's world Z — terrain elevation plus any
-/// flight altitude — because that is the single quantity the engine feeds to
-/// both the shift and the LOS viewer level.
 // Geometry-only adapter for existing kernel fixtures; production owns mapping
 // events in the source/fire/Psychic writers above, never in this test adapter.
 #[cfg(test)]
@@ -1835,13 +1857,55 @@ fn reveal_radius_into(
         height,
         by_height,
         height_grid,
-        width,
-        grid_height,
+        (width, grid_height),
+        None,
     ) {
         vis.mark_visible_with_fog_of_war(x, y, fog_of_war);
     }
 }
 
+/// The cells `MapClass::RevealArea @ 0x005678E0` hands its leaf, in its
+/// order; `RevealShroud @ 0x005673A0` walks the same cells.
+///
+/// The walk takes the engine's reveal spiral, `REVEAL_SPIRAL[0 ..
+/// RING_SIZES[range]]` (the offset table `0xABD490` and the count table
+/// `0x007ED3D0`), with no special case at any radius: 0 reveals nothing and
+/// more than 10 is 10 (`0x00567A3E..0x00567A59`). Every entry, ring 10
+/// included, passes through the same height line-of-sight gate.
+///
+/// ## Elevation Z-shift
+/// The spiral is centered on the viewer's *screen* cell, not its raw foot cell.
+/// A raised object's sprite renders toward isometric north, so the engine shifts
+/// the reveal center by the same whole number of cells to keep the revealed
+/// footprint under the sprite. Without this an elevated unit over-reveals toward
+/// isometric south, and an aircraft lifts shroud under its shadow instead of
+/// under itself. The shift is applied unconditionally (independent of
+/// `reveal_by_height`).
+///
+/// The height-LOS obstruction check is *not* affected by the shift: in the
+/// engine the shift cancels out of the obstruction-cell math, leaving it
+/// relative to the raw foot cell. We reproduce that by adding `z_shift` back when
+/// computing the obstruction cell below.
+///
+/// `viewer_height_leptons` is the viewer's world Z — terrain elevation plus any
+/// flight altitude — because that is the single quantity the engine feeds to
+/// both the shift and the LOS viewer level.
+///
+/// ## Map bounds
+/// With a map `Size=` diamond (`MapClass+0xF4/+0xF8`), a lifted centre off
+/// it reveals nothing (`0x005679FC..0x00567A38`) and each cell off it is
+/// skipped (`0x00567B66..0x00567BA0`); `grid` (the fog grid's width and
+/// height) bounds what VERA stores. The walk's `|dx| > range` and truncated
+/// distance tests (`0x00567BA6..0x00567C0A`) never reject a spiral cell.
+///
+/// RESIDUALS, dormant:
+/// - In GameMode 3 or 4 with a session object (`0x00A8B23C`) whose vt+4
+///   answers false, three fixed cells are skipped (`0x005679C8..0x005679F7`,
+///   `0x00567D17..0x00567D5E`); VERA has no session object.
+/// - With `RevealByHeight=` off, a caller's outline argument (arg 3, the
+///   Techno sight callers') walks only the outer three rings
+///   (`0x00567A77..0x00567AA5`); retail rules leave the key on.
+#[allow(clippy::too_many_arguments)]
 fn collect_reveal_cells(
     center_rx: u16,
     center_ry: u16,
@@ -1849,8 +1913,8 @@ fn collect_reveal_cells(
     viewer_height_leptons: i32,
     reveal_by_height: bool,
     height_grid: Option<&[u8]>,
-    width: u16,
-    height: u16,
+    (width, height): (u16, u16),
+    map_size: Option<(i32, i32)>,
 ) -> Vec<(u16, u16)> {
     if range == 0 {
         return Vec::new();
@@ -1863,6 +1927,14 @@ fn collect_reveal_cells(
     let cy = i32::from(center_ry) - z_shift;
     let w = i32::from(width);
     let h = i32::from(height);
+    let on_map = |x: i32, y: i32| {
+        map_size.is_none_or(|(size_w, size_h)| {
+            crate::map::playfield::size_diamond_contains(size_w, size_h, (x as i16, y as i16))
+        })
+    };
+    if !on_map(cx, cy) {
+        return Vec::new();
+    }
 
     // Clamp range to MAX_SIGHT_RANGE (the original also clamps to 10).
     let clamped = (range as usize).min(MAX_SIGHT_RANGE as usize);
@@ -1872,7 +1944,7 @@ fn collect_reveal_cells(
         let (dx, dy) = REVEAL_SPIRAL[i];
         let rx = cx + dx as i32;
         let ry = cy + dy as i32;
-        if rx >= 0 && rx < w && ry >= 0 && ry < h {
+        if on_map(rx, ry) && rx >= 0 && rx < w && ry >= 0 && ry < h {
             // Height-based LOS: check whether terrain at the obstruction cell
             // blocks sight. The original engine samples the cell at
             // `foot_target + mirror[i] + (2, 2)` — the per-entry mirror steps one
@@ -2090,7 +2162,8 @@ pub(crate) fn cell_is_shrouded(
 }
 
 /// A flat fire-leaf reveal of `range` cells around a cell, with no height
-/// shift or height line of sight (fixtures and flat callers).
+/// shift, height line of sight or map diamond (fixtures).
+#[cfg(test)]
 pub fn reveal_radius(
     fog: &mut FogState,
     owner: InternedId,
@@ -2099,7 +2172,14 @@ pub fn reveal_radius(
     range: u16,
 ) {
     let cells = collect_reveal_cells(
-        center_rx, center_ry, range, 0, false, None, fog.width, fog.height,
+        center_rx,
+        center_ry,
+        range,
+        0,
+        false,
+        None,
+        (fog.width, fog.height),
+        None,
     );
     fire_reveal_cells(fog, owner, cells);
 }
@@ -2107,13 +2187,15 @@ pub fn reveal_radius(
 /// `MapClass::RevealShroud @ 0x005673A0` as FireAt's RevealOnFire calls it
 /// (`0x006FF6F2`): radius 3 around the firer's coordinate, centred on its
 /// height-shifted cell, with `RevealByHeight=`'s line of sight (arg 7 = 1),
-/// for `house`'s map. Each cell takes the fire leaf `0x004876F0`.
+/// for `house`'s map, bounded by the map `Size=` diamond (`map_size`) as
+/// [`collect_reveal_cells`]. Each cell takes the fire leaf `0x004876F0`.
 pub(crate) fn reveal_shroud_on_fire(
     fog: &mut FogState,
     house: InternedId,
     coord: crate::sim::components::DriveCoord,
     reveal_by_height: bool,
     height_grid: Option<&[u8]>,
+    map_size: Option<(i32, i32)>,
 ) {
     if coord.x < 0 || coord.y < 0 {
         return;
@@ -2125,8 +2207,8 @@ pub(crate) fn reveal_shroud_on_fire(
         coord.z,
         reveal_by_height,
         height_grid,
-        fog.width,
-        fog.height,
+        (fog.width, fog.height),
+        map_size,
     );
     fire_reveal_cells(fog, house, cells);
 }
@@ -2157,11 +2239,13 @@ fn fire_reveal_cells(fog: &mut FogState, owner: InternedId, cells: Vec<(u16, u16
     fog.view_cache.merged = None;
 }
 
-pub(crate) fn direct_reveal_viewers(
+/// Every house with a map or an alliance entry, and `owner`: the houses a
+/// reveal by `owner` can reach.
+fn reveal_candidates(
     fog: &FogState,
     owner: InternedId,
     interner: &StringInterner,
-) -> Vec<InternedId> {
+) -> std::collections::BTreeSet<InternedId> {
     let mut candidates: std::collections::BTreeSet<_> = fog.by_owner.keys().copied().collect();
     candidates.insert(owner);
     for (house, allies) in &fog.alliances {
@@ -2172,36 +2256,96 @@ pub(crate) fn direct_reveal_viewers(
         }
     }
     candidates
+}
+
+/// `HouseClass::IsAlliedWith @ 0x004F9A50` asked of `owner` about `viewer`:
+/// `owner`'s own ally bits (`+0x5788`), one-way; a house is its own ally.
+fn owner_allied_with(
+    fog: &FogState,
+    owner: InternedId,
+    viewer: InternedId,
+    interner: &StringInterner,
+) -> bool {
+    crate::map::houses::is_allied_with(
+        &fog.alliances,
+        interner.resolve(owner),
+        interner.resolve(viewer),
+    )
+}
+
+/// The house gate of `MapClass::RevealArea @ 0x005678E0`
+/// (`0x00567AB0..0x00567B12`), asked with `viewer` as the player whose map
+/// the leaf writes: a reveal by `owner` maps `owner`'s own cells, and an
+/// allied house's when `[AudioVisual] AllyReveal=` is set (`0x00567AEF`).
+///
+/// RESIDUAL: a house that infiltrated `owner`'s radar (the `+0x54E4` bit
+/// of its index, `0x00567AC1..0x00567ADB`) is mapped too, allied or not;
+/// VERA keeps no radar-spy bits.
+fn reveal_admits(
+    fog: &FogState,
+    owner: InternedId,
+    viewer: InternedId,
+    config: &VisionConfig,
+    interner: &StringInterner,
+) -> bool {
+    viewer == owner || (config.ally_reveal && owner_allied_with(fog, owner, viewer, interner))
+}
+
+/// The maps a reveal by `owner` writes ([`reveal_admits`]).
+pub(crate) fn direct_reveal_viewers(
+    fog: &FogState,
+    owner: InternedId,
+    config: &VisionConfig,
+    interner: &StringInterner,
+) -> Vec<InternedId> {
+    reveal_candidates(fog, owner, interner)
         .into_iter()
-        .filter(|&viewer| {
-            are_houses_friendly(
-                &fog.alliances,
-                interner.resolve(owner),
-                interner.resolve(viewer),
-            )
-        })
+        .filter(|&viewer| reveal_admits(fog, owner, viewer, config, interner))
         .collect()
 }
 
-/// Publish a fresh transient reveal to the source and its direct allied viewers.
-/// Psychic6CD773/6CD79C route through5678E0's source-House/AllyReveal gate.
-/// Snapshot/display merges must not stand in for this writer: derived knowledge
-/// from A's view is not a new B-owned reveal that can reach C. Uses the existing
-/// admitted alliance policy (ordinary retail AllyReveal=yes); the full optional
-/// policy is a separate owner. Fire5673A0 keeps its separately owned admission.
-pub(crate) fn reveal_radius_for_direct_allies(
+/// `owner` and every house `owner`'s IsAlliedWith names ([`owner_allied_with`]),
+/// whatever `AllyReveal=` says.
+pub(crate) fn allied_viewers(
+    fog: &FogState,
+    owner: InternedId,
+    interner: &StringInterner,
+) -> Vec<InternedId> {
+    reveal_candidates(fog, owner, interner)
+        .into_iter()
+        .filter(|&viewer| owner_allied_with(fog, owner, viewer, interner))
+        .collect()
+}
+
+/// `MapClass::RevealArea @ 0x005678E0` as `SuperClass::Launch @ 0x006CC390`
+/// case 11 calls it twice: around `cell` raised by `z` leptons (the cell's
+/// GetCoords), `radius` cells, with no line of sight, for each map the
+/// house gate admits ([`direct_reveal_viewers`]). Final 0 (`0x006CD773`)
+/// reduces each cell's shroud counter, then final 1 (`0x006CD79C`) raises it
+/// again, through the leaf MapCell `0x00653830` -> `0x004A9CA0`, so the
+/// cells end mapped with no lasting sight source. Only the launcher's gate
+/// is asked: a viewer's own allies gain nothing, and no merged view stands
+/// in for this writer.
+pub(crate) fn psychic_reveal(
     fog: &mut FogState,
     owner: InternedId,
-    center_rx: u16,
-    center_ry: u16,
-    range: u16,
+    cell: (u16, u16),
+    z: i32,
+    radius: u16,
+    config: &VisionConfig,
     interner: &StringInterner,
 ) {
-    let viewers = direct_reveal_viewers(fog, owner, interner);
+    let viewers = direct_reveal_viewers(fog, owner, config, interner);
     let cells = collect_reveal_cells(
-        center_rx, center_ry, range, 0, false, None, fog.width, fog.height,
+        cell.0,
+        cell.1,
+        radius,
+        z,
+        false,
+        None,
+        (fog.width, fog.height),
+        config.map_size,
     );
-    //6CD773 final0 completes before6CD79C final1. No retained Techno source.
     for release in [false, true] {
         for &viewer in &viewers {
             let vis = fog
@@ -2209,7 +2353,7 @@ pub(crate) fn reveal_radius_for_direct_allies(
                 .entry(viewer)
                 .or_insert_with(|| OwnerVisibility::new(fog.width, fog.height));
             for &(rx, ry) in &cells {
-                vis.mark_visible_with_fog_of_war(rx, ry, true);
+                vis.mark_visible_with_fog_of_war(rx, ry, config.fog_of_war);
                 let index = vis.index(rx, ry).expect("collected cell is in bounds");
                 if release {
                     vis.shroud_knowledge[index].leave();
@@ -2470,6 +2614,9 @@ pub(crate) fn materialize_gap_generator_sources(
 
 #[cfg(test)]
 mod vision_tests;
+
+#[cfg(test)]
+mod reveal_area_tests;
 
 #[cfg(test)]
 mod adjust_for_z_tests {

@@ -83360,6 +83360,669 @@
       "target": true
     }
   ],
+  "psychic_launch": [
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ]
+      ],
+      "level": 0,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_PsychicRevealReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "level": 0,
+      "player": true,
+      "radius": 15,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": false,
+      "events": [],
+      "level": 0,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": false,
+      "events": [],
+      "level": 0,
+      "player": true,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            104
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            104
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            104
+          ],
+          0
+        ]
+      ],
+      "level": 1,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            416
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            416
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            416
+          ],
+          0
+        ]
+      ],
+      "level": 4,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": true,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            416
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            416
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            416
+          ],
+          0
+        ]
+      ],
+      "level": 4,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_PsychicRevealReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "level": 0,
+      "player": true,
+      "radius": 0,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          3,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          3,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_PsychicRevealReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "level": 0,
+      "player": true,
+      "radius": 3,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          11,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            10368,
+            10368,
+            0
+          ],
+          11,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            10368,
+            10368,
+            0
+          ],
+          0
+        ],
+        [
+          "vox_find",
+          "EVA_PsychicRevealReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "level": 0,
+      "player": true,
+      "radius": 11,
+      "selected_super": -1,
+      "target": [
+        40,
+        40
+      ]
+    },
+    {
+      "bridge": false,
+      "charged": true,
+      "events": [
+        [
+          "cell",
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            128,
+            128,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          0
+        ],
+        [
+          "reveal_area",
+          true,
+          [
+            128,
+            128,
+            0
+          ],
+          15,
+          true,
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          1
+        ],
+        [
+          "play_at",
+          78,
+          [
+            128,
+            128,
+            0
+          ],
+          0
+        ]
+      ],
+      "level": 0,
+      "player": false,
+      "radius": 15,
+      "selected_super": 9,
+      "target": [
+        0,
+        0
+      ]
+    }
+  ],
   "psydom_process": {
     "fire_stages": {
       "first_stage": [
