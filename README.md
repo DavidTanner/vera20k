@@ -16,7 +16,7 @@
 VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
 so you'll need your own copy of Red Alert 2: Yuri's Revenge.
 
-VERA20k is made by gamers, for gamers, and players have the final say in where it goes.
+VERA20k is made by gamers, for gamers, and gamers have the final say in where it goes.
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
@@ -24,12 +24,12 @@ VERA20k is made by gamers, for gamers, and players have the final say in where i
 
 1. Keep the gameplay, visuals and atmosphere of the original Red Alert 2: Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
-3. Incorporate new RTS features.
+3. Incorporate known old and new RTS features never seen before.
 4. Integrated multiplayer client
 
 ## Current status
 
-**Early development.** Local skirmish is playable on Windows against a basic AI. Retail and
+**Mid development.** Local skirmish is playable on Windows against a basic AI. Retail and
 random maps, menus, base building, harvesting, combat and save/load are in place, but there's
 still a lot to fix and finish.
 
@@ -55,18 +55,17 @@ Use `--release` to play; debug builds are too slow. See
 
 ## How we work
 
-Most of the code is written by AI coding agents that I direct. We use Ghidra to study the
+Most of the code is written by AI coding agents. AI use Ghidra to study the
 original engine, then port its behavior to Rust and check it with
-[comparison tools](tools/native_oracle.md) and playtesting. My agents follow
+[comparison tools](tools/native_oracle.md) and playtesting. Agents follow
 [AGENTS.md](AGENTS.md). Contributors follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 
-Help is welcome. You can write code, test the game, improve the docs, or play it next to the
-original and tell us what feels wrong. You don't need reverse-engineering experience to help.
+Help is welcome. You can write code, refactor the engine, test the game, ideas, or play it next to the
+original and tell us what feels wrong. Open a PR, and we take it from there.  
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), browse the
-[good first issues](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue), or say
+Read [CONTRIBUTING.md](CONTRIBUTING.md), or say
 hi on [Discord](https://discord.gg/kmjRUn5m5F). The
 [architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits together.
 
