@@ -1089,7 +1089,7 @@ pub(crate) fn map_wall_owner_candidate_from_building(
     let coords =
         crate::sim::movement::ground_pose::object_get_coords(entity, Some(resolved_terrain));
     let (foundation_width, foundation_height) =
-        crate::sim::production::foundation_dimensions(&entity.foundation);
+        crate::rules::foundation::foundation_dimensions(&entity.foundation);
 
     crate::sim::overlay_grid::MapWallOwnerCandidate {
         owner: entity.owner(),

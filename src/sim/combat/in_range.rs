@@ -30,6 +30,7 @@
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
+use crate::rules::foundation::foundation_dimensions;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::cell_kernel::native_cell_own_coords;
@@ -40,7 +41,6 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::air_movement::{is_high_flying_in_query, is_low_flying_in_query};
 use crate::sim::movement::ground_pose::object_world_z_leptons;
-use crate::sim::production::foundation_dimensions;
 use crate::util::fixed_math::{SimFixed, isqrt_i64};
 use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS};
 

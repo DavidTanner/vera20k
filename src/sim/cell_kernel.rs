@@ -9,9 +9,7 @@ use crate::util::fixed_math::isqrt_i64;
 
 #[cfg(test)]
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
-use crate::util::lepton::{
-    GROUND_LEVEL_HEIGHT_LEPTONS, UnsupportedGroundSlope, ground_height_leptons,
-};
+use crate::util::lepton::{GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons};
 
 pub const LEPTONS_PER_CELL: i32 = crate::util::lepton::LEPTONS_PER_CELL_I32;
 pub const CELL_CENTER_LEPTONS: i32 = crate::util::lepton::CELL_CENTER_LEPTON_I32;
@@ -123,7 +121,7 @@ pub(crate) fn native_cell_own_coords(
         0,
     );
     let (level, slope) = cells.ground_fields(cell);
-    let z = cell_floor_height(level, slope, point.x, point.y).ok()?;
+    let z = ground_height_leptons(level, slope, point.x, point.y).ok()?;
     Some((i64::from(point.x), i64::from(point.y), i64::from(z)))
 }
 
@@ -142,17 +140,6 @@ pub fn checked_cell_from_world(
         return None;
     }
     Some((x as u16, y as u16))
-}
-
-/// YR `CellClass::ComputeGroundHeightAtCoord @ 0x0047B3A0`; bridge height is
-/// deliberately not included.
-pub fn cell_floor_height(
-    level: u8,
-    slope_index: u8,
-    world_x: i32,
-    world_y: i32,
-) -> Result<i32, UnsupportedGroundSlope> {
-    ground_height_leptons(level, slope_index, world_x, world_y)
 }
 
 /// Apply the high-bridge deck only when a caller has already selected that layer.
@@ -302,10 +289,10 @@ mod tests {
 
     #[test]
     fn yr_cell_floor_and_coordinate_vectors() {
-        assert_eq!(cell_floor_height(0xff, 0, 0, 0), Ok(-103));
-        assert_eq!(cell_floor_height(0, 1, 255, 0), Ok(103));
-        assert_eq!(cell_floor_height(0, 13, 255, 255), Ok(207));
-        assert_eq!(cell_floor_height(0, 20, 255, 255), Ok(52));
+        assert_eq!(ground_height_leptons(0xff, 0, 0, 0), Ok(-103));
+        assert_eq!(ground_height_leptons(0, 1, 255, 0), Ok(103));
+        assert_eq!(ground_height_leptons(0, 13, 255, 255), Ok(207));
+        assert_eq!(ground_height_leptons(0, 20, 255, 255), Ok(52));
         assert_eq!(checked_cell_from_world(-1, 255, 2, 2), Some((0, 0)));
         assert_eq!(checked_cell_from_world(-257, 0, 2, 2), None);
         assert_eq!(

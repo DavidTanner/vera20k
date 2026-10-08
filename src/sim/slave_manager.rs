@@ -421,7 +421,7 @@ impl Simulation {
             self.substrate.entities.get(master).and_then(|parent| {
                 let object = self.object_type(parent.type_ref(), rules)?;
                 let slave_type = object.enslaves.as_deref()?;
-                let slave_object = rules.object_case_insensitive(slave_type)?;
+                let slave_object = rules.object(slave_type)?;
                 if slave_object.category != crate::rules::object_type::ObjectCategory::Infantry {
                     return None;
                 }

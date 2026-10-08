@@ -3,12 +3,13 @@
 
 use std::collections::VecDeque;
 
+use crate::rules::foundation::foundation_dimensions;
+
 use super::{
     BuildingPlacementError, ProductionCategory, ProductionPlacement, credits_for_owner,
-    cycle_active_producer_for_owner_category, foundation_dimensions,
-    place_production_with_overlays, placement_preview_for_owner_with_overlays,
-    placement_preview_for_owner_without_overlays, producer_candidates_for_owner_category,
-    publish_production_changes, ready_buildings_for_owner,
+    cycle_active_producer_for_owner_category, place_production_with_overlays,
+    placement_preview_for_owner_with_overlays, placement_preview_for_owner_without_overlays,
+    producer_candidates_for_owner_category, publish_production_changes, ready_buildings_for_owner,
 };
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;

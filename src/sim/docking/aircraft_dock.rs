@@ -374,7 +374,7 @@ fn cell_dist_sq(ax: u16, ay: u16, bx: u16, by: u16) -> u32 {
 /// Checks: alive, same owner, `UnitReload=yes` or `Helipad=yes`, and the
 /// aircraft's `Dock=` list includes the building's type_ref.
 /// Returns `(stable_id, dock_cell_rx, dock_cell_ry)`.
-fn find_nearest_airfield(
+pub(crate) fn find_nearest_airfield(
     sim: &Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -414,7 +414,7 @@ fn find_nearest_airfield(
             continue;
         }
         // Use building center as dock cell.
-        let (w, h) = crate::sim::production::foundation_dimensions(&obj.foundation);
+        let (w, h) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
         let dock_rx = entity.position.rx + w / 2;
         let dock_ry = entity.position.ry + h / 2;
         let dist = cell_dist_sq(from.0, from.1, dock_rx, dock_ry);
@@ -613,7 +613,7 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                         return None;
                     }
                     let obj = sim.object_type(af.type_ref(), rules)?;
-                    let (w, h) = crate::sim::production::foundation_dimensions(&obj.foundation);
+                    let (w, h) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
                     Some((af_sid, af.position.rx + w / 2, af.position.ry + h / 2))
                 });
 
@@ -679,7 +679,7 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     if let Some((px, py)) = sim.substrate.entities.get(af_sid).and_then(|af| {
                         let obj = sim.object_type(af.type_ref(), rules)?;
                         let foundation =
-                            crate::sim::production::foundation_dimensions(&obj.foundation);
+                            crate::rules::foundation::foundation_dimensions(&obj.foundation);
                         obj.pads.get(pad_index as usize).map(|pad| {
                             crate::sim::docking::pad_geometry::pad_cell_for(
                                 (af.position.rx, af.position.ry),

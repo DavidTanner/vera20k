@@ -2396,21 +2396,6 @@ impl PathGrid {
         }
     }
 
-    /// Compatibility wrapper for older callers. Add/Remove parameters are
-    /// intentionally ignored for movement blocking.
-    #[cfg(test)]
-    pub fn block_building_footprint(
-        &mut self,
-        cell_rx: u16,
-        cell_ry: u16,
-        foundation: &str,
-        _add_occupy: &[(i16, i16)],
-        _remove_occupy: &[(i16, i16)],
-        has_bib: bool,
-    ) {
-        self.block_building_movement_cells(cell_rx, cell_ry, foundation, has_bib);
-    }
-
     /// Construct from raw cell data (test helper).
     #[cfg(test)]
     pub fn from_cells(cells: Vec<PathCell>, width: u16, height: u16) -> Self {

@@ -5,7 +5,5 @@
 use crate::rules::ruleset::RuleSet;
 
 pub fn is_harvester_type(rules: &RuleSet, type_id: &str) -> bool {
-    rules
-        .object_case_insensitive(type_id)
-        .is_some_and(|obj| obj.harvester)
+    rules.object(type_id).is_some_and(|obj| obj.harvester)
 }

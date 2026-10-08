@@ -2388,7 +2388,7 @@ ConditionYellow=50%
                 .object(sim.interner.resolve(bldg.type_ref))
                 .expect("type exists");
             let (foundation_w, foundation_h) =
-                crate::sim::production::foundation_dimensions(&obj.foundation);
+                crate::rules::foundation::foundation_dimensions(&obj.foundation);
             crate::sim::combat::DestroyedGarrisonBuilding {
                 building_id,
                 type_id: bldg.type_ref,

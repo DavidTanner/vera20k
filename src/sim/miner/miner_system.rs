@@ -1215,7 +1215,7 @@ fn queue_guard_from_harvest(sim: &mut Simulation, snap: &MinerSnapshot) {
 ///
 /// [`HouseTracking::owns_any_building`]: crate::sim::house_tracking::HouseTracking::owns_any_building
 fn house_owns_dock_instance(sim: &Simulation, rules: &RuleSet, snap: &MinerSnapshot) -> bool {
-    let Some(harvester) = rules.object_case_insensitive(sim.interner.resolve(snap.type_id)) else {
+    let Some(harvester) = rules.object(sim.interner.resolve(snap.type_id)) else {
         return true;
     };
     sim.houses.get(&snap.owner).is_some_and(|house| {
@@ -1369,7 +1369,7 @@ pub(crate) fn find_docking_bay(
                 .unwrap_or(MovementZone::Normal),
         )
     };
-    let harvester = rules.object_case_insensitive(sim.interner.resolve(type_id))?;
+    let harvester = rules.object(sim.interner.resolve(type_id))?;
     // CAN_LOAD runs synchronously; retain the House's native scan order
     // without holding its projection across radio owner calls.
     let buildings = sim.houses.get(&owner)?.base_projection.buildings().to_vec();

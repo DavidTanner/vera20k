@@ -14,10 +14,11 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::world::Simulation;
 
 use super::production_tech::{
-    foundation_dimensions, producer_candidates_for_owner_category, production_category_for_object,
+    producer_candidates_for_owner_category, production_category_for_object,
 };
 use super::production_types::*;
 use super::wall_placement;
+use crate::rules::foundation::foundation_dimensions;
 
 /// Placement preview for object types that do not require overlay metadata.
 ///

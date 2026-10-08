@@ -5,6 +5,7 @@
 //! for newly produced units.
 
 use crate::map::entities::EntityCategory;
+use crate::rules::foundation::foundation_dimensions;
 use crate::rules::object_type::{BuildCategory, FactoryType, ObjectCategory};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
@@ -497,10 +498,6 @@ pub fn structure_satisfies_prerequisite(rules: &RuleSet, structure_id: &str, pre
     false
 }
 
-pub fn foundation_dimensions(foundation: &str) -> (u16, u16) {
-    crate::rules::foundation::foundation_dimensions(foundation)
-}
-
 /// Returns the base foundation cells for normal building occupancy.
 ///
 /// gamemd keeps these cells separate from `AddOccupy`/`RemoveOccupy`, which only
@@ -525,18 +522,6 @@ pub fn building_base_foundation_cells(
     }
 
     cells.into_iter().collect()
-}
-
-/// Compatibility alias for older callers. Add/Remove modifiers are deliberately
-/// ignored: the hidden mechanism is a counted lifecycle state, not a footprint.
-pub fn building_footprint_cells(
-    origin_rx: u16,
-    origin_ry: u16,
-    foundation: &str,
-    _add_occupy: &[(i16, i16)],
-    _remove_occupy: &[(i16, i16)],
-) -> Vec<(u16, u16)> {
-    building_base_foundation_cells(origin_rx, origin_ry, foundation)
 }
 
 /// Cells that block static grid movement, given the base foundation and whether
@@ -602,32 +587,6 @@ mod footprint_tests {
         assert!(!cells.contains(&(8, 20)));
         assert!(!cells.contains(&(8, 19)));
         assert!(!cells.contains(&(8, 18)));
-    }
-
-    #[test]
-    fn gsi_04_05_hidden_modifiers_never_change_footprint_alias() {
-        let cells = building_footprint_cells(10, 20, "2x2", &[(-1, 0)], &[(1, 1)]);
-        assert_eq!(cells.len(), 4);
-        assert!(
-            cells.contains(&(11, 21)),
-            "RemoveOccupy is not a footprint cutout"
-        );
-        assert!(
-            !cells.contains(&(9, 20)),
-            "AddOccupy is not a footprint expansion"
-        );
-    }
-
-    #[test]
-    fn negative_offset_clamping() {
-        let cells = building_footprint_cells(0, 0, "1x1", &[(-1, 0), (-1, -1)], &[]);
-        assert_eq!(cells.len(), 1);
-    }
-
-    #[test]
-    fn deduplication() {
-        let cells = building_footprint_cells(10, 20, "2x2", &[(0, 0)], &[]);
-        assert_eq!(cells.len(), 4);
     }
 
     #[test]

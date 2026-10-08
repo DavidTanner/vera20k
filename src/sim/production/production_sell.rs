@@ -71,7 +71,7 @@ use crate::sim::world::{
 };
 use crate::util::lepton;
 
-use super::production_tech::foundation_dimensions;
+use crate::rules::foundation::foundation_dimensions;
 
 /// `TechnoTypeClass::GetRefund @ 0x00711F60` (type vtable `+0xB8`) for a live
 /// house (`RET 8`), in its x87 order under the chop control word:

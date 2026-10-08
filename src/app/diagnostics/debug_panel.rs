@@ -302,7 +302,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                             .object(sim.interner.resolve(entity.type_ref()))
                             .map(|obj| obj.foundation.as_str())
                             .unwrap_or("1x1");
-                        let (fw, fh) = crate::sim::production::foundation_dimensions(foundation);
+                        let (fw, fh) = crate::rules::foundation::foundation_dimensions(foundation);
                         let ex: u16 = entity.position.rx;
                         let ey: u16 = entity.position.ry;
                         // Check if cursor is within this building's footprint.

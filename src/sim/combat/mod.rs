@@ -156,7 +156,7 @@ use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53};
 
 use super::game_entity::GameEntity;
 use super::occupancy::OccupancyGrid;
-use super::production::foundation_dimensions;
+use crate::rules::foundation::foundation_dimensions;
 use crate::rules::animation_sequence::SequenceSet;
 
 /// One Unit's post-Foot Facing slot output for this tick — the write half of

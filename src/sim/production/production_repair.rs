@@ -64,7 +64,7 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering, NativeF64Bits};
 
 use super::production_sell::{SellOrder, sell_back, undeploys};
-use super::production_tech::foundation_dimensions;
+use crate::rules::foundation::foundation_dimensions;
 
 /// ToggleRepair's control argument. No caller passes any other value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
