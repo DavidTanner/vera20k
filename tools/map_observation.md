@@ -10,6 +10,20 @@ target handle or `null`. This read-only field is independent of NavCom, mission
 and admitted radio contacts. Older sealed v6 receipts remain accepted without
 the field; its absence supplies no evidence about pending entry.
 
+Requested terrain cells also report `local_visibility`: the current viewer's
+owner name and retained `revealed`, `visible` and `gap_covered` queries. It is
+`null` when no local viewer resolves. These read-only observations let a GPU
+capture demonstrate building pixels crossing a frontier while its anchor is
+still unexplored, without changing sight or substituting a diagnostic reveal.
+Older receipts may omit the field; their absence supplies no visibility evidence.
+
+Actor `cloak`, when present, reads the existing raw signed state/progress,
+live signed Rules `CloakingStages`, actual VXL/SHP route, and original type's
+`NoShadow` flag. `null` means no cloak runtime. Reading this projection sends
+no transition, timer or movement callback. Historical sealed receipts may omit
+it; omission supplies no cloak-state evidence. This records VERA production
+inputs and does not independently establish native timing or whole-object parity.
+
 Foot's optional `track` observation reads the installed Drive/Ship owner's
 destination and head XYZ, selector, signed cursor and valid byte. It sends no
 movement callback and creates no runtime. A paid head may survive Stop after

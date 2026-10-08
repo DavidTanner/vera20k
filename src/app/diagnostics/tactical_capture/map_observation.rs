@@ -1304,6 +1304,24 @@ impl TacticalCaptureSession {
                 let contacts: Vec<_> = (0..entity.radio_contacts.capacity())
                     .map(|slot| entity.radio_contacts.slot(slot))
                     .collect();
+                // Read the existing cloak/type owners, without advancing a
+                // timer or inferring a phase from the rendered pixels. Signed
+                // +224 progress is what the native visual query consumes.
+                let cloak = if let Some(cloak) = entity.cloak.as_ref() {
+                    let rules = state.rules().context("cloak observation rules absent")?;
+                    let object = rules
+                        .object(type_name)
+                        .context("cloak observation type absent")?;
+                    Some(json!({
+                        "state_i32": cloak.state,
+                        "progress_i32": cloak.depth as i32,
+                        "cloaking_stages_i32": rules.general.cloaking_stages,
+                        "voxel": entity.is_voxel,
+                        "no_shadow": object.no_shadow,
+                    }))
+                } else {
+                    None
+                };
                 let mut observation = json!({
                     "stable_id": id, "owner": owner,
                     "type_id": type_name, "category": entity.category,
@@ -1319,6 +1337,7 @@ impl TacticalCaptureSession {
                     "target": entity.attack_target.as_ref().map(|target| target.target),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
                     "jumpjet": jumpjet,
+                    "cloak": cloak,
                     "building": building, "unit": unit,
                     "miner": miner,
                     "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
@@ -1389,6 +1408,10 @@ impl TacticalCaptureSession {
                 row
             })
             .collect();
+        let local_owner = crate::app::input::commands::preferred_local_owner_name(state);
+        let local_visibility_owner = local_owner
+            .as_deref()
+            .and_then(|owner| sim.interner.get(owner).map(|id| (owner, id)));
         let terrain = profile.terrain_cells().iter().map(|&[rx, ry]| {
             // Immutable real-cell indexing only. A diagnostic lookup must not
             // stamp canonical Dummy or evaluate gameplay height/zone queries.
@@ -1398,7 +1421,15 @@ impl TacticalCaptureSession {
             let terrain_object = sim.production.terrain_object_cells.get(&at)
                 .and_then(|id| sim.production.terrain_objects.get(id));
             let animation = sim.production.terrain_animations.get(&at);
+            // Observe the same viewer plane consumed by drawing and picking;
+            // never reveal a cell or create missing visibility state for capture.
+            let local_visibility = local_visibility_owner.map(|(owner, id)| json!({
+                "owner": owner, "revealed": sim.fog.is_cell_revealed(id, rx, ry),
+                "visible": sim.fog.is_cell_visible(id, rx, ry),
+                "gap_covered": sim.fog.is_cell_gap_covered(id, rx, ry),
+            }));
             json!({"cell": [rx, ry], "allocated": cell.is_some(),
+                "local_visibility": local_visibility,
                 "overlay": overlay.map(|overlay| json!({"id": overlay.overlay_id, "density": overlay.overlay_data})),
                 "terrain_object": terrain_object.map(|object| json!({"name": sim.interner.resolve(object.type_ref),
                     "frame": animation.map(|animation| animation.current_frame()),

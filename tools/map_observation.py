@@ -657,6 +657,19 @@ def _action_line_inputs(value: Any, category: str, label: str) -> None:
             _bounded_int(bits, f'{label}.rocking_angles_fixed_bits[{index}]', -(1 << 31), (1 << 31) - 1)
 
 
+def _cloak(value: Any, label: str) -> None:
+    if value is None:
+        return
+    cloak = require_object(value, label)
+    require_exact_keys(cloak, ('state_i32', 'progress_i32', 'cloaking_stages_i32',
+                         'voxel', 'no_shadow'), label)
+    for key in ('state_i32', 'progress_i32', 'cloaking_stages_i32'):
+        _bounded_int(cloak[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('voxel', 'no_shadow'):
+        if type(cloak[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
            docking_state: bool = True, walk_state: bool = True,
            action_line_inputs: bool = False) -> tuple[int, str]:
@@ -667,6 +680,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('building',) if building_state else ()),
                               *(('unit',) if 'unit' in actor else ()),
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
+                              *(('cloak',) if 'cloak' in actor else ()),
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
@@ -694,6 +708,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     # The diagnostic never supplies an absent runtime or derives either cache.
     if 'jumpjet' in actor:
         _jumpjet(actor['jumpjet'], f'{label}.jumpjet')
+    if 'cloak' in actor:
+        _cloak(actor['cloak'], f'{label}.cloak')
     _coordinate(actor['cell'], f'{label}.cell')
     _coordinate(actor['physical_leptons'], f'{label}.physical_leptons', leptons=True)
     _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)
@@ -781,7 +797,18 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
     fields = ('final_tile_index', 'final_sub_tile', 'presentation_tile', 'level', 'slope',
               'raw_bridge_flags', 'bridge_state', 'has_deck', 'deck_level', 'walkable', 'transition')
     extension = ('overlay', 'terrain_object') if 'overlay' in cell or 'terrain_object' in cell else ()
-    require_exact_keys(cell, ('cell', 'allocated', *fields, *extension), label)
+    visibility_extension = ('local_visibility',) if 'local_visibility' in cell else ()
+    require_exact_keys(cell, ('cell', 'allocated', *fields, *extension, *visibility_extension), label)
+    if visibility_extension and cell['local_visibility'] is not None:
+        visibility = require_object(cell['local_visibility'], f'{label}.local_visibility')
+        require_exact_keys(visibility, ('owner', 'revealed', 'visible', 'gap_covered'),
+                           f'{label}.local_visibility')
+        require_string(visibility['owner'], f'{label}.local_visibility.owner')
+        if not visibility['owner']:
+            raise ValidationError(f'{label}.local_visibility.owner must be nonempty')
+        for key in ('revealed', 'visible', 'gap_covered'):
+            if type(visibility[key]) is not bool:
+                raise ValidationError(f'{label}.local_visibility.{key} must be boolean')
     if extension:
         overlay = cell['overlay']
         if overlay is not None:

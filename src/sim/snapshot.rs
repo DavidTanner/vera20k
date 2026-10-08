@@ -854,7 +854,10 @@ use crate::sim::world::Simulation;
 // Deferment, Duration, StartTime, Coords, Owner) and its two cloud lists in
 // place of VERA's storm record; a House's power state saves its radar outage
 // timer (+0x2B0). Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 297;
+// 297 -> 298: remove cached cloak Rules/query fields and visual phase; retain
+// Techno+24C raw f32 displacement bits. The unmerged first-reveal candidate
+// also used version297 for a different layout; neither layout can resume.
+const SNAPSHOT_VERSION: u32 = 298;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3872,7 +3875,8 @@ mod tests {
         // 295 -> 296: the Force Shield's fade countdown and coordinate.
         // 296 -> 297: the Lightning Storm's globals and cloud lists; a House's
         // radar outage timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 297);
+        // 297 -> 298: canonical cloak query and retained native displacement.
+        assert_eq!(super::SNAPSHOT_VERSION, 298);
     }
 
     #[test]
@@ -6377,7 +6381,7 @@ mod tests {
             5,
             false,
         );
-        let mut cloak = CloakRuntime::new(0, 9);
+        let mut cloak = CloakRuntime::new(0);
         cloak.establish_unlimbo_fully_cloaked();
         entity.cloak = Some(cloak);
         entity.sensor_deposit = Some(SensorDeposit {
