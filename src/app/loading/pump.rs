@@ -612,6 +612,13 @@ pub(crate) fn begin_loading(state: &mut AppState, request: LoadingRequest) {
         std::time::Instant::now(),
     );
     reset_loading_presentation(state);
+    // A finished match keeps its presentation at the shell, and its entity
+    // atlases are its largest GPU allocations (SHP pages up to the texture
+    // limit). Nothing draws them once loading begins and the install replaces
+    // them, so free them before this load builds its own.
+    let outgoing = &mut state.match_state.match_presentation;
+    outgoing.sprite_atlas = None;
+    outgoing.unit_atlas = None;
     replace_loading_attempt(
         &mut state.frontend.loading_session,
         &mut state.match_state.startup,
