@@ -83,23 +83,6 @@ pub struct QueueEntry {
     pub enqueue_order: u64,
 }
 
-/// Engine special/superweapon discriminator. The study proves the writer of the
-/// engine's special-item field was never located, so value `0` cannot be proven
-/// unreachable and `0`-vs-`(-1)` MUST NOT be collapsed. Three states keep them
-/// distinct. In P1-P3 (normal builds) this is always `NoneNeg1`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum SpecialItem {
-    NoneNeg1,
-    NoneZero,
-    Item(u32),
-}
-
-impl Default for SpecialItem {
-    fn default() -> Self {
-        SpecialItem::NoneNeg1
-    }
-}
-
 /// One authoritative production state machine per (house, category), owned by
 /// `FactoryRegistry`. The factory retains its unpaid obligation; Economy owns cash.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -133,7 +116,6 @@ pub struct Factory {
     /// lifts at `0x00509283`) is not ported: see
     /// `production_tech::revalidate_eligibility`.
     pub manual: bool,
-    pub special: SpecialItem,
     /// FIFO queue-of-record waiting behind the active object (Factory `+0x40`).
     pub queue: VecDeque<QueueEntry>,
     /// The factory's construction order: gamemd appends each new FactoryClass
@@ -289,7 +271,6 @@ impl Factory {
         self.on_hold = false;
         self.suspended = false;
         self.manual = false;
-        self.special = SpecialItem::NoneNeg1; // canonical "none"; do NOT collapse 0/-1
         // The queue is left intact; the caller promotes its front.
         Some(abandoned)
     }
@@ -896,7 +877,6 @@ impl FactoryRegistry {
             f.on_hold = false;
             f.suspended = false;
             f.manual = false;
-            f.special = SpecialItem::NoneNeg1;
             f.insertion_seq = enqueue_order;
             f.changed = true;
             return EnqueueOutcome::Started;
@@ -919,7 +899,6 @@ impl FactoryRegistry {
                 on_hold: false,
                 suspended: false,
                 manual: false,
-                special: SpecialItem::NoneNeg1,
                 queue: VecDeque::new(),
                 insertion_seq: enqueue_order,
                 changed: true,
@@ -1426,15 +1405,6 @@ mod tests {
     use super::*;
 
     // ---- P2 pure-type tests ----
-
-    #[test]
-    fn special_item_none_zero_and_neg1_distinct() {
-        // The 0/-1 collapse the study forbids: the three states must compare unequal.
-        assert_ne!(SpecialItem::NoneNeg1, SpecialItem::NoneZero);
-        assert_ne!(SpecialItem::NoneNeg1, SpecialItem::Item(0));
-        assert_ne!(SpecialItem::NoneZero, SpecialItem::Item(0));
-        assert_eq!(SpecialItem::default(), SpecialItem::NoneNeg1);
-    }
 
     #[test]
     fn factory_default_progress_zero_no_object() {
