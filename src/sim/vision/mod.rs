@@ -269,15 +269,12 @@ pub struct OwnerVisibility {
     cells: Vec<u8>,
     width: u16,
     height: u16,
-    /// CellClass-like transition state aligned with `cells`. Old snapshots
-    /// deserialize this as empty and are expanded lazily before the next tick.
-    #[serde(default)]
+    /// CellClass-like transition state aligned with `cells`.
     cell_runtime: Vec<CellVisibilityRuntime>,
     /// Number of current-frame visibility contributors per cell. This lets the
     /// next recompute apply the same number of native counter reductions that
     /// this frame admitted; it is serialized because a snapshot can occur
     /// between visibility rebuilds.
-    #[serde(default)]
     visibility_marks: Vec<u16>,
     shroud_knowledge: Vec<ShroudKnowledge>,
 }
@@ -358,7 +355,6 @@ impl OwnerVisibility {
     /// the CellClass first-map transition.
     pub fn mark_visible_with_fog_of_war(&mut self, rx: u16, ry: u16, fog_of_war: bool) {
         if let Some(i) = self.index(rx, ry) {
-            self.ensure_cell_runtime();
             self.cell_runtime[i].map_visible(fog_of_war, |_| {});
             self.visibility_marks[i] = self.visibility_marks[i].saturating_add(1);
             self.cells[i] |= FLAG_VISIBLE | FLAG_REVEALED;
@@ -369,7 +365,6 @@ impl OwnerVisibility {
     /// Called each tick by `recompute_owner_visibility_in_place` so existing
     /// grids can be reused without reallocation.
     pub fn clear_all_visible(&mut self) {
-        self.ensure_cell_runtime();
         for knowledge in &mut self.shroud_knowledge {
             knowledge.transient_visible = false;
         }
@@ -462,24 +457,11 @@ impl OwnerVisibility {
         let Some(index) = self.index(rx, ry) else {
             return;
         };
-        self.ensure_cell_runtime();
         self.cell_runtime[index].set_fogged_object_snapshot(present);
     }
 
     pub(crate) fn shroud_knowledge_raw(&self) -> &[ShroudKnowledge] {
         &self.shroud_knowledge
-    }
-
-    fn ensure_cell_runtime(&mut self) {
-        self.shroud_knowledge
-            .resize(self.cells.len(), ShroudKnowledge::default());
-        if self.cell_runtime.len() != self.cells.len() {
-            self.cell_runtime
-                .resize(self.cells.len(), CellVisibilityRuntime::default());
-        }
-        if self.visibility_marks.len() != self.cells.len() {
-            self.visibility_marks.resize(self.cells.len(), 0);
-        }
     }
 
     #[cfg(test)]
@@ -1185,7 +1167,6 @@ impl FogState {
             return;
         }
         for vis in self.by_owner.values_mut() {
-            vis.ensure_cell_runtime();
             for index in 0..vis.cells.len() {
                 vis.shroud_knowledge[index].sweep();
                 vis.publish_knowledge(index);
@@ -2362,7 +2343,6 @@ pub(crate) fn apply_gap_generator_sources_with_spy_sat(
         return;
     }
     for (&viewer, vis) in &mut fog.by_owner {
-        vis.ensure_cell_runtime();
         let previous = fog.gap_sources.entry(viewer).or_default();
         let mut admitted = std::collections::BTreeSet::new();
         for cell in &mut vis.cells {
@@ -2440,7 +2420,6 @@ pub(crate) fn publish_gap_generator_event(
     let width = usize::from(fog.width);
     let height = usize::from(fog.height);
     if let Some(vis) = fog.by_owner.get_mut(&viewer) {
-        vis.ensure_cell_runtime();
         let receipts = fog.gap_sources.entry(viewer).or_default();
         if active {
             if !are_houses_friendly(
@@ -2498,7 +2477,6 @@ pub(crate) fn materialize_gap_generator_sources(
         // Preserve the existing per-viewer receipt container, including empty
         // sets. Materialization does not admit or remove any generator.
         fog.gap_sources.entry(viewer).or_default();
-        vis.ensure_cell_runtime();
         for cell in &mut vis.cells {
             *cell &= !FLAG_GAP_FOG;
         }

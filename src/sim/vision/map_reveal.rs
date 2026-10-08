@@ -111,7 +111,6 @@ impl FogState {
         }
         {
             let vis = self.by_owner.get_mut(&owner).unwrap();
-            vis.ensure_cell_runtime();
             for (x, y) in cells {
                 let Some(index) = vis.index(x, y) else {
                     continue;
