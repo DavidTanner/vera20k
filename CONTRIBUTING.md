@@ -12,9 +12,6 @@ useful work needs no code at all. Ask questions in your issue or on
   report what differs, ideally with a clip of each. No code needed, and very useful.
 - **Code.** Gameplay is in `src/sim/`, rendering in `src/render/`, menus and input in
   `src/app/`, `src/ui/` and `src/sidebar/`, tools in `src/bin/` and `tools/`.
-- **Reverse engineering.** Study `gamemd.exe` with Ghidra or the
-  [native comparison tools](tools/native_oracle.md).
-- **Platforms and docs.** Report how it runs on your OS and GPU, or fix outdated docs.
 
 For anything large, ask first.
 
