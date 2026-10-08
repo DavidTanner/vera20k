@@ -6,6 +6,23 @@ They demonstrate wording and scope, not that their goals succeeded. Historical
 commands, paths and publication instructions are not active instructions or permission.
 Prefer the current user's request and latest corrections over any example.
 
+## Prime example: generic parity goal
+
+The user's reusable parity template, shared October 9, 2026 as the /goal they use in
+Codex and Claude Code (desktop app), currently with Sol 6.1 at max effort. Start
+parity drafts from this shape; fill the placeholders from the current request.
+
+```text
+/goal Make VERA20k <mechanism> behave like active-retail gamemd.exe: <its main parts>. These are starting points, not scope limits. Port what is missing, fix what is wrong and complete partial chains, including all required dependencies. Commit, publish and merge validated chains, then continue. DONE WHEN a whole-<mechanism> audit finds no unresolved required behavior, and native comparisons and production validation demonstrate it. Recording missing work does not complete the goal.
+```
+
+What to carry forward: one direction sentence naming the mechanism and its parts,
+an explicit "not scope limits" guard, port/fix/complete with dependencies, delivery
+in one sentence, and a whole-mechanism finish line backed by native comparisons and
+production validation. It holds the bridges prompt's scope guard at the combat
+prompt's length. Keep the publication sentence only when the current task has that
+authority.
+
 ## The clearest correction: direction and a goal
 
 On September 27, while shortening a Claude Code refactor continuation, the user said:
