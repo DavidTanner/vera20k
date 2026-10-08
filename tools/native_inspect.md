@@ -71,7 +71,7 @@ it cannot prove they are true boundaries. Linear sweep can also decode embedded
 data successfully. Neither an empty result nor a clean decode proves absence of
 aliases, unreachable code, complete callers or active-YR reachability. Use original
 callers, gates and checked execution for those claims; see the
-[Ghidra workflow](../docs/research/ghidra-workflow.md).
+[Ghidra workflow](../docs/ghidra-workflow.md).
 
 ## Reuse and validation
 

@@ -102,7 +102,7 @@ frame/stencil retention and absence of frame fallback. Its ignored
 loads the actual scenario and archives. The canonical focused atlas group passes6 with this archive test ignored;
 retained ART tests pass3 and the full40-shape comparison passes both GPU formats.
 The physical Hills archive test subsequently passes when invoked separately.
-See [the chain receipt](../../docs/research/bridge-projectile-render.md) for the
+See the chain receipt for the
 binary hash and logs. The renderer remedy now passes the reproduced Metal stress case. Final CPU/Clippy
 also pass (9544/0/157, Clippy exit0) on unchanged renderer source. Same-source
 release/visible validation now passes within the recorded load/continuation/UI

@@ -75,7 +75,7 @@ shader entrypoints. It does not exercise the complete BatchRenderer upload owner
 These isolated fixtures do not certify a retail scene,
 non-clear A-buffer composition, alpha blending, or every palette producer.
 
-See the [native evidence and boundaries](../../docs/research/LIGHTCONVERT_ROW_RGB565_ORACLE_2026_09_09.md).
+See the native evidence and boundaries.
 
 Portable lifecycle and failure gates run in `python -m tools.run_tests`; native replay
 requires the enrolled executable, and the ignored GPU checks require a real adapter.

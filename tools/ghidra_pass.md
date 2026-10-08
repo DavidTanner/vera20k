@@ -105,7 +105,7 @@ remains.
 
 The ledger is also the record of what the pass changed and why: the plate text
 carries the evidence, following the tagged-paragraph convention in
-[the Ghidra workflow](../docs/research/ghidra-workflow.md#names-and-their-sources).
+[the Ghidra workflow](../docs/ghidra-workflow.md#names-and-their-sources).
 
 ## Runner regression checks
 

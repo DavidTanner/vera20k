@@ -38,4 +38,4 @@ experiment to be repeated without reconstructing any asset decoder.
 The checked palette run records native SHA-256 and fixture payload SHA-256 in the
 comparison JSON and the oracle's existing metadata. Original render-time TMP
 depth composition remains outside this parser corpus's proof; see the explicit
-limitation in the [historical TMP report](../../../docs/research/TMP_DIAMOND_VALUE_CERTIFICATION_GHIDRA_REPORT.md).
+limitation in the historical TMP report.

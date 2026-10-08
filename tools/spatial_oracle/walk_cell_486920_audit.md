@@ -130,7 +130,7 @@ to the ordinary Engineer bridge chain.
 
 ## Corrected instruction identities
 
-The historical [A6 D5 finding](../../docs/research/MOVEMENT_ACCEPTANCE_A6_INFANTRY_STEPPING_EXAMINATION.md#d5--boundary-tail-call-0x00486920-missing)
+The historical A6 D5 finding
 previously described RTTI<6, left index126 unchecked and implied one animation
 per cell per call. The corrected identities are:
 
