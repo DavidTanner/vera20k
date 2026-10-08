@@ -44322,6 +44322,2745 @@
       ]
     }
   ],
+  "drop_payload": [
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        0,
+        []
+      ],
+      "events": [],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [],
+      "passengers": 0,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10367,
+            10496,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10367,
+            10496,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 0,
+      "ammo_after": -1,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          -1
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": -1,
+      "ammo_after": -2,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10367,
+            10496,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          -2
+        ],
+        [
+          "subposition",
+          [
+            10367,
+            10496,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 1,
+      "ammo_after": 0,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10367,
+            10496,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          0
+        ],
+        [
+          "subposition",
+          [
+            10367,
+            10496,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10240,
+            10367,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10240,
+            10367,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10261,
+            10354,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10261,
+            10354,
+            1500
+          ]
+        ]
+      ],
+      "facing": 0,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10496,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10496,
+            10368,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10517,
+            10355,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10517,
+            10355,
+            1500
+          ]
+        ]
+      ],
+      "facing": 0,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10277,
+            10277,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10277,
+            10277,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10298,
+            10264,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10298,
+            10264,
+            1500
+          ]
+        ]
+      ],
+      "facing": 8192,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10458,
+            10458,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10458,
+            10458,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10479,
+            10445,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10479,
+            10445,
+            1500
+          ]
+        ]
+      ],
+      "facing": 8192,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16383,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10495,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10495,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10482,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10482,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16383,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10367,
+            10496,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10367,
+            10496,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10388,
+            10483,
+            1500
+          ]
+        ]
+      ],
+      "facing": 49153,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 49153,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10240,
+            10367,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10240,
+            10367,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10261,
+            10354,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10261,
+            10354,
+            1500
+          ]
+        ]
+      ],
+      "facing": 65535,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 99,
+      "ammo_after": 98,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10496,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          98
+        ],
+        [
+          "subposition",
+          [
+            10496,
+            10368,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10517,
+            10355,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10517,
+            10355,
+            1500
+          ]
+        ]
+      ],
+      "facing": 65535,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 1,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 2,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 7,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": -1,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": false,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": false,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "remove_member",
+          true,
+          0,
+          -1,
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": true
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": false,
+      "spot": true,
+      "team": true
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        0,
+        []
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ]
+      ],
+      "passengers": 1,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          0
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 1,
+      "passes": 2,
+      "passes_after": 2,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": false,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            10368,
+            10368,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            10389,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 0,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 100,
+      "can_enter": 0,
+      "cargo": [
+        2,
+        [
+          0,
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            10368,
+            10240,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            10368,
+            10240,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "limbo",
+          0
+        ],
+        [
+          "conceal",
+          0
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        10368,
+        10368,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          -3,
+          -3
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": -3,
+      "passes_after": -3,
+      "rearm_timer": [
+        -7,
+        -7
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": false,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            0,
+            -128,
+            1500
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            0,
+            -128,
+            1500
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            21,
+            -141,
+            1500
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            0,
+            0,
+            1500
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            21,
+            -141,
+            1500
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        0,
+        0,
+        1500
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    },
+    {
+      "ammo": 100,
+      "ammo_after": 99,
+      "can_enter": 0,
+      "cargo": [
+        1,
+        [
+          1
+        ]
+      ],
+      "events": [
+        [
+          "cell_at",
+          [
+            -299,
+            69872,
+            0
+          ]
+        ],
+        [
+          "can_enter",
+          0,
+          true,
+          [
+            -1,
+            -1,
+            0,
+            1
+          ],
+          99
+        ],
+        [
+          "subposition",
+          [
+            -299,
+            69872,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          "spawn_parachuted",
+          0,
+          [
+            -278,
+            69859,
+            0
+          ]
+        ],
+        [
+          "play_at",
+          9,
+          [
+            -300,
+            70000,
+            0
+          ],
+          0
+        ],
+        [
+          "cell_at",
+          [
+            -278,
+            69859,
+            0
+          ]
+        ]
+      ],
+      "facing": 16384,
+      "location": [
+        -300,
+        70000,
+        0
+      ],
+      "neighbour_cells": [
+        [
+          40,
+          41
+        ],
+        [
+          -3,
+          -3
+        ]
+      ],
+      "passengers": 2,
+      "passes": 2,
+      "passes_after": 5,
+      "rearm_timer": [
+        4321,
+        0
+      ],
+      "returned": 0,
+      "spawned": true,
+      "spot": true,
+      "team": false
+    }
+  ],
   "effect_tint_intensity": {
     "intensities": [
       0,
@@ -67453,6 +70192,6060 @@
       ]
     }
   ],
+  "paradrop_launch": [
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": false,
+      "events": [],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": false,
+      "events": [],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": -1,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          "null"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          "dummy"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            45,
+            41
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          0
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          "null"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          "dummy"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            0,
+            7
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            7
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            0,
+            7
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        7
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            7,
+            0
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            7,
+            0
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            7,
+            0
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        7,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": -1,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          "null"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          "dummy"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "vox_find",
+          "EVA_ReinforcementsReady"
+        ],
+        [
+          "vox_remove",
+          33
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": true,
+      "selected_super": -1,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            45,
+            41
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          0
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          "null"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          "dummy"
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            0,
+            0
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            0,
+            7
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            0,
+            7
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            0,
+            7
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        7
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          0
+        ],
+        [
+          [
+            7,
+            0
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            7,
+            0
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            7,
+            0
+          ],
+          0,
+          0,
+          8
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        7,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          -1
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          13
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "nearby",
+          [
+            40,
+            40
+          ],
+          [
+            0,
+            -1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            0
+          ],
+          0,
+          0
+        ],
+        [
+          "map_cell",
+          [
+            45,
+            41
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            45,
+            41
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ],
+        [
+          [
+            45,
+            41
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        45,
+        41
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          2,
+          6
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 2
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 3
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": -1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 4
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [],
+          []
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0,
+            1
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6,
+            2
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          6
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          3
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0,
+            1
+          ],
+          [
+            6,
+            3
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          2
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            -1,
+            0
+          ],
+          [
+            6,
+            2
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          0
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          1
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          2,
+          -1
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0,
+            1,
+            2
+          ],
+          [
+            0,
+            1,
+            -1
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2,
+            0
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 2
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          2,
+          6
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          4
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2,
+            0
+          ],
+          [
+            6,
+            4
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 2
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [],
+          []
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          24301
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1,
+            0
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9,
+            4
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          9
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          4
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1,
+            0
+          ],
+          [
+            9,
+            4
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 5,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            -1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 1
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0,
+            1
+          ],
+          [
+            8
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          0,
+          8
+        ],
+        [
+          "send",
+          3,
+          1,
+          26,
+          [
+            40,
+            40
+          ],
+          0,
+          1,
+          2
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [
+            0,
+            1
+          ],
+          [
+            8,
+            2
+          ]
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    },
+    {
+      "cells": [
+        [
+          [
+            40,
+            40
+          ],
+          14
+        ]
+      ],
+      "charged": true,
+      "events": [
+        [
+          "find_aircraft_type",
+          "PDPLANE"
+        ],
+        [
+          "map_cell",
+          [
+            40,
+            40
+          ]
+        ]
+      ],
+      "kind": 6,
+      "lists": {
+        "ally": [
+          [
+            0
+          ],
+          [
+            6
+          ]
+        ],
+        "amer": [
+          [],
+          []
+        ],
+        "sov": [
+          [
+            1
+          ],
+          [
+            9
+          ]
+        ],
+        "yuri": [
+          [
+            2
+          ],
+          [
+            6
+          ]
+        ]
+      },
+      "nearby": [
+        0,
+        0
+      ],
+      "plane_index": 3,
+      "player": false,
+      "selected_super": 9,
+      "side": 0
+    }
+  ],
+  "paradrop_missions": [
+    {
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 1023,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 1024,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 1025,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 5000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 1024,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 0,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": -1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 0,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 1,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 1,
+      "passes_after": 1,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 0,
+      "passes_after": -1,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 0,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -1,
+      "passes_after": -2,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -1,
+      "passes_after": -1,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -128,
+      "passes_after": 127,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -128,
+      "passes_after": -128,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 127,
+      "passes_after": 126,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 127,
+      "passes_after": 127,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": false
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": false
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "destination",
+          "target",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "destination",
+          "target",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 0,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": false
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": false,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          27,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 1,
+      "latch_after": 1,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 4,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 1,
+      "latch_after": 1,
+      "mission": "approach",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 3,
+      "target": true
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 1023,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 1024,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 1025,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 5000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 1024,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 0,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": -1,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 0,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 1,
+      "passes_after": 1,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 1,
+      "passes_after": 1,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 0,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 0,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -1,
+      "passes_after": -1,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -1,
+      "passes_after": -1,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -128,
+      "passes_after": -128,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": -128,
+      "passes_after": -128,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 127,
+      "passes_after": 127,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 127,
+      "passes_after": 127,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": false
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": false
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": false,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 0,
+      "passes_after": 0,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 0,
+      "events": [
+        [
+          "target",
+          "null"
+        ],
+        [
+          "destination",
+          "null",
+          1
+        ],
+        [
+          "queue",
+          4,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 0,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": false,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": false
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ]
+      ],
+      "in_playfield": false,
+      "latch": 0,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 500,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "in_playfield",
+          [
+            10368,
+            10368,
+            1500
+          ]
+        ],
+        [
+          "drop_payload",
+          1
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 1,
+      "latch_after": 1,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    },
+    {
+      "distance": 2000,
+      "events": [
+        [
+          "distance_to",
+          "target"
+        ],
+        [
+          "queue",
+          26,
+          0
+        ]
+      ],
+      "in_playfield": true,
+      "latch": 1,
+      "latch_after": 0,
+      "mission": "overfly",
+      "nav_com": true,
+      "passengers": true,
+      "passes": 5,
+      "passes_after": 5,
+      "radius": 1024,
+      "returned": 5,
+      "target": true
+    }
+  ],
   "psydom_process": {
     "fire_stages": {
       "first_stage": [
@@ -76589,6 +85382,2146 @@
       "top": 1897
     }
   ],
+  "send_paradrop_planes": [
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "commence",
+          [
+            0,
+            []
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 0,
+      "payload": 0,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        1,
+        [
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "commence",
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 1,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        9,
+        [
+          8,
+          7,
+          6,
+          5,
+          4,
+          3,
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          3,
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          3,
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          4,
+          [
+            4,
+            [
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          4,
+          [
+            4,
+            [
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          5,
+          [
+            5,
+            [
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          5,
+          [
+            5,
+            [
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          6,
+          [
+            6,
+            [
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          6,
+          [
+            6,
+            [
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          7,
+          [
+            7,
+            [
+              6,
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          7,
+          [
+            7,
+            [
+              6,
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          8,
+          [
+            8,
+            [
+              7,
+              6,
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          8,
+          [
+            8,
+            [
+              7,
+              6,
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            9,
+            [
+              8,
+              7,
+              6,
+              5,
+              4,
+              3,
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 9,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "commence",
+          [
+            0,
+            []
+          ]
+        ]
+      ],
+      "inf_index": -1,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 0,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "commence",
+          [
+            0,
+            []
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": false,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": false,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          false
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 0,
+      "num": 3,
+      "payload": 0,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 0,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "delete",
+          1
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 0,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": -1,
+      "scenario_init": 0,
+      "unlimbo": false,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        0,
+        []
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "commence",
+          [
+            0,
+            []
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 0,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 1
+    },
+    {
+      "cargo": [
+        2,
+        [
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          false
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": 2,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": 4,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 3,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            18048,
+            11648,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        70,
+        45
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 0,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          1,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 1,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          2,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 2,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          3,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": 3,
+      "what_am_i": 2
+    },
+    {
+      "cargo": [
+        3,
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "created": true,
+      "edge": -1,
+      "events": [
+        [
+          "create",
+          1,
+          true
+        ],
+        [
+          "pick_cell_on_edge",
+          0,
+          "0xb04c38",
+          "0xb04c38",
+          4,
+          1,
+          0,
+          1
+        ],
+        [
+          "queue",
+          26,
+          0
+        ],
+        [
+          "target",
+          "target"
+        ],
+        [
+          "unlimbo",
+          [
+            7808,
+            384,
+            0
+          ],
+          0,
+          1
+        ],
+        [
+          "what_am_i"
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "limbo",
+          0,
+          [
+            0,
+            []
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          1,
+          [
+            1,
+            [
+              0
+            ]
+          ]
+        ],
+        [
+          "create_infantry",
+          0,
+          true
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "limbo",
+          2,
+          [
+            2,
+            [
+              1,
+              0
+            ]
+          ]
+        ],
+        [
+          "commence",
+          [
+            3,
+            [
+              2,
+              1,
+              0
+            ]
+          ]
+        ]
+      ],
+      "inf_index": 4,
+      "inf_type": true,
+      "mission_only": 1,
+      "num": 3,
+      "payload": 1,
+      "pick": [
+        30,
+        1
+      ],
+      "returned": 1,
+      "scenario_init": 0,
+      "unlimbo": true,
+      "waypoint_edge": -1,
+      "what_am_i": 2
+    }
+  ],
   "send_spy_planes": [
     {
       "count": 1,
@@ -77224,6 +88157,374 @@
     }
   ],
   "source": "unicorn/gamemd.exe",
+  "spawn_parachuted": [
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ]
+      ],
+      "game_mode": 0,
+      "human": false,
+      "paradropped": false,
+      "player_control": false,
+      "returned": 0
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 0,
+      "human": false,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 0,
+      "human": false,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 0,
+      "human": true,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 0,
+      "human": true,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 1,
+      "human": false,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 1,
+      "human": false,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 1,
+      "human": true,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 1,
+      "human": true,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 4,
+      "human": false,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          15,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 4,
+      "human": false,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 4,
+      "human": true,
+      "paradropped": true,
+      "player_control": false,
+      "returned": 1
+    },
+    {
+      "events": [
+        [
+          "paradrop",
+          true,
+          [
+            10261,
+            10227,
+            1500
+          ]
+        ],
+        [
+          "queue",
+          5,
+          0
+        ],
+        [
+          "do_action",
+          33,
+          1,
+          0
+        ]
+      ],
+      "game_mode": 4,
+      "human": true,
+      "paradropped": true,
+      "player_control": true,
+      "returned": 1
+    }
+  ],
   "spy_plane_launch": [
     {
       "cell": "real",

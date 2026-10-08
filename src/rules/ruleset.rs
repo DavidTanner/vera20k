@@ -561,17 +561,16 @@ pub struct GeneralRules {
     /// "PARACH"), `None` if unset or empty: the canopy the simulation attaches
     /// to a dropped object. Its timing is the AnimType's own art.
     pub parachute_shp: Option<String>,
-    /// American paradrop list: parallel `(infantry_type, count)` pairs.
-    /// From `[General] AmerParaDropInf=` zipped with `AmerParaDropNum=`.
-    /// Default `[("E1", 8)]`.
-    pub amer_paradrop_list: Vec<(String, u32)>,
-    /// Allied paradrop list. Default `[("E1", 6)]`.
-    pub ally_paradrop_list: Vec<(String, u32)>,
-    /// Soviet paradrop list. Default `[("E2", 9)]`. Per gamemd the dispatch
-    /// case skips the count-equality assert on this branch only — preserved.
-    pub sov_paradrop_list: Vec<(String, u32)>,
-    /// Yuri paradrop list. Default `[("INIT", 6)]`.
-    pub yuri_paradrop_list: Vec<(String, u32)>,
+    /// `[General] AmerParaDropInf=`/`AmerParaDropNum=` (`+0xC04`/`+0xC20`):
+    /// the American Paradrop's planes.
+    pub amer_paradrop: ParadropList,
+    /// `AllyParaDropInf=`/`AllyParaDropNum=` (`+0xC3C`/`+0xC58`): the Allied
+    /// side's Paradrop, and the Spy Plane's plane count.
+    pub ally_paradrop: ParadropList,
+    /// `SovParaDropInf=`/`SovParaDropNum=` (`+0xC74`/`+0xC90`).
+    pub sov_paradrop: ParadropList,
+    /// `YuriParaDropInf=`/`YuriParaDropNum=` (`+0xCAC`/`+0xCC8`).
+    pub yuri_paradrop: ParadropList,
     /// Unit types that count as a player's home when no buildings remain.
     /// Parsed from `[General] BaseUnit=`. Stock YR: AMCV, SMCV, PCV.
     pub base_unit_types: Vec<String>,
@@ -1597,40 +1596,34 @@ fn minutes_to_ticks(minutes: f64) -> u32 {
         .max(1.0) as u32
 }
 
-/// Zip a parallel pair of paradrop INI keys (`Inf` + `Num`) into `(type, count)` pairs.
+/// One side's paradrop lists as `RulesClass::ReadGeneral` keeps them
+/// (`0x0067062F..0x006707C1`), each emptied by the constructor
+/// (`0x00666649..0x006666D8`) and kept by a pass that lacks its key.
 ///
-/// `RulesClass::ReadGeneral` reads each `*ParaDropInf=` through the
-/// InfantryType list reader (`0x0067BB10`, `char[128]`) and each
-/// `*ParaDropNum=` through the IntVector reader (`0x00475D70`); an absent key
-/// keeps that vector's current value. `skip_count_assert` mirrors gamemd's
-/// Soviet branch which lacks the equality check.
-fn parse_paradrop_list(
-    general: &crate::rules::ini_parser::IniSection,
-    inf_key: &str,
-    num_key: &str,
-    skip_count_assert: bool,
-    default: Vec<(String, u32)>,
-) -> Vec<(String, u32)> {
-    let (default_inf, default_nums): (Vec<String>, Vec<u32>) = default.iter().cloned().unzip();
-    let inf: Vec<String> = general
-        .read_list(inf_key, 0x80)
-        .map(|tokens| tokens.into_iter().map(str::to_uppercase).collect())
-        .unwrap_or(default_inf);
-    let nums: Vec<u32> = general
-        .read_int_list(num_key)
-        .map(|values| values.into_iter().map(|num| num.max(0) as u32).collect())
-        .unwrap_or(default_nums);
-    if !skip_count_assert && inf.len() != nums.len() {
-        log::warn!(
-            "Paradrop list mismatch: {}={} entries but {}={} entries — using defaults",
-            inf_key,
-            inf.len(),
-            num_key,
-            nums.len(),
-        );
-        return default;
+/// The two are separate vectors: nothing here pairs them or compares their
+/// lengths. Their consumers do (`superweapon::paradrop`, which pairs them by
+/// index, and `superweapon::spy_plane`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ParadropList {
+    /// `*ParaDropInf=` as stored InfantryType IDs, through the InfantryType
+    /// list reader (`0x0067BB10`: ReadString 0x80, `strtok(",")`, and
+    /// `InfantryTypeClass::FindOrAllocate @ 0x00524CB0`, which drops `none`
+    /// and `<none>` and allocates a name it does not know). The processed
+    /// rules own it (`native_processing`).
+    pub infantry: Vec<String>,
+    /// `*ParaDropNum=` through the IntVector reader (`0x00475D70`).
+    pub counts: Vec<i32>,
+}
+
+impl ParadropList {
+    /// The counts as the projected INI holds them; the infantry are the
+    /// processed rules' ([`RuleSet::from_processed_rules`]).
+    fn read_counts(general: &crate::rules::ini_parser::IniSection, key: &str) -> Self {
+        Self {
+            infantry: Vec::new(),
+            counts: general.read_int_list(key).unwrap_or_default(),
+        }
     }
-    inf.into_iter().zip(nums).collect()
 }
 
 /// `RulesClass::ReadDifficulty @ 0x0066D270`'s `RepairDelay=` default, the
@@ -1817,10 +1810,10 @@ impl Default for GeneralRules {
             parachute_max_fall_rate: -3,
             paradrop_radius: 1024,
             parachute_shp: None,
-            amer_paradrop_list: vec![("E1".to_string(), 8)],
-            ally_paradrop_list: vec![("E1".to_string(), 6)],
-            sov_paradrop_list: vec![("E2".to_string(), 9)],
-            yuri_paradrop_list: vec![("INIT".to_string(), 6)],
+            amer_paradrop: ParadropList::default(),
+            ally_paradrop: ParadropList::default(),
+            sov_paradrop: ParadropList::default(),
+            yuri_paradrop: ParadropList::default(),
             base_unit_types: vec!["AMCV".to_string(), "SMCV".to_string(), "PCV".to_string()],
             multiplayer_ai_cm: Vec::new(),
             pad_aircraft_types: Vec::new(),
@@ -2627,35 +2620,10 @@ impl GeneralRules {
             parachute_max_fall_rate: general.read_int("ParachuteMaxFallRate", -3),
             paradrop_radius: general.read_int("ParadropRadius", 1024),
             parachute_shp: general.read_name("Parachute", 0x80).map(str::to_uppercase),
-            // Resolved later in `resolve_art_rates` once art.ini is available.
-            amer_paradrop_list: parse_paradrop_list(
-                general,
-                "AmerParaDropInf",
-                "AmerParaDropNum",
-                false,
-                vec![("E1".to_string(), 8)],
-            ),
-            ally_paradrop_list: parse_paradrop_list(
-                general,
-                "AllyParaDropInf",
-                "AllyParaDropNum",
-                false,
-                vec![("E1".to_string(), 6)],
-            ),
-            sov_paradrop_list: parse_paradrop_list(
-                general,
-                "SovParaDropInf",
-                "SovParaDropNum",
-                true,
-                vec![("E2".to_string(), 9)],
-            ),
-            yuri_paradrop_list: parse_paradrop_list(
-                general,
-                "YuriParaDropInf",
-                "YuriParaDropNum",
-                false,
-                vec![("INIT".to_string(), 6)],
-            ),
+            amer_paradrop: ParadropList::read_counts(general, "AmerParaDropNum"),
+            ally_paradrop: ParadropList::read_counts(general, "AllyParaDropNum"),
+            sov_paradrop: ParadropList::read_counts(general, "SovParaDropNum"),
+            yuri_paradrop: ParadropList::read_counts(general, "YuriParaDropNum"),
             base_unit_types: general
                 .read_list("BaseUnit", 0x80)
                 .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
@@ -3409,6 +3377,11 @@ impl RuleSet {
         rules.general.metallic_debris = processed.metallic_debris().to_vec();
         rules.general.weather_con_clouds = processed.weather_con_clouds().to_vec();
         rules.general.weather_con_bolts = processed.weather_con_bolts().to_vec();
+        let [amer, ally, sov, yuri] = processed.paradrop_infantry().clone();
+        rules.general.amer_paradrop.infantry = amer;
+        rules.general.ally_paradrop.infantry = ally;
+        rules.general.sov_paradrop.infantry = sov;
+        rules.general.yuri_paradrop.infantry = yuri;
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
@@ -7882,56 +7855,43 @@ DefaultSparkSystem=SparkSys
         assert_eq!(damage_spark_spawn_threshold(2.0), DAMAGE_SPARK_ROLL_COUNT);
     }
 
+    /// The constructor empties every paradrop list (`0x00666649..0x006666D8`)
+    /// and a pass without the keys keeps them.
     #[test]
-    fn paradrop_defaults_when_no_general_section() {
-        let ini = IniFile::from_str("[Foo]\nBar=1\n");
-        let g = GeneralRules::from_ini(&ini);
+    fn paradrop_lists_start_empty() {
+        let rules = RuleSet::from_ini(&IniFile::from_str("[Foo]\nBar=1\n")).unwrap();
+        let g = &rules.general;
         assert_eq!(g.paradrop_radius, 1024);
-        assert_eq!(g.amer_paradrop_list, vec![("E1".to_string(), 8)]);
-        assert_eq!(g.ally_paradrop_list, vec![("E1".to_string(), 6)]);
-        assert_eq!(g.sov_paradrop_list, vec![("E2".to_string(), 9)]);
-        assert_eq!(g.yuri_paradrop_list, vec![("INIT".to_string(), 6)]);
+        for list in [
+            &g.amer_paradrop,
+            &g.ally_paradrop,
+            &g.sov_paradrop,
+            &g.yuri_paradrop,
+        ] {
+            assert_eq!(list, &ParadropList::default());
+        }
     }
 
+    /// Each list is read on its own: the infantry through the InfantryType
+    /// list reader, which keeps a name it does not know and drops `none`, the
+    /// counts as ints. Nothing pairs them or compares their lengths.
     #[test]
-    fn paradrop_explicit_values_parse() {
-        let ini = ini_with_general(
+    fn paradrop_lists_read_separately() {
+        let rules = RuleSet::from_ini(&ini_with_general(
             "ParadropRadius=2048\n\
-             AmerParaDropInf=E1,GHOST,ENGINEER\n\
-             AmerParaDropNum=6,6,6",
-        );
-        let g = GeneralRules::from_ini(&ini);
+             AmerParaDropInf=E1,GHOST,none,ENGINEER\n\
+             AmerParaDropNum=6,-2\n\
+             SovParaDropInf=E2\n\
+             SovParaDropNum=9,4",
+        ))
+        .unwrap();
+        let g = &rules.general;
         assert_eq!(g.paradrop_radius, 2048);
-        assert_eq!(
-            g.amer_paradrop_list,
-            vec![
-                ("E1".to_string(), 6),
-                ("GHOST".to_string(), 6),
-                ("ENGINEER".to_string(), 6),
-            ]
-        );
-    }
-
-    #[test]
-    fn paradrop_list_mismatch_falls_back_to_default() {
-        let ini = ini_with_general(
-            "AllyParaDropInf=E1,E2\n\
-             AllyParaDropNum=5",
-        );
-        let g = GeneralRules::from_ini(&ini);
-        assert_eq!(g.ally_paradrop_list, vec![("E1".to_string(), 6)]);
-    }
-
-    #[test]
-    fn paradrop_soviet_branch_skips_count_assert() {
-        // gamemd's Soviet dispatch path has no count-equality assert; mirror it.
-        let ini = ini_with_general(
-            "SovParaDropInf=E2,E3\n\
-             SovParaDropNum=9",
-        );
-        let g = GeneralRules::from_ini(&ini);
-        // zip up to the shorter length — only ("E2", 9) survives.
-        assert_eq!(g.sov_paradrop_list, vec![("E2".to_string(), 9)]);
+        assert_eq!(g.amer_paradrop.infantry, ["E1", "GHOST", "ENGINEER"]);
+        assert_eq!(g.amer_paradrop.counts, [6, -2]);
+        assert_eq!(g.sov_paradrop.infantry, ["E2"]);
+        assert_eq!(g.sov_paradrop.counts, [9, 4]);
+        assert_eq!(g.ally_paradrop, ParadropList::default());
     }
 
     #[test]

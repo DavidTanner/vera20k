@@ -281,6 +281,30 @@ pub(crate) fn ground_gate_is_open(
         })
 }
 
+/// [`ground_gate_is_open`] where `PlaceInfantryInCell` reaches it
+/// (`0x00481298..0x00481313`): only for a cell whose selected plane holds no
+/// vehicle (`0x20`) and whose ground holds an object (`0x40`). The shared
+/// off-map cell holds no Gate.
+pub(crate) fn native_ground_gate_open(
+    raw: &crate::sim::occupancy::RawCellOccupationGrid,
+    occupancy: &OccupancyGrid,
+    entities: &EntityStore,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    interner: &crate::sim::intern::StringInterner,
+    key: crate::sim::occupancy::RawCellKey,
+    layer: MovementLayer,
+) -> bool {
+    let ground = raw.bits_at(key, MovementLayer::Ground);
+    raw.bits_at(key, layer) & cell_kernel::INFANTRY_OCCUPATION_VEHICLE_BIT == 0
+        && ground & cell_kernel::INFANTRY_OCCUPATION_OBJECT_BIT != 0
+        && match key {
+            crate::sim::occupancy::RawCellKey::Real(x, y) => {
+                ground_gate_is_open(occupancy, entities, rules, interner, (x, y))
+            }
+            crate::sim::occupancy::RawCellKey::Dummy => false,
+        }
+}
+
 /// `CellClass::PlaceInfantryInCell @ 0x00481180` selection on the CellClass
 /// a Map lookup returned, including the shared off-map cell. The caller owns
 /// the input XYZ, selected plane and the ground Gate's passability. Preference

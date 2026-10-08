@@ -854,7 +854,10 @@ use crate::sim::world::Simulation;
 // Deferment, Duration, StartTime, Coords, Owner) and its two cloud lists in
 // place of VERA's storm record; a House's power state saves its radar outage
 // timer (+0x2B0). Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 297;
+// 297 -> 298: an aircraft's mission leaf saves its paradrop passes (+0x6D3);
+// the paradrop carrier's two AircraftMission states are removed, its flight
+// now the native missions 26 and 27. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 298;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3872,7 +3875,9 @@ mod tests {
         // 295 -> 296: the Force Shield's fade countdown and coordinate.
         // 296 -> 297: the Lightning Storm's globals and cloud lists; a House's
         // radar outage timer.
-        assert_eq!(super::SNAPSHOT_VERSION, 297);
+        // 297 -> 298: the aircraft's paradrop passes; no paradrop carrier
+        // AircraftMission states.
+        assert_eq!(super::SNAPSHOT_VERSION, 298);
     }
 
     #[test]

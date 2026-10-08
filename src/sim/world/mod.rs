@@ -780,8 +780,9 @@ pub enum SimSoundEvent {
     /// Tank-bunker walls-down cue — emitted on normal exit / clear teardown.
     /// App resolves to [AudioVisual] BunkerWallsDownSound (retail "TankBunkerDown").
     BunkerWallsDown { rx: u16, ry: u16 },
-    /// A paratrooper was dropped from a carrier aircraft.
-    /// Played at the drop position; app layer resolves to [AudioVisual] ChuteSound.
+    /// A paratrooper left the paradrop plane (`AircraftClass::Drop_Payload`
+    /// plays `[AudioVisual] ChuteSound=` at the plane's Location,
+    /// `0x00415E21`): the plane's cell.
     ChuteSound { rx: u16, ry: u16 },
     /// A C4-capable infantry claimed a plant on a CanC4 building.
     /// Played at the attacker's position. App resolves to

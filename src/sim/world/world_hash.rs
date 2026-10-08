@@ -406,6 +406,12 @@ fn hash_mission_leaf(leaf: &crate::sim::mission::MissionLeafState, hasher: &mut 
         aircraft.action_latch().hash(hasher);
         aircraft.transition_ready_latch().hash(hasher);
         aircraft.airstrike_manager_present().hash(hasher);
+        // Ctor 0x00413D74 starts +0x6D3 at 5, which adds no bytes; Overfly
+        // reads it to come round again.
+        if aircraft.paradrop_passes() != 5 {
+            b"aircraft-paradrop-passes-6d3".hash(hasher);
+            aircraft.paradrop_passes().hash(hasher);
+        }
     } else if let Some(building) = leaf.as_building() {
         3u8.hash(hasher);
         building.ready_latch().hash(hasher);

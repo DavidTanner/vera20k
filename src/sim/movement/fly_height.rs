@@ -315,6 +315,7 @@ impl FlyRuntime {
         self.target_height = 0;
     }
 
+    #[cfg(test)]
     pub(crate) fn set_target_height(&mut self, height: i32) {
         self.target_height = height;
     }

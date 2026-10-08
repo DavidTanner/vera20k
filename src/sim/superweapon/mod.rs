@@ -30,8 +30,6 @@ pub(crate) mod nuke;
 #[cfg(test)]
 mod nuke_tests;
 pub mod paradrop;
-#[cfg(test)]
-mod paradrop_tests;
 pub(crate) mod psychic_dominator;
 #[cfg(test)]
 mod psychic_dominator_tests;

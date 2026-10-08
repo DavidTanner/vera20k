@@ -22,7 +22,9 @@ nuke_lighting_read) and src/sim/superweapon/force_shield_tests.rs
 (force_shield_launch, super_fade) and src/sim/superweapon/lightning_storm_tests.rs
 (storm_start, storm_cloud, storm_pixel_heights, storm_strike, storm_process,
 radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
-(iron_curtain_launch, curtain_overrides).
+(iron_curtain_launch, curtain_overrides) and src/sim/superweapon/paradrop_tests.rs
+(paradrop_launch, send_paradrop_planes, paradrop_missions, drop_payload,
+spawn_parachuted).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -204,6 +206,30 @@ fixture machinery):
   FootClass::IronCurtain 0x4DEAE0: the damage call and its arguments, the
   Organic test, the parasite's release and timer, Foot+0x6A0 and the
   TechnoClass::IronCurtain call.
+- paradrop_launch: Launch 0x6CC390 from its entry for a Type= 5 or 6 Super,
+  cases 5 (0x6CD2EE..0x6CD534) and 6 (0x6CD537..0x6CD66A): the charge gate,
+  the PDPLANE lookup, the cell and its dummy, the water test 0x485060 (run
+  natively) and Find_Nearby_Passable_Cell's arguments and answer, the side's
+  lists with their length tests (Soviet's absent) and loops, and the
+  player's tail.
+- send_paradrop_planes: HouseClass::SendParadropPlanes 0x65E660 with case
+  5's arguments: the ScenarioInit bracket, the mission-only byte, the edge
+  (+0x1E0, else GetEdge 0x50DA80, natively), the call order, the Unlimbo
+  coordinate, the failure paths, +0x6C9, and each infantry's construction,
+  Limbo and AddPassenger 0x4733A0 (natively).
+- paradrop_missions: Mission_ParadropApproach 0x4158E0 and
+  Mission_ParadropOverfly 0x415960: the branches by Target, NavCom,
+  passengers and distance to ParadropRadius, the pass counter +0x6D3, the
+  latch +0x6D2, the playfield test and the returned frames.
+- drop_payload: AircraftClass::Drop_Payload 0x415C60 with
+  RemoveFirstPassenger 0x473430, AddPassenger, the table trigonometry and
+  ftol run natively: Ammo +0x2FC and the side it picks, the admission calls
+  (Can_Enter_Cell, 0x481180, SpawnParachuted) and their arguments, ChuteSound,
+  +0x55C, the team removal, +0x6D3, the rearm timer, and each failure's
+  restore.
+- spawn_parachuted: InfantryClass::SpawnParachuted 0x521760 with
+  IsControlledByHuman 0x50B730 run natively: Paradrop's answer, the mission
+  it queues and the Do_Action.
 """
 from pathlib import Path
 import math
@@ -5302,6 +5328,596 @@ def curtain_overrides():
     return rows
 
 
+
+# ------------------------------------------------------------ paradrop_launch
+
+TYPE_PARADROP = 5
+TYPE_AMER_PARADROP = 6
+# Each row runs in its own emulator: the Chronosphere rows' region is free.
+PARADROP = BASE + 0x300000
+PD_CELL_ARG = PARADROP
+PD_COORDS = PARADROP + 0x100
+PD_CELLS = PARADROP + 0x1000
+PD_CELL_STRIDE = 0x200
+PD_LISTS = PARADROP + 0x4000
+PD_INF_TYPES = PARADROP + 0x10000
+PD_INF_TYPE_STRIDE = 0x1000
+PD_PLANE_TYPE = PARADROP + 0x20000
+PD_PLANE_TYPE_VT = PARADROP + 0x21000
+PD_PLANE_TYPE_ITEMS = PARADROP + 0x22000
+PD_INF_TYPE_ITEMS = PARADROP + 0x23000
+PD_INF_TYPE_VT = PARADROP + 0x24000
+PD_PLANE_VT = PARADROP + 0x25000
+PD_INFANTRY_VT = PARADROP + 0x26000
+PD_TARGET = PARADROP + 0x27000
+PD_NAV_COM = PARADROP + 0x27100
+PD_TEAM = PARADROP + 0x27200
+PD_DROP_CELL = PARADROP + 0x27300
+PD_DROP_CELL_VT = PARADROP + 0x27400
+PD_PLANES = PARADROP + 0x30000
+PD_PLANE_STRIDE = 0x1000
+PD_INFANTRY = PARADROP + 0x40000
+PD_INFANTRY_STRIDE = 0x800
+
+STUB_PD_PLANE_CREATE = STUBS + 0xD40
+STUB_PD_QUEUE = STUBS + 0xD50
+STUB_PD_DESTINATION = STUBS + 0xD60
+STUB_PD_TARGET = STUBS + 0xD70
+STUB_PD_UNLIMBO = STUBS + 0xD80
+STUB_PD_WHAT_AM_I = STUBS + 0xD90
+STUB_PD_COMMENCE = STUBS + 0xDA0
+STUB_PD_DELETE = STUBS + 0xDB0
+STUB_PD_INF_CREATE = STUBS + 0xDC0
+STUB_PD_LIMBO = STUBS + 0xDD0
+STUB_PD_PLANE_COORDS = STUBS + 0xDE0
+STUB_PD_CAN_ENTER = STUBS + 0xDF0
+STUB_PD_SPAWN_PARACHUTED = STUBS + 0xE00
+STUB_PD_CONCEAL = STUBS + 0xE10
+STUB_PD_CELL_COORDS = STUBS + 0xE20
+STUB_PD_DO_ACTION = STUBS + 0xE30
+
+INFANTRY_TYPE_ITEMS = 0xA8E34C
+WATER_SET = 0xAA0738
+GAME_MODE = 0xA8B238
+PDPLANE_INDEX = 3
+PD_INF_INDEX = 4
+PD_WATER_SET = 50
+PD_TARGET_CELL = (40, 40)
+PD_RADIUS = 1024
+# The plane's Location for the missions and the drop: cell (40, 40), FlightLevel 1500.
+PD_LOCATION = (40 * 256 + 128, 40 * 256 + 128, 1500)
+# Each side's [General] lists: the InfantryType TypeList's and the IntVector's
+# (items, count) fields.
+PD_LIST_FIELDS = {'amer': ((0xC08, 0xC14), (0xC24, 0xC30)),
+                  'ally': ((0xC40, 0xC4C), (0xC5C, 0xC68)),
+                  'sov': ((0xC78, 0xC84), (0xC94, 0xCA0)),
+                  'yuri': ((0xCB0, 0xCBC), (0xCCC, 0xCD8))}
+# Retail's single entries; each type is the ArrayIndex (+0xDF8) of its own
+# fixture InfantryTypeClass.
+PD_RETAIL_LISTS = {'amer': ([0], [8]), 'ally': ([0], [6]), 'sov': ([1], [9]), 'yuri': ([2], [6])}
+# The int after each list's last num: what reading past the vector finds.
+PD_PAST_THE_VECTOR = 0x5EED
+
+
+def install_paradrop_lists(emu, lists):
+    types_at = PD_INF_TYPES
+    items = PD_LISTS
+    for side, (types, nums) in lists.items():
+        (type_items, type_count), (num_items, num_count) = PD_LIST_FIELDS[side]
+        emu.write32(RULES + type_items, items)
+        emu.write32(RULES + type_count, len(types))
+        for n, array_index in enumerate(types):
+            emu.write32(items + 4 * n, types_at)
+            emu.write32(types_at + 0xDF8, array_index)
+            types_at += PD_INF_TYPE_STRIDE
+        items += 0x80
+        emu.write32(RULES + num_items, items)
+        emu.write32(RULES + num_count, len(nums))
+        for n, num in enumerate(list(nums) + [PD_PAST_THE_VECTOR]):
+            emu.write32(items + 4 * n, num)
+        items += 0x80
+
+
+def paradrop_launch_row(*, kind=TYPE_PARADROP, charged=True, player=False, side=0,
+                        plane_index=PDPLANE_INDEX, cells=None, nearby=(0, 0), lists=None):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 5 or 6:
+    case 5 (0x6CD2EE..0x6CD534) or 6 (0x6CD537..0x6CD66A) and the shared tail
+    0x6CD500. MapClass::operator[] 0x5657A0 answers by `cells`: a cell named
+    there is 'null', 'dummy' (0xABDC50) or a fixture CellClass whose tile
+    (+0x38) is WaterSet (0xAA0738 = 50) plus the given offset, read by
+    0x485060, which runs natively; an unnamed cell answers null.
+    Find_Nearby_Passable_Cell 0x56DC20 answers `nearby`; it, the PDPLANE
+    lookup 0x41CAA0, SendParadropPlanes 0x65E660 and the EVA calls are
+    recorded stubs. `lists` gives each side's (types, nums)."""
+    cells = dict(cells if cells is not None else {PD_TARGET_CELL: 14})
+    lists = lists if lists is not None else PD_RETAIL_LISTS
+    emu = Emu()
+    emu.invoke(0x6CADB0)
+    emu.write32(WATER_SET, PD_WATER_SET)
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, HOUSE)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.write32(SW_TYPE + 0xB4, kind)
+    emu.write32(HOUSE + 0x1E8, side)
+    emu.write32(SELECTED_SUPER, 9)
+    emu.uc.mem_write(PD_CELL_ARG, struct.pack('<hh', *PD_TARGET_CELL))
+    install_paradrop_lists(emu, lists)
+    fixture = {}
+
+    def cell_for(coord):
+        answer = cells.get(coord, 'null')
+        if answer == 'null':
+            return 0
+        if answer == 'dummy':
+            return DUMMY_CELL
+        if coord not in fixture:
+            this = PD_CELLS + PD_CELL_STRIDE * len(fixture)
+            emu.write32(this + 0x38, PD_WATER_SET + answer)
+            fixture[coord] = this
+        return fixture[coord]
+
+    def name(address):
+        for coord, this in fixture.items():
+            if this == address:
+                return list(coord)
+        return {0: 'null', DUMMY_CELL: 'dummy'}.get(address, hex(address))
+
+    def find_type(e):
+        e.events.append(['find_aircraft_type', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return plane_index
+
+    def lookup(e):
+        coord = read_cell(e, e.arg(0))
+        e.events.append(['map_cell', coord])
+        return cell_for(tuple(coord))
+
+    def nearby_stub(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != MAP:
+            raise OracleError('Find_Nearby_Passable_Cell on another map')
+        e.events.append(['nearby', read_cell(e, e.arg(1)), [i32(e.arg(n)) for n in range(2, 12)],
+                         read_cell(e, e.arg(12)), e.arg(13) & 0xFF, e.arg(14) & 0xFF])
+        e.uc.mem_write(e.arg(0), struct.pack('<hh', *nearby))
+        return e.arg(0)
+
+    def send(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != HOUSE:
+            raise OracleError('SendParadropPlanes for another house')
+        e.events.append(['send', i32(e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0)),
+                         i32(e.arg(1)), name(e.arg(2)), i32(e.arg(3)), i32(e.arg(4)),
+                         i32(e.arg(5))])
+        return 1
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.hook(0x41CAA0, find_type, 0)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(0x56DC20, nearby_stub, 0x3C)
+    emu.hook(0x65E660, send, 0x18)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[PD_CELL_ARG, int(player)])
+    return dict(kind=kind, charged=charged, player=player, side=side, plane_index=plane_index,
+                cells=[[list(coord), answer] for coord, answer in cells.items()],
+                nearby=list(nearby),
+                lists={side: [list(types), list(nums)] for side, (types, nums) in lists.items()},
+                events=emu.events, selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def paradrop_launch():
+    rows = [paradrop_launch_row(charged=False, player=True),
+            paradrop_launch_row(kind=TYPE_AMER_PARADROP, charged=False, player=True)]
+    for kind in (TYPE_PARADROP, TYPE_AMER_PARADROP):
+        for player in (False, True):
+            rows.append(paradrop_launch_row(kind=kind, player=player))
+        rows.append(paradrop_launch_row(kind=kind, plane_index=-1, player=True))
+        for answer in ('null', 'dummy'):
+            rows.append(paradrop_launch_row(kind=kind, cells={PD_TARGET_CELL: answer},
+                                            player=True))
+        # A water target: the nearby cell replaces it only when it is real
+        # land; (0, 0), the empty cell, is never looked up.
+        for nearby, answer in (((45, 41), 14), ((45, 41), 0), ((45, 41), 'null'),
+                               ((45, 41), 'dummy'), ((0, 0), 14), ((0, 7), 14), ((7, 0), 14)):
+            rows.append(paradrop_launch_row(kind=kind, cells={PD_TARGET_CELL: 0, nearby: answer},
+                                            nearby=nearby))
+    # WaterSet's 14 tiles, and the tiles either side of them.
+    for tile in (-1, 13, 14):
+        rows.append(paradrop_launch_row(cells={PD_TARGET_CELL: tile, (45, 41): 14},
+                                        nearby=(45, 41)))
+    # Case 5's lists by the house's side (+0x1E8): 0 Ally, 2 Yuri, any other Soviet.
+    for side in (1, 2, 3, -1, 4):
+        rows.append(paradrop_launch_row(side=side))
+    # The lists: Ally, Yuri and Amer send nothing unless their lengths match;
+    # Soviet loops over its types and reads past its nums. A type whose
+    # ArrayIndex is -1 sends nothing.
+    def lists(**sides):
+        merged = dict(PD_RETAIL_LISTS)
+        merged.update(sides)
+        return merged
+    for ally in (([], []), ([0, 1], [6]), ([0], [6, 2]), ([0, 1], [6, 3]), ([-1, 0], [6, 2]),
+                 ([0, 1, 2], [0, 1, -1])):
+        rows.append(paradrop_launch_row(lists=lists(ally=ally)))
+    for yuri in (([2, 0], [6]), ([2, 0], [6, 4])):
+        rows.append(paradrop_launch_row(side=2, lists=lists(yuri=yuri)))
+    for sov in (([], []), ([1, 0], [9]), ([1], [9, 4]), ([1, 0], [9, 4]), ([-1], [9])):
+        rows.append(paradrop_launch_row(side=1, lists=lists(sov=sov)))
+    for amer in (([0, 1], [8]), ([0, 1], [8, 2]), ([], [])):
+        rows.append(paradrop_launch_row(kind=TYPE_AMER_PARADROP, lists=lists(amer=amer)))
+    return rows
+
+
+# ------------------------------------------------------- send_paradrop_planes
+
+def pd_plane(index):
+    return PD_PLANES + PD_PLANE_STRIDE * index
+
+
+def pd_infantry(index):
+    return PD_INFANTRY + PD_INFANTRY_STRIDE * index
+
+
+def cargo(emu, plane):
+    """A plane's PassengerList (+0x114): its count and its chain from +0x118
+    through +0x30, as fixture infantry indices."""
+    chain = []
+    at = emu.read32(plane + 0x118)
+    while at and len(chain) < 64:
+        chain.append((at - PD_INFANTRY) // PD_INFANTRY_STRIDE)
+        at = emu.read32(at + 0x30)
+    return [emu.read_i32(plane + 0x114), chain]
+
+
+def send_paradrop_planes_row(*, inf_index=PD_INF_INDEX, num=3, edge=-1, waypoint_edge=0,
+                             created=True, unlimbo=True, what_am_i=2, infantry=None,
+                             inf_type=True, pick=(30, 1)):
+    """HouseClass::SendParadropPlanes 0x65E660 with case 5's arguments (one
+    plane, mission 0x1A, the target cell, no destination, the list entry's
+    InfantryType index and num). The plane's and the infantry's constructors
+    (vt+0x8C), PickCellOnEdge 0x4AA440 and the plane's and infantry's
+    virtuals are recorded stubs; GetEdge 0x50DA80 and CargoClass::AddPassenger
+    0x4733A0 run natively. `infantry` lists each infantry constructor's
+    answer (an object or NULL)."""
+    infantry = list(infantry if infantry is not None else [True] * max(num, 0))
+    emu = Emu()
+    emu.write32(AIRCRAFT_TYPE_ITEMS, PD_PLANE_TYPE_ITEMS)
+    emu.write32(PD_PLANE_TYPE_ITEMS + 4 * PDPLANE_INDEX, PD_PLANE_TYPE)
+    emu.write32(PD_PLANE_TYPE, PD_PLANE_TYPE_VT)
+    emu.write32(PD_PLANE_TYPE_VT + 0x8C, STUB_PD_PLANE_CREATE)
+    emu.write32(INFANTRY_TYPE_ITEMS, PD_INF_TYPE_ITEMS)
+    if inf_type:
+        emu.write32(PD_INF_TYPE_ITEMS + 4 * PD_INF_INDEX, PD_INF_TYPES)
+    emu.write32(PD_INF_TYPES, PD_INF_TYPE_VT)
+    emu.write32(PD_INF_TYPE_VT + 0x8C, STUB_PD_INF_CREATE)
+    emu.write32(HOUSE + 0x1E0, edge)
+    emu.write32(HOUSE + 0x577C, waypoint_edge)
+    for slot, stub in ((0x1E8, STUB_PD_QUEUE), (0x480, STUB_PD_DESTINATION),
+                       (0x3C8, STUB_PD_TARGET), (0xD8, STUB_PD_UNLIMBO),
+                       (0x2C, STUB_PD_WHAT_AM_I), (0x1EC, STUB_PD_COMMENCE),
+                       (0x20, STUB_PD_DELETE)):
+        emu.write32(PD_PLANE_VT + slot, stub)
+    emu.write32(PD_INFANTRY_VT + 0xD4, STUB_PD_LIMBO)
+    plane = pd_plane(0)
+    made = []
+
+    def create(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != PD_PLANE_TYPE or e.arg(0) != HOUSE:
+            raise OracleError('CreateObject on another type or house')
+        e.events.append(['create', e.read_i32(SCENARIO_INIT), created])
+        if not created:
+            return 0
+        e.write32(plane, PD_PLANE_VT)
+        return plane
+
+    def create_infantry(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != PD_INF_TYPES or e.arg(0) != HOUSE:
+            raise OracleError('CreateObject on another type or house')
+        answer = infantry.pop(0)
+        e.events.append(['create_infantry', e.read_i32(SCENARIO_INIT), answer])
+        if not answer:
+            return 0
+        this = pd_infantry(len(made))
+        made.append(this)
+        e.write32(this, PD_INFANTRY_VT)
+        write8(e, this + 0x14, ABSTRACT_FOOT)
+        return this
+
+    def pick_stub(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != MAP:
+            raise OracleError('PickCellOnEdge on another map')
+        e.events.append(['pick_cell_on_edge', i32(e.arg(1)), hex(e.arg(2)), hex(e.arg(3)),
+                         e.arg(4), e.arg(5) & 0xFF, e.arg(6) & 0xFF, read8(e, plane + 0x3D4)])
+        e.uc.mem_write(e.arg(0), struct.pack('<hh', *pick))
+        return e.arg(0)
+
+    def target_name(address):
+        return {0: 'null', PD_TARGET: 'target'}.get(address, hex(address))
+
+    def unlimbo_stub(e):
+        e.events.append(['unlimbo', read_coord(e, e.arg(0)), e.arg(1), e.read_i32(SCENARIO_INIT)])
+        return int(unlimbo)
+
+    def limbo(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        e.events.append(['limbo', made.index(this), cargo(e, plane)])
+        return 0
+
+    emu.hook(STUB_PD_PLANE_CREATE, create, 4)
+    emu.hook(STUB_PD_INF_CREATE, create_infantry, 4)
+    emu.hook(0x4AA440, pick_stub, 0x1C)
+    emu.hook(STUB_PD_QUEUE, lambda e: e.events.append(['queue', e.arg(0), e.arg(1)]), 8)
+    emu.hook(STUB_PD_DESTINATION, lambda e: e.events.append(
+        ['destination', target_name(e.arg(0)), e.arg(1) & 0xFF]), 8)
+    emu.hook(STUB_PD_TARGET, lambda e: e.events.append(['target', target_name(e.arg(0))]), 4)
+    emu.hook(STUB_PD_UNLIMBO, unlimbo_stub, 8)
+    emu.hook(STUB_PD_WHAT_AM_I, lambda e: e.events.append(['what_am_i']) or what_am_i, 0)
+    emu.hook(STUB_PD_COMMENCE, lambda e: e.events.append(['commence', cargo(e, plane)]), 0)
+    emu.hook(STUB_PD_DELETE, lambda e: e.events.append(['delete', e.arg(0) & 0xFF]), 4)
+    emu.hook(STUB_PD_LIMBO, limbo, 0)
+    sent = emu.invoke(0x65E660, ecx=HOUSE, edx=PDPLANE_INDEX,
+                      args=[1, 0x1A, PD_TARGET, 0, inf_index, num])
+    return dict(inf_index=inf_index, num=num, edge=edge, waypoint_edge=waypoint_edge,
+                created=created, unlimbo=unlimbo, what_am_i=what_am_i, inf_type=inf_type,
+                pick=list(pick), returned=i32(sent), events=emu.events,
+                mission_only=read8(emu, plane + 0x3D4), payload=read8(emu, plane + 0x6C9),
+                cargo=cargo(emu, plane), scenario_init=emu.read_i32(SCENARIO_INIT))
+
+
+def send_paradrop_planes():
+    rows = [send_paradrop_planes_row()]
+    # A negative num counts down through zero: 2^32 - |num| constructions.
+    for num in (0, 1, 9):
+        rows.append(send_paradrop_planes_row(num=num))
+    rows += [send_paradrop_planes_row(inf_index=-1),
+             send_paradrop_planes_row(inf_type=False),
+             send_paradrop_planes_row(created=False),
+             send_paradrop_planes_row(unlimbo=False),
+             send_paradrop_planes_row(what_am_i=1),
+             send_paradrop_planes_row(num=3, infantry=[True, False, True]),
+             send_paradrop_planes_row(edge=2),
+             send_paradrop_planes_row(edge=4, waypoint_edge=3),
+             send_paradrop_planes_row(pick=(70, 45))]
+    rows += [send_paradrop_planes_row(waypoint_edge=edge) for edge in (1, 2, 3, -1)]
+    return rows
+
+
+# ---------------------------------------------------------- paradrop_missions
+
+def paradrop_mission_row(*, mission, target=True, nav_com=True, passengers=True, distance=0,
+                         radius=PD_RADIUS, passes=5, latch=0, in_playfield=True):
+    """Mission_ParadropApproach 0x4158E0 (mission 26) or
+    Mission_ParadropOverfly 0x415960 (27) on a fixture plane at PD_LOCATION:
+    Target +0x2B4, NavCom +0x5A4, first passenger +0x118, the pass counter
+    +0x6D3 and the latch +0x6D2. Distance_To 0x5F6440, IsCoordInPlayfield
+    0x5785F0, Drop_Payload 0x415C60 and the plane's virtuals are recorded
+    stubs."""
+    emu = Emu()
+    plane = pd_plane(0)
+    emu.write32(plane, PD_PLANE_VT)
+    emu.write32(plane + 0x2B4, PD_TARGET if target else 0)
+    emu.write32(plane + 0x5A4, PD_NAV_COM if nav_com else 0)
+    emu.write32(plane + 0x118, pd_infantry(0) if passengers else 0)
+    write8(emu, plane + 0x6D3, passes)
+    write8(emu, plane + 0x6D2, latch)
+    write_coord(emu, plane + 0x9C, PD_LOCATION)
+    emu.write32(RULES + 0x54C, radius)
+    for slot, stub in ((0x480, STUB_PD_DESTINATION), (0x1E8, STUB_PD_QUEUE),
+                       (0x3C8, STUB_PD_TARGET)):
+        emu.write32(PD_PLANE_VT + slot, stub)
+
+    def target_name(address):
+        return {0: 'null', PD_TARGET: 'target'}.get(address, hex(address))
+
+    def distance_to(e):
+        e.events.append(['distance_to', target_name(e.arg(0))])
+        return distance
+
+    def playfield(e):
+        e.events.append(['in_playfield', read_coord(e, e.arg(0))])
+        return int(in_playfield)
+
+    emu.hook(0x5F6440, distance_to, 4)
+    emu.hook(0x5785F0, playfield, 4)
+    emu.hook(0x415C60, lambda e: e.events.append(['drop_payload', read8(e, plane + 0x6D2)]), 0)
+    emu.hook(STUB_PD_DESTINATION, lambda e: e.events.append(
+        ['destination', target_name(e.arg(0)), e.arg(1) & 0xFF]), 8)
+    emu.hook(STUB_PD_QUEUE, lambda e: e.events.append(['queue', e.arg(0), e.arg(1)]), 8)
+    emu.hook(STUB_PD_TARGET, lambda e: e.events.append(['target', target_name(e.arg(0))]), 4)
+    entry = {'approach': 0x4158E0, 'overfly': 0x415960}[mission]
+    frames = emu.invoke(entry, ecx=plane)
+    return dict(mission=mission, target=target, nav_com=nav_com, passengers=passengers,
+                distance=distance, radius=radius, passes=passes, latch=latch,
+                in_playfield=in_playfield, returned=i32(frames), events=emu.events,
+                passes_after=struct.unpack('<b', bytes([read8(emu, plane + 0x6D3)]))[0],
+                latch_after=read8(emu, plane + 0x6D2))
+
+
+def paradrop_missions():
+    rows = []
+    for mission in ('approach', 'overfly'):
+        def row(**kwargs):
+            rows.append(paradrop_mission_row(mission=mission, **kwargs))
+        for distance in (0, 1, 1023, 1024, 1025, 5000):
+            row(distance=distance)
+        row(distance=1024, radius=0)
+        row(distance=-1, radius=0)
+        for passes in (1, 0, -1, -128, 127):
+            row(distance=500, passes=passes)
+            row(distance=2000, passes=passes)
+        row(target=False)
+        row(target=False, nav_com=False)
+        row(nav_com=False, distance=500)
+        row(nav_com=False, distance=2000)
+        row(passengers=False, distance=500)
+        row(passengers=False, distance=2000, passes=0)
+        row(target=False, passengers=False)
+        row(distance=500, in_playfield=False)
+        row(distance=500, latch=1)
+        row(distance=2000, latch=1)
+    return rows
+
+
+# --------------------------------------------------------------- drop_payload
+
+PD_CHUTE_SOUND = 9
+
+
+def drop_payload_row(*, passengers=2, ammo=100, facing=0x4000, can_enter=0, spot=True,
+                     spawned=True, team=False, passes=2, location=PD_LOCATION):
+    """AircraftClass::Drop_Payload 0x415C60 on a fixture plane carrying
+    `passengers` infantry (CargoClass at +0x114, chained through +0x30;
+    RemoveFirstPassenger 0x473430 and AddPassenger 0x4733A0 run natively),
+    Ammo +0x2FC and pass counter +0x6D3. GetCoords (vt+0x48) answers
+    `location`; FacingClass::Current 0x4C93D0 answers `facing`; the table
+    trigonometry 0x4CACB0/0x4CAD00 and ftol run natively. GetCellAt 0x565730
+    answers one fixture cell; the passenger's Can_Enter_Cell (vt+0x1AC),
+    CellClass 0x481180, SpawnParachuted (vt+0xE8), Limbo (vt+0xD4) and
+    vt+0x11C, PlayAt 0x7509E0, the cell's GetCoords and Remove_Member
+    0x6EA870 are recorded stubs."""
+    emu = Emu()
+    plane = pd_plane(0)
+    emu.write32(plane, PD_PLANE_VT)
+    emu.write32(PD_PLANE_VT + 0x48, STUB_PD_PLANE_COORDS)
+    emu.write32(plane + 0x2FC, ammo)
+    write8(emu, plane + 0x6D3, passes)
+    write_coord(emu, plane + 0x2EC, [-7, -7, -7])
+    write_coord(emu, plane + 0x9C, location)
+    emu.write32(plane + 0x5D4, PD_TEAM if team else 0)
+    emu.write32(RULES + 0x71C, PD_CHUTE_SOUND)
+    emu.write32(FRAME, 4321)
+    emu.write32(plane + 0x114, passengers)
+    for index in range(passengers):
+        this = pd_infantry(index)
+        emu.write32(this, PD_INFANTRY_VT)
+        write8(emu, this + 0x14, ABSTRACT_FOOT)
+        emu.uc.mem_write(this + 0x55C, struct.pack('<hh', -3, -3))
+        emu.write32(this + 0x30, pd_infantry(index + 1) if index + 1 < passengers else 0)
+    emu.write32(plane + 0x118, pd_infantry(0) if passengers else 0)
+    for slot, stub in ((0x1AC, STUB_PD_CAN_ENTER), (0xE8, STUB_PD_SPAWN_PARACHUTED),
+                       (0xD4, STUB_PD_LIMBO), (0x11C, STUB_PD_CONCEAL)):
+        emu.write32(PD_INFANTRY_VT + slot, stub)
+    emu.write32(PD_DROP_CELL, PD_DROP_CELL_VT)
+    emu.write32(PD_DROP_CELL_VT + 0x48, STUB_PD_CELL_COORDS)
+
+    def passenger(e):
+        return (e.uc.reg_read(UC_X86_REG_ECX) - PD_INFANTRY) // PD_INFANTRY_STRIDE
+
+    def facing_stub(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != plane + 0x388:
+            raise OracleError('FacingClass::Current on another facing')
+        e.uc.mem_write(e.arg(0), struct.pack('<H', facing))
+        return e.arg(0)
+
+    def cell_at(e):
+        e.events.append(['cell_at', read_coord(e, e.arg(0))])
+        return PD_DROP_CELL
+
+    def can_enter_stub(e):
+        e.events.append(['can_enter', passenger(e), e.arg(0) == PD_DROP_CELL,
+                         [i32(e.arg(n)) for n in range(1, 5)], i32(e.read32(plane + 0x2FC))])
+        return can_enter
+
+    def subposition(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != PD_DROP_CELL:
+            raise OracleError('0x481180 on another cell')
+        e.events.append(['subposition', read_coord(e, e.arg(1)),
+                         [e.arg(n) & 0xFF for n in range(2, 5)]])
+        x, y, _ = read_coord(e, e.arg(1))
+        write_coord(e, e.arg(0), [x + 21, y - 13, 7] if spot else [0, 0, 0])
+        return e.arg(0)
+
+    def spawn(e):
+        e.events.append(['spawn_parachuted', passenger(e), read_coord(e, e.arg(0))])
+        return int(spawned)
+
+    def cell_coords(e):
+        out = e.arg(0)
+        write_coord(e, out, [40 * 256 + 128, 41 * 256 + 128, 208])
+        return out
+
+    emu.hook(STUB_PD_PLANE_COORDS, coords_stub(lambda: read_coord(emu, plane + 0x9C)), 4)
+    emu.hook(0x4C93D0, facing_stub, 4)
+    emu.hook(0x565730, cell_at, 4)
+    emu.hook(STUB_PD_CAN_ENTER, can_enter_stub, 0x14)
+    emu.hook(0x481180, subposition, 0x14)
+    emu.hook(STUB_PD_SPAWN_PARACHUTED, spawn, 4)
+    emu.hook(STUB_PD_CELL_COORDS, cell_coords, 4)
+    emu.hook(STUB_PD_LIMBO, lambda e: e.events.append(['limbo', passenger(e)]), 0)
+    emu.hook(STUB_PD_CONCEAL, lambda e: e.events.append(['conceal', passenger(e)]), 0)
+    emu.hook(0x7509E0, lambda e: e.events.append(
+        ['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), e.arg(0)]), 4)
+    emu.hook(0x6EA870, lambda e: e.events.append(
+        ['remove_member', e.uc.reg_read(UC_X86_REG_ECX) == PD_TEAM,
+         (e.arg(0) - PD_INFANTRY) // PD_INFANTRY_STRIDE, i32(e.arg(1)), e.arg(2) & 0xFF]), 0xC)
+    result = emu.invoke(0x415C60, ecx=plane)
+    return dict(passengers=passengers, ammo=ammo, facing=facing, can_enter=can_enter,
+                spot=spot, spawned=spawned, team=team, passes=passes, location=list(location),
+                returned=i32(result), events=emu.events,
+                ammo_after=emu.read_i32(plane + 0x2FC),
+                passes_after=struct.unpack('<b', bytes([read8(emu, plane + 0x6D3)]))[0],
+                rearm_timer=[emu.read_i32(plane + 0x2EC), emu.read_i32(plane + 0x2F4)],
+                cargo=cargo(emu, plane),
+                neighbour_cells=[read_cell(emu, pd_infantry(index) + 0x55C)
+                                 for index in range(passengers)])
+
+
+def drop_payload():
+    rows = [drop_payload_row(passengers=0)]
+    for ammo in (100, 99, 0, -1, 1):
+        rows.append(drop_payload_row(ammo=ammo))
+    for facing in (0, 0x2000, 0x3FFF, 0xC001, 0xFFFF):
+        rows.append(drop_payload_row(facing=facing))
+        rows.append(drop_payload_row(facing=facing, ammo=99))
+    for can_enter in (1, 2, 7, -1):
+        rows.append(drop_payload_row(can_enter=can_enter))
+    rows += [drop_payload_row(spot=False), drop_payload_row(spawned=False),
+             drop_payload_row(team=True), drop_payload_row(team=True, spawned=False),
+             drop_payload_row(passengers=1), drop_payload_row(passengers=1, spawned=False),
+             drop_payload_row(passes=0), drop_payload_row(passes=-3, spot=False),
+             drop_payload_row(location=(0, 0, 1500)),
+             drop_payload_row(location=(-300, 70000, 0))]
+    return rows
+
+
+# ----------------------------------------------------------- spawn_parachuted
+
+def spawn_parachuted_row(*, paradropped=True, human=False, player_control=False, game_mode=0):
+    """InfantryClass::SpawnParachuted 0x521760 (vt+0xE8) on a fixture infantry
+    owned by HOUSE: ObjectClass::Paradrop 0x5F5940, Queue_Mission (vt+0x1E8)
+    and Do_Action (vt+0x558) are recorded stubs; IsControlledByHuman 0x50B730
+    runs natively over +0x1EC, +0x1ED and the game mode 0xA8B238."""
+    emu = Emu()
+    infantry = pd_infantry(0)
+    emu.write32(infantry, PD_INFANTRY_VT)
+    emu.write32(infantry + 0x21C, HOUSE)
+    write8(emu, HOUSE + 0x1EC, human)
+    write8(emu, HOUSE + 0x1ED, player_control)
+    emu.write32(GAME_MODE, game_mode)
+    emu.write32(PD_INFANTRY_VT + 0x1E8, STUB_PD_QUEUE)
+    emu.write32(PD_INFANTRY_VT + 0x558, STUB_PD_DO_ACTION)
+    write_coord(emu, PD_COORDS, [10261, 10227, 1500])
+    emu.hook(0x5F5940, lambda e: e.events.append(
+        ['paradrop', e.uc.reg_read(UC_X86_REG_ECX) == infantry, read_coord(e, e.arg(0))])
+        or int(paradropped), 4)
+    emu.hook(STUB_PD_QUEUE, lambda e: e.events.append(['queue', e.arg(0), e.arg(1)]), 8)
+    emu.hook(STUB_PD_DO_ACTION, lambda e: e.events.append(
+        ['do_action', i32(e.arg(0)), e.arg(1) & 0xFF, i32(e.arg(2))]), 0xC)
+    result = emu.invoke(0x521760, ecx=infantry, args=[PD_COORDS])
+    return dict(paradropped=paradropped, human=human, player_control=player_control,
+                game_mode=game_mode, returned=i32(result) & 0xFF, events=emu.events)
+
+
+def spawn_parachuted():
+    rows = [spawn_parachuted_row(paradropped=False)]
+    for game_mode in (0, 1, 4):
+        for human in (False, True):
+            for player_control in (False, True):
+                rows.append(spawn_parachuted_row(human=human, player_control=player_control,
+                                                 game_mode=game_mode))
+    return rows
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -5348,6 +5964,11 @@ def generate():
             'radar_outage': radar_outage(),
             'iron_curtain_launch': iron_curtain_launch(),
             'curtain_overrides': curtain_overrides(),
+            'paradrop_launch': paradrop_launch(),
+            'send_paradrop_planes': send_paradrop_planes(),
+            'paradrop_missions': paradrop_missions(),
+            'drop_payload': drop_payload(),
+            'spawn_parachuted': spawn_parachuted(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -5405,7 +6026,13 @@ if __name__ == '__main__':
                'its gate, anim, EVA, radar event, the 3x3 walk\'s lists, skips and '
                'IronCurtain calls and the player\'s tail, and the Infantry and Foot '
                'IronCurtain overrides\' damage, parasite release, timers and Techno '
-               'call'),
+               'call; the paradrops: Launch cases 5 and 6\'s gate, plane lookup, '
+               'target and WaterSet retarget, lists by side, sends and the player\'s '
+               'tail, SendParadropPlanes\' calls, edge, passengers and cargo order, '
+               'both paradrop missions\' branches, passes, latch, destinations and '
+               'drops, Drop_Payload\'s landing point, Can_Enter_Cell, spot, sound, '
+               'neighbour cell, team, passes, rearm timer and refusal, and '
+               'SpawnParachuted\'s missions and action'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -5609,7 +6236,34 @@ if __name__ == '__main__':
                        'vt+0x84) holds Strength (+0xA0) and Organic (+0xD97); ReceiveDamage '
                        'vt+0x16C, ExitUnit 0x62A4A0 and TechnoClass::IronCurtain 0x70E2B0 are '
                        'recorded stubs; the timers\' middle word, a stale local, is not '
-                       'recorded'],
+                       'recorded',
+                       'paradrop_launch: the empty cell\'s initializer 0x6CADB0 runs first and '
+                       'WaterSet 0xAA0738 holds 50; MapClass::operator[] 0x5657A0 answers each '
+                       'row cell (null, the dummy 0xABDC50, or a fixture cell whose +0x38 tile '
+                       'is WaterSet plus an offset); each list entry is its own fixture '
+                       'InfantryTypeClass (+0xDF8 ArrayIndex) and each nums vector is followed '
+                       'by 0x5EED; the PDPLANE lookup 0x41CAA0, Find_Nearby_Passable_Cell '
+                       '0x56DC20, SendParadropPlanes 0x65E660 and the EVA calls are recorded '
+                       'stubs',
+                       'send_paradrop_planes: AircraftTypeClass::Array 0xA8B21C and '
+                       'InfantryTypeClass::Array 0xA8E34C hold one fixture type each, whose '
+                       'CreateObject vt+0x8C is a recorded stub; PickCellOnEdge 0x4AA440 and '
+                       'the plane\'s and infantry\'s virtuals are recorded stubs; the fixture '
+                       'infantry carry AbstractFlags 4; a negative num, which counts down '
+                       'through zero, is not run',
+                       'paradrop_missions: Distance_To 0x5F6440 answers the row\'s distance; '
+                       'IsCoordInPlayfield 0x5785F0, Drop_Payload 0x415C60 and the plane\'s '
+                       'virtuals are recorded stubs; the first passenger +0x118 is a '
+                       'fixture pointer or NULL',
+                       'drop_payload: the plane\'s GetCoords vt+0x48 answers its +0x9C and '
+                       'FacingClass::Current 0x4C93D0 the row\'s facing; GetCellAt 0x565730 '
+                       'answers one fixture cell whose GetCoords answers (40, 41)\'s centre; '
+                       '0x481180 answers its request moved (+21, -13) at Z 7, or the empty '
+                       'coordinate; the passengers\' +0x55C start at (-3, -3); the rearm '
+                       'timer\'s middle word, a stale local, is not recorded',
+                       'spawn_parachuted: ObjectClass::Paradrop 0x5F5940, Queue_Mission '
+                       'vt+0x1E8 and Do_Action vt+0x558 are recorded stubs; the owner\'s '
+                       '+0x1EC/+0x1ED and SessionClass::GameMode 0xA8B238 are the row\'s'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -5660,4 +6314,10 @@ if __name__ == '__main__':
                       'HouseClass::radar_availability': 0x508DF0,
                       'SuperClass::Launch_case1': 0x6CC390,
                       'InfantryClass::IronCurtain': 0x522600,
-                      'FootClass::IronCurtain': 0x4DEAE0}))
+                      'FootClass::IronCurtain': 0x4DEAE0,
+                      'SuperClass::Launch_cases5_6': 0x6CC390,
+                      'HouseClass::SendParadropPlanes': 0x65E660,
+                      'AircraftClass::Mission_ParadropApproach': 0x4158E0,
+                      'AircraftClass::Mission_ParadropOverfly': 0x415960,
+                      'AircraftClass::Drop_Payload': 0x415C60,
+                      'InfantryClass::SpawnParachuted': 0x521760}))

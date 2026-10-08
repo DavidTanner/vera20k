@@ -2053,6 +2053,16 @@ impl ResolvedTerrainGrid {
             .is_water_shore_or_waterfall(self.native_cell_tile_index(cell))
     }
 
+    /// `CellClass @ 0x00485060`: the cell's tile (`+0x38`) is one of the 14
+    /// open-water tiles from the theater's WaterSet base (`0x00AA0738`), a
+    /// signed window that the -1 base of a theater without one (Lunar) does
+    /// not disable: there tiles -1..12 answer true.
+    pub(crate) fn native_cell_is_water_set_tile(&self, cell: NativeCellIdentity) -> bool {
+        let tile = self.native_cell_tile_index(cell);
+        let base = self.water_tiles.water_base;
+        tile >= base && tile < base.wrapping_add(14)
+    }
+
     pub(crate) fn current_tile_radar_metadata(
         &self,
         rx: u16,
