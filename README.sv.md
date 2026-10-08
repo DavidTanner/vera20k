@@ -77,7 +77,7 @@ därifrån; gäller det något stort, fråga först i ett issue eller på
 [Discord](https://discord.gg/kmjRUn5m5F).
 
 Spelmekaniken finns i `src/sim/`, renderingen i `src/render/` och menyer och inmatning i
-`src/app/`, `src/ui/` och `src/sidebar/`; Python-verktygen i `tools/` behöver du inte.
+`src/app/` och `src/ui/`; Python-verktygen i `tools/` behöver du inte.
 [Arkitekturöversikten](https://yuriplanet.github.io/vera20k/sv/) förklarar hur motorn hänger ihop.
 Kör testerna med `cargo test -p vera20k --lib`. Tester som behöver spelets INI-filer hoppar över
 sig själva, och räknas ändå som godkända, tills du kör `cargo run --bin extract-ini [spelmapp]`.

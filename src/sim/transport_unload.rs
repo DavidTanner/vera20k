@@ -12,7 +12,7 @@
 //! (`0x0073E289`..`0x0073E2B5`; aircraft tail at the end of `0x004151E0`), so
 //! one passenger leaves per 14..16 frames on stock `[Unload] Rate=.016`.
 //!
-//! Depends on `sim/`, `rules/`, `map/` only — never render/ui/sidebar/audio/net.
+//! Depends on `sim/`, `rules/`, `map/` only — never render/ui/audio/net.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{MovementZone, SpeedType};

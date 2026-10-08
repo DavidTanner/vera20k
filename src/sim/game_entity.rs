@@ -13,7 +13,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ (EntityCategory), sim/components, sim/locomotor,
 //!   sim/combat (AttackTarget), sim/animation, sim/miner, and special movement modules.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
 use crate::sim::aircraft::AircraftMission;

@@ -21,7 +21,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/ terrain facts, and sim entity state.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::TargetKind;
 use super::armor_index;

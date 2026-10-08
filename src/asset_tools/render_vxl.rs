@@ -24,7 +24,7 @@
 //! - Depends on `assets/` (VXL/HVA/VPL/palette), `rules/` (`[Colors]` schemes
 //!   and the art registry), the CPU-only `render::vxl_raster`, and the sibling
 //!   `canvas` / `identify` / `locate` / `names` / `palette` / `report` modules.
-//! - Nothing from `sim/`, `ui/`, `sidebar/`, `audio/`, `net/`, and no GPU type.
+//! - Nothing from `sim/`, `ui/`, `audio/`, `net/`, and no GPU type.
 
 use std::path::{Path, PathBuf};
 

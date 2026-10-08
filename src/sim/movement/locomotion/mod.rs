@@ -7,7 +7,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ only.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 pub mod piggyback;
 pub mod power;

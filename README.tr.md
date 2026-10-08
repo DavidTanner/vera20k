@@ -74,8 +74,8 @@ fikirlerinizi paylaşabilir veya orijinal oyunla yan yana oynayıp neyin yanlı�
 bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz; büyük bir değişiklik için önce bir
 issue'da ya da [Discord](https://discord.gg/kmjRUn5m5F) üzerinden sorun.
 
-Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/`, `src/ui/` ve
-`src/sidebar/` içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
+Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/` ve `src/ui/`
+içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
 [Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir
 araya geldiğini açıklıyor. Testleri `cargo test -p vera20k --lib` ile çalıştırın. Oyunun INI
 dosyalarına ihtiyaç duyan testler, siz `cargo run --bin extract-ini [oyun klasörü]` komutunu

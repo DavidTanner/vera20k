@@ -74,8 +74,8 @@ Help is welcome. You can write code, refactor the engine, test the game, share i
 it next to the original and tell us what feels wrong. Open a PR and we'll take it from there;
 for anything large, ask first in an issue or on [Discord](https://discord.gg/kmjRUn5m5F).
 
-Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/`,
-`src/ui/` and `src/sidebar/`; you don't need the Python tools in `tools/`. The
+Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/` and
+`src/ui/`; you don't need the Python tools in `tools/`. The
 [architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits
 together. Run the tests with `cargo test -p vera20k --lib`. Tests that need the game's INI
 files skip themselves, and still count as passed, until you run

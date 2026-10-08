@@ -14,7 +14,7 @@
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::render::batch::BatchTexture;
-use crate::sidebar::{self, SidebarView};
+use crate::ui::sidebar::{self, SidebarView};
 use crate::sim::production;
 
 // Re-export instance builders so callers don't need to know about the split.
@@ -87,7 +87,8 @@ pub(crate) fn advance_sidebar_credits_after_frame(
 /// transitions, never from a view consumer.
 pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
     refresh_radar_animation_source(state);
-    let mut spec = crate::sidebar::SidebarChromeLayoutSpec::for_theme(current_sidebar_theme(state));
+    let mut spec =
+        crate::ui::sidebar::SidebarChromeLayoutSpec::for_theme(current_sidebar_theme(state));
     if let Some(atlas) = current_sidebar_chrome(state) {
         spec.side2_height = atlas.side2.pixel_size[1];
         spec.side3_height = atlas.side3.pixel_size[1];
@@ -443,10 +444,10 @@ pub(crate) fn update_camera_from_minimap_cursor(state: &mut AppState) {
 
 /// Live generated-primary screen rectangle used by the retained input region.
 /// Centered letterbox margins are not part of RadarClass's click surface.
-pub(crate) fn active_minimap_content_screen_rect(state: &AppState) -> crate::sidebar::Rect {
+pub(crate) fn active_minimap_content_screen_rect(state: &AppState) -> crate::ui::sidebar::Rect {
     let aperture = active_minimap_screen_rect(state);
     let Some(minimap) = state.match_state.match_presentation.minimap.as_ref() else {
-        return crate::sidebar::Rect {
+        return crate::ui::sidebar::Rect {
             x: aperture.x,
             y: aperture.y,
             w: 0.0,
@@ -456,27 +457,27 @@ pub(crate) fn active_minimap_content_screen_rect(state: &AppState) -> crate::sid
     let Some([x, y, w, h]) =
         minimap.content_screen_rect_in_rect(aperture.x, aperture.y, aperture.w, aperture.h)
     else {
-        return crate::sidebar::Rect {
+        return crate::ui::sidebar::Rect {
             x: aperture.x,
             y: aperture.y,
             w: 0.0,
             h: 0.0,
         };
     };
-    crate::sidebar::Rect { x, y, w, h }
+    crate::ui::sidebar::Rect { x, y, w, h }
 }
 
-pub(crate) fn active_minimap_screen_rect(state: &AppState) -> crate::sidebar::Rect {
+pub(crate) fn active_minimap_screen_rect(state: &AppState) -> crate::ui::sidebar::Rect {
     let sw = state.render_width() as f32;
     let sh = state.render_height() as f32;
     if current_sidebar_chrome(state).is_some() {
-        crate::sidebar::radar_minimap_rect_with_spec(
+        crate::ui::sidebar::radar_minimap_rect_with_spec(
             sw,
             state.match_state.match_presentation.sidebar_layout_spec,
         )
     } else {
         let (x, y, w, h) = crate::render::minimap::default_minimap_rect(sh);
-        crate::sidebar::Rect { x, y, w, h }
+        crate::ui::sidebar::Rect { x, y, w, h }
     }
 }
 

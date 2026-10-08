@@ -6,7 +6,7 @@
 //!
 //! ## Dependency rules
 //! - audio/ depends on: assets/ (decodes .aud files), sim/ (triggers on game events)
-//! - audio/ does NOT depend on: render/, ui/, sidebar/, net/
+//! - audio/ does NOT depend on: render/, ui/, net/
 
 pub mod arbiter;
 pub mod events;

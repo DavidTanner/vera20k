@@ -15,7 +15,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/locomotor_type (MovementZone).
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::locomotor_type::MovementZone;
 

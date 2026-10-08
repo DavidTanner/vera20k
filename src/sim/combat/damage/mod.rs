@@ -3,7 +3,7 @@
 //!
 //! ## Dependency rules
 //! - sim/ submodule: uses shared util arithmetic and caller-resolved rule inputs.
-//! - NEVER depends on render/ui/sidebar/audio/net. No EntityStore/GameEntity
+//! - NEVER depends on render/ui/audio/net. No EntityStore/GameEntity
 //!   reach-in: callers extract inputs into the value-types below.
 //! - The kernel, the defence divides and the attacker's damage build use native
 //!   PC53/chop, binary32 spills and signed64 conversion's low32 through

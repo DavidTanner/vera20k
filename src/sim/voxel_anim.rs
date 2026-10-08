@@ -40,7 +40,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/, util/ and the rest of sim/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeMap;
 

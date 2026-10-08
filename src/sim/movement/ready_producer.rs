@@ -47,7 +47,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/ movement and entity state only.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::game_entity::GameEntity;

@@ -12,7 +12,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/locomotor, sim/movement.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::foot_path::coord_cell;
 #[path = "jumpjet_flight.rs"]

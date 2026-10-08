@@ -5,7 +5,7 @@
 //! and bridge overlay damage.
 //!
 //! Dependency rules: depends on map/overlay (OverlayEntry for seeding).
-//! Never depends on render/, ui/, sidebar/, audio/, net/.
+//! Never depends on render/, ui/, audio/, net/.
 
 use crate::map::authored_overlay::{FinalizedOverlayCell, FinalizedOverlayPayload};
 use crate::map::overlay::{OverlayDataPack, OverlayEntry};

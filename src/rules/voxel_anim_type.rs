@@ -9,7 +9,7 @@
 //!
 //! ## Dependency rules
 //! - Part of rules/ — depends only on the INI layer and util/.
-//! - Never depends on sim/, render/, ui/, sidebar/, audio/, net/.
+//! - Never depends on sim/, render/, ui/, audio/, net/.
 
 use serde::{Deserialize, Serialize};
 

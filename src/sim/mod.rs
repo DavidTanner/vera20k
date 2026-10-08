@@ -16,7 +16,7 @@
 //!
 //! ## Dependency rules
 //! - sim/ may depend on rules/, map/ and util/.
-//! - sim/ never depends on render/, ui/, sidebar/, audio/ or net/.
+//! - sim/ never depends on render/, ui/, audio/ or net/.
 //! - Commands enter and outputs leave through simulation APIs; presentation
 //!   consumes state without becoming a gameplay authority.
 

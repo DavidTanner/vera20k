@@ -2,7 +2,7 @@
 //!
 //! Depends on `map::authored_overlay` (native cell-iterator shape),
 //! `map::overlay_types`, `rules`, `sim::anim_class`, and `util::lepton`;
-//! never on render/, ui/, app/, sidebar/, audio/, or net/.
+//! never on render/, ui/, app/, audio/, or net/.
 
 use crate::map::authored_overlay::NativeOverlayMapShape;
 use crate::map::overlay_types::OverlayTypeRegistry;

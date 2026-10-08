@@ -26,7 +26,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/components (MovementTarget, TypeRef) and
 //!   re-exports the rules-owned sequence vocabulary below.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeMap;
 

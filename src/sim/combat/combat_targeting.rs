@@ -30,7 +30,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ (RuleSet) and sim/components.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::combat_weapon::{
     attacker_facts, is_ally_by_object, techno_target_facts, what_weapon_should_i_use,

@@ -11,7 +11,7 @@
 //!
 //! ## Dependency rules
 //! - map/ depends on: assets/ (reads .tmp terrain tiles), rules/ (terrain type definitions)
-//! - map/ does NOT depend on: sim/, render/, ui/, sidebar/, audio/, net/
+//! - map/ does NOT depend on: sim/, render/, ui/, audio/, net/
 //! - trigger_runtime (runtime evaluation) lives in sim/ — map/ only holds static definitions
 
 pub mod actions;

@@ -17,7 +17,7 @@
 //!
 //! ## Dependency rules
 //! - Part of audio/. Depends on nothing but `std` and `rules::sound_ini`
-//!   constants. Does NOT depend on render/, ui/, sidebar/, sim/, or on any
+//!   constants. Does NOT depend on render/, ui/, sim/, or on any
 //!   audio device.
 
 use std::collections::BTreeMap;

@@ -60,7 +60,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/, sim/mission, sim/passenger,
 //!   sim/team_script_vm (FNPC), sim/world.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 #[path = "paradrop_tests.rs"]

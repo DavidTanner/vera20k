@@ -9,7 +9,7 @@
 //! observably identical to the OS-timer pump at any playable frame rate.
 //!
 //! ## Dependency rules
-//! - ui/ module: std only — no render/, assets/, sidebar/, audio/, net/.
+//! - ui/ module: std only — no render/, assets/, audio/, net/.
 
 /// Delay before a tip shows (native ctor hardcodes 1000 — NOT INI-driven).
 pub const TOOLTIP_DELAY_MS: u64 = 1000;

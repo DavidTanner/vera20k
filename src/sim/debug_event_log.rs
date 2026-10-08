@@ -4,7 +4,7 @@
 //! Not included in state hashing or replay (debug-only infrastructure).
 //!
 //! ## Dependency rules
-//! - Part of sim/ — no render/ui/sidebar/audio/net dependencies.
+//! - Part of sim/ — no render/ui/audio/net dependencies.
 
 use std::collections::VecDeque;
 

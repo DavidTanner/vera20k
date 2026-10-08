@@ -11,7 +11,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;

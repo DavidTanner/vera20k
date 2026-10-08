@@ -30,7 +30,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on util/fixed_math.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 /// Apply Transform_Track_Coords direction flags to a track point.
 ///

@@ -25,7 +25,7 @@
 //! ## Dependency rules
 //! - Part of audio/ — depends on assets/ (AssetManager for .wav/.aud loading),
 //!   rules/sound_ini (SoundRegistry for ID→filename mapping).
-//! - Does NOT depend on render/, ui/, sidebar/, sim/.
+//! - Does NOT depend on render/, ui/, sim/.
 
 use std::collections::BTreeMap;
 use std::num::NonZero;

@@ -17,7 +17,7 @@ mod command_bar;
 
 use crate::app::AppState;
 use crate::app::presentation::sidebar_render::current_sidebar_view;
-use crate::sidebar::{self, SidebarAction, SidebarTab, SidebarView};
+use crate::ui::sidebar::{self, SidebarAction, SidebarTab, SidebarView};
 use crate::ui::gadget::focus::FocusState;
 use crate::ui::gadget::list::{GadgetBehavior, GadgetList, GadgetSpec, ToggleKind};
 use crate::ui::gadget::tick::{GadgetInput, TickOutput, tick};
@@ -610,7 +610,7 @@ fn apply_gadget_result(state: &mut AppState, view: &SidebarView, result: u16) {
             if let Some(item) = view.items.get(slot) {
                 let right = (result & RESULT_RIGHT) != 0;
                 let shift = crate::app::input::dispatch::is_shift_held(state);
-                let action = crate::sidebar::hit_test_item(item, right, shift);
+                let action = crate::ui::sidebar::hit_test_item(item, right, shift);
                 crate::app::input::dispatch::apply_sidebar_action(state, action);
             }
         }

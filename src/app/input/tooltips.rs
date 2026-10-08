@@ -110,7 +110,7 @@ pub(crate) fn update(state: &mut AppState) -> u64 {
     now
 }
 
-fn tip_rect(r: crate::sidebar::Rect) -> TipRect {
+fn tip_rect(r: crate::ui::sidebar::Rect) -> TipRect {
     TipRect::new(
         r.x.round() as i32,
         r.y.round() as i32,
@@ -191,7 +191,10 @@ fn sync_in_game_regions(state: &mut AppState) {
     });
     // Power meter first: gamemd asks the power bar for a tip before the
     // sidebar gadget ids, and registration order decides the hit here.
-    let power_rect = crate::sidebar::power_bar_rect(&view.layout, state.match_state.match_presentation.sidebar_layout_spec);
+    let power_rect = crate::ui::sidebar::power_bar_rect(
+        &view.layout,
+        state.match_state.match_presentation.sidebar_layout_spec,
+    );
     let power_text = state
         .process_assets.csf
         .as_ref()

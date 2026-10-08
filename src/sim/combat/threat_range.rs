@@ -96,7 +96,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ (RuleSet, ObjectType) and sim/ only.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::object_type::ObjectType;
 use crate::sim::components::OrderIntent;

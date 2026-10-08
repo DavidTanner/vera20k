@@ -58,7 +58,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, map/, util/native_trig, sim/cell_rect,
 //!   sim/movement, sim/passenger, sim/world.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::bridge_facts::{BRIDGE_FLAG_STRUCTURAL, BRIDGE_FLAG_TRANSITION};
 use crate::map::entities::EntityCategory;

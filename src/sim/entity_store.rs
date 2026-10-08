@@ -15,7 +15,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends only on sim/game_entity.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeMap;
 

@@ -9,7 +9,7 @@
 //! ## Dependency rules
 //! - Part of sim/ — may depend on map/ (bridge_facts flag bits, resolved_terrain)
 //!   and other sim/ modules.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/ (invariant #1).
+//! - sim/ NEVER depends on render/, ui/, audio/, net/ (invariant #1).
 //!   The render draw-offset lives behind a render-facing trait in render/, so the
 //!   sim-side service never gains a render dependency.
 pub mod bridge_topology;

@@ -78,7 +78,7 @@ pub(crate) fn build_in_game_options_text_instances(
     screen_h: i32,
     anchor: InGameOptionsAnchor,
     state: &InGameOptionsState,
-    theme: crate::sidebar::SidebarTheme,
+    theme: crate::ui::sidebar::SidebarTheme,
 ) -> Vec<ShellTextDraw> {
     let mut out = Vec::new();
     for draw in in_game_options_static_draws(csf, screen_w, screen_h, anchor, state) {
@@ -439,7 +439,7 @@ mod tests {
             600,
             test_anchor(),
             &InGameOptionsState::default(),
-            crate::sidebar::SidebarTheme::Allied,
+            crate::ui::sidebar::SidebarTheme::Allied,
         );
         assert!(out.iter().any(|draw| !draw.instances.is_empty()));
         assert!(

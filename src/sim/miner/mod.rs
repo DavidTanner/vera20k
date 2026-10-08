@@ -6,7 +6,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ -- may depend on rules/ for data-driven miner detection.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 mod exit_cell_search;
 mod harvest_mission;

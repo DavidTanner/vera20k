@@ -36,7 +36,7 @@
 //! - Part of sim/ — depends on rules/, map/houses, sim/superweapon/invulnerability,
 //!   sim/movement/ground_pose, sim/power_system, sim/game_entity, sim/world,
 //!   util/native_x87.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 #[cfg(test)]
 #[path = "force_shield_tests.rs"]

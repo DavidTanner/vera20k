@@ -25,14 +25,11 @@ pub mod rules;
 pub(crate) mod rng_continuation;
 
 // Game simulation — EntityStore, fixed-point math, deterministic logic.
-// NEVER depends on render/, ui/, sidebar/, audio/, net/.
+// NEVER depends on render/, ui/, audio/, net/.
 pub mod sim;
 
-// egui menus and dialogs (NOT the in-game sidebar).
+// Menus, dialogs and the in-game sidebar: layout and state, drawn by app/ and render/.
 pub mod ui;
-
-// Custom wgpu sidebar — pixel-perfect RA2 art, not egui.
-pub mod sidebar;
 
 // Sound/music via rodio.
 pub mod audio;

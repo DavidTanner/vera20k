@@ -17,7 +17,7 @@ Bu sayfa kodun kısa bir haritasıdır. Kodla çelişirse doğru olan koddur. He
 - `sim/` — tüm oyun durumu ve deterministik oyun mantığı.
 - `render/` — wgpu tabanlı render motoru.
 - `app/` — pencere, girdi, yükleme ve kaydetme; sim, render, ui, audio ve net'i birbirine bağlar.
-- `ui/` ve `sidebar/` — menüler, iletişim kutuları, oyun içi ekranlar ve yan panel.
+- `ui/` — menüler, iletişim kutuları, oyun içi ekranlar ve yan panel.
 - `audio/` — ses efektleri ve müzik.
 - `net/` — deterministik lockstep. Henüz ağ aktarım katmanı yok.
 - `rules/` — orijinal oyunun INI dosyaları ve katmanları.
@@ -29,7 +29,7 @@ Bu sayfa kodun kısa bir haritasıdır. Kodla çelişirse doğru olan koddur. He
 
 Değişebilen tüm oyun durumu tek bir yapıda tutulur: `Simulation` (`src/sim/world/mod.rs`). `SimRuntime::advance_frame()` bir kareyi orijinal oyunun kare sırasıyla çalıştırır.
 
-Uygulama, oyuncu girdisini simülasyon için komutlara dönüştürür. Her kareden sonra yeni durumu render motoruna verir ve o karenin ürettiği sesleri çalar. Render işlemi yalnızca simülasyon durumunu okur; `sim/` ise hiçbir zaman `render/`, `ui/`, `sidebar/`, `audio/` veya `net/` modüllerine bağımlı değildir.
+Uygulama, oyuncu girdisini simülasyon için komutlara dönüştürür. Her kareden sonra yeni durumu render motoruna verir ve o karenin ürettiği sesleri çalar. Render işlemi yalnızca simülasyon durumunu okur; `sim/` ise hiçbir zaman `render/`, `ui/`, `audio/` veya `net/` modüllerine bağımlı değildir.
 
 ## Determinizm
 

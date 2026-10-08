@@ -31,7 +31,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/radio + sim/world. sim/ NEVER depends on
-//!   render/, ui/, sidebar/, audio/, net/.
+//!   render/, ui/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;

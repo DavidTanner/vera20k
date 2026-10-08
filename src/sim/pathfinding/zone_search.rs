@@ -77,7 +77,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/zone_map, sim/pathfinding, sim/locomotor.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeSet;
 

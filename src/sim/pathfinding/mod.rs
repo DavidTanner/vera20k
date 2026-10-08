@@ -10,7 +10,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on map/ (terrain, resolved_terrain).
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 // Core A* algorithm, PathGrid, PathCell
 mod core;

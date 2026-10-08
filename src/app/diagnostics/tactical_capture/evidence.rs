@@ -17,7 +17,7 @@ use crate::render::sidebar_chrome::{
     ResolvedSidebarChromeIdentity, SidebarChromeAssetIdentity, SidebarChromeAtlasIdentity,
     SidebarTheme,
 };
-use crate::sidebar::Rect;
+use crate::ui::sidebar::Rect;
 
 use super::integrity::FileDigest;
 

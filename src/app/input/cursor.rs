@@ -1292,7 +1292,7 @@ pub(crate) fn current_sidebar_view_hit(state: &AppState) -> bool {
         .match_presentation
         .sidebar_layout_spec
         .sidebar_width;
-    let panel_rect = crate::sidebar::Rect {
+    let panel_rect = crate::ui::sidebar::Rect {
         x: state.render_width() as f32 - sw - 10.0,
         y: 10.0,
         w: sw,

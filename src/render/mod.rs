@@ -13,7 +13,7 @@
 //! ## Dependency rules
 //! - render/ may READ from: assets/, map/, sim/
 //! - render/ NEVER mutates sim state — strictly read-only access
-//! - render/ does NOT depend on: ui/, sidebar/, audio/, net/
+//! - render/ does NOT depend on: ui/, audio/, net/
 
 pub(crate) mod atlas_growth;
 #[cfg(test)]

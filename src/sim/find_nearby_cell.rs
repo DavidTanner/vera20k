@@ -7,7 +7,7 @@
 //! target is given. It consumes no RNG stream. Exact CellClass projection misses
 //! do stamp the process-shared dummy coordinate, so lookup order is deterministic,
 //! future-affecting state; no other grid state is changed. Depends only on `map/`,
-//! `sim/`, and `rules/`; never on render/ui/sidebar/audio/net.
+//! `sim/`, and `rules/`; never on render/ui/audio/net.
 //!
 //! Determinism contract:
 //! - The square-ring candidate ORDER is fully deterministic; it feeds both the

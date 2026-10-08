@@ -18,7 +18,7 @@
 
 use crate::render::batch::SpriteInstance;
 use crate::render::bit_font::BitFont;
-use crate::sidebar::SidebarView;
+use crate::ui::sidebar::SidebarView;
 // Generic credit glyph generation is render-owned (F06); this module keeps
 // only the sidebar-view adapter below. Re-exported for existing callers.
 #[cfg(test)]
@@ -47,7 +47,7 @@ mod tests {
     use super::*;
     use crate::render::bit_font::CHAR_SPACING;
     use crate::render::bit_font::tests::make_test_font;
-    use crate::sidebar::Rect;
+    use crate::ui::sidebar::Rect;
 
     /// Digit widths standing in for the GAME.FNT table: deliberately unequal so
     /// a proportional/system-font layout cannot reproduce the advances.
@@ -220,8 +220,8 @@ mod tests {
     /// to the `sidebar_text` lane, which is drawn from the GAME.FNT atlas.
     #[test]
     fn view_wrapper_places_credits_inside_the_sidebar_panel() {
-        use crate::sidebar::gadget_flash::SidebarGadgetState;
-        use crate::sidebar::{SidebarChromeLayoutSpec, SidebarTab, build_sidebar_view_with_spec};
+        use crate::ui::sidebar::gadget_flash::SidebarGadgetState;
+        use crate::ui::sidebar::{SidebarChromeLayoutSpec, SidebarTab, build_sidebar_view_with_spec};
 
         let view = build_sidebar_view_with_spec(
             SidebarChromeLayoutSpec::stock(),

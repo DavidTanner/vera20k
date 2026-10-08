@@ -8,7 +8,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/components, sim/combat, sim/docking, rules/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 pub mod attack_mission;
 pub mod drop_payload;

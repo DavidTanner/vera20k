@@ -20,20 +20,13 @@ use std::path::Path;
 /// name. The simulation direction contract is in AGENTS.md; the remaining
 /// rules preserve the established lower-layer boundaries.
 const LAYER_RULES: &[(&str, &[&str])] = &[
-    (
-        "assets",
-        &["sim", "rules", "map", "render", "sidebar", "ui", "app"],
-    ),
-    (
-        "util",
-        &["sim", "rules", "map", "render", "sidebar", "ui", "app"],
-    ),
+    ("assets", &["sim", "rules", "map", "render", "ui", "app"]),
+    ("util", &["sim", "rules", "map", "render", "ui", "app"]),
     ("rules", &["sim", "map"]),
     ("map", &["sim", "render", "app"]),
     ("render", &["app"]),
-    ("sidebar", &["app"]),
     ("ui", &["app", "skirmish_scenarios"]),
-    ("sim", &["render", "sidebar", "ui", "audio", "net"]),
+    ("sim", &["render", "ui", "audio", "net"]),
 ];
 
 /// No production exceptions remain. Keep this inventory empty; new reverse
@@ -652,7 +645,7 @@ fn sim_names_no_upper_layer_root_even_in_tests() {
         let source =
             fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let blanked = blank_comments_and_literals(&source);
-        for root in ["render", "net", "sidebar", "ui", "audio", "app"] {
+        for root in ["render", "net", "ui", "audio", "app"] {
             if contains_crate_ref(&blanked, root) || group_contains_root(&blanked, root) {
                 offenders.push(format!("{} -> {root}", path.display()));
             }

@@ -19,7 +19,7 @@
 
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
-use crate::sidebar::SidebarTab;
+use crate::ui::sidebar::SidebarTab;
 
 /// Period (game ticks) of the per-tab pulse. Literal from gamemd
 /// `MOV ECX, 0xa` at 006a8e58. Source:
@@ -99,7 +99,7 @@ fn has_charged_sw_for_owner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sidebar::gadget_flash::SidebarGadgetState;
+    use crate::ui::sidebar::gadget_flash::SidebarGadgetState;
 
     /// Helper: simulate one orchestrator pass on a bare SidebarGadgetState
     /// without going through the AppState / Simulation indirection. Mirrors

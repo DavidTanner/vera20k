@@ -107,7 +107,7 @@
 //!   flies.
 //!
 //! ## Dependency rules
-//! - Part of sim/; sim/ never depends on render/, ui/, sidebar/, audio/, net/.
+//! - Part of sim/; sim/ never depends on render/, ui/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;

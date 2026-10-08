@@ -4,7 +4,7 @@
 //! dispatcher during combat.
 //!
 //! Dependency rules: depends on rules/, map/, and other sim/ modules.
-//! Never depends on render/, ui/, sidebar/, audio/, net/.
+//! Never depends on render/, ui/, audio/, net/.
 
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::map_file::MapSmudgeEntry;

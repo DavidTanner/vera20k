@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use crate::sidebar::SidebarView;
+use crate::ui::sidebar::SidebarView;
 use crate::sim::intern::InternedId;
 use crate::sim::world::TickLane;
 
@@ -138,8 +138,8 @@ pub(crate) fn credit_tick_sound<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sidebar::gadget_flash::SidebarGadgetState;
-    use crate::sidebar::{SidebarTab, build_sidebar_view};
+    use crate::ui::sidebar::gadget_flash::SidebarGadgetState;
+    use crate::ui::sidebar::{SidebarTab, build_sidebar_view};
 
     fn retained_test_view(credits: i32) -> SidebarView {
         build_sidebar_view(

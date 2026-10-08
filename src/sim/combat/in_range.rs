@@ -25,7 +25,7 @@
 //! Depends on: rules (ObjectType, Weapon, ProjectileType), map (terrain
 //! height + bridge), sim/combat/line_of_fire, util/lepton (constants),
 //! util/fixed_math (isqrt_i64).
-//! Does NOT depend on render/ui/sidebar/audio/net.
+//! Does NOT depend on render/ui/audio/net.
 
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::entities::EntityCategory;

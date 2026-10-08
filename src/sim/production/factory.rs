@@ -18,7 +18,7 @@
 //! Depends on: `sim/intern`, `sim/production/production_types` (ProductionCategory,
 //! BuildQueueState), `sim/economy` (the house wallet), `rules` (type cost and
 //! build-time factors), and `sim/world::Simulation` (read-only) for the inputs.
-//! NEVER on render/ui/sidebar/audio/net (sim invariant #1).
+//! NEVER on render/ui/audio/net (sim invariant #1).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 

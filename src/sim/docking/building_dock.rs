@@ -64,7 +64,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, sim/radio, sim/movement, sim/mission.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;

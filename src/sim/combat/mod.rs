@@ -15,7 +15,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/components and rules/ (RuleSet).
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 pub(crate) mod aim_coord;
 pub(crate) mod base_defense_response;

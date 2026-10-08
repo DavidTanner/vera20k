@@ -8,7 +8,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on sim/ movement state components.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeSet;
 

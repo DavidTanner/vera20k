@@ -7,7 +7,7 @@
 //! step 8 / §4.3), so a row's remaining lifetime survives a pause intact.
 //!
 //! ## Dependency rules
-//! - ui/ module: std only — no render/, assets/, sidebar/, audio/, net/.
+//! - ui/ module: std only — no render/, assets/, audio/, net/.
 
 /// Slot-pool cap (native list walks up to 0xE label slots).
 pub const MESSAGE_SLOTS: usize = 14;

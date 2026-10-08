@@ -22,7 +22,7 @@
 //!
 //! ## Dependency rules
 //! - Part of sim/ -- no dependencies outside sim/.
-//! - sim/ NEVER depends on render/, ui/, sidebar/, audio/, net/.
+//! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
 use crate::sim::world::Simulation;
