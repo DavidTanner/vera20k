@@ -309,7 +309,7 @@ fn native_blowup_all_corpus() {
                 "{name}: obj{n}'s damage"
             );
             assert_eq!(
-                call.distance_leptons.map(i64::from),
+                Some(i64::from(call.distance_leptons)),
                 event[3].as_i64(),
                 "{name}: distance"
             );
@@ -318,10 +318,10 @@ fn native_blowup_all_corpus() {
             assert_eq!(call.attacker_id, RAD_NO_ATTACKER, "{name}: no attacker");
             assert_eq!(
                 call.receiver_flags,
-                Some(ReceiverCallFlags {
+                ReceiverCallFlags {
                     ignore_defenses: event[6].as_u64() == Some(1),
                     arg6: event[7].as_u64() == Some(1),
-                }),
+                },
                 "{name}: ignoreDefenses, no escape"
             );
             assert_eq!(event[8].as_u64(), Some(0), "{name}: no native source house");

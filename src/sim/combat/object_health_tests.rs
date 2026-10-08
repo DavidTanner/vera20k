@@ -153,8 +153,7 @@ fn receiver_commit_keeps_negative_heal_on_exact_zero_techno_tail_and_wide_hits()
             &Default::default(),
             None,
             None,
-            Some(Some(resolved)),
-            0,
+            Some(resolved),
         )
         .unwrap();
         assert_eq!(entities.get(1).unwrap().health.current, expected);
