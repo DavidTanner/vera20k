@@ -48,7 +48,6 @@ pub struct ProducerFocusView {
 /// Placement preview/evaluation for a ready building.
 #[derive(Debug, Clone)]
 pub struct BuildingPlacementPreview {
-    pub type_id: InternedId,
     pub rx: u16,
     pub ry: u16,
     pub width: u16,

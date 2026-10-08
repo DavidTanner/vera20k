@@ -84,9 +84,7 @@ pub fn placement_preview_for_owner_with_overlays(
         }
         _ => Vec::new(),
     };
-    let type_interned = sim.interner.get(type_id).unwrap_or_default();
     Some(BuildingPlacementPreview {
-        type_id: type_interned,
         rx,
         ry,
         width,

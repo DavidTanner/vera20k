@@ -339,7 +339,7 @@ pub(crate) fn try_repair_sell_mode_click(state: &mut AppState) -> bool {
 pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str) {
     let owner: String = resolve_owner(state);
     // Use the preview's stored (rx, ry) so the placed building exactly matches
-    // the ghost the player saw, avoiding any cursor-movement drift between frames.
+    // the cells the player saw, avoiding any cursor-movement drift between frames.
     let (rx, ry) =
         if let Some(preview) = state.match_state.input.building_placement_preview.as_ref() {
             log::info!(
@@ -348,7 +348,7 @@ pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str
                 preview.ry,
                 preview.width,
                 preview.height,
-                preview.type_id,
+                type_id,
             );
             (preview.rx, preview.ry)
         } else {
