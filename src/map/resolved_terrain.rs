@@ -6842,7 +6842,7 @@ mod tests {
                     tracks_target: false,
                     target_expiry: TargetExpiryPolicy::Expire,
                     collision: ProjectileCollisionPolicy {
-                        level_non_water: true,
+                        level: true,
                         ..ProjectileCollisionPolicy::NONE
                     },
                 },

@@ -315,7 +315,7 @@ mod tests {
             spawn.collision.subject_to_walls = flag("walls");
             spawn.collision.flak_scatter = flag("flak");
             spawn.collision.anti_air = flag("aa");
-            spawn.collision.level_non_water = flag("level");
+            spawn.collision.level = flag("level");
             sim.projectiles.spawn(100, spawn);
             let mut projectile = sim.projectiles.get(100).unwrap().clone();
             projectile.position = candidate;
@@ -1855,7 +1855,7 @@ impl ProjectileCollisionWorld<'_> {
         {
             return true;
         }
-        if projectile.collision.level_non_water {
+        if projectile.collision.level {
             // Cell ctor47BC11 stores DWORD 0xFFFF; ordinary IsoMap loading
             // rejects/reconstructs the dummy, and Recalc skips it entirely.
             let tile = match &cell {

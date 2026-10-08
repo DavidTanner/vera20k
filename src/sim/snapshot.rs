@@ -867,7 +867,10 @@ use crate::sim::world::Simulation;
 // draws and hashes an infantry death anim with the impact's arguments, and one
 // taken while a GENDEATH plays already holds its Brute while the ownerless
 // anim would add a civilian one.
-const SNAPSHOT_VERSION: u32 = 300;
+// 300 -> 301: a guided bullet's guidance no longer copies its BulletType's
+// Airburst=, Inaccurate= and Level=; it reads the collision policy's, which
+// held the same values. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 301;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3890,7 +3893,9 @@ mod tests {
         // AircraftMission states.
         // 299 -> 300: infantry death anims with the death producers'
         // arguments and the killing house; a GENDEATH's end makes its Brute.
-        assert_eq!(super::SNAPSHOT_VERSION, 300);
+        // 300 -> 301: guidance reads Airburst/Inaccurate/Level from the
+        // collision policy instead of keeping copies.
+        assert_eq!(super::SNAPSHOT_VERSION, 301);
     }
 
     #[test]

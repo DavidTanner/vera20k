@@ -4239,10 +4239,7 @@ fn gsi_05_04_guided_projectile(
         course_lock_duration: 0,
         course_frames: 0,
         course_locked: true,
-        airburst: false,
-        inaccurate: false,
         very_high: false,
-        level: false,
         max_speed: 0,
         acceleration: 3,
         fuse_reference: crate::sim::projectile::ProjectileCoord::new(0, 0, 0),
@@ -4300,13 +4297,13 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         shot.velocity = ProjectileVelocity::new(4, 0, -2);
         shot.arm_frames = 2;
         shot.ranged_fuse = true;
-        let guidance = shot.guidance.as_mut().unwrap();
-        guidance.max_speed = 4;
         // Original HomingTrack5B20F0 honors Level by skipping cruise-height
         // correction. No acceleration keeps the supplied first [4,0,-2]
         // step; otherwise native ramp/clearance changes this fixture's crossing.
         // Exact supplied controls: ifv_lifecycle_controls.{py,json}.
-        guidance.level = true;
+        shot.collision.level = true;
+        let guidance = shot.guidance.as_mut().unwrap();
+        guidance.max_speed = 4;
         guidance.acceleration = 0;
         guidance.fuse_reference = shot.initial_target_position;
         let source_id = if with_source {
