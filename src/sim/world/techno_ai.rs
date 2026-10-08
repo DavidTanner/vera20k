@@ -1729,93 +1729,6 @@ fn clear_passive_target_off_mission(sim: &mut Simulation, id: u64, rules: Option
     }
 }
 
-// ===== P2 (factory substrate) — Structure-arm read-only shadow trace (FIT a) =====
-//
-// FIT option (a): the per-(house, category) factory step is driven from the
-// Structure arm of object_ai_stage() in LogicVector order; the FactoryRegistry is
-// a LOOKUP, not a tick-loop owner. In P1+P2 there is no authoritative step, so the
-// `EntityCategory::Structure` arm stays a no-op and this debug-only trace records
-// each live Structure in LogicVector order — the same "proof lives beside, not
-// inside, the no-op arm" shape as the S1 shadow. The order-follows-LogicVector
-// property is proven by a test that injects a known non-sorted order
-// (`factory_shadow_trace_order_matches_logic_vector`); the runtime debug_assert
-// only checks the cheap intrinsic invariants (strictly-increasing visit ordinal;
-// each traced id resolves to a live, non-dying Structure). Read-only, never hashed.
-
-/// One Structure visited by the P2 factory shell trace, in LogicVector order.
-#[cfg(any(test, debug_assertions))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FactoryShellTrace {
-    structure_id: u64,
-    visit_seq: u32,
-}
-
-impl Simulation {
-    /// Build the P2 factory shell trace: each live, non-dying Structure in
-    /// LogicVector order. Read-only; never hashed, never serialized. The order IS
-    /// LogicVector order by construction (it walks `live_object_order_snapshot`) —
-    /// the FIT-(a) ordering, exercised by the injected-order test.
-    #[cfg(any(test, debug_assertions))]
-    fn factory_shell_trace(&self) -> Vec<FactoryShellTrace> {
-        let mut seq = 0u32;
-        let mut traces: Vec<FactoryShellTrace> = Vec::new();
-        for id in self.live_object_order_snapshot() {
-            let is_live_structure = self
-                .substrate
-                .entities
-                .get(id)
-                .is_some_and(|e| !e.dying && e.category == EntityCategory::Structure);
-            if !is_live_structure {
-                continue;
-            }
-            traces.push(FactoryShellTrace {
-                structure_id: id,
-                visit_seq: seq,
-            });
-            seq += 1;
-        }
-        traces
-    }
-
-    /// Test-only accessor: the structure ids the P2 trace visits, in order. The
-    /// test injects a non-sorted live order and asserts this equals it (so it
-    /// would fail if the trace used BTreeMap/entity-id order instead).
-    #[cfg(test)]
-    pub(crate) fn factory_shell_trace_order(&self) -> Vec<u64> {
-        self.factory_shell_trace()
-            .iter()
-            .map(|t| t.structure_id)
-            .collect()
-    }
-
-    /// Debug-only P2 assert: the factory shell trace visits live, non-dying
-    /// Structures with a strictly-increasing visit ordinal. INTRINSIC invariants
-    /// only — not a self-comparison; the LogicVector-order property is proven by a
-    /// dedicated injected-order test, never re-derived here.
-    #[cfg(any(test, debug_assertions))]
-    pub(crate) fn debug_assert_factory_shell_trace(&self) {
-        let traces = self.factory_shell_trace();
-        for w in traces.windows(2) {
-            debug_assert!(
-                w[0].visit_seq < w[1].visit_seq,
-                "P2: tick {}: factory shell trace visit_seq must strictly increase",
-                self.session.tick,
-            );
-        }
-        for t in &traces {
-            debug_assert!(
-                self.substrate
-                    .entities
-                    .get(t.structure_id)
-                    .is_some_and(|e| !e.dying && e.category == EntityCategory::Structure),
-                "P2: tick {}: factory shell trace id {} must resolve to a live Structure",
-                self.session.tick,
-                t.structure_id,
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6703,17 +6616,6 @@ MinLowPowerProductionSpeed=0.4\nMaxLowPowerProductionSpeed=0.85\n\n\
         sim.mission_host_promote(1, 9, &rules);
         let e = sim.substrate.entities.get(1).unwrap();
         assert_eq!(e.mission.current().known(), Some(MissionType::Move));
-    }
-
-    #[test]
-    fn unit_dispatch_attackmove_unreachable_for_units() {
-        // derived_mission never yields AttackMove for any machine combination.
-        let mut e = GameEntity::test_default(1, "TEST", "Americans", 5, 5);
-        e.movement_target = Some(MovementTarget::default());
-        e.attack_target = Some(AttackTarget {
-            target: TargetKind::Entity(99),
-        });
-        assert_ne!(e.derived_mission().0, MissionType::AttackMove);
     }
 
     #[test]

@@ -1558,53 +1558,6 @@ impl GameEntity {
         self.mission.current().known().unwrap_or(MissionType::None)
     }
 
-    /// Legacy machine classifier used only by migration regression tests.
-    /// Gameplay reads the authoritative MissionCom; this never selects a mission.
-    #[cfg(test)]
-    pub fn derived_mission(&self) -> (MissionType, u8) {
-        if self.miner.is_some() {
-            // The whole harvest loop is one mission; the FSM cursor of record
-            // (MissionCom.handler_state) is its sub-phase.
-            return (MissionType::Harvest, self.mission.handler_state() as u8);
-        }
-        if let Some(aircraft) = &self.aircraft_mission {
-            return match aircraft {
-                AircraftMission::Idle => (MissionType::Guard, 0),
-                AircraftMission::Move { sub_state } => (MissionType::Move, *sub_state),
-                AircraftMission::Attack { sub_state, .. } => (MissionType::Attack, *sub_state),
-                AircraftMission::Guard => (MissionType::Guard, 0),
-                AircraftMission::ReturnToBase { .. } => (MissionType::Enter, 0),
-                AircraftMission::Docking { sub_state, .. } => (MissionType::Enter, *sub_state),
-                AircraftMission::DockedIdle { .. } => (MissionType::Guard, 0),
-            };
-        }
-        if self.pending_entry.is_some() {
-            return (MissionType::Enter, 0);
-        }
-        if self.attack_target.is_some() {
-            return (MissionType::Attack, 0);
-        }
-        if self.movement_target.is_some() {
-            return (MissionType::Move, 0);
-        }
-        // S3: gamemd has no "None" mission — an idle ground vehicle sits in
-        // Guard(5), dispatched at [Guard] Rate (and the passive-acquire gate
-        // covers missions {Move, Harvest, Guard} only, so idle Units must be
-        // Guard for the later acquisition slice to ever fire). Units only this
-        // slice: infantry is S6, aircraft already maps idle via
-        // aircraft_mission, buildings are S8.
-        if self.category == EntityCategory::Unit && self.guards_when_idle() {
-            return (MissionType::Guard, 0);
-        }
-        (MissionType::None, 0)
-    }
-
-    /// Legacy classifier used only by migration regression tests.
-    #[cfg(test)]
-    fn guards_when_idle(&self) -> bool {
-        !self.passenger_role.is_inside_transport() || self.passenger_role.in_open_transport()
-    }
-
     /// Construct after the owning world funnel has resolved the explicit
     /// `TechnoConstructorInit` capability. Kept inside `sim` so ordinary app,
     /// render, and diagnostic code cannot silently invent the native word.
@@ -2382,7 +2335,6 @@ mod lifecycle_tests {
 #[cfg(test)]
 mod mission_shadow_tests {
     use super::*;
-    use crate::sim::combat::{AttackTarget, TargetKind};
     use crate::sim::mission::state::MissionTestFixture;
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 
@@ -2392,29 +2344,6 @@ mod mission_shadow_tests {
         assert_eq!(e.mission.current(), MissionId::NONE);
         assert_eq!(e.mission.handler_state(), 0);
         assert_eq!(e.mission.ai_counter(), 0);
-    }
-
-    #[test]
-    fn derived_mission_idle_when_no_machine_active() {
-        // S3: an idle machine-less Unit sits in Guard (the gamemd idle mission
-        // for ground vehicles); other categories keep the legacy None
-        // placeholder until their slices land (infantry S6, buildings S8).
-        let e = GameEntity::test_default(1, "E1", "Americans", 3, 3); // Unit
-        assert_eq!(e.derived_mission(), (MissionType::Guard, 0));
-
-        let s = GameEntity::test_default_of_category(
-            2,
-            "GAPILE",
-            "Americans",
-            3,
-            3,
-            crate::map::entities::EntityCategory::Structure,
-        );
-        assert_eq!(s.derived_mission(), (MissionType::None, 0));
-
-        let mut i = GameEntity::test_default(3, "E1", "Americans", 3, 3);
-        i.category = crate::map::entities::EntityCategory::Infantry;
-        assert_eq!(i.derived_mission(), (MissionType::None, 0));
     }
 
     /// A map placement authored as Sleep, Sticky or Harmless means "stand still
@@ -2502,28 +2431,6 @@ mod mission_shadow_tests {
                 "{category:?} committed to Area Guard"
             );
         }
-    }
-
-    #[test]
-    fn passenger_derive_unchanged_placeholder() {
-        // In-transport passengers keep the legacy None placeholder: the
-        // mission a passenger holds inside a transport is untraced (do NOT
-        // guess Sleep/Guard); this pin flips with the traced value later.
-        let mut e = GameEntity::test_default(1, "E1", "Americans", 3, 3);
-        e.passenger_role = crate::sim::passenger::PassengerRole::Inside {
-            transport_id: 99,
-            open_topped: false,
-        };
-        assert_eq!(e.derived_mission(), (MissionType::None, 0));
-    }
-
-    #[test]
-    fn derived_mission_tracks_attack_target() {
-        let mut e = GameEntity::test_default(1, "E1", "Americans", 3, 3);
-        e.attack_target = Some(AttackTarget {
-            target: TargetKind::Entity(2),
-        });
-        assert_eq!(e.derived_mission().0, MissionType::Attack);
     }
 
     #[test]

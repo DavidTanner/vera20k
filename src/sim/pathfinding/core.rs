@@ -11,7 +11,7 @@
 //! and both finishing passes.
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends on map/ (MapCell, TilesetLookup for walkability).
+//! - Part of sim/ — depends on map/ (resolved terrain for walkability).
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::cell_entry::{
@@ -23,9 +23,7 @@ use super::zone_hierarchy::ZoneLevelGraph;
 use super::zone_map::ZoneId;
 use super::zone_search::PathSearchFailure;
 use crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
-use crate::map::map_file::MapCell;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::map::theater::TilesetLookup;
 use crate::map::tube_facts::{TubeId, TubeSource};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::sim::movement::locomotor::MovementLayer;
@@ -2160,76 +2158,6 @@ impl PathGrid {
             }
         }
         None
-    }
-
-    /// Build a walkability grid from raw map cell data and tileset names.
-    ///
-    /// This is a legacy test/diagnostic fallback. Runtime pathing should use
-    /// `from_resolved_terrain`, because resolved terrain carries TMP bytes,
-    /// theater numeric cliff/ramp ranges, bridge overlays, and terrain objects.
-    ///
-    /// Strategy: start with all cells **blocked**, then mark cells that have
-    /// valid terrain data (non-water, non-cliff) as walkable. This ensures
-    /// cells outside the map bounds are impassable by default.
-    /// No bridge data is populated — use `from_resolved_terrain_with_bridges` for that.
-    pub fn from_map_data(
-        cells: &[MapCell],
-        lookup: Option<&TilesetLookup>,
-        map_width: u16,
-        map_height: u16,
-    ) -> Self {
-        let size = map_width as usize * map_height as usize;
-        let mut grid = PathGrid {
-            cells: vec![DEFAULT_BLOCKED_CELL; size],
-            width: map_width,
-            height: map_height,
-            terrain_object_cell_bits: Vec::new(),
-            ground_walkable_without_terrain_object: Vec::new(),
-        };
-
-        let mut walkable_count: u32 = 0;
-        let mut water_count: u32 = 0;
-        let mut cliff_count: u32 = 0;
-
-        for cell in cells {
-            if cell.tile_index < 0 {
-                continue;
-            }
-            if cell.rx >= map_width || cell.ry >= map_height {
-                continue;
-            }
-            let tile_id: u16 = if cell.tile_index == 0xFFFF {
-                0
-            } else {
-                cell.tile_index as u16
-            };
-            let is_water = lookup.map_or(false, |l| l.is_water(tile_id));
-            let is_cliff = lookup.map_or(false, |l| l.is_cliff(tile_id));
-            if is_water {
-                water_count += 1;
-            }
-            if is_cliff {
-                cliff_count += 1;
-                continue;
-            }
-            let idx = cell.ry as usize * map_width as usize + cell.rx as usize;
-            if idx < grid.cells.len() {
-                grid.cells[idx].ground_walkable = true;
-                walkable_count += 1;
-            }
-        }
-
-        log::info!(
-            "PathGrid: {}x{} — {} walkable, {} water, {} cliff, {} total blocked",
-            map_width,
-            map_height,
-            walkable_count,
-            water_count,
-            cliff_count,
-            size as u32 - walkable_count,
-        );
-
-        grid
     }
 
     /// Build from resolved terrain without bridge data.

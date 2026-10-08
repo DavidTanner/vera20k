@@ -148,7 +148,6 @@ use crate::sim::terrain_object::TerrainAreaReceiveResult;
 #[cfg(test)]
 use crate::sim::terrain_object::TerrainAreaState;
 use crate::sim::vision::FogState;
-use crate::sim::wave::WaveDamageEvent;
 use crate::sim::world::{FireOriginSnapshot, SimFireEvent, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
@@ -903,25 +902,6 @@ impl EntityDamageEvent {
             receiver_flags: Some(receiver_flags),
             near_center_ic_isolation_eligible: false,
         }
-    }
-
-    /// `WaveClass::DamageArea` calls the concrete occupant receiver directly,
-    /// at distance zero, while both the wave and firer are still represented.
-    pub(crate) fn from_wave(event: WaveDamageEvent, entities: &EntityStore) -> Self {
-        Self::direct_receiver(
-            event.target_id,
-            event.payload.base_damage,
-            0,
-            event.payload.firer_id,
-            entities
-                .get(event.payload.firer_id)
-                .map(|firer| firer.owner()),
-            event.payload.warhead,
-            ReceiverCallFlags {
-                ignore_defenses: false,
-                arg6: false,
-            },
-        )
     }
 }
 

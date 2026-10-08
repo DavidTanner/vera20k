@@ -3,7 +3,6 @@
 //! Extracted from pathfinding.rs to stay under the 400-line limit.
 
 use super::*;
-use crate::map::map_file::MapCell;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, YR_CELL_LAND_TUNNEL};
 use crate::map::tube_facts::{TubeFact, TubeId};
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
@@ -819,72 +818,8 @@ fn test_path_grid_dimensions() {
 }
 
 #[test]
-fn test_from_map_data_marks_terrain_walkable() {
-    let cells: Vec<MapCell> = vec![
-        MapCell {
-            rx: 2,
-            ry: 3,
-            tile_index: 0,
-            sub_tile: 0,
-            z: 0,
-        },
-        MapCell {
-            rx: 4,
-            ry: 5,
-            tile_index: 1,
-            sub_tile: 0,
-            z: 0,
-        },
-    ];
-    let grid: PathGrid = PathGrid::from_map_data(&cells, None, 10, 10);
-    // Cells with terrain should be walkable.
-    assert!(grid.is_walkable(2, 3));
-    assert!(grid.is_walkable(4, 5));
-    // Cells without terrain should be blocked (all start blocked).
-    assert!(!grid.is_walkable(0, 0));
-    assert!(!grid.is_walkable(9, 9));
-}
-
-#[test]
-fn test_from_map_data_skips_no_tile() {
-    let cells: Vec<MapCell> = vec![
-        MapCell {
-            rx: 1,
-            ry: 1,
-            tile_index: -1,
-            sub_tile: 0,
-            z: 0,
-        },
-        MapCell {
-            rx: 2,
-            ry: 2,
-            tile_index: 5,
-            sub_tile: 0,
-            z: 0,
-        },
-    ];
-    let grid: PathGrid = PathGrid::from_map_data(&cells, None, 10, 10);
-    assert!(!grid.is_walkable(1, 1), "No-tile cells should be blocked");
-    assert!(
-        grid.is_walkable(2, 2),
-        "Valid tile cells should be walkable"
-    );
-}
-
-#[test]
 fn test_block_building_movement_cells() {
-    let cells: Vec<MapCell> = (0..10u16)
-        .flat_map(|rx| {
-            (0..10u16).map(move |ry| MapCell {
-                rx,
-                ry,
-                tile_index: 0,
-                sub_tile: 0,
-                z: 0,
-            })
-        })
-        .collect();
-    let mut grid: PathGrid = PathGrid::from_map_data(&cells, None, 10, 10);
+    let mut grid = PathGrid::new(10, 10);
     // All cells should be walkable initially.
     assert!(grid.is_walkable(3, 3));
     assert!(grid.is_walkable(4, 4));
@@ -901,18 +836,7 @@ fn test_block_building_movement_cells() {
 
 #[test]
 fn garefn_footprint_leaves_dock_pad_walkable() {
-    let cells: Vec<MapCell> = (0..32u16)
-        .flat_map(|rx| {
-            (0..32u16).map(move |ry| MapCell {
-                rx,
-                ry,
-                tile_index: 0,
-                sub_tile: 0,
-                z: 0,
-            })
-        })
-        .collect();
-    let mut grid: PathGrid = PathGrid::from_map_data(&cells, None, 32, 32);
+    let mut grid = PathGrid::new(32, 32);
     grid.block_building_movement_cells(10, 10, "4x3", false);
     assert!(
         !grid.is_walkable(13, 11),
@@ -932,18 +856,7 @@ fn garefn_footprint_leaves_dock_pad_walkable() {
 
 #[test]
 fn garefn_bib_static_blockers_only_relax_east_edge() {
-    let cells: Vec<MapCell> = (0..32u16)
-        .flat_map(|rx| {
-            (0..32u16).map(move |ry| MapCell {
-                rx,
-                ry,
-                tile_index: 0,
-                sub_tile: 0,
-                z: 0,
-            })
-        })
-        .collect();
-    let mut grid: PathGrid = PathGrid::from_map_data(&cells, None, 32, 32);
+    let mut grid = PathGrid::new(32, 32);
     grid.block_building_movement_cells(10, 10, "4x3", true);
     assert!(!grid.is_walkable(10, 11));
     assert!(!grid.is_walkable(12, 11));

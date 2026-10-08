@@ -232,7 +232,6 @@ fn global_combat_tail_cannot_fire_a_ready_foot_a_second_time() {
             &BTreeSet::new(),
             &Default::default(),
             &[],
-            &[],
         );
         assert!(result.consequences.fire_events().is_empty());
         assert!(result.unit_facing.is_empty());

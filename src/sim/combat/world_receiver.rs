@@ -4419,7 +4419,6 @@ pub(crate) fn tick_combat(
     fire_suppressed: &BTreeSet<u64>,
     fire_requests: &super::FireRequests,
     projectile_detonations: &[ProjectileDetonation],
-    wave_damage_events: &[WaveDamageEvent],
 ) -> CombatTickResult {
     let radiation_enabled = radiation_enabled(world);
 
@@ -4877,16 +4876,8 @@ pub(crate) fn tick_combat(
         }
     }
     // Every projectile, missile, and live-order attack damage event emitted so
-    // far is already committed. WaveClass::DamageArea is consumed below in its
-    // native wave -> recorded-cell -> selected Cell-list order, followed by
-    // periodic radiation in live-victim order.
+    // far is already committed; periodic radiation follows in live-victim order.
     let committed_damage_event_count = emit.damage_events.len();
-    for event in wave_damage_events {
-        emit.damage_events
-            .push(combat_aoe::AreaDamageReceiver::Entity(
-                EntityDamageEvent::from_wave(*event, &mut world.substrate.entities),
-            ));
-    }
     // Destructure back into the named locals for post-fire state updates.
     let CombatEmit {
         mut effects,

@@ -75,7 +75,6 @@ fn dispatch(sim: &mut Simulation, rules: &RuleSet) -> CombatTickResult {
         &BTreeSet::new(),
         &requests,
         &[],
-        &[],
     )
 }
 

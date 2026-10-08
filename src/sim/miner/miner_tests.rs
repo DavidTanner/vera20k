@@ -2512,58 +2512,6 @@ fn scan_ring_0_allows_harvesters_own_cell() {
     );
 }
 
-// ==========================================================================
-// Slice L5 — Harvest mission handler dispatch
-//
-// The seam routes the miner FSM through the Harvest dispatcher and its explicit
-// resource authority. These tests pin that routing and baseline the
-// derived-mission ↔ FSM-cursor invariant for the later substate-authority flip
-// (shell S5). The whole existing miner suite already runs through that dispatch,
-// so it is the collective bit-identical proof; these add explicit named pins.
-// ==========================================================================
-
-/// Across a full dock cycle through the seam, the entity's `derived_mission()`
-/// is `(Harvest, miner.state as u8)` every tick — the Task-2 invariant that the
-/// shadow MissionCom selector tracks the FSM cursor, which the later
-/// substate-authority flip (shell S5) depends on.
-#[test]
-fn harvest_seam_derived_mission_is_harvest_each_tick() {
-    use crate::sim::mission::MissionType;
-
-    let mut sim = Simulation::new();
-    let rules = miner_rules();
-
-    spawn_refinery(&mut sim, 100, 10, 10);
-    let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 14, 11);
-    {
-        let entity = sim
-            .substrate
-            .entities
-            .get_mut(miner_id)
-            .expect("miner entity");
-        let miner = entity.miner.as_mut().expect("miner component");
-        for _ in 0..10 {
-            miner.cargo.push(CargoBale {
-                resource_type: ResourceType::Ore,
-                value: 25,
-            });
-        }
-        entity.mission.set_handler_state(MinerState::Dock.cursor());
-        miner.reserved_refinery = Some(100);
-    }
-
-    for _ in 0..400 {
-        tick_miners_n(&mut sim, &rules, 1);
-        let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
-        let state = entity.miner_state().expect("miner cursor");
-        assert_eq!(
-            entity.derived_mission(),
-            (MissionType::Harvest, state as u8),
-            "derived mission must be Harvest with the FSM cursor as sub-phase every tick",
-        );
-    }
-}
-
 // ===== Stop must actually stop a miner =====
 
 /// The retail IDLE event handler ends with, for a vehicle carrying the ore-miner
