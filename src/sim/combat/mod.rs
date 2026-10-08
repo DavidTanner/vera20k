@@ -1447,14 +1447,6 @@ pub(crate) fn install_cell_attack_target_for_test(
     true
 }
 
-/// Compute distance in cells between two entities' grid positions.
-#[cfg(test)]
-pub(crate) fn cell_distance(ax: u16, ay: u16, bx: u16, by: u16) -> f32 {
-    let dx: f32 = ax as f32 - bx as f32;
-    let dy: f32 = ay as f32 - by as f32;
-    (dx * dx + dy * dy).sqrt()
-}
-
 use self::combat_targeting::{AttackerSnapshot, GarrisonSnapshot};
 
 /// A `CanBeOccupied` building destroyed in combat with live occupants —
