@@ -15,8 +15,9 @@
 //! These bounded comparisons do not establish complete receiver/attacker parity.
 //! See docs/research/SHARED_WARHEAD_NUMERIC_COMPARISON.md and local citations.
 //!
-//! Ordered Apply_area_damage records use the receiver service live. Legacy
-//! direct/radiation routes still arrive as precomputed damage amounts.
+//! Every damage record reaches the receiver service through
+//! `EntityDamageEvent::area` or `EntityDamageEvent::direct_receiver`; both
+//! carry the distance and receiver flags, including periodic radiation.
 
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
