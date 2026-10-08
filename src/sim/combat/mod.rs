@@ -840,7 +840,7 @@ pub(crate) struct ReceiverCallFlags {
 
 /// One ordered damage call. Area and direct-receiver records retain the raw
 /// signed damage, native lepton distance, and concrete receiver flags until
-/// dispatch; legacy direct callers retain their already-resolved amount.
+/// dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct EntityDamageEvent {
     pub(crate) target_id: u64,
@@ -851,12 +851,12 @@ pub(crate) struct EntityDamageEvent {
     /// uninitialized by an earlier ordered receiver record.
     pub(crate) source_house: Option<InternedId>,
     pub(crate) warhead_ref: InternedId,
-    pub(crate) distance_leptons: Option<i32>,
-    pub(crate) receiver_flags: Option<ReceiverCallFlags>,
+    pub(crate) distance_leptons: i32,
+    pub(crate) receiver_flags: ReceiverCallFlags,
     /// This record belongs to an Apply_area_damage transaction whose captured
     /// CellSpread is at most 0.5. The receiver commit uses this transient fact
     /// to reproduce the native near-center Iron Curtain isolation scan; it is
-    /// deliberately false for direct-receiver and legacy precomputed calls.
+    /// deliberately false for direct-receiver calls.
     pub(crate) near_center_ic_isolation_eligible: bool,
 }
 
@@ -875,11 +875,11 @@ impl EntityDamageEvent {
             attacker_id,
             source_house,
             warhead_ref,
-            distance_leptons: Some(distance_leptons),
-            receiver_flags: Some(ReceiverCallFlags {
+            distance_leptons,
+            receiver_flags: ReceiverCallFlags {
                 ignore_defenses: false,
                 arg6: false,
-            }),
+            },
             near_center_ic_isolation_eligible: false,
         }
     }
@@ -899,8 +899,8 @@ impl EntityDamageEvent {
             attacker_id,
             source_house,
             warhead_ref,
-            distance_leptons: Some(distance_leptons),
-            receiver_flags: Some(receiver_flags),
+            distance_leptons,
+            receiver_flags,
             near_center_ic_isolation_eligible: false,
         }
     }
@@ -2287,8 +2287,8 @@ fn resolve_receive_damage(
     current_tick: u64,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> Option<ResolvedReceiveDamage> {
-    let distance_leptons = event.distance_leptons?;
-    let receiver_flags = event.receiver_flags?;
+    let distance_leptons = event.distance_leptons;
+    let receiver_flags = event.receiver_flags;
     let target = entities.get(event.target_id)?;
     // Building442230 returns before Techno for Health0, after its wrapper
     // response (already executed by commit_entities). Infantry/Unit instead
@@ -2536,7 +2536,7 @@ fn postmortem_duration_for_event(
     let warhead = rules.warhead(interner.resolve(event.warhead_ref))?;
     let object = rules.object(interner.resolve(target.type_ref()))?;
     (warhead.causes_delay_kill && object.eligible_for_delay_kill)
-        .then(|| postmortem_delay_duration(warhead, event.distance_leptons.unwrap_or(0)))
+        .then(|| postmortem_delay_duration(warhead, event.distance_leptons))
 }
 
 fn has_active_area_invulnerability(entity: &GameEntity, current_tick: u64) -> bool {
@@ -2555,7 +2555,7 @@ fn event_arms_ic_isolation(
     current_tick: u64,
 ) -> bool {
     event.near_center_ic_isolation_eligible
-        && event.distance_leptons.is_some_and(|distance| distance < 85)
+        && event.distance_leptons < 85
         && entities.get(event.target_id).is_some_and(|target| {
             has_active_area_invulnerability(target, current_tick)
                 && target.invulnerability.as_ref().is_some_and(|state| {

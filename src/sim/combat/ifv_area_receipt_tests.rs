@@ -360,7 +360,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
             assert_eq!(Some(record.target_id), target, "{name}");
             assert_eq!(
                 record.distance_leptons,
-                Some(input["distance"].as_i64().unwrap() as i32),
+                input["distance"].as_i64().unwrap() as i32,
                 "{name}"
             );
         }

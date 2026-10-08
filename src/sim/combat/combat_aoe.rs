@@ -1147,14 +1147,7 @@ mod tests {
 
     fn hit_id_distances(hits: &[EntityDamageEvent]) -> Vec<(u64, i32)> {
         hits.iter()
-            .map(|event| {
-                (
-                    event.target_id,
-                    event
-                        .distance_leptons
-                        .expect("Apply_area_damage record carries distance"),
-                )
-            })
+            .map(|event| (event.target_id, event.distance_leptons))
             .collect()
     }
 
@@ -1617,9 +1610,9 @@ mod tests {
                 })
                 .collect::<Vec<_>>(),
             vec![
-                (320, 450, Some(320), 77, warhead_ref),
-                (384, 450, Some(384), 77, warhead_ref),
-                (385, 450, Some(384), 77, warhead_ref),
+                (320, 450, 320, 77, warhead_ref),
+                (384, 450, 384, 77, warhead_ref),
+                (385, 450, 384, 77, warhead_ref),
             ],
             "Sqrt_Approx keeps 385 at the inclusive boundary and rejects 386"
         );
@@ -1724,7 +1717,7 @@ mod tests {
                     .iter()
                     .map(|event| (event.target_id, event.damage, event.distance_leptons))
                     .collect::<Vec<_>>(),
-                vec![(1, 100, Some(expected_distance))],
+                vec![(1, 100, expected_distance)],
                 "center Building at impact Z {impact_z} keeps native two-Level allowance"
             );
         }
@@ -1826,7 +1819,7 @@ mod tests {
                 .map(|event| {
                     (
                         event.target_id,
-                        event.distance_leptons.unwrap(),
+                        event.distance_leptons,
                         event.near_center_ic_isolation_eligible,
                     )
                 })
@@ -2781,7 +2774,7 @@ mod tests {
                     .iter()
                     .map(|event| (event.target_id, event.damage, event.distance_leptons))
                     .collect::<Vec<_>>(),
-                vec![(2, 65, Some(0))],
+                vec![(2, 65, 0)],
                 "Immune remains an ordered receiver record, not a collector filter"
             );
 
@@ -2912,7 +2905,7 @@ mod tests {
                 .iter()
                 .map(|event| (event.target_id, event.damage, event.distance_leptons))
                 .collect::<Vec<_>>(),
-            vec![(2, 90, Some(0)), (3, 90, Some(0))],
+            vec![(2, 90, 0), (3, 90, 0)],
             "Apply_area_damage records keep raw Rhino damage for the ordered receiver"
         );
 
@@ -3071,12 +3064,7 @@ mod tests {
                 .iter()
                 .map(|event| (event.target_id, event.damage, event.distance_leptons))
                 .collect::<Vec<_>>(),
-            vec![
-                (2, 600, Some(0)),
-                (3, 600, Some(0)),
-                (4, 600, Some(0)),
-                (5, 600, Some(0)),
-            ],
+            vec![(2, 600, 0), (3, 600, 0), (4, 600, 0), (5, 600, 0)],
             "Apply_area_damage preserves raw ordered records; Psychedelic gates live in the receiver"
         );
 
@@ -3273,7 +3261,7 @@ mod tests {
                 .iter()
                 .map(|event| (event.target_id, event.damage, event.distance_leptons))
                 .collect::<Vec<_>>(),
-            vec![(2, 65, Some(0)), (3, 65, Some(0)), (4, 65, Some(0))],
+            vec![(2, 65, 0), (3, 65, 0), (4, 65, 0)],
             "collection preserves stock 105mmE raw records"
         );
 
@@ -3605,7 +3593,7 @@ mod tests {
                 // Ordinary damage is immune before Scatter in these states.
                 // Explicit ignore-defenses input reaches the same production
                 // receiver continuation so the native setter refusal is tested.
-                event.receiver_flags.as_mut().unwrap().ignore_defenses = true;
+                event.receiver_flags.ignore_defenses = true;
             }
             let mut world = crate::sim::world::Simulation::new();
             world.substrate.entities = entities;
