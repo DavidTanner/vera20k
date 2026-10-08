@@ -36,9 +36,8 @@ use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 /// `<=` (`JLE @ 0x0073EC19` / `JG @ 0x0073EE4B`) keeps the close radio path.
 /// Used by both CMIN (`ChronoHarvTooFarDistance`, Rules+0xD7C) and HARV
 /// (`HarvesterTooFarDistance`, Rules+0xD78); caller picks the kind-appropriate
-/// threshold. Native shifts the raw Rules int (`SHL EDX,8`) with no clamp; the
-/// `.max(1)` lives in `MinerConfig::from_general_rules` (VERA-internal, gamemd
-/// equivalent UNCHECKED for a 0 threshold).
+/// threshold. Native shifts the raw Rules int (`SHL EDX,8`) with no clamp, and
+/// so does this port.
 ///
 /// `UnitClass::Mission_Harvest @ 0x0073E5E0` state 2 subtracts the candidate's
 /// `GetCoords` (vtable +0x48 = `BuildingClass::GetCoords @ 0x00447AC0`, the
