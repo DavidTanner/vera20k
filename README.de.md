@@ -39,10 +39,17 @@ Schlachten mit 30 Spielern und 20.000 Einheiten haben wir bisher nicht demonstri
 
 ## Kompilieren und starten
 
-Du brauchst die aktuelle stabile Version von [Rust](https://rustup.rs/), eine Grafikkarte mit
-Vulkan, DirectX 12 oder Metal und eine installierte Version des Spiels. Jede Ausgabe von
-Yuri's Revenge 1.001 funktioniert; unter macOS kopierst du den Spielordner von einer
-Windows-Installation. Debian und Ubuntu brauchen außerdem `libasound2-dev` und `pkg-config`.
+Du brauchst:
+
+- **Das Spiel:** Red Alert 2: Yuri's Revenge 1.001. Jede Ausgabe funktioniert; unter macOS
+  kopierst du den Spielordner von einer Windows-Installation.
+- **Rust und Git:** die aktuelle stabile Version von [Rust](https://rustup.rs/), installiert mit
+  rustup, und [Git](https://git-scm.com/).
+- **Build-Werkzeuge:** unter Windows die C++-Build-Tools von Visual Studio, deren Installation
+  der Rust-Installer anbietet; unter macOS `xcode-select --install`; unter Debian und Ubuntu
+  `sudo apt install build-essential libasound2-dev pkg-config`.
+- **Grafik:** eine Grafikkarte mit Vulkan, DirectX 12 oder Metal.
+
 VERA20k wurde bereits unter Windows, Linux und macOS gespielt.
 
 ```sh
@@ -61,7 +68,7 @@ Schreib `ra2_dir` mit normalen Schrägstrichen, etwa `C:/Games/RA2`. Verwende zu
 Der Großteil des Codes wird von KI-Programmieragenten geschrieben. Sie untersuchen die
 ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten nach Rust und prüfen es mit
 [Vergleichswerkzeugen](tools/native_oracle.md) und Spieltests. Die Agenten folgen
-[AGENTS.md](AGENTS.md), Mitwirkende folgen den Regeln unten.
+[AGENTS.md](AGENTS.md).
 
 ## Mitmachen
 
@@ -76,18 +83,6 @@ Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, 
 aufgebaut ist. Führe die Tests mit `cargo test -p vera20k --lib` aus. Tests, die die INI-Dateien
 des Spiels brauchen, überspringen sich selbst und zählen trotzdem als bestanden, bis du
 `cargo run --bin extract-ini [Spielordner]` ausführst.
-
-1. **Das Original ist die Referenz.** Nenne die ursprüngliche Funktion in einem Kommentar, wie
-   es der umgebende Code tut (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), oder schreib
-   im PR, woher das Verhalten stammt. Nicht raten.
-2. **Ein Besitzer pro Zustand.** Erweitere den bestehenden Besitzer und lösche den alten Pfad,
-   den du ersetzt.
-3. **Deterministische Simulation.** Gleiche Eingaben, gleiches Ergebnis auf jedem
-   Betriebssystem und jeder CPU. Verwende `SimFixed` in `src/sim/` und halte Zufallsziehungen
-   und Effekte im selben Frame in der Reihenfolge des Originals.
-4. **Füge einen Test hinzu,** wenn du die Spielmechanik änderst.
-5. **Committe niemals Spieldateien** (`.mix`, INI, Grafik, Audio, Video, `.exe`) oder etwas aus
-   `ini/`.
 
 Beiträge stehen wie das übrige Projekt unter der GPLv3; ein CLA gibt es nicht.
 

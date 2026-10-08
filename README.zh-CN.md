@@ -34,9 +34,15 @@ VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 
 ## 编译与运行
 
-你需要最新稳定版 [Rust](https://rustup.rs/)、支持 Vulkan、DirectX 12 或 Metal 的 GPU，以及已安装的原版游戏。
-《尤里的复仇》1.001 的任何版本均可使用；在 macOS 上，请从 Windows 上的安装中复制游戏文件夹。
-Debian 和 Ubuntu 还需要安装 `libasound2-dev` 和 `pkg-config`。VERA20k 已在 Windows、Linux 和 macOS 上运行游玩过。
+你需要：
+
+- **游戏：**《红色警戒2：尤里的复仇》1.001。任何版本均可；在 macOS 上，请从 Windows 上的安装中复制游戏文件夹。
+- **Rust 和 Git：** 通过 rustup 安装的最新稳定版 [Rust](https://rustup.rs/)，以及 [Git](https://git-scm.com/)。
+- **构建工具：** Windows 上需要 Visual Studio 的 C++ 生成工具，Rust 安装程序会提示安装；macOS 上运行
+  `xcode-select --install`；Debian 和 Ubuntu 上运行 `sudo apt install build-essential libasound2-dev pkg-config`。
+- **显卡：** 支持 Vulkan、DirectX 12 或 Metal 的 GPU。
+
+VERA20k 已在 Windows、Linux 和 macOS 上运行游玩过。
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -51,8 +57,7 @@ cargo run --release --bin vera20k
 ## 我们如何开发
 
 大部分代码由 AI 编程助手编写。它们用 Ghidra 研究原版引擎，再将其行为移植到 Rust，
-通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。AI 助手遵循 [AGENTS.md](AGENTS.md)，
-贡献者请遵循下方的规则。
+通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。AI 助手遵循 [AGENTS.md](AGENTS.md)。
 
 <!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
 ## 致中国玩家和开发者
@@ -74,14 +79,6 @@ VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警
 你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
 用 `cargo test -p vera20k --lib` 运行测试。需要游戏 INI 文件的测试会自动跳过，但仍计为通过，
 直到你运行 `cargo run --bin extract-ini [游戏文件夹]`。
-
-1. **以原版为准。** 像周围的代码一样，在注释中注明原版函数（`/// MissionClass::Mission_Dispatch @ 0x005B3060`），
-   或在 PR 中说明该行为的来源。不要猜测。
-2. **每份状态只有一个所有者。** 扩展现有的所有者，并删除被你替换掉的旧路径。
-3. **确定性模拟。** 相同的输入在任何操作系统和 CPU 上都得到相同的结果。在 `src/sim/` 中使用 `SimFixed`，
-   并让随机数抽取和同一帧内的效果保持与原版相同的顺序。
-4. **为玩法改动添加测试。**
-5. **切勿提交游戏文件**（`.mix`、INI、美术、音频、视频、`.exe`）或 `ini/` 中的任何内容。
 
 贡献内容与项目其余部分一样采用 GPLv3 许可证；无需签署 CLA。
 

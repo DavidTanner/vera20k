@@ -39,10 +39,18 @@ med 30 spelare och 20 000 enheter.
 
 ## Bygg och kör
 
-Du behöver den senaste stabila versionen av [Rust](https://rustup.rs/), ett grafikkort med Vulkan,
-DirectX 12 eller Metal, och spelet installerat. Alla utgåvor av Yuri's Revenge 1.001 fungerar; på
-macOS kopierar du spelmappen från en Windows-installation. Debian och Ubuntu behöver också
-`libasound2-dev` och `pkg-config`. VERA20k har spelats på Windows, Linux och macOS.
+Du behöver:
+
+- **Spelet:** Red Alert 2: Yuri's Revenge 1.001. Alla utgåvor fungerar; på macOS kopierar du
+  spelmappen från en Windows-installation.
+- **Rust och Git:** den senaste stabila versionen av [Rust](https://rustup.rs/), installerad med
+  rustup, och [Git](https://git-scm.com/).
+- **Byggverktyg:** på Windows Visual Studios C++-byggverktyg, som Rusts installationsprogram
+  erbjuder sig att installera; på macOS `xcode-select --install`; på Debian och Ubuntu
+  `sudo apt install build-essential libasound2-dev pkg-config`.
+- **Grafik:** ett grafikkort med Vulkan, DirectX 12 eller Metal.
+
+VERA20k har spelats på Windows, Linux och macOS.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -60,7 +68,7 @@ spelar; debugbyggen är för långsamma. Loggen hamnar i `logs/ra2.log`.
 Större delen av koden skrivs av AI-agenter. De använder Ghidra för att studera originalmotorn,
 portar sedan dess beteende till Rust och kontrollerar det med
 [jämförelseverktyg](tools/native_oracle.md) och speltester. Agenterna följer
-[AGENTS.md](AGENTS.md); bidragsgivare följer reglerna nedan.
+[AGENTS.md](AGENTS.md).
 
 ## Bidra
 
@@ -74,17 +82,6 @@ Spelmekaniken finns i `src/sim/`, renderingen i `src/render/` och menyer och inm
 [Arkitekturöversikten](https://yuriplanet.github.io/vera20k/sv/) förklarar hur motorn hänger ihop.
 Kör testerna med `cargo test -p vera20k --lib`. Tester som behöver spelets INI-filer hoppar över
 sig själva, och räknas ändå som godkända, tills du kör `cargo run --bin extract-ini [spelmapp]`.
-
-1. **Originalet är referensen.** Ange originalfunktionen i en kommentar, som koden runt omkring
-   gör (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), eller skriv i PR:en var beteendet
-   kommer ifrån. Gissa inte.
-2. **En ägare per tillstånd.** Bygg ut den befintliga ägaren och ta bort den gamla vägen du
-   ersätter.
-3. **Deterministisk simulering.** Samma indata, samma resultat på alla operativsystem och
-   processorer. Använd `SimFixed` i `src/sim/`, och behåll slumpdragningar och effekter inom
-   samma bildruta i originalets ordning.
-4. **Lägg till ett test** när du ändrar spelmekaniken.
-5. **Checka aldrig in spelfiler** (`.mix`, INI, grafik, ljud, video, `.exe`) eller något i `ini/`.
 
 Bidrag licensieras under GPLv3, precis som resten av projektet; det finns inget CLA.
 
