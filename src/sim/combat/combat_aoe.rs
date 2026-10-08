@@ -216,7 +216,7 @@ impl From<&str> for AoEDamageOrigin {
 
 /// Lift the established whole-Level impact coordinate into native absolute
 /// lepton Z while preserving the exact XY subcell sample on slopes.
-pub(crate) fn air_impact_from_layer_z(
+fn air_impact_from_layer_z(
     terrain: Option<&ResolvedTerrainGrid>,
     impact_rx: u16,
     impact_ry: u16,

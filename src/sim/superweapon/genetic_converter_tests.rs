@@ -696,9 +696,9 @@ fn brutes(sim: &Simulation) -> Vec<(u64, InternedId, (u16, u16))> {
 /// `AnimToInfantry=BRUTE`) through the production reader and frames. A
 /// click launches on the next frame: the line, then radar event 13 at the
 /// cell. Each enemy conscript in the blast is removed under a GENDEATH owned
-/// by the Americans; the dog plays Die1. When each anim ends, a Brute of the
-/// Americans stands at its conscript's cell, on Guard (a human house queues
-/// nothing).
+/// by the Americans, two of them sharing a cell; the dog plays Die1. When
+/// each anim ends, a Brute of the Americans stands at its conscript's cell,
+/// on Guard (a human house queues nothing).
 #[test]
 fn retail_mutator_turns_conscripts_into_the_players_brutes() {
     let Some(rules) = retail_rules() else {
@@ -709,7 +709,7 @@ fn retail_mutator_turns_conscripts_into_the_players_brutes() {
     assert_eq!(rules.general.infantry_death_anim(9), Some("GENDEATH"));
     assert_eq!(rules.general.anim_to_infantry, vec!["BRUTE".to_string()]);
     let (rules, mut sim, americans) = world_with(rules, 64, &[]);
-    let conscripts: Vec<u64> = [(40, 40), (41, 40), (40, 42)]
+    let conscripts: Vec<u64> = [(40, 40), (40, 40), (41, 40), (40, 42)]
         .into_iter()
         .map(|(x, y)| {
             sim.spawn_object_at_height("E2", "Russians", x, y, 0, 0, &rules)
@@ -742,7 +742,7 @@ fn retail_mutator_turns_conscripts_into_the_players_brutes() {
         );
     }
     let mutants = anims_of(&sim, "GENDEATH");
-    assert_eq!(mutants.len(), 3);
+    assert_eq!(mutants.len(), 4);
     assert!(
         mutants
             .iter()
@@ -756,7 +756,7 @@ fn retail_mutator_turns_conscripts_into_the_players_brutes() {
 
     until_mutants_end(&mut sim, &rules, 600);
     let brutes = brutes(&sim);
-    assert_eq!(brutes.len(), 3);
+    assert_eq!(brutes.len(), 4);
     let mut standing: Vec<(u16, u16)> = brutes.iter().map(|&(_, _, at)| at).collect();
     standing.sort_unstable();
     let mut expected = cells.clone();
@@ -806,4 +806,41 @@ fn retail_computer_mutator_leaves_hunting_brutes() {
         let hunt = MissionId::from_known(MissionType::Hunt);
         assert!(brute.mission.queued() == hunt || brute.mission.current() == hunt);
     }
+}
+
+/// InfantryClass::ReceiveDamage's InfDeath 9 head (`0x00517FF5..
+/// 0x00518010`): an infantryman above the ground (GetHeight, vt+0x1C8) takes
+/// no damage from an `InfDeath=9` warhead. The walk leaves one standing a
+/// lepton up as it was; the one on the ground beside it mutates.
+#[test]
+fn an_infantryman_above_the_ground_is_not_mutated() {
+    let mut rules = rules("");
+    rules.general.mutate_explosion = false;
+    let (rules, mut sim, owner) = world_with(rules, 64, &[]);
+    let grounded = place(&mut sim, &rules, "E1", (40, 40), 0, false, false);
+    let raised = place(&mut sim, &rules, "E1", (41, 40), 0, false, false);
+    {
+        let entity = sim.substrate.entities.get_mut(raised).unwrap();
+        crate::sim::movement::ground_pose::put_location(
+            &mut entity.position,
+            DriveCoord {
+                x: 41 * 256 + 128,
+                y: 40 * 256 + 128,
+                z: 1,
+            },
+        );
+    }
+    let sw_type = charge_super(&mut sim, owner, MUTATOR);
+    assert!(launch(&mut sim, &rules, owner, 40, 40, sw_type, None));
+
+    let entity = sim.substrate.entities.get(raised).unwrap();
+    assert!(entity.lifecycle.object_alive && !entity.dying);
+    assert_eq!(entity.health.current, 125);
+    assert!(
+        sim.substrate
+            .entities
+            .get(grounded)
+            .is_none_or(|entity| !entity.lifecycle.object_alive)
+    );
+    assert_eq!(anims_of(&sim, "GENDEATH").len(), 1);
 }

@@ -758,6 +758,22 @@ fn infantry_prone_raw_damage(
     X87::ftol_i32_low_masked(X87::mul(X87::load_i32(damage), multiplier)).max(1)
 }
 
+/// InfantryClass::ReceiveDamage's next head (`0x00517FF5..0x00518010`): an
+/// `InfDeath=9` warhead (`+0x120`) does no damage to an infantryman above the
+/// ground or its deck (GetHeight, vt+0x1C8, `ObjectClass::GetHeight @
+/// 0x005F5F40`), such as a paratrooper in its fall or a Rocketeer in flight.
+/// Retail's two InfDeath 9 warheads are the Genetic Mutator's.
+fn infantry_spared_mutation(
+    target: &GameEntity,
+    warhead: &WarheadType,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> bool {
+    const MUTATE_INF_DEATH: u8 = 9;
+    target.category == EntityCategory::Infantry
+        && warhead.inf_death == MUTATE_INF_DEATH
+        && crate::sim::movement::air_movement::current_fly_height(target, terrain) > 0
+}
+
 /// What an `AttackTarget` is pointing at — an entity or a ground cell.
 ///
 /// Force-fire on empty terrain (Ctrl + click cell) sets the `Cell` variant.
@@ -2294,12 +2310,16 @@ fn resolve_receive_damage(
     // InfantryClass mutates the positive raw i32 before forwarding to the
     // shared Techno receiver. Its sign is therefore Techno's original-sign
     // snapshot used by the IC/FS gate below.
-    let receiver_input = infantry_prone_raw_damage(
-        target,
-        warhead,
-        event.damage,
-        receiver_flags.ignore_defenses,
-    );
+    let receiver_input = if infantry_spared_mutation(target, warhead, terrain) {
+        0
+    } else {
+        infantry_prone_raw_damage(
+            target,
+            warhead,
+            event.damage,
+            receiver_flags.ignore_defenses,
+        )
+    };
 
     let allied = |asker: InternedId, other: InternedId| {
         crate::map::houses::is_allied_with(

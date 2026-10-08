@@ -147,8 +147,12 @@ End=10
 ";
 
 fn rules() -> RuleSet {
+    rules_from(RULES)
+}
+
+fn rules_from(text: &str) -> RuleSet {
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
-        &IniFile::from_str(RULES),
+        &IniFile::from_str(text),
         &IniFile::from_str(ART),
     )
     .expect("death anim rules");
@@ -362,13 +366,24 @@ fn a_dying_aircraft_plays_one_explosion_and_no_destroy_anim() {
 }
 
 fn kill(sim: &mut Simulation, rules: &RuleSet, id: u64) {
-    let warhead = sim.interner.intern("KILLWH");
+    kill_with(sim, rules, id, "KILLWH", RAD_NO_ATTACKER, None);
+}
+
+fn kill_with(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    warhead: &str,
+    attacker: u64,
+    house: Option<InternedId>,
+) {
+    let warhead = sim.interner.intern(warhead);
     let hit = EntityDamageEvent::direct_receiver(
         id,
         100_000,
         0,
-        RAD_NO_ATTACKER,
-        None,
+        attacker,
+        house,
         warhead,
         ReceiverCallFlags {
             ignore_defenses: false,
@@ -376,6 +391,79 @@ fn kill(sim: &mut Simulation, rules: &RuleSet, id: u64) {
         },
     );
     sim.commit_noncombat_aoe_hits(rules, None, &[hit]);
+}
+
+/// Through the production receiver: an infantryman's InfDeath anim is built
+/// inline at its Location with the death producers' `0x600`/0 arguments
+/// (InfDeath 3 at `0x00518693`), and only InfDeath 8's `InfantryVirus=`
+/// takes an owner (`0x0051887B..0x005188A9`): the killing source's house,
+/// else the receiver's house argument.
+#[test]
+fn infantry_death_anims_are_built_inline_and_the_virus_takes_the_killers_house() {
+    let text = RULES
+        .replace(
+            "[General]\n",
+            "[General]\nInfantryExplode=EXPA\nInfantryVirus=EXPB\n",
+        )
+        .replace("1=Super\n", "1=Super\n2=BLASTWH\n3=VIRUSWH\n")
+        + "[BLASTWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\nInfDeath=3\n\
+[VIRUSWH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\nInfDeath=8\n";
+    let rules = rules_from(&text);
+    let owners = |sim: &Simulation| -> Vec<Option<String>> {
+        sim.substrate
+            .anims
+            .iter()
+            .map(|(_, anim)| {
+                anim.owner_house()
+                    .map(|house| sim.interner.resolve(house).to_string())
+            })
+            .collect()
+    };
+    let world = || {
+        let mut sim = sim(5);
+        let russians = sim.interner.intern("Russians");
+        sim.houses
+            .insert(russians, HouseState::new(russians, 1, None, false, 0, 10));
+        sim.session.house_order.push(russians);
+        (sim, russians)
+    };
+
+    let (mut sim, _) = world();
+    let victim = spawn(&mut sim, &rules, "E1", 12, 12);
+    let [x, y] = crate::sim::movement::ground_pose::position_world_xy(
+        &sim.substrate.entities.get(victim).unwrap().position,
+    );
+    kill_with(&mut sim, &rules, victim, "BLASTWH", RAD_NO_ATTACKER, None);
+    let location = AnimWorldCoord { x, y, z: 0 };
+    assert_eq!(
+        anims(&sim),
+        vec![("EXPA".to_string(), location, 0, 0x600, 0)]
+    );
+    assert_eq!(owners(&sim), vec![None]);
+
+    let (mut sim, _) = world();
+    let victim = spawn(&mut sim, &rules, "E1", 12, 12);
+    let killer = sim
+        .spawn_object_at_height("E1", "Russians", 14, 12, 0, 0, &rules)
+        .unwrap();
+    kill_with(&mut sim, &rules, victim, "VIRUSWH", killer, None);
+    assert_eq!(
+        anims(&sim),
+        vec![("EXPB".to_string(), location, 0, 0x600, 0)]
+    );
+    assert_eq!(owners(&sim), vec![Some("Russians".to_string())]);
+
+    let (mut sim, russians) = world();
+    let victim = spawn(&mut sim, &rules, "E1", 12, 12);
+    kill_with(
+        &mut sim,
+        &rules,
+        victim,
+        "VIRUSWH",
+        RAD_NO_ATTACKER,
+        Some(russians),
+    );
+    assert_eq!(owners(&sim), vec![Some("Russians".to_string())]);
 }
 
 /// Through the production receiver: a killed vehicle plays its own

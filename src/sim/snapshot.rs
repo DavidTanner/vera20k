@@ -860,7 +860,14 @@ use crate::sim::world::Simulation;
 // 298 -> 299: an aircraft's mission leaf saves its paradrop passes (+0x6D3);
 // the paradrop carrier's two AircraftMission states are removed, its flight
 // now the native missions 26 and 27. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 299;
+// 299 -> 300: an infantryman's InfDeath anim constructs with the death
+// producers' arguments (flags 0x600, zAdjust 0, its Location); InfDeath 8's
+// and 9's take the killing house, and a GENDEATH's end creates its Brute in
+// place of the launch's immediate one. The layout is unchanged, but a 299 save
+// draws and hashes an infantry death anim with the impact's arguments, and one
+// taken while a GENDEATH plays already holds its Brute while the ownerless
+// anim would add a civilian one.
+const SNAPSHOT_VERSION: u32 = 300;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3881,7 +3888,9 @@ mod tests {
         // 297 -> 298: canonical cloak query and retained native displacement.
         // 298 -> 299: the aircraft's paradrop passes; no paradrop carrier
         // AircraftMission states.
-        assert_eq!(super::SNAPSHOT_VERSION, 299);
+        // 299 -> 300: infantry death anims with the death producers'
+        // arguments and the killing house; a GENDEATH's end makes its Brute.
+        assert_eq!(super::SNAPSHOT_VERSION, 300);
     }
 
     #[test]

@@ -45,6 +45,13 @@
 //! - A null `IonBlast=` or warhead reaches AnimClass or the receivers as a
 //!   null type natively; VERA builds or damages nothing. Retail sets RING1,
 //!   Mutate and MutateExplosion.
+//! - Under `MutateExplosion=`, a victim's UnInit runs at the area damage's
+//!   tail (`world::damage_consequences`), not at once in its InfDeath 9 arm
+//!   (`0x00518B9A`), so a later victim in the same cell still finds it
+//!   marked. Only that victim's PlaceInfantryInCell answer can change, when
+//!   it stands off spots 2 to 4 (preference 0 or 1) while earlier victims
+//!   hold all three: VERA then plays Die2 where gamemd mutates it.
+//!   Frequency: rare (four infantrymen in one cell).
 //!
 //! Ledger:
 //! - Scenario draws: the IonBlast anim's constructor, then the receivers':
