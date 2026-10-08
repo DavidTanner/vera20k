@@ -325,7 +325,9 @@ pub(crate) fn sensor_reevaluate_stock_cloak(
         .entities
         .get_mut(id)
         .and_then(|entity| entity.cloak.as_mut())
-        .map(|cloak| cloak.start_cloaking_from_sensor(facts.current_frame, facts.cloaking_speed));
+        // Virtual `StartCloaking +0x460 @ 0x00703770` from the active
+        // sensor-count resident callback `0x006F4EB0`, argument zero.
+        .map(|cloak| cloak.start_cloaking(facts.current_frame, facts.cloaking_speed, false));
     if start.is_some_and(|start| start.play_sound) {
         emit_configured_cloak_sound(sim, id, rules);
     }
@@ -487,12 +489,12 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
         .entities
         .get_mut(id)
         .and_then(|entity| entity.cloak.as_mut())
+        // `FootClass::PerCellProcess @ 0x004D8829` invokes the `+0xFC`
+        // `StartUncloaking(0)` wrapper (`0x00703850`) when a fully cloaked
+        // mover enters a cell one of whose eight neighbours holds a
+        // non-allied `Sensors=yes` object.
         .map(|cloak| {
-            cloak.start_uncloaking_from_sensor_neighbour(
-                now,
-                cloaking_speed,
-                rules.general.cloaking_stages,
-            )
+            cloak.start_uncloaking(now, cloaking_speed, rules.general.cloaking_stages, false)
         });
     if surfaced.is_some_and(|result| result.play_sound) {
         emit_configured_cloak_sound(sim, id, rules);
@@ -500,7 +502,11 @@ pub(crate) fn uncloak_on_sensor_neighbour_after_cell_entry(
     surfaced.is_some_and(|result| result.transitioned)
 }
 
-fn emit_configured_cloak_sound(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+/// The `CloakSound` of `StartCloaking @ 0x00703770` and `StartUncloaking @
+/// 0x007036C0` when their suppression argument is zero: `[AudioVisual]
+/// CloakSound=` (`Rules+0x6A0`) through `VocClass::PlayAt @ 0x007509E0` at
+/// the object's coordinate. Every cloak transition's sound goes through here.
+pub(crate) fn emit_configured_cloak_sound(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     let Some(sound_name) = rules.general.cloak_sound.as_deref() else {
         return;
     };

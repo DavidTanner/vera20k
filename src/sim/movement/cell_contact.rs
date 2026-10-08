@@ -9,7 +9,8 @@ use crate::map::cell_index::NativeCellIdentity;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellObjectMember;
-use crate::sim::world::{SimSoundEvent, Simulation};
+use crate::sim::world::Simulation;
+use crate::sim::world::techno_ai_cloak::emit_configured_cloak_sound;
 
 impl Simulation {
     pub(super) fn uncloak_contacts_at_cell(
@@ -54,27 +55,22 @@ impl Simulation {
                         .object(self.interner.resolve(actor.type_ref()))
                         .ok_or("cell contact lacks TechnoType")?
                         .cloaking_speed;
-                    let actor = self
+                    // Cell483480 calls the ground-list receiver+FC
+                    // (Techno703850, a plain `StartUncloaking(0)` wrapper),
+                    // then loads its next link. Walk75BBAE and Drive/Ship
+                    // code1 share this owner.
+                    let now = self.session.binary_frame as i32;
+                    let result = self
                         .substrate
                         .entities
                         .get_mut(id)
-                        .ok_or("cell contact has retired receiver")?;
-                    let result = actor
+                        .ok_or("cell contact has retired receiver")?
                         .cloak
                         .as_mut()
                         .expect("same contact receiver")
-                        .start_uncloaking_from_mover_contact(
-                            self.session.binary_frame as i32,
-                            speed,
-                            rules.general.cloaking_stages,
-                        );
-                    if result.play_sound
-                        && let Some(sound) = rules.general.cloak_sound.as_deref()
-                    {
-                        self.sound_events.push(SimSoundEvent::cloak_sound(
-                            sound.to_owned(),
-                            &actor.position,
-                        ));
+                        .start_uncloaking(now, speed, rules.general.cloaking_stages, false);
+                    if result.play_sound {
+                        emit_configured_cloak_sound(self, id, rules);
                     }
                 }
             }
