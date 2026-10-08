@@ -12,10 +12,8 @@ struct Camera {
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
 
-// Texture and sampler (nearest-neighbor for pixel art).
-@group(1) @binding(0) var t_sprite: texture_2d<f32>;
-@group(1) @binding(1) var s_sprite: sampler;
-@group(1) @binding(3) var source_indices: texture_2d<u32>;
+// The source page bindings (nearest-neighbor sampler for pixel art) are
+// supplied by sprite_source.wgsl.
 
 // Per-instance data from the instance buffer.
 struct Instance {
@@ -30,6 +28,7 @@ struct Instance {
     @location(8) fx_flags: u32,
     @location(9) fx_params: vec4f,
     @location(14) palette_light: vec4u,
+    @location(15) source_palette: u32,
 };
 
 struct VertexOutput {
@@ -40,6 +39,7 @@ struct VertexOutput {
     @location(3) @interpolate(flat) fx_flags: u32,
     @location(4) fx_params: vec4f,
     @location(11) @interpolate(flat) palette_light: vec4u,
+    @location(13) @interpolate(flat) source_palette: u32,
 };
 
 fn vertex_impl(
@@ -83,6 +83,7 @@ fn vertex_impl(
     output.fx_flags = instance.fx_flags;
     output.fx_params = instance.fx_params;
     output.palette_light = instance.palette_light;
+    output.source_palette = instance.source_palette;
     return output;
 }
 
@@ -118,7 +119,11 @@ fn apply_fx(color: vec4f, _flags: u32, params: vec4f) -> vec4f {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let color: vec4f = textureSample(t_sprite, s_sprite, input.uv);
+    let index: u32 = textureLoad(source_indices, source_texel(input.uv), 0).r;
+    var color: vec4f = textureSample(t_sprite, s_sprite, input.uv);
+    if (input.source_palette != 0u) {
+        color = indexed_color(index, input.source_palette);
+    }
     // Discard fully transparent pixels so they don't write to the depth buffer.
     // Without this, transparent regions of sprite quads would occlude objects behind them.
     if (color.a < 0.01) {
@@ -127,7 +132,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Map lighting happens before the shared DrawState effect branch, matching
     // the voxel fragment path. Alpha 1.0 = opaque; no draw state changes order.
     return apply_fx(
-        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
+        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), index, tactical_a_at(input.position.xy)), color.a * input.alpha),
         input.fx_flags,
         input.fx_params,
     );

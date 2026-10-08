@@ -375,6 +375,7 @@ pub(crate) fn build_anim_class_instances(
             size: entry.pixel_size,
             uv_origin: entry.uv_origin,
             uv_size: entry.uv_size,
+            source_palette: entry.source_palette,
             depth: apply_shape_z_adjust(
                 fire_depth,
                 anim.z_adjust + ANIM_DRAW_DEPTH_BIAS_PX,
@@ -1145,6 +1146,7 @@ pub(crate) fn build_parachute_instances(
                     size: entry.pixel_size,
                     uv_origin: entry.uv_origin,
                     uv_size: entry.uv_size,
+                    source_palette: entry.source_palette,
                     depth,
                     tint,
                     palette_light: anim_palette_light(

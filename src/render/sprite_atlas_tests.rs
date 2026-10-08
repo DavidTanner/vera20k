@@ -109,7 +109,7 @@ fn loader_uses_stored_shp_rect_for_depth_but_retains_logical_canvas_for_picking(
                 frame,
                 house_color: crate::rules::house_colors::NO_REMAP,
             };
-            let rendered = render_shp_sprite(
+            let (rendered, rendered_rgba) = render_shp_sprite(
                 &assets,
                 &palette,
                 true,
@@ -131,9 +131,8 @@ fn loader_uses_stored_shp_rect_for_depth_but_retains_logical_canvas_for_picking(
                 "preserve logical picking/sort rect"
             );
             assert_eq!(rendered.extended, frame == 1, "dispatch from format bit 1");
-            assert_eq!(rendered.rgba.len(), (size[0] * size[1] * 4) as usize);
-            let colored: Vec<_> = rendered
-                .rgba
+            assert_eq!(rendered_rgba.len(), (size[0] * size[1] * 4) as usize);
+            let colored: Vec<_> = rendered_rgba
                 .chunks_exact(4)
                 .enumerate()
                 .filter(|(_, rgba)| rgba[3] != 0)
@@ -157,11 +156,11 @@ fn loader_uses_stored_shp_rect_for_depth_but_retains_logical_canvas_for_picking(
             );
             if let Some(raw) = &raw_rgba {
                 assert_eq!(
-                    &rendered.rgba, raw,
+                    &rendered_rgba, raw,
                     "raw format 1 and RLE format 3 must agree"
                 );
             } else {
-                raw_rgba = Some(rendered.rgba);
+                raw_rgba = Some(rendered_rgba);
             }
         }
     }
@@ -225,6 +224,7 @@ fn test_entry(page: u8) -> ShpSpriteEntry {
         offset_y: -2.0,
         canvas_rect: [-1.0, -2.0, 1.0, 1.0],
         extended: false,
+        source_palette: 1,
         page,
     }
 }
@@ -235,6 +235,7 @@ fn refresh_failure_returns_the_prior_atlas_unchanged() {
     let mut prior = SpriteAtlas::new(
         Vec::new(),
         HashMap::from([(prior_key.clone(), test_entry(0))]),
+        ShpPalettes::default(),
     );
     prior.make_frame_counts.insert("PRIOR".to_string(), 3);
     prior
@@ -623,11 +624,31 @@ fn raw_infantry_render_does_not_substitute_an_out_of_asset_key() {
     .unwrap();
     let mut key = make_shp_key("RAWGI", 0);
     key.frame = 2;
-    assert!(render_shp_frame(&source, &palette, false, &key, Some(&rules)).is_none());
+    assert!(
+        render_shp_frame(
+            &source,
+            &palette,
+            false,
+            &key,
+            Some(&rules),
+            &mut ShpPalettes::default()
+        )
+        .is_none()
+    );
     // Preserve the existing generic class adapter; this does not establish
     // original invalid-frame shape access or full Infantry drawing parity.
     key.type_id = "LEGACY".to_string();
-    assert!(render_shp_frame(&source, &palette, false, &key, Some(&rules)).is_some());
+    assert!(
+        render_shp_frame(
+            &source,
+            &palette,
+            false,
+            &key,
+            Some(&rules),
+            &mut ShpPalettes::default()
+        )
+        .is_some()
+    );
 }
 
 #[test]
@@ -675,7 +696,15 @@ fn building_animation_frames_render_from_the_file_they_were_counted_in() {
     let mut key = make_shp_key("YAGRND_B", 0);
     key.palette_context = ShpPaletteContext::SelectedScheme;
     let palette = Palette::from_bytes(&[0; 768]).expect("fixture palette");
-    let sprite = render_shp_frame(&source, &palette, true, &key, None).expect("frame 0 has pixels");
+    let sprite = render_shp_frame(
+        &source,
+        &palette,
+        true,
+        &key,
+        None,
+        &mut ShpPalettes::default(),
+    )
+    .expect("frame 0 has pixels");
     assert_eq!([sprite.width, sprite.height], [6, 4]);
 }
 
@@ -1032,8 +1061,20 @@ fn collect_effect_names_includes_weapon_anim_entries() {
     assert!(names.iter().any(|name| name == "UCFLASH"));
 }
 
-/// Real loose SHP decoding and palette application, laid out on an atlas page.
-pub(crate) fn native_palette_probe_page() -> (Vec<u8>, Vec<u8>, [u32; 2]) {
+/// A real loose SHP frame (indices 0..=255) laid out at (3, 1) on a 262x3
+/// atlas page.
+pub(crate) struct NativePaletteProbe {
+    /// The palette row its indices resolve through ([`ShpPalettes`]).
+    pub palette_row: Vec<u8>,
+    /// The page's palette indices.
+    pub indices: Vec<u8>,
+    /// The same page in RGBA, as `ShpFile::frame_to_rgba` converts the frame.
+    pub rgba: Vec<u8>,
+    pub size: [u32; 2],
+}
+
+/// Real loose SHP decoding and palette registration, laid out on an atlas page.
+pub(crate) fn native_palette_probe_page() -> NativePaletteProbe {
     let directory = StoredFrameTestDirectory::new();
     let mut bytes = Vec::new();
     for value in [0u16, 256, 1, 1] {
@@ -1066,27 +1107,26 @@ pub(crate) fn native_palette_probe_page() -> (Vec<u8>, Vec<u8>, [u32; 2]) {
         frame: 0,
         house_color: crate::rules::house_colors::NO_REMAP,
     };
-    let sprite = render_shp_sprite(
-        &assets,
-        &palette,
-        true,
-        &key,
-        "tem",
-        "TEMPERATE",
-        None,
-        None,
-    )
-    .unwrap();
+    let source = load_shp_source(&assets, "PALPROBE", None, "tem", "TEMPERATE", None, None)
+        .expect("probe SHP decodes");
+    let mut palettes = ShpPalettes::default();
+    let sprite = render_shp_frame(&source, &palette, true, &key, None, &mut palettes).unwrap();
     assert_eq!(sprite.indices, (0..=255u8).collect::<Vec<_>>());
     let size = [262, 3];
-    let mut rgba = vec![0; size[0] * size[1] * 4];
     let mut indices = vec![0; size[0] * size[1]];
+    let mut rgba = vec![0; size[0] * size[1] * 4];
     // The 256x1 frame sits at (3, 1).
     let start = size[0] + 3;
-    rgba[start * 4..(start + 256) * 4].copy_from_slice(&sprite.rgba);
     indices[start..start + 256].copy_from_slice(&sprite.indices);
+    rgba[start * 4..(start + 256) * 4]
+        .copy_from_slice(&source.shp.frame_to_rgba(0, &palette).unwrap());
     assert_eq!(&indices[265..521], (0..=255u8).collect::<Vec<_>>());
-    (rgba, indices, size.map(|v| v as u32))
+    NativePaletteProbe {
+        palette_row: palettes.colors[sprite.palette as usize].clone(),
+        indices,
+        rgba,
+        size: size.map(|v| v as u32),
+    }
 }
 
 #[test]
@@ -1111,9 +1151,9 @@ fn palette_context_preserves_simultaneous_global_cell_and_attached_sprite_keys()
         );
     }
     assert_eq!(keys.len(), 3);
-    let (rgba, indices, _) = native_palette_probe_page();
-    assert_eq!(&indices[505..520], (240..=254u8).collect::<Vec<_>>());
-    assert_eq!(rgba[505 * 4], 240);
+    let probe = native_palette_probe_page();
+    assert_eq!(&probe.indices[505..520], (240..=254u8).collect::<Vec<_>>());
+    assert_eq!(probe.palette_row[240 * 4], 240);
 }
 
 #[test]
@@ -1134,7 +1174,7 @@ fn deployed_anim_palette_and_atlas_coverage_share_the_frozen_house() {
     art.bind_anim_frame_count_for_test("DEPLOY", 3);
     rules.install_art_fixture(art);
     let mut sim = Simulation::new();
-    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new());
+    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new(), ShpPalettes::default());
     let colors = HouseColorMap::from([("Americans".to_string(), HouseColorIndex(3))]);
     assert!(atlas_covers_anim_remaps(Some(&atlas), &sim, &colors));
     let house = sim.interner.intern("Americans");
@@ -1220,7 +1260,7 @@ fn object_and_remap_coverage_are_separate_and_follow_the_world() {
         "no atlas yet, and the world draws a sprite"
     );
 
-    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new());
+    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new(), ShpPalettes::default());
     assert!(!covers(Some(&atlas), &none));
     atlas
         .covered_objects
@@ -1270,7 +1310,7 @@ fn a_collected_pair_is_covered_even_when_nothing_of_it_is_drawable() {
     // every spawn, death or Limbo, as a frame-0 entry probe would.
     let (world, interner) = one_object_world("NOSHAPE", EntityCategory::Structure);
     let colors = HouseColorMap::from([("Americans".to_string(), HouseColorIndex(1))]);
-    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new());
+    let mut atlas = SpriteAtlas::new(Vec::new(), HashMap::new(), ShpPalettes::default());
     let covers = |atlas: &SpriteAtlas| {
         atlas_covers_world(
             Some(atlas),
@@ -1301,9 +1341,9 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         &gpu.queue,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
-    let sprite = |type_id: &str, index: u8, [width, height]: [u32; 2]| RenderedShpSprite {
+    let sprite = |type_id: &str, index: u8, [width, height]: [u32; 2], palette| RenderedShpSprite {
         key: make_shp_key(type_id, 0),
-        rgba: vec![index; (width * height * 4) as usize],
+        palette,
         indices: vec![index; (width * height) as usize],
         width,
         height,
@@ -1312,19 +1352,37 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         canvas_rect: [0.0, 0.0, width as f32, height as f32],
         extended: false,
     };
+    let palette = |color: fn(u8) -> crate::assets::pal_file::Color| Palette {
+        colors: std::array::from_fn(|index| color(index as u8)),
+    };
+    let resident_palette = palette(|i| crate::assets::pal_file::Color::rgb(i, 255 - i, 7));
+    let new_palette = palette(|i| crate::assets::pal_file::Color::rgb(3, i, i / 2));
+    let mut palettes = ShpPalettes::default();
+    let resident_row = palettes.row(&resident_palette).unwrap();
     let mut atlas = pack_sprites(
         &gpu.device,
         &gpu.queue,
         &batch,
-        vec![sprite("RESIDENT", 7, [3, 2])],
+        vec![sprite("RESIDENT", 7, [3, 2], resident_row)],
+        palettes,
     );
     let resident = *atlas.get(&make_shp_key("RESIDENT", 0)).unwrap();
+    let rows_texture = atlas.palettes.texture.clone().unwrap();
 
+    // A refresh renders against a copy of the atlas's palettes, which a new
+    // house colour extends by a row.
+    let mut palettes = atlas.palettes.clone();
+    let new_row = palettes.row(&new_palette).unwrap();
+    assert_eq!(palettes.row(&resident_palette), Some(resident_row));
     atlas.append_sprites(
         &gpu.device,
         &gpu.queue,
         &batch,
-        vec![sprite("WIDE", 11, [4, 3]), sprite("TALL", 9, [2, 5])],
+        vec![
+            sprite("WIDE", 11, [4, 3], new_row),
+            sprite("TALL", 9, [2, 5], resident_row),
+        ],
+        palettes,
     );
 
     assert_eq!(
@@ -1338,16 +1396,48 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         (resident.page, resident.uv_origin, resident.uv_size),
         "resident sprites never move"
     );
+    assert_eq!(after.source_palette, resident_row + 1);
+    assert!(
+        atlas.palettes.texture.as_ref() == Some(&rows_texture),
+        "resident pages keep binding the palette rows the refresh wrote"
+    );
+    let reference = {
+        use wgpu::util::DeviceExt;
+        let rows = [resident_palette, new_palette].map(|palette| palette.to_rgba_bytes());
+        gpu.device
+            .create_texture_with_data(
+                &gpu.queue,
+                &wgpu::TextureDescriptor {
+                    label: None,
+                    size: crate::render::terrain_draw_gpu_tests::extent([256, 2]),
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                &rows.concat(),
+            )
+            .create_view(&Default::default())
+    };
+    assert_eq!(
+        gpu.read_float_texels(&rows_texture.1, [0, 0], [256, 2]),
+        gpu.read_float_texels(&reference, [0, 0], [256, 2]),
+        "the pack uploaded the resident row and the refresh appended the new one"
+    );
     let growth = atlas.growth.as_ref().expect("growth page");
     let page = &atlas.pages[growth.page].texture;
     let indices = atlas.growth_indices[&growth.page].create_view(&Default::default());
-    for (type_id, index, size, origin) in [
+    for (type_id, index, size, origin, row) in [
         // Tallest first: TALL opens the shelf, WIDE follows after 1px padding.
-        ("TALL", 9u8, [2u32, 5u32], [0u32, 0u32]),
-        ("WIDE", 11, [4, 3], [3, 0]),
+        ("TALL", 9u8, [2u32, 5u32], [0u32, 0u32], resident_row),
+        ("WIDE", 11, [4, 3], [3, 0], new_row),
     ] {
         let entry = atlas.get(&make_shp_key(type_id, 0)).unwrap();
         assert_eq!(usize::from(entry.page), growth.page);
+        assert_eq!(entry.source_palette, row + 1, "{type_id} palette row");
         assert_eq!(
             [
                 (entry.uv_origin[0] * page.width as f32).round() as u32,
@@ -1368,8 +1458,8 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
 #[ignore = "requires a wgpu adapter; actual band uploads"]
 fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
     // Shelves at rows 0, 4 and 7 of a 10x8 page, as the pack lays them out.
-    // A zero- or one-byte band uploads each shelf on its own, 121 bytes (one
-    // past the first shelf's 120) the first two shelves together, and an
+    // A zero- or one-byte band uploads each shelf on its own, 31 bytes (one
+    // past the first shelf's 30) the first two shelves together, and an
     // unbounded band all of them in one write; each must put every sprite on
     // its rectangle, leave the rest zero, and free the sprites' pixels.
     let gpu = crate::render::terrain_draw_gpu_tests::Gpu::new();
@@ -1378,6 +1468,7 @@ fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
         &gpu.queue,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
+    let palette_rows = ShpPalettes::default().upload(&gpu.device, &gpu.queue);
     let size = [10u32, 8];
     let shelves: [(u8, [u32; 2], [u32; 2]); 4] = [
         (1, [4, 3], [0, 0]),
@@ -1392,12 +1483,12 @@ fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
             expected[start..start + width as usize].fill(index);
         }
     }
-    for band_bytes in [0, 1, 121, u64::MAX] {
+    for band_bytes in [0, 1, 31, u64::MAX] {
         let mut sprites: Vec<RenderedShpSprite> = shelves
             .iter()
             .map(|&(index, [width, height], _)| RenderedShpSprite {
                 key: make_shp_key(&format!("SHELF{index}"), 0),
-                rgba: vec![index; (width * height * 4) as usize],
+                palette: 0,
                 indices: vec![index; (width * height) as usize],
                 width,
                 height,
@@ -1412,22 +1503,18 @@ fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
             .enumerate()
             .map(|(idx, &(_, _, origin))| (idx, origin))
             .collect();
-        let (page, indices) =
-            batch.create_blank_texture_with_indices(&gpu.device, size[0], size[1]);
+        let (_, indices) = batch.create_indexed_page(&gpu.device, size[0], size[1], &palette_rows);
         upload_shelves(
             &gpu.device,
             &gpu.queue,
-            page.view.texture(),
             &indices,
             &mut sprites,
             &placed,
             band_bytes,
         );
         assert!(
-            sprites
-                .iter()
-                .all(|sprite| sprite.rgba.is_empty() && sprite.indices.is_empty()),
-            "band {band_bytes}: written sprites release their pixels"
+            sprites.iter().all(|sprite| sprite.indices.is_empty()),
+            "band {band_bytes}: written sprites release their indices"
         );
         assert_eq!(
             gpu.read_uint_texels(&indices.create_view(&Default::default()), [0, 0], size),

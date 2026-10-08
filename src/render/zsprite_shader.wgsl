@@ -22,9 +22,7 @@ struct Camera {
 };
 @group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(1) @binding(0) var t_sprite: texture_2d<f32>;
-@group(1) @binding(1) var s_sprite: sampler;
-@group(1) @binding(3) var source_indices: texture_2d<u32>;
+// The source page bindings are supplied by sprite_source.wgsl.
 
 // BUILDNGZ.SHA frame 0, remapped by -0x41 and stored biased by +128 (R8Unorm).
 @group(2) @binding(0) var t_zshape: texture_2d<f32>;
@@ -44,6 +42,7 @@ struct Instance {
     @location(12) z_gradient: u32,
     @location(13) zshape_origin: vec2f,
     @location(14) palette_light: vec4u,
+    @location(15) source_palette: u32,
 };
 
 struct VertexOutput {
@@ -63,6 +62,7 @@ struct VertexOutput {
     @location(11) @interpolate(flat) palette_light: vec4u,
     // Only vs_read_only supplies an ordered destination command ordinal.
     @location(12) @interpolate(flat) command_ordinal: u32,
+    @location(13) @interpolate(flat) source_palette: u32,
 };
 
 fn shp_vertex(idx: u32, instance: Instance) -> VertexOutput {
@@ -98,6 +98,7 @@ fn shp_vertex(idx: u32, instance: Instance) -> VertexOutput {
     output.z_gradient = instance.z_gradient;
     output.zshape_origin = instance.zshape_origin;
     output.palette_light = instance.palette_light;
+    output.source_palette = instance.source_palette;
     return output;
 }
 
@@ -175,7 +176,11 @@ struct FragOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> FragOutput {
-    let color: vec4f = textureSample(t_sprite, s_sprite, input.uv);
+    let index: u32 = textureLoad(source_indices, source_texel(input.uv), 0).r;
+    var color: vec4f = textureSample(t_sprite, s_sprite, input.uv);
+    if (input.source_palette != 0u) {
+        color = indexed_color(index, input.source_palette);
+    }
     if (color.a < 0.01) {
         discard;
     }
@@ -187,7 +192,7 @@ fn fs_main(input: VertexOutput) -> FragOutput {
 
     var output: FragOutput;
     output.color = apply_fx(
-        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), textureLoad(source_indices, vec2i(clamp(input.uv * vec2f(textureDimensions(source_indices)), vec2f(0.0), vec2f(textureDimensions(source_indices)) - 1.0)), 0).r, tactical_a_at(input.position.xy)), color.a * input.alpha),
+        vec4f(resolve_palette(color.rgb, input.tint, opaque_palette(input.palette_light, color.a * input.alpha, input.fx_flags), index, tactical_a_at(input.position.xy)), color.a * input.alpha),
         input.fx_flags,
         input.fx_params,
     );

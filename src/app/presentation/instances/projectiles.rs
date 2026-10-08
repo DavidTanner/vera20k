@@ -192,6 +192,7 @@ pub(crate) fn projectile_draw_instance(
                 size: entry.pixel_size,
                 uv_origin: entry.uv_origin,
                 uv_size: entry.uv_size,
+                source_palette: entry.source_palette,
                 depth,
                 tint: crate::map::lighting::DEFAULT_TINT,
                 palette_light: PaletteLight::plain(53, 1000),

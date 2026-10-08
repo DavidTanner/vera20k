@@ -31,7 +31,9 @@ fn retained_mobile_translucency_matches_original_packed_words() {
     .unwrap();
     let gpu = Gpu::new();
     for collection in ["cases", "replay_controls"] {
-        for route in ["shp", "voxel"] {
+        // SHP runs once through an RGBA page and once through a palette-indexed
+        // atlas page, which must resolve to the same native words.
+        for (route, indexed) in [("shp", false), ("shp", true), ("voxel", false)] {
             let mut groups = std::collections::BTreeMap::<[u8; 3], Vec<&Value>>::new();
             for row in native[collection]
                 .as_array()
@@ -77,14 +79,27 @@ fn retained_mobile_translucency_matches_original_packed_words() {
                         let fog =
                             ShroudBuffer::fixture(&gpu.device, &gpu.queue, size, [0.0; 2], &a);
                         batch.bind_shroud(&gpu.device, Some(&fog));
-                        let rgba: Vec<u8> = indices
-                            .iter()
-                            .flat_map(|&index| {
-                                [rgb[0], rgb[1], rgb[2], if index == 0 { 0 } else { 255 }]
-                            })
-                            .collect();
-                        let shp = SpriteAtlas::from_test_pages(vec![
-                            crate::render::sprite_atlas::SpriteAtlasPage {
+                        let palette = crate::assets::pal_file::Palette {
+                            colors: [crate::assets::pal_file::Color::rgb(rgb[0], rgb[1], rgb[2]);
+                                256],
+                        };
+                        let (shp, source_palette) = if indexed {
+                            SpriteAtlas::from_test_indexed_page(
+                                &gpu.device,
+                                &gpu.queue,
+                                &batch,
+                                size,
+                                &indices,
+                                &palette,
+                            )
+                        } else {
+                            let rgba: Vec<u8> = indices
+                                .iter()
+                                .flat_map(|&index| {
+                                    [rgb[0], rgb[1], rgb[2], if index == 0 { 0 } else { 255 }]
+                                })
+                                .collect();
+                            let page = crate::render::sprite_atlas::SpriteAtlasPage {
                                 texture: batch.create_texture_on_device(
                                     &gpu.device,
                                     &gpu.queue,
@@ -93,8 +108,9 @@ fn retained_mobile_translucency_matches_original_packed_words() {
                                     size[1],
                                     Some(&indices),
                                 ),
-                            },
-                        ]);
+                            };
+                            (SpriteAtlas::from_test_pages(vec![page]), 0)
+                        };
                         let voxel = batch.create_unit_atlas_texture_on_device(
                             &gpu.device,
                             &gpu.queue,
@@ -105,11 +121,7 @@ fn retained_mobile_translucency_matches_original_packed_words() {
                         let palettes = PaletteSet::new_on_device(
                             &gpu.device,
                             &gpu.queue,
-                            &crate::assets::pal_file::Palette {
-                                colors: [crate::assets::pal_file::Color::rgb(
-                                    rgb[0], rgb[1], rgb[2],
-                                ); 256],
-                            },
+                            &palette,
                             &crate::rules::house_colors::HouseColorRamps::from_schemes(&[]),
                             &[],
                         );
@@ -151,6 +163,7 @@ fn retained_mobile_translucency_matches_original_packed_words() {
                                             alpha: 1.0,
                                             z_adjust: (4096 - (32768 - (y * 3 + 1) as i32)) as f32,
                                             palette_light: native_light(row),
+                                            source_palette,
                                             draw_state: DrawState {
                                                 fx_flags: FX_CLOAK,
                                                 native_offset_words: row["displacement"]
@@ -347,14 +360,14 @@ fn retained_mobile_translucency_matches_original_packed_words() {
                                 assert_eq!(
                                     &output[0][offset..offset + 4],
                                     &encoded(row["colors"][x].as_u64().unwrap() as u16, format),
-                                    "{collection} {route} {format:?} row{y} pixel{x} {row}"
+                                    "{collection} {route} indexed {indexed} {format:?} row{y} pixel{x} {row}"
                                 );
                                 assert_eq!(
                                     crate::render::native_z::stored_z(f32::from_le_bytes(
                                         output[1][offset..offset + 4].try_into().unwrap()
                                     )),
                                     row["depths"][x].as_u64().unwrap() as u16,
-                                    "{route} row{y} pixel{x} depth"
+                                    "{route} indexed {indexed} row{y} pixel{x} depth"
                                 );
                             }
                         }
