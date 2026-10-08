@@ -64,7 +64,6 @@ tools/vendor-eval/
 !/README.tr.md
 !/CLAUDE.md
 !/AGENTS.md
-!/CONTRIBUTING.md
 
 /*.js
 /*.py

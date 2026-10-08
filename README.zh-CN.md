@@ -11,12 +11,7 @@
 
 # VERA20k
 
-用 Rust 重写《红色警戒2：尤里的复仇》，让更大规模的多人对战成为可能。
-
 VERA20k 是对原版引擎 `gamemd.exe` 的重写。它使用原版游戏文件，因此你需要自行准备一份《红色警戒2：尤里的复仇》。
-该游戏收录于 *Command & Conquer The Ultimate Collection*，可在
-[Steam](https://store.steampowered.com/bundle/39394/) 和
-[EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) 购买。
 
 VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 
@@ -26,12 +21,12 @@ VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 
 1. 保留原版《红色警戒2：尤里的复仇》的玩法、画面和氛围。
 2. 支持更大规模的战斗：在更大的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
-3. 加入新的 RTS 功能。
+3. 加入新老 RTS 游戏中已有的功能，以及一些前所未见的功能。
 4. 内置多人游戏客户端
 
 ## 当前进度
 
-**开发早期。** Windows 上已可与基础 AI 进行本地遭遇战。原版地图和随机地图、菜单、基地建设、采矿、战斗，
+**开发中期。** Windows 上已可与基础 AI 进行本地遭遇战。原版地图和随机地图、菜单、基地建设、采矿、战斗，
 以及存档和读档都已具备，但还有很多需要修复和完善的地方。
 
 多人联机、战役和原版 AI 尚未实现。飞行单位、心灵控制、桥梁，以及一些武器和效果仍需完善。
@@ -39,8 +34,9 @@ VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 
 ## 编译与运行
 
-你需要最新稳定版 Rust、支持 Vulkan、DirectX 12 或 Metal 的 GPU，以及已安装的原版游戏。
-VERA20k 已在 Windows、Linux 和 macOS 上运行游玩过。
+你需要最新稳定版 [Rust](https://rustup.rs/)、支持 Vulkan、DirectX 12 或 Metal 的 GPU，以及已安装的原版游戏。
+《尤里的复仇》1.001 的任何版本均可使用；在 macOS 上，请从 Windows 上的安装中复制游戏文件夹。
+Debian 和 Ubuntu 还需要安装 `libasound2-dev` 和 `pkg-config`。VERA20k 已在 Windows、Linux 和 macOS 上运行游玩过。
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -50,14 +46,13 @@ cp config.toml.example config.toml
 cargo run --release --bin vera20k
 ```
 
-游玩时请使用 `--release`；调试构建运行太慢。各平台的配置说明和测试运行方法见
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up)。
+`ra2_dir` 请使用正斜杠，例如 `C:/Games/RA2`。游玩时请使用 `--release`；调试构建运行太慢。日志保存在 `logs/ra2.log`。
 
 ## 我们如何开发
 
-大部分代码由我指导的 AI 编程助手编写。我们用 Ghidra 研究原版引擎，再将其行为移植到 Rust，
-通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。我的 AI 助手遵循
-[AGENTS.md](AGENTS.md)，贡献者请遵循 [CONTRIBUTING.md](CONTRIBUTING.md)。
+大部分代码由 AI 编程助手编写。它们用 Ghidra 研究原版引擎，再将其行为移植到 Rust，
+通过[对比工具](tools/native_oracle.md)和实际游玩进行检查。AI 助手遵循 [AGENTS.md](AGENTS.md)，
+贡献者请遵循下方的规则。
 
 <!-- Chinese-only section: intentionally absent from README.md and the other translations. -->
 ## 致中国玩家和开发者
@@ -72,13 +67,23 @@ VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警
 
 ## 参与贡献
 
-欢迎帮忙。你可以编写代码、测试游戏、改进文档，或对照原版游玩，告诉我们哪些地方感觉不对。
-没有逆向工程经验也可以参与。
+欢迎帮忙。你可以编写代码、重构引擎、测试游戏、提出想法，或对照原版游玩，告诉我们哪些地方感觉不对。
+直接提交 PR 即可，剩下的交给我们；如果改动较大，请先在 issue 或 [Discord](https://discord.gg/kmjRUn5m5F) 上问一下。
 
-可以先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，看看
-[适合新手的 issue](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)，
-或者来 [Discord](https://discord.gg/kmjRUn5m5F) 打个招呼。
-[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
+游戏逻辑在 `src/sim/`，渲染在 `src/render/`，菜单和输入在 `src/app/`、`src/ui/` 和 `src/sidebar/`；
+你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
+用 `cargo test -p vera20k --lib` 运行测试。需要游戏 INI 文件的测试会自动跳过，但仍计为通过，
+直到你运行 `cargo run --bin extract-ini [游戏文件夹]`。
+
+1. **以原版为准。** 像周围的代码一样，在注释中注明原版函数（`/// MissionClass::Mission_Dispatch @ 0x005B3060`），
+   或在 PR 中说明该行为的来源。不要猜测。
+2. **每份状态只有一个所有者。** 扩展现有的所有者，并删除被你替换掉的旧路径。
+3. **确定性模拟。** 相同的输入在任何操作系统和 CPU 上都得到相同的结果。在 `src/sim/` 中使用 `SimFixed`，
+   并让随机数抽取和同一帧内的效果保持与原版相同的顺序。
+4. **为玩法改动添加测试。**
+5. **切勿提交游戏文件**（`.mix`、INI、美术、音频、视频、`.exe`）或 `ini/` 中的任何内容。
+
+贡献内容与项目其余部分一样采用 GPLv3 许可证；无需签署 CLA。
 
 ## 致谢与法律声明
 

@@ -11,13 +11,8 @@
 
 # VERA20k
 
-Red Alert 2: Yuri's Revenge — in Rust neu entwickelt, für große Mehrspielerschlachten.
-
 VERA20k ist eine Neuimplementierung der ursprünglichen Engine, `gamemd.exe`. Sie verwendet
-die originalen Spieldateien, also brauchst du eine eigene Kopie von Red Alert 2: Yuri's Revenge. Das Spiel
-ist in *Command & Conquer The Ultimate Collection* auf
-[Steam](https://store.steampowered.com/bundle/39394/) und bei
-[EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) erhältlich.
+die originalen Spieldateien, also brauchst du eine eigene Kopie von Red Alert 2: Yuri's Revenge.
 
 VERA20k wird von Spielern für Spieler gemacht, und die Spieler haben das letzte Wort, wohin sich
 das Projekt entwickelt.
@@ -28,12 +23,12 @@ das Projekt entwickelt.
 
 1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren.
 2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
-3. Neue RTS-Funktionen integrieren.
+3. Bekannte RTS-Funktionen integrieren, alte wie neue, und einige, die es noch nie gab.
 4. Integrierter Mehrspieler-Client
 
 ## Aktueller Stand
 
-**Frühe Entwicklungsphase.** Lokale Gefechte gegen eine einfache KI sind unter Windows
+**Mitten in der Entwicklung.** Lokale Gefechte gegen eine einfache KI sind unter Windows
 spielbar. Originalkarten und zufällig generierte Karten, Menüs, Basisbau, Rohstoffernte,
 Kämpfe sowie Speichern und Laden sind vorhanden, aber es gibt noch viel zu verbessern
 und fertigzustellen.
@@ -44,8 +39,11 @@ Schlachten mit 30 Spielern und 20.000 Einheiten haben wir bisher nicht demonstri
 
 ## Kompilieren und starten
 
-Du brauchst die aktuelle stabile Rust-Version, eine Grafikkarte mit Vulkan, DirectX 12 oder Metal und
-eine installierte Version des Spiels. VERA20k wurde bereits unter Windows, Linux und macOS gespielt.
+Du brauchst die aktuelle stabile Version von [Rust](https://rustup.rs/), eine Grafikkarte mit
+Vulkan, DirectX 12 oder Metal und eine installierte Version des Spiels. Jede Ausgabe von
+Yuri's Revenge 1.001 funktioniert; unter macOS kopierst du den Spielordner von einer
+Windows-Installation. Debian und Ubuntu brauchen außerdem `libasound2-dev` und `pkg-config`.
+VERA20k wurde bereits unter Windows, Linux und macOS gespielt.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -55,27 +53,43 @@ cp config.toml.example config.toml
 cargo run --release --bin vera20k
 ```
 
-Verwende zum Spielen `--release`; Debug-Builds sind zu langsam. In
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up) findest du Hinweise zur Einrichtung auf den
-einzelnen Plattformen und zum Ausführen der Tests.
+Schreib `ra2_dir` mit normalen Schrägstrichen, etwa `C:/Games/RA2`. Verwende zum Spielen
+`--release`; Debug-Builds sind zu langsam. Das Log liegt in `logs/ra2.log`.
 
 ## So arbeiten wir
 
-Der Großteil des Codes wird von KI-Programmieragenten geschrieben, die ich anleite.
-Wir untersuchen die ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten
-nach Rust und prüfen es mit [Vergleichswerkzeugen](tools/native_oracle.md) und Spieltests.
-Meine Agenten folgen [AGENTS.md](AGENTS.md), Mitwirkende folgen [CONTRIBUTING.md](CONTRIBUTING.md).
+Der Großteil des Codes wird von KI-Programmieragenten geschrieben. Sie untersuchen die
+ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten nach Rust und prüfen es mit
+[Vergleichswerkzeugen](tools/native_oracle.md) und Spieltests. Die Agenten folgen
+[AGENTS.md](AGENTS.md), Mitwirkende folgen den Regeln unten.
 
 ## Mitmachen
 
-Hilfe ist willkommen. Du kannst Code schreiben, das Spiel testen, die Dokumentation
-verbessern oder es neben dem Original spielen und uns sagen, was sich falsch anfühlt.
-Du brauchst keine Erfahrung mit Reverse Engineering, um mitzuhelfen.
+Hilfe ist willkommen. Du kannst Code schreiben, die Engine refaktorieren, das Spiel testen,
+Ideen einbringen oder es neben dem Original spielen und uns sagen, was sich falsch anfühlt.
+Öffne einen PR, und wir kümmern uns um den Rest; bei größeren Vorhaben frag vorher in einem
+Issue oder auf [Discord](https://discord.gg/kmjRUn5m5F).
 
-Lies [CONTRIBUTING.md](CONTRIBUTING.md), schau dir die
-[Aufgaben für den Einstieg](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
-an oder sag auf [Discord](https://discord.gg/kmjRUn5m5F) Hallo.
-Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, wie die Engine aufgebaut ist.
+Die Spiellogik liegt in `src/sim/`, das Rendering in `src/render/` und Menüs und Eingabe in
+`src/app/`, `src/ui/` und `src/sidebar/`; die Python-Werkzeuge in `tools/` brauchst du nicht.
+Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, wie die Engine
+aufgebaut ist. Führe die Tests mit `cargo test -p vera20k --lib` aus. Tests, die die INI-Dateien
+des Spiels brauchen, überspringen sich selbst und zählen trotzdem als bestanden, bis du
+`cargo run --bin extract-ini [Spielordner]` ausführst.
+
+1. **Das Original ist die Referenz.** Nenne die ursprüngliche Funktion in einem Kommentar, wie
+   es der umgebende Code tut (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), oder schreib
+   im PR, woher das Verhalten stammt. Nicht raten.
+2. **Ein Besitzer pro Zustand.** Erweitere den bestehenden Besitzer und lösche den alten Pfad,
+   den du ersetzt.
+3. **Deterministische Simulation.** Gleiche Eingaben, gleiches Ergebnis auf jedem
+   Betriebssystem und jeder CPU. Verwende `SimFixed` in `src/sim/` und halte Zufallsziehungen
+   und Effekte im selben Frame in der Reihenfolge des Originals.
+4. **Füge einen Test hinzu,** wenn du die Spielmechanik änderst.
+5. **Committe niemals Spieldateien** (`.mix`, INI, Grafik, Audio, Video, `.exe`) oder etwas aus
+   `ini/`.
+
+Beiträge stehen wie das übrige Projekt unter der GPLv3; ein CLA gibt es nicht.
 
 ## Danksagung und Rechtliches
 

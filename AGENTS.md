@@ -1,9 +1,10 @@
 # VERA20k — Project contract
 
-**Outside contributors and their agents:** follow [CONTRIBUTING.md](CONTRIBUTING.md) and
-your issue, and skip the rest of this file. It is the contract for the maintainer's own
-agents: its build runner, retail-data checks, critic reviews, checkpoints, evidence levels
-and native comparisons don't apply to you. Where the two files differ, CONTRIBUTING.md wins.
+**Outside contributors and their agents:** follow the README's
+[Contributing](README.md#contributing) section and your issue, and skip the rest of this file.
+It is the contract for the maintainer's own agents: its build runner, retail-data checks,
+critic reviews, checkpoints, evidence levels and native comparisons don't apply to you. Where
+the two differ, the README wins.
 
 VERA20k is a cross-platform Rust reimplementation of the Command & Conquer:
 Yuri's Revenge engine (`gamemd.exe`), using original retail rules and assets.

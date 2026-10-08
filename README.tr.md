@@ -11,12 +11,8 @@
 
 # VERA20k
 
-Red Alert 2: Yuri's Revenge — büyük çok oyunculu savaşlar için Rust ile yeniden yazıldı.
-
 VERA20k, özgün oyun motoru `gamemd.exe`'nin yeniden yazımıdır. Orijinal oyun dosyalarını
-kullandığı için kendi Red Alert 2: Yuri's Revenge kopyanıza ihtiyacınız var. Oyun, [Steam](https://store.steampowered.com/bundle/39394/)
-ve [EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc)
-üzerinde satılan *Command & Conquer The Ultimate Collection* paketinde bulunuyor.
+kullandığı için kendi Red Alert 2: Yuri's Revenge kopyanıza ihtiyacınız var.
 
 VERA20k oyuncular tarafından, oyuncular için yapılıyor ve projenin nereye gideceğine son sözü
 oyuncular söylüyor.
@@ -27,12 +23,12 @@ oyuncular söylüyor.
 
 1. Orijinal Red Alert 2: Yuri's Revenge'in oynanışını, görsellerini ve atmosferini korumak.
 2. Daha büyük haritalarda **30 oyuncuya** ve **20.000 birime** kadar daha büyük savaşları desteklemek.
-3. Yeni RTS özellikleri eklemek.
+3. Eski ve yeni bilinen RTS özelliklerini ve daha önce hiç görülmemiş bazı özellikleri eklemek.
 4. Entegre çok oyunculu istemci
 
 ## Mevcut durum
 
-**Geliştirmenin ilk aşamalarında.** Windows'ta basit bir yapay zekâya karşı yerel çatışmalar
+**Geliştirmenin orta aşamalarında.** Windows'ta basit bir yapay zekâya karşı yerel çatışmalar
 oynanabiliyor. Orijinal ve rastgele oluşturulan haritalar, menüler, üs kurma, kaynak toplama,
 çatışma ve kaydetme/yükleme mevcut, ancak hâlâ düzeltilecek ve tamamlanacak çok şey var.
 
@@ -42,8 +38,10 @@ ve çeşitli silahlar ile efektler üzerinde daha fazla çalışmamız gerekiyor
 
 ## Derleme ve çalıştırma
 
-Rust'ın güncel kararlı sürümü, Vulkan, DirectX 12 ya da Metal destekleyen bir GPU ve kurulu oyun gerekiyor.
-VERA20k, Windows, Linux ve macOS üzerinde oynandı.
+[Rust](https://rustup.rs/)'ın güncel kararlı sürümü, Vulkan, DirectX 12 ya da Metal destekleyen bir
+GPU ve kurulu oyun gerekiyor. Yuri's Revenge 1.001'in her sürümü çalışır; macOS'te oyun klasörünü
+bir Windows kurulumundan kopyalayın. Debian ve Ubuntu'da ayrıca `libasound2-dev` ve `pkg-config`
+gerekir. VERA20k, Windows, Linux ve macOS üzerinde oynandı.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -53,26 +51,43 @@ cp config.toml.example config.toml
 cargo run --release --bin vera20k
 ```
 
-Oynamak için `--release` kullanın; debug derlemeleri çok yavaş. Platforma göre kurulum ve
-testleri çalıştırma bilgileri için [CONTRIBUTING.md](CONTRIBUTING.md#set-up) dosyasına bakın.
+`ra2_dir` yolunu ters eğik çizgi yerine eğik çizgiyle yazın, örneğin `C:/Games/RA2`. Oynamak için
+`--release` kullanın; debug derlemeleri çok yavaş. Günlük dosyası `logs/ra2.log` konumundadır.
 
 ## Nasıl çalışıyoruz
 
-Kodun büyük bölümünü yönlendirdiğim yapay zekâ kodlama ajanları yazıyor. Özgün motoru
-Ghidra ile inceliyor, ardından davranışını Rust'a aktarıyor ve
-[karşılaştırma araçları](tools/native_oracle.md) ile oyun testleri kullanarak kontrol ediyoruz.
-Ajanlarım [AGENTS.md](AGENTS.md) dosyasını, katkıda bulunanlar ise [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını izler.
+Kodun büyük bölümünü yapay zekâ kodlama ajanları yazıyor. Ajanlar özgün motoru Ghidra ile
+inceliyor, ardından davranışını Rust'a aktarıyor ve [karşılaştırma araçları](tools/native_oracle.md)
+ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosyasını, katkıda
+bulunanlar ise aşağıdaki kuralları izler.
 
 ## Katkıda bulunma
 
-Yardımlarınızı bekliyoruz. Kod yazabilir, oyunu test edebilir, belgeleri geliştirebilir veya
-orijinal oyunla yan yana oynayıp neyin yanlış hissettirdiğini bize anlatabilirsiniz.
-Yardım etmek için tersine mühendislik deneyimine ihtiyacınız yok.
+Yardımlarınızı bekliyoruz. Kod yazabilir, motoru yeniden düzenleyebilir, oyunu test edebilir,
+fikirlerinizi paylaşabilir veya orijinal oyunla yan yana oynayıp neyin yanlış hissettirdiğini
+bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz; büyük bir değişiklik için önce bir
+issue'da ya da [Discord](https://discord.gg/kmjRUn5m5F) üzerinden sorun.
 
-[CONTRIBUTING.md](CONTRIBUTING.md) dosyasını okuyun,
-[yeni başlayanlara uygun işlere](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue)
-göz atın ya da [Discord](https://discord.gg/kmjRUn5m5F) üzerinden merhaba deyin.
-[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir araya geldiğini açıklıyor.
+Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/`, `src/ui/` ve
+`src/sidebar/` içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
+[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir
+araya geldiğini açıklıyor. Testleri `cargo test -p vera20k --lib` ile çalıştırın. Oyunun INI
+dosyalarına ihtiyaç duyan testler, siz `cargo run --bin extract-ini [oyun klasörü]` komutunu
+çalıştırana kadar atlanır ve yine de başarılı sayılır.
+
+1. **Referans orijinal oyundur.** Çevredeki kodda olduğu gibi özgün fonksiyonu bir yorumda
+   belirtin (`/// MissionClass::Mission_Dispatch @ 0x005B3060`) ya da davranışın nereden
+   geldiğini PR'da yazın. Tahmin yürütmeyin.
+2. **Her durumun tek bir sahibi vardır.** Mevcut sahibi genişletin ve yerine koyduğunuz eski
+   yolu silin.
+3. **Deterministik simülasyon.** Aynı girdiler her işletim sisteminde ve işlemcide aynı sonucu
+   verir. `src/sim/` içinde `SimFixed` kullanın; rastgele sayı çekimlerini ve aynı karedeki
+   etkileri orijinaldeki sırayla koruyun.
+4. **Oynanış değişiklikleri için test ekleyin.**
+5. **Oyun dosyalarını asla commit etmeyin** (`.mix`, INI, görseller, ses, video, `.exe`); `ini/`
+   içindeki hiçbir şeyi de eklemeyin.
+
+Katkılar da projenin geri kalanı gibi GPLv3 ile lisanslanır; CLA yoktur.
 
 ## Teşekkürler ve yasal bilgiler
 
