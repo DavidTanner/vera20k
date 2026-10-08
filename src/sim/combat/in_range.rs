@@ -503,11 +503,8 @@ pub(crate) fn native_cell_range_coords(
     cells: &NativeCellQuery<'_>,
 ) -> Option<(i64, i64, i64)> {
     let (x, y, mut z) = native_cell_own_coords(cell, cells)?;
-    // Actual Cell+50=4867E0: false only inside the signed WaterSet window.
-    // The -1 base is not special, and native ADD14 wraps before signed CMP.
-    let tile = cells.terrain().native_cell_tile_index(cell);
-    let water = cells.terrain().projectile_water_set_base();
-    if tile < water || tile >= water.wrapping_add(14) {
+    // Cell vt+0x50 (`0x004867E0`): true outside the WaterSet window.
+    if !cells.terrain().native_cell_is_water_set_tile(cell) {
         z = native_ground_target_z(x as i32, y as i32, cells)?;
     }
     Some((x, y, z))
