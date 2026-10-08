@@ -24,7 +24,7 @@ const BUNKER_EXIT_SEARCH_MAX_RADIUS: i32 = 16;
 /// they exclude no stock bunkerable vehicle.) Resolved against `rules`, so this is
 /// called from the command dispatch (which has `rules`), never from the radio bus.
 ///
-/// RESIDUAL (UNCHECKED, deferred): the weapon half is `obj.primary` — the
+/// RESIDUAL (UNCHECKED, deferred): the weapon half is `obj.primary()` — the
 /// native `Primary` field (`TechnoTypeClass+0x898`), which for a `TurretCount>0`
 /// type is filled from `Weapon1=`, see `ObjectType::read_weapon_arrays` — and
 /// the native predicate for this gate has not been located. The two plausible
@@ -45,7 +45,7 @@ pub fn can_auto_deploy_here(sim: &Simulation, unit_id: u64, rules: &RuleSet) -> 
         return false;
     };
     // CanEnterBunker 0x0070FBAF..0x0070FBC3: an infected Foot is refused.
-    obj.bunkerable && obj.primary.is_some() && unit.parasite_eating_me.is_none()
+    obj.bunkerable && obj.primary().is_some() && unit.parasite_eating_me.is_none()
 }
 
 /// Bunker install state 5 (459301..459337): reciprocal links, deselection,

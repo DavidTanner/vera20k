@@ -1995,11 +1995,7 @@ fn foot_type_takes_cadence_band(
     if attacker.category == EntityCategory::Infantry && object.close_range {
         return true;
     }
-    let Some(primary) = object
-        .primary
-        .as_deref()
-        .and_then(|name| rules.weapon(name))
-    else {
+    let Some(primary) = object.primary().and_then(|name| rules.weapon(name)) else {
         return false;
     };
     (primary.range * crate::util::fixed_math::SimFixed::from_num(256)).to_num::<i64>()

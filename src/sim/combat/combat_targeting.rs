@@ -606,7 +606,7 @@ mod tests {
     ///
     /// `TechnoTypeClass::ReadINI @ 0x007128B2` branches on `TurretCount > 0`
     /// and jumps past the `Primary=` block, so those keys are never read for
-    /// either type and `obj.primary`/`obj.secondary` stay `None`.
+    /// either type and `obj.primary()`/`obj.secondary()` stay `None`.
     fn gunner_rules() -> RuleSet {
         RuleSet::from_ini(&IniFile::from_str(
             "[VehicleTypes]\n0=SREF\n1=HTNK\n\
@@ -633,7 +633,7 @@ mod tests {
     /// `Weapon1=` writes the same `TechnoTypeClass+0x898` field that `Primary=`
     /// does (`TechnoTypeClass::ReadINI`, cursor `0x007128D6 LEA EDI,[EBP+0xA94]`
     /// storing at `0x0071294A MOV [EDI-0x1FC],EAX`, and `0xA94-0x1FC = 0x898`),
-    /// so `obj.primary` reads as the native field for these two types even
+    /// so `obj.primary()` reads as the native field for these two types even
     /// though neither section authors a live `Primary=` key.
     #[test]
     fn gsi_08_02_stock_sref_and_yaggun_are_armed_through_weapon_one() {
@@ -643,9 +643,9 @@ mod tests {
 
         // Same storage: `Weapon1=` lands in the `Primary` field, `Weapon2=` in
         // `Secondary`. SREF stops at `WeaponCount=1`, so its slot 1 is empty.
-        assert_eq!(sref_obj.primary.as_deref(), Some("Comet"));
-        assert_eq!(sref_obj.secondary, None);
-        assert_eq!(yaggun_obj.primary.as_deref(), Some("AGGattling"));
+        assert_eq!(sref_obj.primary(), Some("Comet"));
+        assert_eq!(sref_obj.secondary(), None);
+        assert_eq!(yaggun_obj.primary(), Some("AGGattling"));
 
         let mut sref = GameEntity::test_default(1, "SREF", "Americans", 5, 5);
         sref.category = EntityCategory::Unit;

@@ -79,7 +79,9 @@ fn test_load_real_rules_ini() {
         assert_eq!(mtnk.category, ObjectCategory::Vehicle);
         println!(
             "MTNK (Grizzly): cost={}, hp={}, primary={:?}",
-            mtnk.cost, mtnk.strength, mtnk.primary
+            mtnk.cost,
+            mtnk.strength,
+            mtnk.primary()
         );
     }
 
@@ -93,7 +95,7 @@ fn test_load_real_rules_ini() {
     }
 
     // Spot-check a weapon if E1 has one.
-    if let Some(ref weapon_id) = e1.primary {
+    if let Some(weapon_id) = e1.primary() {
         if let Some(weapon) = rules.weapon(weapon_id) {
             println!(
                 "\nWeapon '{}': damage={}, range={:.1}, rof={}, warhead={:?}",

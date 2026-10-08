@@ -933,7 +933,7 @@ fn cleg_overlay_cell_requests_match_every_original_command_boundary() {
     }
     let native_weapon = &data["overlay_inputs"]["weapon"];
     let weapon = rules
-        .weapon(rules.object("CLEG").unwrap().primary.as_deref().unwrap())
+        .weapon(rules.object("CLEG").unwrap().primary().unwrap())
         .unwrap();
     assert_eq!(weapon.id, native_weapon["name"].as_str().unwrap());
     assert_eq!(weapon.damage, signed(&native_weapon["damage"]));

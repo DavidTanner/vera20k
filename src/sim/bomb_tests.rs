@@ -1151,7 +1151,7 @@ fn retail_rules_arm_the_stock_bomb() {
     );
     let primary_warhead = |kind: &str| {
         let object = rules.object(kind).unwrap();
-        let weapon = rules.weapon(object.primary.as_deref().unwrap()).unwrap();
+        let weapon = rules.weapon(object.primary().unwrap()).unwrap();
         rules.warhead(weapon.warhead.as_deref().unwrap()).unwrap()
     };
     for ivan in ["IVAN", "CIVAN"] {

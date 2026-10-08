@@ -62,7 +62,7 @@ fn retail_projectile_reader_matches_original_selected_cannon_inputs() {
     }
     let selected = &corpus["ordinary_selection"]["rows"][0];
     assert_eq!(
-        rules.object("MTNK").unwrap().primary.as_deref(),
+        rules.object("MTNK").unwrap().primary(),
         selected["primary"].as_str()
     );
     let weapon = rules.weapon("105mm").unwrap();
@@ -301,10 +301,7 @@ fn retail_hills_projectile_assets_match_original_reader_and_physical_bytes() {
     let assets = AssetManager::new(&root, MediaArchiveMode::STOCK_DIGITAL).unwrap();
     let corpus = native();
     let projectile = rules.projectile("Cannon").unwrap();
-    assert_eq!(
-        rules.object("MTNK").unwrap().primary.as_deref(),
-        Some("105mm")
-    );
+    assert_eq!(rules.object("MTNK").unwrap().primary(), Some("105mm"));
     assert_eq!(
         rules.weapon("105mm").unwrap().projectile.as_deref(),
         Some("Cannon")

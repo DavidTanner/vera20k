@@ -253,25 +253,6 @@ impl TargetFacts<'_> {
     }
 }
 
-/// `Weapon[index]` (`TechnoTypeClass+0x898 + index*0x1C`).
-///
-/// `ObjectType::weapon_list` **is** that native array, and `obj.primary` /
-/// `obj.secondary` are slots 0 and 1 of it — `TechnoTypeClass::ReadINI
-/// @ 0x007128B2` writes `Weapon1=` and `Primary=` to the same `+0x898`, so the
-/// `TurretCount` branch is decided once, at parse time, in
-/// `rules::object_type::ObjectType::read_weapon_arrays`. Nothing downstream has
-/// to know which INI keys a type authored.
-fn base_weapon_at(obj: &ObjectType, index: usize) -> Option<&str> {
-    obj.weapon_list.get(index).and_then(|slot| slot.as_deref())
-}
-
-/// `EliteWeapon[index]` (`TechnoTypeClass+0xA94 + index*0x1C`).
-fn elite_weapon_at(obj: &ObjectType, index: usize) -> Option<&str> {
-    obj.elite_weapon_list
-        .get(index)
-        .and_then(|slot| slot.as_deref())
-}
-
 /// [`fire_error::weapon_damage_value`](super::fire_error::weapon_damage_value)
 /// (`0x006F3970(-1)`) over the object's own weapon slots at its rank. Not for
 /// a garrisoned building, whose GetWeapon answers the occupant's weapon; that
@@ -308,9 +289,9 @@ pub(crate) fn weapon_for_index(
         return None;
     }
     let weapon_id = if uses_elite_weapon(obj, veterancy, slot_index) {
-        elite_weapon_at(obj, slot_index)
+        obj.elite_weapon_at(slot_index)
     } else {
-        base_weapon_at(obj, slot_index)
+        obj.weapon_at(slot_index)
     }?;
     let slot = if slot_index == 1 {
         WeaponSlot::Secondary
@@ -324,7 +305,7 @@ pub(crate) fn weapon_for_index(
 /// elite record: an elite object whose `EliteWeapon[index]` names a weapon.
 /// Callers that read the record's other fields (the elite FLH) ask this too.
 pub(crate) fn uses_elite_weapon(obj: &ObjectType, veterancy: u16, index: usize) -> bool {
-    veterancy >= ELITE_VETERANCY && elite_weapon_at(obj, index).is_some()
+    veterancy >= ELITE_VETERANCY && obj.elite_weapon_at(index).is_some()
 }
 
 /// `GetWeapon(0)` weapon id at the given veterancy.
@@ -354,8 +335,8 @@ pub(crate) fn secondary_for_tier(obj: &ObjectType, veterancy: u16) -> Option<&st
 ///
 /// So the `Secondary` slot never makes an object armed, and a `TurretCount>0`
 /// type is armed only through its *current gunner* slot — which is why this is
-/// still a distinct predicate from reading `obj.primary`, even now that
-/// `obj.primary` is the native `Primary` field for every type (see
+/// still a distinct predicate from reading `obj.primary()`, even now that
+/// `obj.primary()` is the native `Primary` field for every type (see
 /// `ObjectType::read_weapon_arrays`). The elite tier is applied by `GetWeapon`,
 /// so the read goes through `weapon_for_index`.
 ///
@@ -1941,7 +1922,7 @@ IsLocomotor=yes
         //
         // The *keys* are mutually exclusive; the *storage* is shared. Whichever
         // branch runs writes weapon-array slots 0/1 at `+0x898`/`+0x8B4`, which
-        // are the fields gamemd calls `Primary`/`Secondary` — so `obj.primary`
+        // are the fields gamemd calls `Primary`/`Secondary` — so `obj.primary()`
         // must read as the resolved slot 0 either way.
         let ini = IniFile::from_str(
             "[VehicleTypes]\n0=TURRETED\n1=PLAINWEP\n\
@@ -1963,10 +1944,10 @@ IsLocomotor=yes
         // `Primary`/`Secondary` FIELDS — the `Primary=`/`Secondary=` keys are
         // dead but the fields they name are not.
         let turreted = rules.object("TURRETED").unwrap();
-        assert_eq!(turreted.primary.as_deref(), Some("SlotGun"));
-        assert_eq!(turreted.secondary.as_deref(), Some("SlotGun2"));
-        assert_eq!(turreted.elite_primary.as_deref(), Some("SlotGunE"));
-        assert_eq!(turreted.elite_secondary, None);
+        assert_eq!(turreted.primary(), Some("SlotGun"));
+        assert_eq!(turreted.secondary(), Some("SlotGun2"));
+        assert_eq!(turreted.elite_primary(), Some("SlotGunE"));
+        assert_eq!(turreted.elite_secondary(), None);
         assert_eq!(primary_for_tier(turreted, 0), Some("SlotGun"));
         assert_eq!(secondary_for_tier(turreted, 0), Some("SlotGun2"));
         assert_eq!(primary_for_tier(turreted, 200), Some("SlotGunE"));
@@ -1978,8 +1959,8 @@ IsLocomotor=yes
         // TurretCount unauthored (0): WeaponN is dead, and there is no
         // secondary even though Weapon2 names one.
         let plain = rules.object("PLAINWEP").unwrap();
-        assert_eq!(plain.primary.as_deref(), Some("PrimGun"));
-        assert_eq!(plain.secondary, None);
+        assert_eq!(plain.primary(), Some("PrimGun"));
+        assert_eq!(plain.secondary(), None);
         assert_eq!(primary_for_tier(plain, 0), Some("PrimGun"));
         assert_eq!(secondary_for_tier(plain, 0), None);
         assert!(weapon_for_index(plain, 0, 1).is_none());

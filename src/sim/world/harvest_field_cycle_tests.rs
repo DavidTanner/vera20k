@@ -359,7 +359,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
         let registry = OverlayTypeRegistry::from_ini(&retail.processed_rules, None);
         let harv = retail.rules.object("HARV").unwrap();
         assert!(harv.harvester && !harv.weeder);
-        assert_eq!(harv.primary.as_deref(), Some("20mmRapid"));
+        assert_eq!(harv.primary(), Some("20mmRapid"));
 
         let mut s = super::refinery_dock_oracle_tests::scene_with(
             &serde_json::json!({

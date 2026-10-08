@@ -490,7 +490,7 @@ fn stock_deployed_guard_readers_bind_physical_type_weapon_and_raw_action_gates()
         );
     }
     let deso = rules.object("DESO").unwrap();
-    assert_eq!(deso.secondary.as_deref(), Some("RadEruptionWeapon"));
+    assert_eq!(deso.secondary(), Some("RadEruptionWeapon"));
     let eruption = rules.weapon("RadEruptionWeapon").unwrap();
     assert_eq!(eruption.range_leptons, 1024);
     assert_eq!(eruption.rad_level, 500);
