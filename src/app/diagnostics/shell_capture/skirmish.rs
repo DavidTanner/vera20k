@@ -1328,11 +1328,8 @@ impl SkirmishCapture {
     fn settled(&self, state: &AppState) -> Result<bool> {
         self.guard(state)?;
         ensure!(
-            state
-                .frontend
-                .shell_route
-                .skirmish_returns_to_single_player(),
-            "skirmish capture bypassed Single Player"
+            state.frontend.shell_route.skirmish(),
+            "skirmish capture did not reach the Skirmish shell"
         );
         ensure!(
             state.frontend.skirmish_shell_chrome.is_some(),

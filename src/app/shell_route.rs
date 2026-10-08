@@ -5,8 +5,7 @@
 //! (`main_menu_show_single_player_shell`, `main_menu_show_native_skirmish_shell`,
 //! `skirmish_shell_return_to_single_player_shell`) that six hand-written
 //! teardown blocks each cleared with slightly different subsets. Exclusivity
-//! is now structural: the state can no longer represent two shells at once,
-//! and the skirmish return arrow travels inside the variant it belongs to.
+//! is now structural: the state can no longer represent two shells at once.
 //! A terminal menu error is owned separately by the frontend; it stops shell
 //! rendering and input without creating an alternate gameplay route.
 
@@ -28,10 +27,10 @@ pub(crate) enum ShellRoute {
     /// Westwood Online welcome `0x10E` (and its `TXT_APIMISSING` box),
     /// reached from Internet.
     WolWelcome,
-    /// The native skirmish shell. `return_to_single_player` is the return
-    /// arrow: entered from the single-player shell, Back returns there
-    /// instead of the main menu.
-    Skirmish { return_to_single_player: bool },
+    /// The native skirmish shell `0x102`. It is entered only from the
+    /// single-player shell (directly, or on resume after a match), so Back
+    /// returns there.
+    Skirmish,
 }
 
 impl ShellRoute {
@@ -65,16 +64,7 @@ impl ShellRoute {
     }
 
     pub(crate) fn skirmish(self) -> bool {
-        matches!(self, Self::Skirmish { .. })
-    }
-
-    pub(crate) fn skirmish_returns_to_single_player(self) -> bool {
-        matches!(
-            self,
-            Self::Skirmish {
-                return_to_single_player: true
-            }
-        )
+        matches!(self, Self::Skirmish)
     }
 }
 
@@ -82,10 +72,9 @@ impl ShellRoute {
 mod tests {
     use super::ShellRoute;
 
-    /// F11: shell surfaces are mutually exclusive by construction, and the
-    /// return arrow only exists inside the skirmish variant.
+    /// F11: shell surfaces are mutually exclusive by construction.
     #[test]
-    fn shell_routes_are_exclusive_and_carry_the_return_arrow() {
+    fn shell_routes_are_exclusive() {
         assert_eq!(ShellRoute::default(), ShellRoute::MainMenu);
         for route in [
             ShellRoute::MainMenu,
@@ -95,12 +84,7 @@ mod tests {
             ShellRoute::Campaign,
             ShellRoute::LoadSavedGame,
             ShellRoute::WolWelcome,
-            ShellRoute::Skirmish {
-                return_to_single_player: false,
-            },
-            ShellRoute::Skirmish {
-                return_to_single_player: true,
-            },
+            ShellRoute::Skirmish,
         ] {
             // At most one surface active — the predicates cannot both hold.
             let active = [
@@ -114,18 +98,5 @@ mod tests {
             ];
             assert!(active.iter().filter(|&&on| on).count() <= 1);
         }
-        assert!(
-            ShellRoute::Skirmish {
-                return_to_single_player: true
-            }
-            .skirmish_returns_to_single_player()
-        );
-        assert!(
-            !ShellRoute::Skirmish {
-                return_to_single_player: false
-            }
-            .skirmish_returns_to_single_player()
-        );
-        assert!(!ShellRoute::SinglePlayer.skirmish_returns_to_single_player());
     }
 }

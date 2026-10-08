@@ -411,9 +411,7 @@ impl App {
         // constructing 0x102. Drop the hidden Rust session as well so returning
         // to 0x100 cannot continue the pre-Skirmish RA2TS timeline.
         crate::app::frontend::main_menu_shell_render::clear_ra2ts_movie_session(state);
-        state.frontend.shell_route = crate::app::shell_route::ShellRoute::Skirmish {
-            return_to_single_player: true,
-        };
+        state.frontend.shell_route = crate::app::shell_route::ShellRoute::Skirmish;
         state
             .frontend
             .skirmish_shell_state
