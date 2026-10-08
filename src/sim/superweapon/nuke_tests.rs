@@ -1,9 +1,9 @@
-//! The nuclear missile: the `NUKE` warhead's impact against
-//! `tools/superweapon_oracle.json` (`nuke_impact`, `nuke_wait`,
-//! `nuke_flash`, `nuke_lighting_read`; `--check` regenerates them), and the
-//! missile through production frames on retail rules: the launch command,
-//! the silo's flight, NukeMaker's falling warhead, its impact's flash and
-//! `NUKEBALL`, and its strike.
+//! The nuclear missile: Launch case 0 and the `NUKE` warhead's impact
+//! against `tools/superweapon_oracle.json` (`nuke_launch`, `nuke_impact`,
+//! `nuke_wait`, `nuke_flash`, `nuke_lighting_read`; `--check` regenerates
+//! them), and the missile through production frames on retail rules: the
+//! launch command, the silo's flight, NukeMaker's falling warhead, its
+//! impact's flash and `NUKEBALL`, and its strike.
 
 use super::SuperWeaponInstance;
 use super::chronosphere_tests::{retail_rules_binding, world_with};
@@ -19,6 +19,7 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::light_sources::LightingEvent;
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::projectile::{
     NukeImpactContext, Projectile, ProjectileCollisionPolicy, ProjectileCoord,
     ProjectileDetonationReason, ProjectilePayload, ProjectileSpawn, ProjectileStore,
@@ -487,6 +488,147 @@ fn nuke_change_rate_read_matches_native() {
             ScenarioLightingState::from_map(&profiles).nuke_change_rate(),
             profiles.nuke_change_rate
         );
+    }
+}
+
+/// `nuke_launch`'s BuildingTypes in `BuildingTypeClass::Array` order, each
+/// `(NukeSilo=, SuperWeapon=, SuperWeapon2=)` with an index naming the
+/// Super at it (`NukeSpecial` at 3, the oracle's array index) or -1 none.
+fn launch_rules(types: &[(bool, i32, i32)]) -> RuleSet {
+    const SUPERS: [&str; 4] = ["SW0", "SW1", "SW2", "NukeSpecial"];
+    let mut rules = String::from(
+        "[General]\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+         [SuperWeaponTypes]\n0=SW0\n1=SW1\n2=SW2\n3=NukeSpecial\n\
+         [SW0]\nType=IronCurtain\n[SW1]\nType=IronCurtain\n[SW2]\nType=IronCurtain\n\
+         [NukeSpecial]\nType=MultiMissile\n[BuildingTypes]\n",
+    );
+    let mut art = String::new();
+    for slot in 0..types.len() {
+        rules += &format!("{slot}=SILO{slot}\n");
+    }
+    for (slot, &(silo, weapon, weapon2)) in types.iter().enumerate() {
+        rules += &format!("[SILO{slot}]\nStrength=1000\nFoundation=1x1\nNukeSilo={silo}\n");
+        for (key, index) in [("SuperWeapon", weapon), ("SuperWeapon2", weapon2)] {
+            if let Ok(index) = usize::try_from(index) {
+                rules += &format!("{key}={}\n", SUPERS[index]);
+            }
+        }
+        art += &format!("[SILO{slot}]\nFoundation=1x1\n");
+    }
+    let art = IniFile::from_str(&art);
+    let mut rules =
+        RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&rules), &art).unwrap();
+    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    rules
+}
+
+/// Case 0 (`0x006CDA67`, `0x006CDCF0..0x006CDE36`) against `nuke_launch`,
+/// through the production launch with the row's BuildingTypes
+/// ([`launch_rules`]) and, where native's Find_Building_Of_Type answers a
+/// building, one building of each of them. Compared:
+/// - the charge gate;
+/// - the type scan: only the building of the type native asks for fires;
+/// - the Missile mission queued and commenced on it, the house's
+///   NukeTarget (`+0x5784`) and the silo's firing type (`+0x5F8`);
+/// - the launch event at the cell of PlayAtCoord's coordinate, for the
+///   app's sound and line (`sound_dispatch::launch_lines_match_native`).
+///
+/// Not compared: the player's tail (the app's, `super_selection`), the
+/// recheck flag `+0x1FC` and the mute row (module RESIDUALS).
+#[test]
+fn the_launch_matches_native() {
+    let oracle = oracle();
+    let rows = rows(&oracle, "nuke_launch");
+    assert_eq!(rows.len(), 12);
+    for row in rows.iter().filter(|row| row["mute"] != true) {
+        let types: Vec<(bool, i32, i32)> = row["types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| (entry[0] == true, int(&entry[1]), int(&entry[2])))
+            .collect();
+        let (rules, mut sim, owner) = world_with(launch_rules(&types), 128, &[]);
+        let events = row["events"].as_array().unwrap();
+        let asked = events
+            .iter()
+            .find(|event| event[0] == "find")
+            .map(|event| int(&event[2]) as usize);
+        let buildings: Vec<u64> = if row["silo"] == true {
+            (0..types.len())
+                .map(|slot| {
+                    let x = 64 + 2 * slot as u16;
+                    sim.spawn_object_at_height(
+                        &format!("SILO{slot}"),
+                        "Americans",
+                        x,
+                        64,
+                        0,
+                        0,
+                        &rules,
+                    )
+                    .expect("the building stands")
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let sw_type = super::chronosphere_tests::charge_super(&mut sim, owner, "NukeSpecial");
+        sim.super_weapons
+            .get_mut(&owner)
+            .unwrap()
+            .get_mut(&sw_type)
+            .unwrap()
+            .is_ready = row["charged"] == true;
+        let target = (int(&row["target"][0]) as u16, int(&row["target"][1]) as u16);
+        let sw = rules.super_weapon("NukeSpecial").unwrap().clone();
+        let launched = super::nuke::launch(&mut sim, &rules, owner, sw_type, &sw, target);
+        assert_eq!(launched, has_event(row, "queue_mission"), "{row}");
+        for (slot, &id) in buildings.iter().enumerate() {
+            let building = sim.substrate.entities.get(id).unwrap();
+            let fires = launched && asked == Some(slot);
+            assert_eq!(
+                building.mission.current() == MissionId::from_known(MissionType::Missile),
+                fires,
+                "{row} {slot}"
+            );
+            assert_eq!(
+                building
+                    .mission_leaf
+                    .as_building()
+                    .unwrap()
+                    .firing_super_weapon(),
+                if fires { int(&row["firing_type"]) } else { -1 },
+                "{row} {slot}"
+            );
+        }
+        let nuke_target = ints(&row["nuke_target"]);
+        assert_eq!(
+            sim.houses[&owner].nuke_target(),
+            (nuke_target[0] as u16, nuke_target[1] as u16),
+            "{row}"
+        );
+        let native: Vec<(u16, u16)> = events
+            .iter()
+            .filter(|event| event[0] == "play_at")
+            .map(|event| {
+                let xyz = ints(&event[2]);
+                ((xyz[0] / 256) as u16, (xyz[1] / 256) as u16)
+            })
+            .collect();
+        let pushed: Vec<(u16, u16)> = sim
+            .sound_events
+            .iter()
+            .filter_map(|event| match *event {
+                SimSoundEvent::SuperWeaponLaunched {
+                    owner: by,
+                    sw_type: kind,
+                    rx,
+                    ry,
+                } if by == owner && kind == sw_type => Some((rx, ry)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pushed, native, "{row}");
     }
 }
 

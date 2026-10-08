@@ -410,6 +410,15 @@ impl SuperWeaponInstance {
     }
 }
 
+/// Whether `owner`'s Super of `sw_type` is charged (`SuperClass+0x6F`), the
+/// flag each Launch case and the computer's launchers read first.
+fn is_charged(sim: &Simulation, owner: InternedId, sw_type: InternedId) -> bool {
+    sim.super_weapons
+        .get(&owner)
+        .and_then(|weapons| weapons.get(&sw_type))
+        .is_some_and(|instance| instance.is_ready)
+}
+
 /// The `[SuperWeaponTypes]` entries whose `Type=` value (`+0xB4`) is
 /// `type_value`, in the order of a house's Supers (`HouseClass+0x258`),
 /// which hold one Super per entry from the house's constructor
@@ -927,6 +936,54 @@ mod frame_tests {
             .expect("second silo spawns");
         refresh_super_weapons_for_owner(&mut sim, &rules, owner);
         assert_eq!(weapon(&sim), (true, false, 300, 900));
+    }
+
+    /// `BuildingClass::ChangeOwner` asks both houses' next update for their
+    /// revoke and grant passes (`+0x1FC` at `0x0044936E` and `0x00449379`;
+    /// `HouseClass::Update` `0x004F92F6`, `0x004F92FD`): a captured silo's
+    /// Super leaves its old owner and charges for the new one.
+    #[test]
+    fn a_captured_superweapon_building_moves_its_weapon() {
+        use crate::rules::ini_parser::IniFile;
+        let ini = IniFile::from_str(
+            "[SuperWeaponTypes]\n1=NukeSpecial\n[NukeSpecial]\nType=MultiMissile\n\
+             RechargeTime=1\nIsPowered=no\n\
+             [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+             [BuildingTypes]\n1=NAMISL\n\
+             [NAMISL]\nStrength=1000\nCost=100\nTechLevel=1\nOwner=Americans\n\
+             SuperWeapon=NukeSpecial\n",
+        );
+        let mut rules = RuleSet::from_ini(&ini).expect("superweapon grant rules should parse");
+        rules.set_buildup_control_for_test("NAMISL", [0, 25, 2]);
+        let mut sim = Simulation::new();
+        let americans = sim.interner.intern("Americans");
+        let russians = sim.interner.intern("Russians");
+        let nuke = sim.interner.intern("NukeSpecial");
+        let weapon = |sim: &Simulation, owner| {
+            sim.super_weapons
+                .get(&owner)
+                .and_then(|weapons| weapons.get(&nuke))
+                .map(|inst| (inst.is_active, inst.charge_start_tick))
+        };
+
+        let silo = sim
+            .spawn_object("NAMISL", "Americans", 10, 10, 0, &rules)
+            .expect("silo spawns");
+        refresh_super_weapons_for_owner(&mut sim, &rules, americans);
+        assert_eq!(weapon(&sim, americans), Some((true, 0)));
+
+        sim.session.binary_frame = 300;
+        sim.change_owner_with_rules(silo, russians, &rules, None);
+        assert_eq!(
+            weapon(&sim, americans),
+            Some((false, -1)),
+            "the old owner loses it"
+        );
+        assert_eq!(
+            weapon(&sim, russians),
+            Some((true, 300)),
+            "the new owner charges"
+        );
     }
 
     /// `HouseClass @ 0x0050AF10` acts on a Super's hold changing

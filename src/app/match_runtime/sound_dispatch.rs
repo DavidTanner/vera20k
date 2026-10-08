@@ -970,7 +970,8 @@ fn base_under_attack_siren(
 }
 
 /// The Ready line `VoxClass::RemoveFromQueues @ 0x00752A40` drops after the
-/// local player's launch: the Iron Curtain's case 1 drops its own
+/// local player's launch: the nuclear missile's case 0 drops its own
+/// (`0x006CDE16`, `EVA_NuclearMissileReady`), the Iron Curtain's case 1 its own
 /// (`0x006CD060`, `EVA_IronCurtainReady`), the Lightning Storm's case 2 its
 /// own (`0x006CCDAB`, `EVA_LightningStormReady`), the Chrono Warp's case 4 the
 /// Chronosphere's (`0x006CCD2D`, `EVA_ChronosphereReady`), the Psychic
@@ -982,13 +983,13 @@ fn base_under_attack_siren(
 /// `EVA_GeneticMutatorReady` (`0x006CDA5D`), the Psychic Reveal
 /// `EVA_PsychicRevealReady` (`0x006CD7DD`); the Force Shield's case 10 its own
 /// (`0x006CD2C6`, `EVA_ForceShieldReady`). Each tail also clears the local
-/// selection (`super_selection::follow_selection_writes`, whose RESIDUAL
-/// lists the cases whose tails neither owner ports yet).
+/// selection (`super_selection::follow_selection_writes`).
 fn launch_drops_ready_line(
     kind: crate::rules::superweapon_type::SuperWeaponKind,
 ) -> Option<&'static str> {
     use crate::rules::superweapon_type::SuperWeaponKind as K;
     match kind {
+        K::MultiMissile => Some("EVA_NuclearMissileReady"),
         K::IronCurtain => Some("EVA_IronCurtainReady"),
         K::LightningStorm => Some("EVA_LightningStormReady"),
         K::ChronoWarp => Some("EVA_ChronosphereReady"),
@@ -1659,35 +1660,43 @@ mod tests {
         );
     }
 
-    /// Cases 1, 9 and 11's lines against `tools/superweapon_oracle.json`
-    /// `iron_curtain_launch`, `genetic_launch` and `psychic_launch`: each
-    /// charged row plays `EVA_IronCurtainActivated` (`0x006CCF21`), or
-    /// `EVA_GeneticMutatorActivated` (`0x006CD8BD`) and then
+    /// Cases 0, 1, 9 and 11's lines against `tools/superweapon_oracle.json`
+    /// `nuke_launch`, `iron_curtain_launch`, `genetic_launch` and
+    /// `psychic_launch`: each launching row plays `DigSound=` (`0x006CDDE9`)
+    /// and `EVA_NuclearMissileLaunched` (`0x006CDE01`), or
+    /// `EVA_IronCurtainActivated` (`0x006CCF21`), or
+    /// `EVA_GeneticMutatorActivated` (`0x006CD8BD`) and
     /// `GeneticMutatorActivateSound=` (`0x006CD8D3`), or only
     /// `PsychicRevealActivateSound=` (`0x006CD7BF`); the player's then drops
-    /// the queued `EVA_IronCurtainReady` (`0x006CD04A..0x006CD060`),
+    /// the queued `EVA_NuclearMissileReady` (`0x006CDE16`),
+    /// `EVA_IronCurtainReady` (`0x006CD04A..0x006CD060`),
     /// `EVA_GeneticMutatorReady` (`0x006CDA5D`) or `EVA_PsychicRevealReady`
-    /// (`0x006CD7DD`), the last two through the shared `0x006CD51E`. The
-    /// mute rows (`0x00A8B538`) are left out: VERA has no such byte (the
-    /// launches' RESIDUAL).
+    /// (`0x006CD7DD`), the last two through the shared `0x006CD51E`. One
+    /// launch event carries a case's sound and line, so case 0's order, its
+    /// sound first, is not compared. Left out: the mute rows (`0x00A8B538`;
+    /// VERA has no such byte, the launches' RESIDUAL). The player's charged
+    /// case 0 rows that find no silo pin the `nuke.rs` RESIDUAL: native drops
+    /// the Ready line, VERA runs no tail.
     #[test]
     fn launch_lines_match_native() {
         let rules =
             crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
                 "[General]\nFixtureOnly=1\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
                  [BuildingTypes]\n[SuperWeaponTypes]\n0=IronCurtainSpecial\n\
-                 1=GeneticConverterSpecial\n2=PsychicRevealSpecial\n\
+                 1=GeneticConverterSpecial\n2=PsychicRevealSpecial\n3=NukeSpecial\n\
                  [IronCurtainSpecial]\nType=IronCurtain\n\
                  [GeneticConverterSpecial]\nType=GeneticConverter\n\
                  [PsychicRevealSpecial]\nType=PsychicReveal\n\
+                 [NukeSpecial]\nType=MultiMissile\n\
                  [AudioVisual]\nGeneticMutatorActivateSound=GeneticMutatorActivate\n\
-                 PsychicRevealActivateSound=PsychicRevealActivate\n",
+                 PsychicRevealActivateSound=PsychicRevealActivate\nDigSound=NukeSiren\n",
             ))
             .unwrap();
         let oracle: serde_json::Value =
             serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
                 .unwrap();
         for (section, name, sound, expected) in [
+            ("nuke_launch", "NukeSpecial", "NukeSiren", 11),
             ("iron_curtain_launch", "IronCurtainSpecial", "", 17),
             (
                 "genetic_launch",
@@ -1707,6 +1716,14 @@ mod tests {
                 if row["mute"] == true {
                     continue;
                 }
+                let events = row["events"].as_array().unwrap();
+                // Case 0 launches only with a silo to fly the missile.
+                let launches = row["charged"] == true
+                    && (section != "nuke_launch"
+                        || events.iter().any(|event| event[0] == "queue_mission"));
+                // nuke.rs RESIDUAL: a charged player's launch without one
+                // still drops the Ready line natively; VERA reports nothing.
+                let residual = row["charged"] == true && !launches && row["player"] == true;
                 let mut sim = Simulation::new();
                 let owner = sim.interner.intern(if row["player"] == true {
                     "Local"
@@ -1714,13 +1731,12 @@ mod tests {
                     "Remote"
                 });
                 let sw_type = sim.interner.intern(name);
-                let launched =
-                    (row["charged"] == true).then_some(SimSoundEvent::SuperWeaponLaunched {
-                        owner,
-                        sw_type,
-                        rx: 40,
-                        ry: 40,
-                    });
+                let launched = launches.then_some(SimSoundEvent::SuperWeaponLaunched {
+                    owner,
+                    sw_type,
+                    rx: 40,
+                    ry: 40,
+                });
                 let mut output = SoundEventQueue::new();
                 dispatch_sim_sound_events(
                     launched,
@@ -1731,7 +1747,7 @@ mod tests {
                     &mut |_| true,
                     &mut output,
                 );
-                let lines: Vec<String> = output
+                let mut lines: Vec<String> = output
                     .drain()
                     .into_iter()
                     .flat_map(|event| match event {
@@ -1749,7 +1765,7 @@ mod tests {
                     })
                     .collect();
                 let mut native = Vec::new();
-                for event in row["events"].as_array().unwrap() {
+                for event in events {
                     match event[0].as_str().unwrap() {
                         "eva" => native.push(format!("eva {}", event[1].as_str().unwrap())),
                         "play_at" => native.push(format!("play {sound}")),
@@ -1757,7 +1773,18 @@ mod tests {
                         _ => {}
                     }
                 }
-                assert_eq!(lines, native, "{row}");
+                if section == "nuke_launch" {
+                    // Case 0 plays DigSound before its line (`0x006CDDE9`,
+                    // `0x006CDE01`); the one launch event carries both.
+                    lines.sort();
+                    native.sort();
+                }
+                if residual {
+                    assert!(lines.is_empty(), "{row}");
+                    assert_eq!(native, ["remove EVA_NuclearMissileReady"], "{row}");
+                } else {
+                    assert_eq!(lines, native, "{row}");
+                }
                 compared += 1;
             }
             assert_eq!(compared, expected, "{section}");

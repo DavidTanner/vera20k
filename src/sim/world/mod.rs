@@ -4925,6 +4925,17 @@ impl Simulation {
         if let Some(rules) = rules {
             self.reapply_building_gap_after_owner_change(stable_id, rules);
         }
+        // `0x0044936E`, `0x00449379`: both houses' `+0x1FC` asks their next
+        // House update for the Super revoke and grant passes
+        // (`0x004F92F6`, `0x004F92FD`); VERA refreshes at the event, as for
+        // a death or a sale.
+        if category == EntityCategory::Structure
+            && self.session.game_options.super_weapons
+            && let Some(rules) = rules
+        {
+            crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, old_owner);
+            crate::sim::superweapon::refresh_super_weapons_for_owner(self, rules, new_owner);
+        }
     }
 
     /// The mission half of `TechnoClass::ChangeOwner @ 0x007014A0`, every

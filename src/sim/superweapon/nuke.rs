@@ -18,17 +18,36 @@
 //! (`ScenarioClass+0x1248`, `[frame, 1]`). Detach calls: none; the anim's
 //! UnInit releases the bullet (`BulletClass::PointerExpired 0x004685BE`).
 //!
+//! The launch ([`launch`]) is compared with native execution in
+//! `tools/superweapon_oracle.py` section `nuke_launch`, replayed in
+//! `nuke_tests.rs`; the app runs the local player's tail (`0x006CDE06..
+//! 0x006CDE27`: the selection cleared, the queued `EVA_NuclearMissileReady`
+//! dropped). Ledger: no Scenario draws or detach calls; the silo's Commence
+//! (`0x005B3570`) restarts its mission clock (`+0xC0`) and update timer
+//! (`+0xC8..+0xD0`) through the mission owner (`queue_and_commence`), and
+//! the recharge restart is ClickFire's.
+//!
 //! RESIDUALS:
 //! - The one-time arm (`0x006CDA88..0x006CDCB3`: a NukePayload bullet
 //!   dropped straight on the cell): VERA grants no one-time Super.
-//! - Presentation for the player's own launch (`0x006CDE06..0x006CDE27`):
-//!   the targeting cursor's type (`0x008809A0`) is cleared and a queued
-//!   `EVA_NuclearMissileReady` line removed.
-//! - `HouseClass+0x1FC` (`0x006CDE2F`) asks the owner's next House update
-//!   for its grant and revoke passes, which change nothing after a launch
-//!   (the silo still stands); VERA refreshes grants at building events.
+//! - A charged launch that finds no silo type (`0x006CDCFA`, `0x006CDD30`)
+//!   or no silo (`0x006CDD44`) still runs the player's tail and sets
+//!   `+0x1FC` (`0x006CDE06`); VERA's launch reports nothing then. Triggers:
+//!   a `MultiMissile` no `NukeSilo=` type names (none in retail, where
+//!   NAMISL names NukeSpecial), or a Super whose silo was lost or captured
+//!   since the owner's last House update; VERA revokes it at that event
+//!   (`refresh_super_weapons_for_owner`), so ClickFire refuses it first.
+//! - `HouseClass+0x1FC` (`0x006CDCDC`, `0x006CDE2F`) asks the owner's next
+//!   House update for its revoke and grant passes, which change nothing
+//!   after a launch (the silo still stands), and, for the local player, for
+//!   each building's construction options (vt+0x4E0) and the sidebar strips
+//!   (`SidebarClass::RecalculateStrips @ 0x006A7D20`), presentation; VERA
+//!   refreshes grants at building events.
 //! - The launch-mute global `0x00A8B538` that skips the EVA line
 //!   (`0x006CDDEE`) is not modeled: the line always plays.
+//! - `DigSound=` plays at the cell (the launch event carries it); native's
+//!   coordinate has the cell's floor height (`0x00578080`). Presentation
+//!   only.
 //! - The impact's wait reads the anim's liveness (`NukeImpactContext`)
 //!   instead of the holder list `0x00B0F5B8` whose PointerExpired clears
 //!   `+0x154`; VERA reuses no anim id, so the two answer alike.
@@ -119,17 +138,17 @@ pub(crate) fn nuke_ball_type(rules: &RuleSet) -> bool {
         .contains(crate::rules::effect_asset_catalog::NUKE_BALL_ANIM)
 }
 
-/// Launch case 0 for `owner`'s Super of type `sw` at `cell`: the first
-/// BuildingType in BuildingTypeClass::Array order with `NukeSilo=`
-/// (`+0x16BA`) whose `SuperWeapon=` (`+0x16F0`) or `SuperWeapon2=`
-/// (`+0x16F4`) is the type's array index (`+0x98`) names the silo type
-/// (`0x006CDCF0..0x006CDD30`); the owner's first building of it
-/// ([`find_building_of_type`]) queues and commences Missile, the owner's
-/// NukeTarget (`+0x5784`) becomes the cell and the silo's firing type
-/// (`+0x5F8`) the type's `Type=` (`0x006CDDA3..0x006CDDD7`). The app plays
-/// `DigSound=` at the cell and `EVA_NuclearMissileLaunched`
-/// (`0x006CDDE9`, `0x006CDE01`) for the launch event. Without such a
-/// building nothing happens.
+/// Launch case 0 for `owner`'s Super of type `sw` at `cell`: a charged
+/// Super (`+0x6F`, `0x006CDA67`) takes the first BuildingType in
+/// BuildingTypeClass::Array order with `NukeSilo=` (`+0x16BA`) whose
+/// `SuperWeapon=` (`+0x16F0`) or `SuperWeapon2=` (`+0x16F4`) is the type's
+/// array index (`+0x98`) as the silo type (`0x006CDCF0..0x006CDD30`); the
+/// owner's first building of it ([`find_building_of_type`]) queues and
+/// commences Missile, the owner's NukeTarget (`+0x5784`) becomes the cell
+/// and the silo's firing type (`+0x5F8`) the type's `Type=`
+/// (`0x006CDDA3..0x006CDDD7`). The app plays `DigSound=` at the cell and
+/// `EVA_NuclearMissileLaunched` (`0x006CDDE9`, `0x006CDE01`) for the launch
+/// event. Without such a building nothing happens (module RESIDUAL).
 pub(super) fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -138,6 +157,9 @@ pub(super) fn launch(
     sw: &SuperWeaponType,
     cell: (u16, u16),
 ) -> bool {
+    if !super::is_charged(sim, owner, sw_type_id) {
+        return false;
+    }
     let Some(index) = rules.super_weapon_index(&sw.id) else {
         return false;
     };

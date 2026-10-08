@@ -197,12 +197,7 @@ pub(super) fn launch(
     sw_type: InternedId,
     (rx, ry): (u16, u16),
 ) -> bool {
-    let charged = sim
-        .super_weapons
-        .get(&owner)
-        .and_then(|weapons| weapons.get(&sw_type))
-        .is_some_and(|instance| instance.is_ready);
-    if !charged {
+    if !super::is_charged(sim, owner, sw_type) {
         return false;
     }
     start(
