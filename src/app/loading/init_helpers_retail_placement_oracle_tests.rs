@@ -20,7 +20,7 @@ use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::power_system::tick_power_states;
 use crate::sim::production::{
-    placement_preview_for_owner_without_overlays, ready_buildings_for_owner,
+    placement_preview_for_owner_with_overlays, ready_buildings_for_owner,
 };
 use crate::sim::world::Simulation;
 
@@ -403,13 +403,14 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         }),
         "blocked retail footprint must contain a map ore overlay"
     );
-    let preview = placement_preview_for_owner_without_overlays(
+    let preview = placement_preview_for_owner_with_overlays(
         &sim,
         &rules,
         OWNER,
         POWER_PLANT,
         fixture.blocked.0,
         fixture.blocked.1,
+        None,
     )
     .expect("stock GAPOWR preview");
     assert!(!preview.valid);
@@ -466,13 +467,14 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         overlay_before
     );
 
-    let preview = placement_preview_for_owner_without_overlays(
+    let preview = placement_preview_for_owner_with_overlays(
         &sim,
         &rules,
         OWNER,
         POWER_PLANT,
         fixture.valid.0,
         fixture.valid.1,
+        None,
     )
     .expect("stock GAPOWR valid preview");
     assert!(preview.valid);

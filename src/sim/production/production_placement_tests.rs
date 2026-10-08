@@ -8,8 +8,8 @@ use crate::rules::foundation::foundation_dimensions;
 use super::{
     BuildingPlacementError, ProductionCategory, ProductionPlacement, credits_for_owner,
     cycle_active_producer_for_owner_category, place_production_with_overlays,
-    placement_preview_for_owner_with_overlays, placement_preview_for_owner_without_overlays,
-    producer_candidates_for_owner_category, publish_production_changes, ready_buildings_for_owner,
+    placement_preview_for_owner_with_overlays, producer_candidates_for_owner_category,
+    publish_production_changes, ready_buildings_for_owner,
 };
 use crate::map::entities::EntityCategory;
 use crate::map::overlay_types::OverlayTypeRegistry;
@@ -901,9 +901,16 @@ fn place_ready_building_accepts_clear_mixed_height_footprint() {
 
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
     assert!(
         preview.valid,
         "mixed clear heights should not reject placement"
@@ -1576,13 +1583,14 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
         }
 
         ready_building(&mut sim, &rules, "Americans", "GAPOWR");
-        let preview = placement_preview_for_owner_without_overlays(
+        let preview = placement_preview_for_owner_with_overlays(
             &sim,
             &rules,
             "Americans",
             "GAPOWR",
             12,
             10,
+            None,
         )
         .expect("ready building should have a preview");
         assert!(!preview.valid, "{blocker_type} must reject the preview");
@@ -1643,13 +1651,14 @@ fn placement_command_rejects_marked_ground_mobiles_until_they_are_unmarked() {
             !sim.substrate.occupancy.contains_entity(13, 11, blocker_id),
             "Limbo must remove the blocker before placement becomes legal"
         );
-        let preview = placement_preview_for_owner_without_overlays(
+        let preview = placement_preview_for_owner_with_overlays(
             &sim,
             &rules,
             "Americans",
             "GAPOWR",
             12,
             10,
+            None,
         )
         .expect("ready building should retain its preview after rejection");
         assert!(
@@ -1690,9 +1699,16 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
     sim.overlay_grid = Some(overlay_grid);
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("ready building should have a preview");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("ready building should have a preview");
     assert!(!preview.valid, "any ordinary nonempty overlay must reject");
     assert_eq!(preview.cell_valid, vec![true, true, true, false]);
 
@@ -1736,9 +1752,16 @@ fn placement_command_rejects_nonblocking_overlay_and_preserves_ready_building() 
         .as_mut()
         .expect("overlay grid retained")
         .clear_overlay(13, 11);
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("ready building should retain its preview after rejection");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("ready building should retain its preview after rejection");
     assert!(
         preview.valid,
         "the same foundation must become legal after the overlay is cleared"
@@ -2708,9 +2731,16 @@ fn placement_preview_reports_out_of_build_area() {
         .ready_by_owner
         .insert(americans, VecDeque::from([gapowr]));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 20, 20)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        20,
+        20,
+        None,
+    )
+    .expect("preview should exist");
     assert!(!preview.valid);
     assert_eq!(preview.reason, Some(BuildingPlacementError::OutOfBuildArea));
 }
@@ -2732,9 +2762,16 @@ fn placement_preview_reports_blocked_terrain() {
         .ready_by_owner
         .insert(americans, VecDeque::from([gapowr]));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
     assert!(!preview.valid);
     assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
 }
@@ -2771,9 +2808,16 @@ fn place_ready_building_rejects_bridge_deck_cells() {
         None
     ));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
     assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
 }
 
@@ -2835,9 +2879,16 @@ fn place_ready_building_rejects_native_gap_restamp_cells() {
         None
     ));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
     assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
     assert!(
         !preview.cell_valid[0],
@@ -2876,9 +2927,16 @@ fn place_ready_building_rejects_canonical_ramp_cells() {
         None
     ));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAPOWR", 12, 10)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
     assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
     assert!(
         sim.resolved_terrain
@@ -2962,9 +3020,16 @@ fn gsi_04_04_water_bound_building_rejects_beach_zone() {
         None
     ));
 
-    let preview =
-        placement_preview_for_owner_without_overlays(&sim, &rules, "Americans", "GAYARD", 20, 20)
-            .expect("preview should exist");
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAYARD",
+        20,
+        20,
+        None,
+    )
+    .expect("preview should exist");
     assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
 }
 
