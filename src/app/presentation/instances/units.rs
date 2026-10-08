@@ -88,53 +88,6 @@ fn vxl_body_tint(
     }
 }
 
-/// UnitClass::DrawVoxelBody's curtain arm (`0x0073BF9C..0x0073BFB8`): while
-/// time is left on the curtain (`IsIronCurtained @ 0x0041BF40`, vt+0x160),
-/// the intensity of the hull, turret and barrel composite goes through
-/// GetEffectTintIntensity, and the composite's blit (vt+0x55C, `0x0073C1A5`)
-/// picks its LightConvert row from it. The parts are drawn into the
-/// composite's 8-bit surface (`0x0073B547`; a 256x256 surface of one byte per
-/// pixel, `0x007473FA..0x0074741C`), where TechnoClass::Draw's own curtain arm
-/// lights nothing. The draw reads the frame Main_Tick renders under; its
-/// render (`0x0055DBBE`) precedes the logic (`0x0055DC9E`) and the increment
-/// (`0x0055DE81`), so that is `sim`'s committed `binary_frame`. VERA's
-/// compatibility tint, for translucent and effect draws, is linear in the
-/// intensity and takes the same ratio. The harvest overlay keeps the unscaled
-/// light: UnitClass::Draw blits it with its own intensity (`0x0073D283`).
-///
-/// RESIDUAL: the rest of DrawVoxelBody's block (`0x0073BF7B..0x0073C15F`).
-/// The flash arm ahead of the curtain's (vt+0x464, `0x0070D190`) reads
-/// TechnoClass+0xF0 (GSI-08.12 in `sim/game_entity.rs`). The curtain ORs the
-/// `IronCurtainColor=` `[ColorAdd]` colour, and a Berzerk unit the
-/// `BerserkColor=` one, into the colour word the blit ORs into each pixel;
-/// VERA draws no colour word. A Deactivated unit (`+0x1C8`, `0x0070FBD0`)
-/// draws at half the intensity. Retail IronCurtainColor=0 selects None,
-/// whose OR is zero.
-fn curtained_body_light(
-    entity: &crate::sim::game_entity::GameEntity,
-    tint: [f32; 3],
-    light: crate::render::palette_light::PaletteLight,
-    sim: &crate::sim::world::Simulation,
-) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
-    let frame = sim.session.binary_frame;
-    let Some(curtain) = entity.invulnerability.as_ref().filter(|curtain| {
-        crate::sim::superweapon::invulnerability::is_invulnerable(Some(curtain), frame)
-    }) else {
-        return (tint, light);
-    };
-    let intensity = light.brightness();
-    let tinted = curtain.effect_tint_intensity(intensity, frame as i32);
-    let ratio = if intensity == 0 {
-        1.0
-    } else {
-        tinted as f32 / intensity as f32
-    };
-    (
-        tint.map(|channel| channel * ratio),
-        light.with_brightness(tinted),
-    )
-}
-
 /// The active `NoSpawnAlt` art id for one Unit draw, if any.
 ///
 /// `UnitClass` reads `NoSpawnAlt`, calls
@@ -435,10 +388,26 @@ pub(crate) fn build_unit_instances(
             state.rules().map_or(0, |r| r.general.extra_unit_light),
             state.rules().map_or(0, |r| r.general.extra_infantry_light),
         );
-        // Voxel aircraft draw through TechnoClass::Draw's arm instead (a
-        // residual in `sim/superweapon/invulnerability.rs`).
+        // UnitClass::DrawVoxelBody's curtain arm (`0x0073BF9C..0x0073BFB8`):
+        // the intensity of the hull, turret and barrel composite, whose blit
+        // (vt+0x55C, `0x0073C1A5`) picks its LightConvert row from it. The
+        // parts are drawn into the composite's 8-bit surface (`0x0073B547`; a
+        // 256x256 surface of one byte per pixel, `0x007473FA..0x0074741C`),
+        // where TechnoClass::Draw's own arm lights nothing. The harvest
+        // overlay keeps the unscaled light: UnitClass::Draw blits it with its
+        // own intensity (`0x0073D283`). Voxel aircraft draw through
+        // TechnoClass::Draw's arm instead (a residual in
+        // `sim/superweapon/invulnerability.rs`).
+        //
+        // RESIDUAL: the rest of DrawVoxelBody's block
+        // (`0x0073BF7B..0x0073C15F`). The curtain ORs the `IronCurtainColor=`
+        // `[ColorAdd]` colour, and a Berzerk unit the `BerserkColor=` one,
+        // into the colour word the composite's blit ORs into each pixel
+        // (retail IronCurtainColor=0 selects None, whose OR is zero); VERA
+        // hands that blit no colour word. A Deactivated unit (`+0x1C8`,
+        // `0x0070FBD0`) draws at half the intensity.
         let (body_tint, body_light) = if entity.category == EntityCategory::Unit {
-            curtained_body_light(entity, tint, palette_light, sim)
+            crate::app::presentation::lighting::curtain_light(entity, tint, palette_light, sim)
         } else {
             (tint, palette_light)
         };
@@ -1761,11 +1730,12 @@ mod tests {
     /// or Deactivated, no caller colour word and retail's IronCurtainColor=0
     /// in the active RGB565 format. The intensity the composite takes, at the
     /// row's frame as the committed `binary_frame`, is the brightness
-    /// [`curtained_body_light`] gives the body, and the colour word VERA does
+    /// [`crate::app::presentation::lighting::curtain_light`] gives the body,
+    /// and the colour word VERA does
     /// not draw has no bit in its 16-bit pixel lane (above it the conversion
     /// leaves stale ECX bits, `0x0073BFFD`). VERA's compatibility tint takes
     /// the intensity's ratio. The other rows are the block's residuals (on
-    /// `curtained_body_light`).
+    /// the call site).
     #[test]
     fn the_curtain_arm_matches_native() {
         let oracle: serde_json::Value =
@@ -1800,7 +1770,8 @@ mod tests {
             let light =
                 crate::render::palette_light::PaletteLight::color_scheme([1000; 3], intensity);
             sim.session.binary_frame = int(&row["frame"]) as u32;
-            let (lit_tint, lit) = curtained_body_light(&unit, tint, light, &sim);
+            let (lit_tint, lit) =
+                crate::app::presentation::lighting::curtain_light(&unit, tint, light, &sim);
             let out = int(&row["out_intensity"]);
             assert_eq!(lit.brightness(), out, "{row}");
             assert_eq!(lit.rows(), light.rows(), "{row}");

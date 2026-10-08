@@ -47,6 +47,27 @@ impl ColorAddTable {
         }
         table
     }
+
+    /// The colour word a draw ORs into its pixels for the entry at `index`, as
+    /// `BuildingClass_DrawBody` converts it (`0x0043D44F..0x0043D4E9`; its other
+    /// readers repeat the conversion): the RGB565 arm of the pixel format
+    /// `0x004BBC90` reports (format 2, the active retail one) falls through the
+    /// other two, so the word is `R<<11 | G<<5 | B`, `R<<11 | (G>>1)<<6 | B` and
+    /// `R<<10 | (G>>1)<<5 | B` together, of which the blitters OR the low 16
+    /// bits (`0x00494CD9`). Executed: `tools/superweapon_oracle.py`
+    /// `building_colour_word`.
+    ///
+    /// RESIDUAL: an index outside the table reads the Rules bytes after it
+    /// natively; VERA answers 0. Retail's indexes are all inside it.
+    pub fn rgb565_word(&self, index: i32) -> u16 {
+        let Some(entry) = usize::try_from(index).ok().and_then(|i| self.slots.get(i)) else {
+            return 0;
+        };
+        let [r, g, b] = entry.rgb.map(u32::from);
+        let word =
+            (r << 11 | g << 5 | b) | (r << 11 | (g >> 1) << 6 | b) | (r << 10 | (g >> 1) << 5 | b);
+        word as u16
+    }
 }
 
 #[cfg(test)]

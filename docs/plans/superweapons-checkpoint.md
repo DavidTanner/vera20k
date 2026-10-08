@@ -59,29 +59,39 @@ confirmed in Ghidra; commit, publish and merge validated chains.
    sections `nuke_impact`, `nuke_wait`, `nuke_flash`, `nuke_lighting_read`, replayed
    in `superweapon/nuke_tests.rs`; production observations
    ([map_observation.md](../../tools/map_observation.md#nuclear-missile-observation)).
-10. The Iron Curtain's tint on voxel units: GetEffectTintIntensity `0x70E360` on the
-    tint stage's owner (`superweapon/invulnerability.rs`) and UnitClass::DrawVoxelBody's
-    curtain arm `0x73BF9C` on the composite's light (`app/presentation/instances/units.rs`).
-    Oracle sections `effect_tint_intensity` and `curtain_draw_arm`, replayed in
+10. The Iron Curtain's tint on voxel units: merged (YuriPlanet/vera20k#1115).
+    GetEffectTintIntensity `0x70E360` on the tint stage's owner
+    (`superweapon/invulnerability.rs`) and UnitClass::DrawVoxelBody's curtain arm
+    `0x73BF9C` (`app/presentation/lighting.rs` `curtain_light`). Oracle sections
+    `effect_tint_intensity` and `curtain_draw_arm`, replayed in
     `invulnerability_tests.rs` and `units.rs`; production observations
     ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
+11. The curtain's tint on buildings and Terror Drones, and the Force Shield's colour:
+    TechnoClass::DrawSHP's arm `0x70631F` (building bodies, bibs, buildup, SHP
+    vehicles), TechnoClass::Draw's `0x70678D` (building voxel turrets), the slot anims'
+    relight `0x451F60`, and the `ForceShieldColor=` word that BuildingClass_DrawBody,
+    BuildingClass::Draw and AnimClass::DrawIt hand their blits, which the tinted
+    blitters OR into each pixel (`app/presentation/lighting.rs`,
+    `render/palette_light.rs`, `render/tactical_draw_plan.rs`). Oracle sections
+    `drawshp_curtain_arm`, `building_colour_word`, `anim_colour_word`,
+    `building_anim_light`, `blit_pickers`, `blitters`, replayed in
+    `app/presentation/curtain_tint_tests.rs`; production observations
+    ([map_observation.md](../../tools/map_observation.md#computer-force-shield-observation)).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The Force Shield's and Iron Curtain's tint on buildings and Terror Drones:
-  TechnoClass::DrawSHP (`0x00706334`: building bodies and the SHP Terror Drone) and the
-  building anim updates scale their intensity by the stage, and TechnoClass::Draw
-  (`0x0070678D`) the building voxel parts' and voxel aircraft's (a residual in
-  `superweapon/invulnerability.rs`).
+- The Force Shield's launch, case 10 `0x6CD072`: `superweapon/force_shield.rs` picks
+  its buildings with no native evidence for the walk.
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold
   `+0x660`, the paradrop plane's Retreat exit `0x415A50` (a residual in
-  `aircraft/paradrop_mission.rs`), and the player tails of Launch cases 0, 1, 2, 9, 10
-  and 11 (a residual in `app/match_runtime/super_selection.rs`).
+  `aircraft/paradrop_mission.rs`), the player tails of Launch cases 0, 1, 2, 9, 10
+  and 11 (a residual in `app/match_runtime/super_selection.rs`), and TechnoClass::Draw's
+  curtain arm for voxel aircraft (a residual in `superweapon/invulnerability.rs`).
 
 The ChronoWarpTo paths (`0x4DF7F0`, `0x522FE0`) are map-trigger only; they stay a
 residual in `superweapon/chronosphere.rs`. The map trigger action

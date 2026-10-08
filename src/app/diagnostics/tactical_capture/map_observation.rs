@@ -2412,6 +2412,30 @@ mod tests {
     }
 
     #[test]
+    fn computer_force_shield_example_answers_the_observers_nuke() {
+        let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
+            "tools/map_observation.ai-force-shield.example.json",
+        ))
+        .unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.observe_super_weapons, Some(true));
+        // The observer's nuke on the computer's yard alerts the computer,
+        // whose Strategy tick fires its charged Force Shield there.
+        let [command] = profile.commands() else {
+            panic!("one launch");
+        };
+        assert_eq!(command.issue_after_step, 9010);
+        assert!(matches!(
+            command.payload,
+            Command::LaunchSuperWeapon {
+                target_rx: 56,
+                target_ry: 56,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn chronosphere_example_warps_the_source_block_with_a_tactical_click() {
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.chronosphere.example.json",

@@ -2064,6 +2064,31 @@ pub(crate) fn coordinate_is_shrouded(
     Ok(true)
 }
 
+/// `0x00487950`: `viewer`'s map shrouds the centre of the Cell at `cell`,
+/// raised to its floor (`0x0047B3A0`): [`coordinate_is_shrouded`] there, a
+/// Cell being open when `viewer` has mapped its ground and the Dummy never.
+/// A query error counts as unshrouded. Callers that test a Cell's own
+/// coordinate (CellClass vt+0x48) against `MapClass::IsShrouded` ask the same.
+pub(crate) fn cell_is_shrouded(
+    fog: &FogState,
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    viewer: InternedId,
+    cell: (u16, u16),
+) -> bool {
+    let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(cells));
+    let terrain = cells.terrain();
+    let open = |cell| {
+        Ok(match cell {
+            crate::map::cell_index::NativeCellIdentity::Real(index) => {
+                let cell = &terrain.cells()[index];
+                fog.is_ground_unshrouded(viewer, cell.rx, cell.ry)
+            }
+            crate::map::cell_index::NativeCellIdentity::Dummy => false,
+        })
+    };
+    matches!(coordinate_is_shrouded(cells, point, &open), Ok(true))
+}
+
 /// A flat fire-leaf reveal of `range` cells around a cell, with no height
 /// shift or height line of sight (fixtures and flat callers).
 pub fn reveal_radius(

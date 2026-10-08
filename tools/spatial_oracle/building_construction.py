@@ -11,7 +11,7 @@ and the Construction mission.
   counter advanced, on the slave_manager fixture's refinery (a 2x2 building on
   the harvest_field map) with a supplied construction control at Type+0xF04.
   Per frame: the stage (+0xF8) and the animation-complete byte (+0x6DD). The
-  presentation callees BuildingClass::UpdateAnimFacingAndDirection 0x451F60,
+  presentation callees BuildingClass::UpdateSlotAnimLighting 0x451F60,
   SetAnimRemap 0x452170, 0x456FB0 and TechnoClass 0x705D70 (whose result only
   feeds the first) are answered.
 - `mission` rows: BuildingClass::Mission_Construction (0x449A50) visit by visit

@@ -784,6 +784,52 @@ steps (state hash `8142462839629644773`). These are Rust production observations
 chains' native comparisons are the `tools.superweapon_oracle` `team_super_actions` and
 `iron_tint` rows, and no whole-run timing or pixel equivalence with gamemd is claimed.
 
+## Computer Force Shield observation
+
+[`map_observation.ai-force-shield.example.json`](map_observation.ai-force-shield.example.json)
+starts Russia/Battle against a Russia computer opponent (`Computer1`, Hard) with stock
+rules and assets on an [authored map](map_observation/examples/ai_force_shield.map) laid
+out as the Iron Curtain one: the computer's NACNST at (54,54), NATECH at (58,54), NAPOWR
+at (54,58) and (58,58) and NAWEAP at (64,52); the observer's NACNST at (32,33), NAMISL
+at (37,33) and NAPOWR at (32,38) and (36,38). `IgnoreGlobalAITriggers=yes` keeps the
+computer from forming attack teams, and Hard gives it `AISuperDefenseProbability=` 90.
+An ordinary `LaunchSuperWeapon` at step 9010 fires the observer's NukeSpecial (interned
+id 35 on this map) at (56,56), on the computer's yard. `observe_super_weapons` adds the
+Super rows; NATECH and NAMISL are the observed types (a yard's anim slots would
+overrun the sample budget). Run a profile copy whose `launch.selected_map_file` is the
+tracked map's absolute path.
+
+With release binary SHA-256
+`e65fac54591a8405192a8d9198eb8a08535da3a0ba330d033f0435e51bb7f857`
+(31,948,912 bytes) and map SHA-256
+`c5b3433fc335d7e2c79367678e7ab0ae886aeb4ff4d640fb748dea85abd434ab`, the computer's
+ForceShieldSpecial is ready from step 4501 and the observer's NukeSpecial from 9001.
+The launch at 9010 alerts the computer (`superweapon/fire.rs`), which defends its first
+yard's cell, (56,56); at frame 9013 its Strategy tick fires the Force Shield there, and
+the four pre-placed buildings within its radius take it (`logs/ra2.log`: "4 buildings
+protected"). The computer's Super is on hold from step 9016 (the shield's blackout).
+Copies with `camera_cell` (57,57) show the shielded buildings beside the computer's
+unshielded ones. At 9012, before the shield, all draw at their cell's light (state hash
+`17972650168677372902`, BGRA
+`d3432ae1d9f0813391cc7e84a12b5227a44c26e8239f9d1dc28002fc709510e5`). At 9020 the four
+draw washed bright and blue: tint stage 2's doubled intensity, with
+`ForceShieldColor=`'s HighBlue word ORed into each pixel (`13441131792540220492`,
+`06c2d859bbcbec2c5ef0ec7fd613660642ae7bb983490f4828302b8a5d66e5f7`). At 9100, in the
+dark stages, they draw as blue silhouettes (`10592497185235827165`,
+`23f5121b7bf1ec5ef501ef6742fee69929f56ad2aa02d7cb06466c1752083a0a`). At 9440 the
+warhead has struck under the shield and NATECH keeps its 500 health
+(`2335849682608548987`,
+`55f9dd93a2cd06d6670da38845f5721b9835b5f3f574e3bc0dd64e9750881506`). The 9600-step
+run ends after the shield's 500 frames, with the four at their cell's light again
+(`13642096462844057233`,
+`442c7cb04d708ef84db95eccce94c12be2227f7be5e9e5d6c878165f63119c07`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps
+(state hash `8142462839629644773`). These are Rust production observations: the
+chain's native comparisons are the
+`tools.superweapon_oracle` `drawshp_curtain_arm`, `building_colour_word`,
+`anim_colour_word`, `building_anim_light`, `blit_pickers` and `blitters` rows, and no
+pixel equivalence with gamemd is claimed.
+
 ## Siege Chopper deployment observation
 
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)

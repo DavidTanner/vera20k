@@ -24,8 +24,11 @@ pub(crate) fn house_color_rgb(
     crate::render::native_surface_format::RGB565.unpack_rgb8(word)
 }
 
-/// RGB scale uses bits 0..17; red's high byte stores N, green bit 31 the
-/// ColorScheme mask. The fourth word retains the signed brightness argument.
+/// RGB scale uses bits 0..17; red's high byte stores N, green bit 30 the
+/// plain-Convert flag and bit 31 the ColorScheme mask. Bits 18.. of each
+/// channel word carry that channel's part of the colour word
+/// ([`Self::with_colour_word`]). The fourth word retains the signed brightness
+/// argument.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PaletteLight(pub [u32; 4]);
@@ -89,6 +92,23 @@ impl PaletteLight {
         self
     }
 
+    /// The colour word the blit ORs into each pixel it draws, after the
+    /// conversion (`0x00494CD9`, `0x00498293`, `0x004993C2`): red's five
+    /// bits ride bits 18..23 of the red word, green's six bits 18..24 of the
+    /// green word and blue's five bits 18..23 of the blue word.
+    pub fn with_colour_word(mut self, word: u16) -> Self {
+        let word = u32::from(word);
+        self.0[0] = self.0[0] & !(0x1F << 18) | (word >> 11 & 0x1F) << 18;
+        self.0[1] = self.0[1] & !(0x3F << 18) | (word >> 5 & 0x3F) << 18;
+        self.0[2] = self.0[2] & !(0x1F << 18) | (word & 0x1F) << 18;
+        self
+    }
+
+    pub fn colour_word(self) -> u16 {
+        ((self.0[0] >> 18 & 0x1F) << 11 | (self.0[1] >> 18 & 0x3F) << 5 | (self.0[2] >> 18 & 0x1F))
+            as u16
+    }
+
     pub fn rows(self) -> u32 {
         self.0[0] >> 24
     }
@@ -128,7 +148,13 @@ impl PaletteLight {
                 ((u32::from(rgb[i]) * (scale[i] >> 4)) >> 12).min(255)
             }
         });
-        (((lit[0] >> 3) << 11) | ((lit[1] >> 2) << 5) | (lit[2] >> 3)) as u16
+        let word = (((lit[0] >> 3) << 11) | ((lit[1] >> 2) << 5) | (lit[2] >> 3)) as u16;
+        // A blitter never draws index 0, so no word reaches it.
+        if source_index == 0 {
+            word
+        } else {
+            word | self.colour_word()
+        }
     }
 }
 

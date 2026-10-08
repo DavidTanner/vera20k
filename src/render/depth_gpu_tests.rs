@@ -1278,6 +1278,70 @@ fn native_palette_tables_match_all_ordinary_shader_pixels() {
     }
 }
 
+/// The colour word a draw's [`super::palette_light::PaletteLight`] carries
+/// reaches every ordinary shader's pixels ORed into the native RGB565 word
+/// after the conversion, as the tinted blitters OR it (`0x00494CD9`,
+/// `0x00498293`, `0x004993C2`; `tools/superweapon_oracle.py` `blitters`),
+/// and never reaches a source hole.
+#[test]
+#[ignore = "requires a wgpu adapter; run explicitly"]
+fn colour_word_ors_into_every_ordinary_shader_pixel() {
+    use super::native_surface_format::ACTIVE_RETAIL_RGB565_PRESENTATION;
+    use super::palette_light::{PaletteLight, native_fixtures, native_row};
+    let gpu = Gpu::new();
+    let rgba: Vec<u8> = (0..=255u8)
+        .flat_map(|i| [i, i.wrapping_mul(73), 255 - i, if i == 0 { 0 } else { 255 }])
+        .collect();
+    let fixture = native_fixtures()
+        .into_iter()
+        .find(|f| f.house && f.rows == 53)
+        .unwrap();
+    let row = 26;
+    let brightness = (0..=2000)
+        .find(|b| native_row(*b, 127, fixture.rows) == row)
+        .unwrap();
+    for colour in [0x0018u16, 0xE000, 0xE798] {
+        for shader in [
+            Shader::Batch,
+            Shader::SpriteRead,
+            Shader::SpriteWrite,
+            Shader::Voxel,
+        ] {
+            let mut layer = Layer::solid(shader, RED, 0.0);
+            layer.source_size = [256, 1];
+            layer.rgba.clone_from(&rgba);
+            layer.z_bytes = vec![0; 256];
+            layer.indices = (0..=255u8).collect();
+            layer.palette_override = Some(rgba.clone());
+            layer.instance.size = [256.0, 1.0];
+            layer.instance.palette_light =
+                PaletteLight::new(fixture.rgb, fixture.rows, brightness, fixture.house)
+                    .with_colour_word(colour);
+            let actual = gpu.render_sized(&[layer], [256, 1]);
+            for (index, got) in actual.iter().enumerate() {
+                let offset = (row as usize * 256 + index) * 2;
+                let word = if index == 0 {
+                    0
+                } else {
+                    u16::from_le_bytes(fixture.bytes[offset..offset + 2].try_into().unwrap())
+                        | colour
+                };
+                let stored = [
+                    ((word >> 11) as u8) << 3,
+                    (((word >> 5) & 63) as u8) << 2,
+                    ((word & 31) as u8) << 3,
+                    255,
+                ];
+                assert_eq!(
+                    *got,
+                    ACTIVE_RETAIL_RGB565_PRESENTATION.quantize_rgba8(stored),
+                    "{shader:?}, colour {colour:#06x}, index {index}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 #[ignore = "requires a GPU adapter"]
 fn native_shp_loader_atlas_palette_indices_reach_production_pixels() {
