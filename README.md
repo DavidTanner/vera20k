@@ -39,7 +39,7 @@ and several weapons and effects need more work. We haven't demonstrated 30-playe
 
 ## Build and run
 
-You need Rust 1.88 or newer, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
+You need current stable Rust, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
 VERA20k has been played on Windows, Linux and macOS.
 
 ```sh
@@ -57,8 +57,8 @@ Use `--release` to play; debug builds are too slow. See
 
 Most of the code is written by AI coding agents that I direct. We use Ghidra to study the
 original engine, then port its behavior to Rust and check it with
-[comparison tools](tools/native_oracle.md) and playtesting. The working rules are in
-[AGENTS.md](AGENTS.md).
+[comparison tools](tools/native_oracle.md) and playtesting. My agents follow
+[AGENTS.md](AGENTS.md). Contributors follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 
