@@ -10,10 +10,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
-use crate::map::cell_tags::CellTagMap;
 use crate::map::houses::{HouseColorMap, HouseRoster};
 use crate::map::overlay::TerrainObject;
-use crate::map::tags::TagMap;
 use crate::map::terrain::TerrainGrid;
 use crate::render::bridge_atlas::BridgeAtlas;
 use crate::render::bridge_railing_atlas::BridgeRailingAtlas;
@@ -63,8 +61,6 @@ pub(crate) struct MatchPresentationState {
     pub(crate) overlays: crate::app::presentation::overlay_index::OverlayRenderIndex,
     /// Terrain objects from map for per-frame instance generation.
     pub(crate) terrain_objects: Vec<TerrainObject>,
-    pub(crate) cell_tags: CellTagMap,
-    pub(crate) tags: TagMap,
     /// Overlay ID → type name mapping for atlas lookups at render time.
     pub(crate) overlay_names: BTreeMap<u8, String>,
     /// Exact SHP frame-header radar RGB for each native-selected overlay frame.

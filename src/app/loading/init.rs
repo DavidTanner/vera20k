@@ -39,7 +39,6 @@ use crate::assets::asset_manager::MediaArchiveMode;
 use crate::assets::shp_file::ShpFile;
 use crate::map::actions::ActionMap;
 use crate::map::basic::{BasicSection, BridgeDestroyabilityMode};
-use crate::map::cell_tags::CellTagMap;
 use crate::map::events::EventMap;
 use crate::map::houses::{self, HouseColorMap, HouseRoster};
 use crate::map::lighting::{self, CellLightGrid, LightingConfig};
@@ -49,7 +48,6 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::source::{
     LoadedMap, LoadedMapSource, load_map_by_name_or_path_with_assets, try_load_mmx,
 };
-use crate::map::tags::TagMap;
 use crate::map::terrain::{self, LocalBounds, TerrainGrid};
 use crate::map::theater;
 use crate::map::trigger_graph::TriggerGraph;
@@ -1527,8 +1525,6 @@ pub struct ScenarioLoadInputs {
     /// Terrain objects for per-frame instance generation.
     pub terrain_objects: Vec<TerrainObject>,
     pub waypoints: HashMap<u32, Waypoint>,
-    pub cell_tags: CellTagMap,
-    pub tags: TagMap,
     pub triggers: TriggerMap,
     pub events: EventMap,
     pub actions: ActionMap,
@@ -3377,8 +3373,6 @@ pub(crate) fn load_map_from_initial(
             overlays: overlays_connected,
             terrain_objects: map_data.terrain_objects,
             waypoints: map_data.waypoints,
-            cell_tags: map_data.cell_tags,
-            tags: map_data.tags,
             triggers: map_data.triggers,
             events: map_data.events,
             actions: map_data.actions,

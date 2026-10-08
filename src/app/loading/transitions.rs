@@ -64,8 +64,6 @@ pub(crate) fn fallback_map_load_result() -> init::MapLoadResult {
             overlays: Vec::new(),
             terrain_objects: Vec::new(),
             waypoints: HashMap::new(),
-            cell_tags: HashMap::new(),
-            tags: HashMap::new(),
             triggers: HashMap::new(),
             events: HashMap::new(),
             actions: HashMap::new(),
@@ -245,8 +243,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         .overlays
         .replace_from_source(result.scenario.overlays);
     state.match_state.match_presentation.terrain_objects = result.scenario.terrain_objects;
-    state.match_state.match_presentation.cell_tags = result.scenario.cell_tags;
-    state.match_state.match_presentation.tags = result.scenario.tags;
     state.match_state.match_presentation.overlay_names = result.presentation.overlay_names;
     state.match_state.match_presentation.overlay_radar_colors =
         result.presentation.overlay_radar_colors;

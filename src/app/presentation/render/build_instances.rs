@@ -13,7 +13,7 @@ use crate::app::input::commands::preferred_local_owner;
 use crate::app::presentation::instances;
 use crate::app::presentation::sidebar_render::{
     active_minimap_screen_rect, build_sidebar_cameo_instances, build_sidebar_chrome_instances,
-    build_sidebar_instances as sidebar_inst_fn, build_sidebar_text_instances, current_sidebar_view,
+    build_sidebar_text_instances, current_sidebar_view,
 };
 use crate::app::presentation::ui_overlays::{
     build_bomb_clock_instances, build_building_radius_ring_instances,
@@ -86,7 +86,6 @@ pub(super) struct UiInstances {
 
 /// Sidebar chrome, cameos, text, minimap, and radar animation.
 pub(super) struct SidebarInstances {
-    pub sidebar: Vec<SpriteInstance>,
     pub chrome: Vec<SpriteInstance>,
     pub cameo: Vec<SpriteInstance>,
     pub gclock: Vec<SpriteInstance>,
@@ -794,10 +793,6 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
         (Vec::new(), Vec::new(), Vec::new())
     };
 
-    let sidebar = view
-        .as_ref()
-        .map(|v| sidebar_inst_fn(state, v))
-        .unwrap_or_default();
     let chrome = view
         .as_ref()
         .map(|v| build_sidebar_chrome_instances(state, v))
@@ -879,7 +874,6 @@ pub(super) fn build_sidebar_instances(state: &mut AppState) -> SidebarInstances 
     let radar_anim = build_radar_anim_instance(state);
 
     SidebarInstances {
-        sidebar,
         chrome,
         cameo,
         gclock,

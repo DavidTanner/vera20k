@@ -659,18 +659,6 @@ pub(super) fn dispatch_draw_passes(
         &mut pass,
         &state.renderer.batch_renderer,
         pool,
-        state
-            .match_state
-            .match_presentation
-            .minimap
-            .as_ref()
-            .map(|m| m.white_texture()),
-        "sidebar",
-    );
-    draw_pooled_ui(
-        &mut pass,
-        &state.renderer.batch_renderer,
-        pool,
         current_sidebar_chrome_texture(state),
         "sidebar_chrome",
     );
@@ -1123,7 +1111,6 @@ mod tests {
 
     #[test]
     fn gsi_04_01_retained_sidebar_radar_subpass_ends_with_content_boundary() {
-        let sidebar = source_offset("\"sidebar\"");
         let chrome = source_offset("\"sidebar_chrome\"");
         let cameo = source_offset("\"sidebar_cameo\"");
         let gclock = source_offset("\"sidebar_gclock\"");
@@ -1135,7 +1122,6 @@ mod tests {
         let boundary = source_offset("\"radar_content_boundary\"");
         let message = source_offset("\"message_text\"");
 
-        assert!(sidebar < chrome);
         assert!(chrome < cameo);
         assert!(cameo < gclock);
         assert!(gclock < cameo_overlay);
@@ -1152,7 +1138,6 @@ mod tests {
         // strata begin.
         let retained_tail = &SOURCE[boundary..message];
         for later_retained_batch in [
-            "\"sidebar\"",
             "\"sidebar_chrome\"",
             "\"sidebar_cameo\"",
             "\"sidebar_gclock\"",
