@@ -78,7 +78,7 @@ confirmed in Ghidra; commit, publish and merge validated chains.
     `building_anim_light`, `blit_pickers`, `blitters`, replayed in
     `app/presentation/curtain_tint_tests.rs`; production observations
     ([map_observation.md](../../tools/map_observation.md#computer-force-shield-observation)).
-12. The Force Shield's launch: Launch case 10 `0x6CD072` (`superweapon/force_shield.rs`):
+12. The Force Shield's launch: merged (YuriPlanet/vera20k#1121). Launch case 10 `0x6CD072` (`superweapon/force_shield.rs`):
     the BuildingClass::Array walk (IsAlliedWith `0x4F9A50` asked of each building's
     owner, a 3D Distance3D below the radius, the two skipped coordinates), the
     deck coordinate shared with cases 1, 3, 4 and 9 (`superweapon::deck_coords`), the
@@ -89,6 +89,22 @@ confirmed in Ghidra; commit, publish and merge validated chains.
     `super_fade`, replayed in `superweapon/force_shield_tests.rs`; production
     observation
     ([map_observation.md](../../tools/map_observation.md#computer-force-shield-observation)).
+
+13. In progress (`feature/lightning-storm-clouds`): the Lightning Storm's storm,
+    replacing VERA's countdown model (`superweapon/lightning_storm.rs`). Native:
+    Start `0x539EB0` (retarget, deferment, the null cell's random pick, radar event 13,
+    each enemy's CreateRadarOutage `0x50BCD0`), Process `0x53A742..` (three anim lists:
+    clouds manifesting strike once the stage passes half the SHP's frames, clouds present
+    end the storm and space the scatter; `Frame % LightningHitDelay`/`ScatterDelay`;
+    three scatter tries within `LightningCellSpread>>1` from Scenario Random; the
+    countdown's 225-frame EVA_LightningStormCreated), CreateCloudBolt `0x53A140`
+    (cloud height from the first bolt SHP's half height through `0x6D2120`),
+    GroundStrike `0x53A300` (bolt, LightningSounds draw, explosion `0x48A4F0`, flash
+    `0x48A620`, Apply_area_damage, MetallicDebris 2..4 unless infantry). The radar outage
+    timer House+2B0 (`power_system.rs` PowerState; expiry at `0x4F8490..0x4F84D2`,
+    availability `0x508DF0`). Rules: ctor defaults 250/200/900/90/10/10/3
+    (`0x66767E..0x6676C2`), no clamps; WeatherConClouds/Bolts lists (`0x66DD28`,
+    `0x66DE2B`, as MetallicDebris).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
