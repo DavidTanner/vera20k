@@ -936,6 +936,20 @@ impl TeamScriptVm {
         self.rejoin_team.retain(|_, team| *team != team_id);
     }
 
+    /// `entity_id`'s team (Foot `+0x5D4`), if any, is leaving the map
+    /// (`TeamClass+0x82`): Fly's playfield latch writes it for a retreating
+    /// aircraft and its passengers leaving the map (`0x004CD59F`,
+    /// `0x004CD5CC`).
+    pub(crate) fn mark_member_team_leaving_map(&mut self, entity_id: u64) {
+        if let Some(team) = self
+            .member_team
+            .get(&entity_id)
+            .and_then(|team_id| self.teams.get_mut(team_id))
+        {
+            team.leaving_map = true;
+        }
+    }
+
     /// The object's destructor: its team to rejoin goes with it.
     pub(crate) fn object_deleted(&mut self, entity_id: u64) {
         self.rejoin_team.remove(&entity_id);
@@ -1127,7 +1141,8 @@ impl TeamScriptVm {
             // The retained type gate changes the Foot getter and future paths.
             // Preserve the historical false gate while hashing each active
             // true override with its Team identity (the surrounding id feed).
-            if team.team_type_id
+            if team
+                .team_type_id
                 .and_then(|id| self.team_type_ini.get(&id))
                 .is_some_and(|metadata| metadata.avoid_threats)
             {
@@ -1385,9 +1400,9 @@ pub(crate) fn join_team_for_test(
 #[cfg(test)]
 mod oracle_tests;
 #[cfg(test)]
-mod recruit_oracle_tests;
-#[cfg(test)]
 mod path_threat_input_tests;
+#[cfg(test)]
+mod recruit_oracle_tests;
 
 #[cfg(test)]
 mod tests {

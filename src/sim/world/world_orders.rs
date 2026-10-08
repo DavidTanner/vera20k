@@ -352,6 +352,7 @@ impl Simulation {
                 };
                 if entity.attack_target.is_some()
                     || entity.movement_target.is_some()
+                    || crate::sim::movement::air_movement::fly_moving(entity)
                     || entity.ai_frozen()
                     || !super::techno_ai::mission_handlers_run(self, id)
                 {

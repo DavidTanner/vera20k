@@ -73,11 +73,11 @@ pub enum AircraftMission {
         airfield_id: u64,
     },
 
-    /// Docking at an airfield — descending, reloading, launching.
+    /// Docking at an airfield — descending, reloading.
     Docking {
         /// Target airfield entity stable_id.
         airfield_id: u64,
-        /// 0=wait_for_dock, 1=descending, 2=reloading, 3=launching
+        /// 0=wait_for_dock, 1=descending, 2=reloading
         sub_state: u8,
         /// Frame-anchored gate until the next ammo point is restored (during
         /// reloading); was a per-tick `u32` countdown.
@@ -391,8 +391,6 @@ struct MissionMutation {
     self_destruct: bool,
     /// Fly BeginLanding4CFA70 through the world owner, after the mission write.
     begin_landing: bool,
-    /// Fly BeginTakeoff4CF950 through the world owner.
-    begin_takeoff: bool,
 }
 
 impl MissionMutation {
@@ -407,7 +405,6 @@ impl MissionMutation {
             assign_destination: None,
             self_destruct: false,
             begin_landing: false,
-            begin_takeoff: false,
         }
     }
 }
@@ -545,7 +542,7 @@ fn mission_step(
                     sub_state: 0,
                     reload_timer: MissionTimer::default(),
                 };
-            } else if entity.movement_target.is_none() {
+            } else if !crate::sim::movement::air_movement::fly_moving(entity) {
                 m.move_to = Some((dock_rx, dock_ry));
             }
         }
@@ -635,13 +632,13 @@ fn mission_step(
                     if reload_timer.due(now) {
                         m.ammo_delta = 1;
                         if ammo_current + 1 >= ammo_max {
-                            // Fully reloaded → release the pad and launch.
-                            sim.release_airfield_pad(id);
-                            m.begin_takeoff = true;
-                            m.new_mission = AircraftMission::Docking {
+                            // Fully reloaded, it stays on its pad: native
+                            // Mission_Guard (`0x0041A5C0`) keeps a landed
+                            // aircraft in radio contact without a Target
+                            // waiting; an order releases it
+                            // (`release_docked_idle`).
+                            m.new_mission = AircraftMission::DockedIdle {
                                 airfield_id: *airfield_id,
-                                sub_state: 3,
-                                reload_timer: MissionTimer::default(),
                             };
                         } else {
                             m.new_mission = AircraftMission::Docking {
@@ -652,12 +649,6 @@ fn mission_step(
                         }
                     }
                     // Otherwise the same frame-anchored timer carries over.
-                }
-                3 => {
-                    // Launching — wait for cruising altitude.
-                    if air_phase == Some(AirMovePhase::Cruising) {
-                        m.new_mission = AircraftMission::Idle;
-                    }
                 }
                 _ => {
                     m.new_mission = AircraftMission::Idle;
@@ -670,8 +661,9 @@ fn mission_step(
             if native_move(entity, mission) {
                 let (mission, idle) = sim.aircraft_move(id, *sub_state, rules, registry);
                 end_visit(sim, rules, id, mission, idle, &mut m)?;
-            } else if entity.movement_target.is_none() {
-                // VERA's Attack Move stand-in ends on arrival.
+            } else if !crate::sim::movement::air_movement::fly_moving(entity) {
+                // VERA's Attack Move stand-in ends once its Fly no longer
+                // moves: a landing at its destination.
                 m.new_mission = AircraftMission::Idle;
             }
         }
@@ -850,10 +842,6 @@ fn apply_mission_mutation(
     if m.begin_landing {
         sim.begin_fly_landing(m.id, Some(rules));
     }
-    if m.begin_takeoff {
-        sim.begin_fly_takeoff(m.id, Some(rules));
-    }
-
     if let Some(destination) = m.assign_destination {
         sim.assign_aircraft_destination(m.id, Some(destination), rules);
     }

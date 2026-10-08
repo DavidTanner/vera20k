@@ -525,7 +525,8 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     .and_then(|l| l.fly_runtime())
                     .is_some_and(|s| s.landing()),
                 arrived: crate::sim::movement::air_movement::fly_landing_arrival(e),
-                has_movement_target: e.movement_target.is_some(),
+                has_movement_target: e.movement_target.is_some()
+                    || crate::sim::movement::air_movement::fly_moving(e),
             })
         })
         .collect();

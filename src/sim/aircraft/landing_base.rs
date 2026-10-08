@@ -1,4 +1,5 @@
-//! Aircraft auxiliary41B6A0: the live landing base in leptons.
+//! IFlyControl's landing queries: the live landing base in leptons
+//! (`0x0041B6A0`) and the landing direction (`0x0041B760`).
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
@@ -53,6 +54,44 @@ pub(crate) fn landing_base(
     } else {
         0
     }
+}
+
+/// `AircraftClass::Landing_Direction @ 0x0041B760` (IFlyControl `+0x10`):
+/// the direction of eight an aircraft lands facing. In radio contact
+/// (`0x0065AE30`) it is the slot-0 contact's (`0x0065AD40`) PrimaryFacing
+/// (`+0x388`) current value; with passengers (`+0x118`) the aircraft's own
+/// Secondary (`+0x3A0`); otherwise Rules PoseDir (`+0x44`), returned raw.
+/// A facing rounds as `((raw >> 12) + 1) >> 1`, low three bits.
+///
+/// A contact in a later slot with slot 0 empty would make native read a
+/// facing at address `0x388`; aircraft radios hold one slot, so VERA reads
+/// that case as no contact.
+pub(crate) fn landing_direction(
+    entity: &GameEntity,
+    entities: &EntityStore,
+    frame: u32,
+    pose_dir: i32,
+) -> i32 {
+    let dir8 = |facing: u16| ((i32::from(facing) >> 12) + 1) >> 1 & 7;
+    if !entity.radio_contacts.is_empty()
+        && let Some(contact) = entity
+            .radio_contacts
+            .slot(0)
+            .and_then(|id| entities.get(id))
+    {
+        return dir8(contact.body_facing.current(frame));
+    }
+    if entity
+        .passenger_role
+        .cargo()
+        .is_some_and(|cargo| cargo.count() != 0)
+    {
+        return entity
+            .barrel_facing
+            .as_ref()
+            .map_or(0, |facing| dir8(facing.current(frame)));
+    }
+    pose_dir
 }
 
 #[cfg(test)]

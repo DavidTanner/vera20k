@@ -1018,6 +1018,13 @@ fn install_fly_aircraft(sim: &mut Simulation, stable_id: u64, altitude: SimFixed
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
     locomotor.altitude = altitude;
     locomotor.set_fly_target_height(altitude.to_num::<i32>());
+    // Process steps the height of a moving Fly only (`0x004CDA0B`); a null
+    // destination keeps Horizontal_Step and the landing drift out of it.
+    locomotor.fly_runtime_mut().unwrap().retain_destination(
+        crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 },
+        None,
+        || 0,
+    );
     sim.substrate
         .entities
         .get_mut(stable_id)
@@ -1820,7 +1827,17 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
         "Fly's temporary cell-list transaction is not an air-vector re-entry"
     );
 
-    sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
+    // The tracker follows a cell change of a Fly whose current speed is not
+    // zero (`0x004CD60E..0x004CD65F`); without a type Speed it stays put.
+    let aircraft = sim.substrate.entities.get_mut(20).unwrap();
+    aircraft.position.rx = 12;
+    aircraft
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .fly_runtime_mut()
+        .unwrap()
+        .current_speed = SimFixed::from_num(1);
     sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket(), shared_bucket);
@@ -7558,10 +7575,16 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
 
 #[test]
 fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
-    use crate::util::fixed_math::SIM_ONE;
+    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     // Fly4CDD07/4CDD1A: XY integration precedes physical-height feedback.
-    // Rates remain the existing fixed-point adapter policy.
+    // Speed 100 is the 255-lepton cap (`0x0071465F`), one cell in a frame.
+    let rules =
+        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+            "[AircraftTypes]\n0=TEST\n[TEST]\nSpeed=100\nLandable=yes\n\
+             Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n",
+        ))
+        .unwrap();
     for (origin_level, destination_level) in [(0, 2), (2, 0)] {
         let mut sim = Simulation::with_seed(0);
         assert_eq!(sim.allocate_stable_id(), 1);
@@ -7589,8 +7612,8 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         let fly = loco.fly_runtime_mut().unwrap();
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
-        assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
-        sim.tick_air_movement_with_cell_lists_one(1, None, None);
+        assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), Some(&rules)));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7602,8 +7625,12 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             entity.locomotor.as_ref().unwrap().altitude.to_num::<i32>(),
             moved_z - destination_ground,
         );
-        entity.movement_target = None;
+        // Stopped over its destination's cell, as the arrival leaves it, the
+        // Fly lands there (`0x004CE3C0`'s Begin_Landing).
         let loco = entity.locomotor.as_mut().unwrap();
+        let fly = loco.fly_runtime_mut().unwrap();
+        fly.current_speed = SIM_ZERO;
+        fly.target_speed = SIM_ZERO;
         loco.begin_fly_landing();
         loco.set_fly_target_height(0);
 
@@ -7621,7 +7648,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, None, None);
+                instance.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();

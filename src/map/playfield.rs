@@ -164,6 +164,26 @@ pub(crate) const fn size_diamond_contains(width: i32, height: i32, cell: (i16, i
         && sum <= width.wrapping_add(height.wrapping_mul(2))
 }
 
+/// `MapClass @ 0x00565660`, the inverse of [`local_to_packed_cell`]: a
+/// cell's LocalSize-relative coordinate. With `w` the `Size=` width
+/// (`+0xF4`), X is `(x - y + (w & 1)) >> 1` (arithmetic shift) plus `w / 2`
+/// (toward zero) less the LocalSize left (`+0xFC`), Y is `y - w + x` less
+/// the LocalSize top (`+0x100`), each kept as a signed 16-bit word.
+pub(crate) const fn cell_to_local_packed(bounds: PlayfieldBounds, cell: (i16, i16)) -> (i16, i16) {
+    let x = cell.0 as i32;
+    let y = cell.1 as i32;
+    let half = x.wrapping_sub(y).wrapping_add(bounds.base & 1) >> 1;
+    let local_x = (half as i16)
+        .wrapping_add((bounds.base / 2) as i16)
+        .wrapping_sub(bounds.off_fc as i16);
+    let local_y = cell
+        .1
+        .wrapping_sub(bounds.base as i16)
+        .wrapping_add(cell.0)
+        .wrapping_sub(bounds.off_100 as i16);
+    (local_x, local_y)
+}
+
 /// Convert one LocalSize-relative coordinate through active
 /// `MapClass::LocalToCell @ 0x005654A0`.
 ///

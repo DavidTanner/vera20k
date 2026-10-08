@@ -162,11 +162,18 @@ impl Simulation {
                 air_spatial_tracks_entity(entity)
             };
         let cell = (entity.position.rx as i16, entity.position.ry as i16);
+        // Fly Process follows a cell change itself, at its next visit
+        // (`0x004CD60E..0x004CD65F`).
+        let fly = entity
+            .locomotor
+            .as_ref()
+            .is_some_and(|locomotor| locomotor.fly_runtime().is_some());
         match (tracked, desired) {
             (false, false) => {}
             (false, true) => self.aircraft_tracker_add(id),
             (true, false) => self.aircraft_tracker_remove(id),
-            (true, true) => self.aircraft_tracker_update_cell(id, cell),
+            (true, true) if !fly => self.aircraft_tracker_update_cell(id, cell),
+            (true, true) => {}
         }
     }
 

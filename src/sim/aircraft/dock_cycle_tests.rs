@@ -1,7 +1,8 @@
 //! Production dock cycle through the live frame: an AirportBound aircraft
 //! returns, publishes its airfield radio contact, lands through Fly
-//! BeginLanding4CFA70/Process_Landing4CE840, reloads, and relaunches through
-//! BeginTakeoff4CF950 back into the AirTracker.
+//! BeginLanding4CFA70/Process_Landing4CE840, reloads, and stays parked on its
+//! pad in radio contact, as Mission_Guard (`0x0041A5C0`) keeps a landed
+//! aircraft without a Target.
 
 use super::AircraftMission;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
@@ -18,8 +19,7 @@ Dock=GAAIRC\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
 struct Milestones {
     landed_with_contact: bool,
     reloaded: bool,
-    relaunched_tracked: bool,
-    contact_released: bool,
+    parked_frames: u32,
 }
 
 fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) -> Milestones {
@@ -51,17 +51,17 @@ fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) ->
         {
             seen.reloaded = true;
         }
-        if seen.reloaded && docking_state == Some(3) {
-            seen.contact_released |= !entity.radio_contacts.contains(airfield);
-            let airborne = crate::sim::movement::air_movement::current_fly_height(
-                entity,
-                sim.resolved_terrain.as_ref(),
-            ) > 0;
-            if airborne {
-                seen.relaunched_tracked |= entity.air_spatial_bucket().is_some();
-            }
+        if seen.reloaded
+            && matches!(
+                entity.aircraft_mission,
+                Some(AircraftMission::DockedIdle { .. })
+            )
+            && phase == Some(AirMovePhase::Landed)
+            && entity.radio_contacts.contains(airfield)
+        {
+            seen.parked_frames += 1;
         }
-        if seen.relaunched_tracked {
+        if seen.parked_frames == 300 {
             break;
         }
     }
@@ -69,7 +69,7 @@ fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) ->
 }
 
 #[test]
-fn airport_bound_aircraft_docks_reloads_and_relaunches_through_world_owners() {
+fn airport_bound_aircraft_docks_reloads_and_parks_through_world_owners() {
     let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
     let mut sim = Simulation::new();
     let airfield = sim
@@ -89,9 +89,8 @@ fn airport_bound_aircraft_docks_reloads_and_relaunches_through_world_owners() {
         "AirportBound landing needs the airfield's two-sided radio contact"
     );
     assert!(seen.reloaded, "a landed aircraft reloads on its pad");
-    assert!(seen.contact_released, "the launch releases the pad contact");
-    assert!(
-        seen.relaunched_tracked,
-        "BeginTakeoff4CF950 re-registers the relaunched aircraft in the AirTracker"
+    assert_eq!(
+        seen.parked_frames, 300,
+        "a reloaded aircraft without orders stays on its pad in contact"
     );
 }

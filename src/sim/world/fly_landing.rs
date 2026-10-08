@@ -288,13 +288,9 @@ impl Simulation {
 
     /// The class setter's `vt+0x480(NULL, 1)` after a landing (`0x004CEF88`)
     /// or on reaching the ground layer (`0x004CD2A0`'s layer arm), through
-    /// [`Simulation::assign_null_destination`]; the Fly's order adapter
-    /// retires with it.
+    /// [`Simulation::assign_null_destination`].
     fn clear_fly_foot_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
         self.assign_null_destination(id, rules, None);
-        if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.movement_target = None;
-        }
     }
 
     /// `FootClass::IsLandZoneClear @ 0x004DDC60` (vt+0x550) for `destination`:
@@ -543,7 +539,7 @@ impl Simulation {
                         .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
-            self.move_air_coordinate(id, coord, SIM_ZERO, None, Some(rules));
+            self.move_air_coordinate(id, coord, None, Some(rules));
             true
         } else {
             let e = self.substrate.entities.get(id).unwrap();
@@ -724,7 +720,6 @@ mod tests {
                         y: 16512,
                         z: 0,
                     },
-                    SimFixed::from_num(10),
                     None,
                     Some(&rules),
                 );

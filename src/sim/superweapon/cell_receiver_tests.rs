@@ -310,8 +310,14 @@ fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
         .unwrap();
     // Leave the initial ground list through the production Mark/movement
     // transaction. Changing only the altitude cache after Unlimbo would
-    // leave a ground member behind without a native REMOVE producer.
-    assert!(sim.begin_fly_takeoff(victim, Some(&rules)));
+    // leave a ground member behind without a native REMOVE producer. A
+    // landed Fly's MoveTo takes off (`0x004CCEAE`) and moves it.
+    assert!(sim.move_air_coordinate(
+        victim,
+        crate::sim::components::DriveCoord::cell(15, 5, 0),
+        None,
+        Some(&rules)
+    ));
     sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules), None);
     let entity = sim.substrate.entities.get_mut(victim).unwrap();
     assert!(entity.aircraft_mission.is_some(), "authored Fly admission");

@@ -906,7 +906,6 @@ impl Simulation {
         self.move_air_coordinate(
             id,
             coordinate,
-            speed,
             Some(super::DestinationTiming::from_rules(
                 self.session.binary_frame,
                 rules,

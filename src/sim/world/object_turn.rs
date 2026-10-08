@@ -1001,10 +1001,11 @@ impl Simulation {
         //
         // RESIDUAL: native Fly and Jumpjet cruise reach none of these from a
         // cell change. Trigger: such a mover changing cell. Effect: its
-        // sensor deposit, cloak scan, Temporal release and playfield promote
-        // run there. Risk: an aircraft with `Sensors=` or a held Temporal
-        // target; the promote is what admits an aircraft arriving from off
-        // the map.
+        // sensor deposit, cloak scan, Temporal release and (but for a Fly,
+        // whose Process latches `+0x3D5` itself, `0x004CD510`) playfield
+        // promote run there. Risk: an aircraft with `Sensors=` or a held
+        // Temporal target; the promote is what admits a Jumpjet arriving
+        // from off the map.
         if !track_owned
             && !walk_process_owned
             && !per_cell_ran
@@ -1017,7 +1018,15 @@ impl Simulation {
                 );
             }
             sim.temporal_release_if_warping(stable_id);
-            sim.promote_entity_playfield_membership_after_move(stable_id);
+            let fly = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
+                entity
+                    .locomotor
+                    .as_ref()
+                    .is_some_and(|locomotor| locomotor.fly_runtime().is_some())
+            });
+            if !fly {
+                sim.promote_entity_playfield_membership_after_move(stable_id);
+            }
         }
 
         let mut lifecycle_requests = std::mem::take(&mut sim.pending_lifecycle_requests);

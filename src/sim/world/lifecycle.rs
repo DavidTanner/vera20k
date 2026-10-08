@@ -1756,8 +1756,9 @@ impl Simulation {
         self.unmark_entity_remove(stable_id, UninitContext::default());
     }
 
-    /// Run one production air-process visit with the active Fly
-    /// remove-before/process/add-after cell-list transaction around it.
+    /// One air locomotor's Process visit: a Fly's (`0x004CCB40`,
+    /// [`Self::fly_process`]) or a Jumpjet's (`world::jumpjet_cruise`),
+    /// then the tracker membership of an object that left the map's lists.
     pub(crate) fn tick_air_movement_with_cell_lists_one(
         &mut self,
         stable_id: u64,
@@ -1767,18 +1768,7 @@ impl Simulation {
         use crate::rules::locomotor_type::LocomotorKind;
         use crate::sim::movement::locomotor::MovementLayer;
 
-        let jumpjet_layer_before = self
-            .substrate
-            .entities
-            .get(stable_id)
-            .filter(|entity| {
-                entity
-                    .locomotor
-                    .as_ref()
-                    .is_some_and(|l| l.active_kind() == LocomotorKind::Jumpjet)
-            })
-            .and_then(|_| self.entity_display_layer(stable_id, rules));
-        let transact_fly = self
+        let fly = self
             .substrate
             .entities
             .get(stable_id)
@@ -1790,59 +1780,33 @@ impl Simulation {
                             && locomotor.layer == MovementLayer::Air
                     })
             });
-        // Fly4CD600, which Fly Process (`0x004CCB40`) calls every frame,
-        // opens with a dead Fly's fall (`0x004CD67F`), which brackets its own
-        // drop with Mark; reaching the ground ends it in the impact, which
-        // the object turn commits.
-        if transact_fly && self.fly_crash_fall(stable_id, rules, registry) {
-            return crate::sim::movement::air_movement::AirMovementTickStats {
-                arrivals: 0,
-                impact: true,
-                touched_down: false,
-            };
+        if fly {
+            let stats = self.fly_process(stable_id, rules, registry);
+            if !stats.impact {
+                self.sync_air_spatial_membership(stable_id);
+            }
+            return stats;
         }
-
-        // Fly4CD600 dispatches owner Mark around movement (`0x004CDA36`)
-        // independently of RTTI. Custom Fly Infantry/Unit must also leave
-        // their ground list. RESIDUAL: native reaches that pair only while
-        // Is_Moving (`0x004CDA0B`; otherwise the epilogue at `0x004CE4A2`).
-        // VERA brackets every visit, and a landed Fly keeps its Air path
-        // layer. Trigger: a parked aircraft. Effect: at height 0 its Mark
-        // pair unlinks and prepends it and recalculates its cell twice; in
-        // flight the pair only toggles `+0x74`. Frequency: every frame of
-        // every parked aircraft. Risk: its cell's list order when another
-        // object shares the cell; the Fly host's Is_Moving gate is unported.
-        if transact_fly {
-            self.foot_mark_remove(stable_id, rules, registry);
-        }
-
-        // A cruising Jumpjet runs the native Update/State3 body instead of the
-        // air adapter (`world::jumpjet_cruise`).
+        let jumpjet_layer_before = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .filter(|entity| {
+                entity
+                    .locomotor
+                    .as_ref()
+                    .is_some_and(|l| l.active_kind() == LocomotorKind::Jumpjet)
+            })
+            .and_then(|_| self.entity_display_layer(stable_id, rules));
+        // A cruising Jumpjet runs the native Update/State3 body
+        // (`world::jumpjet_cruise`).
         let stats = match self.tick_jumpjet_cruise_one(stable_id, rules, registry) {
             // State 5's impact notice UnInits the wreck, so `Process`'s layer
             // tail finds it dead (`0x0054B16C`); the object turn commits it.
             Some(stats) if stats.impact => return stats,
             Some(stats) => stats,
-            None => crate::sim::movement::air_movement::tick_air_movement(
-                &mut self.substrate.entities,
-                stable_id,
-                self.session.tick,
-                self.session.binary_frame,
-                self.resolved_terrain.as_ref(),
-                rules.map(|r| (r, &self.interner)),
-            ),
+            None => crate::sim::movement::air_movement::AirMovementTickStats::default(),
         };
-
-        if transact_fly
-            && self
-                .substrate
-                .entities
-                .get(stable_id)
-                .is_some_and(|entity| entity.lifecycle.object_alive && !entity.lifecycle.in_limbo)
-        {
-            self.foot_mark_put(stable_id, rules, registry);
-        }
-        self.complete_fly_phase(stable_id, rules, registry);
         self.sync_air_spatial_membership(stable_id);
         if let Some(before) = jumpjet_layer_before {
             self.complete_jumpjet_display_process(stable_id, before, rules);

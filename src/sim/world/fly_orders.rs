@@ -3,9 +3,8 @@
 //! locomotor retries must not reset those timers.
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{DestinationTiming, air_movement, ground_pose};
-use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
     /// `AircraftClass::Assign_Destination @ 0x0041AA80` (vt+0x480) ->
@@ -110,8 +109,7 @@ impl Simulation {
 
     /// An aircraft's `ILocomotion::Move_To` (`+0x44`), as Foot4D94B0 and
     /// Mission_Move state 1 call it: a spawned missile's Rocket
-    /// (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`) at its order
-    /// speed.
+    /// (`0x006632E0`), every other aircraft's Fly (`0x004CCC80`).
     pub(crate) fn aircraft_locomotor_move_to(
         &mut self,
         id: u64,
@@ -126,13 +124,7 @@ impl Simulation {
         {
             self.rocket_move_to(id, coord, rules);
         } else {
-            let speed = crate::sim::movement::order_speed(
-                entity,
-                self.object_type(entity.type_ref(), rules),
-                Some(rules),
-                &self.houses,
-            );
-            self.move_air_coordinate(id, coord, speed, None, Some(rules));
+            self.move_air_coordinate(id, coord, None, Some(rules));
         }
     }
 
@@ -163,13 +155,15 @@ impl Simulation {
             .map_or(0, |house| house.waypoint_edge)
     }
 
-    /// Non-null coordinate entry. The bool describes the remaining movement
-    /// adapter, not the native void MoveTo or Foot AssignDestination result.
+    /// Fly `Move_To @ 0x004CCC80` with a non-null coordinate. Answers whether
+    /// it took the destination (native MoveTo is void): its refusals are a
+    /// landing toward the same cell, the empty coordinate and an unpowered or
+    /// warping owner. `timing` is an enclosing Foot setter's tail, run on
+    /// acceptance.
     pub(crate) fn move_air_coordinate(
         &mut self,
         id: u64,
         request: DriveCoord,
-        speed: SimFixed,
         timing: Option<DestinationTiming>,
         rules: Option<&RuleSet>,
     ) -> bool {
@@ -266,16 +260,6 @@ impl Simulation {
                 non_landable,
             );
         }
-        // Derived path projection retained for the pending full Process/Stop
-        // migration. Fly XYZ and moving+34 remain the locomotor authority.
-        let target = (
-            (request.x / 256) as i16 as u16,
-            (request.y / 256) as i16 as u16,
-        );
-        entity.movement_target = Some(MovementTarget {
-            speed,
-            final_goal: Some(target),
-        });
         if let Some(timing) = timing {
             timing.accept(entity);
         }
@@ -317,12 +301,19 @@ impl Simulation {
         true
     }
 
-    ///4CFA70. Its first gate (Mission!=Enter and6385C0) only refuses while
-    /// Techno+514 holds a planning path; VERA has no planning mode, so it
-    /// always passes. A live-type AirportBound Aircraft must be in radio
-    /// contact with the building in its current cell (+1BC); otherwise native
-    /// calls Enter_Idle_Mode(0,1) (vtable+484 ->4176F0) and does not land.
-    /// Callers: Horizontal_Step4CF520 arrival, Process4CE43C, null MoveTo4CCDDB.
+    /// `FlyLocomotionClass::Begin_Landing @ 0x004CFA70`. Its first gate
+    /// (Mission != Enter and `0x006385C0`) only refuses while Techno `+0x514`
+    /// holds a planning path; VERA has no planning mode, so it always passes.
+    /// A live-type AirportBound Aircraft must be in radio contact with the
+    /// building in its current cell (`+0x1BC`); otherwise native calls
+    /// Enter_Idle_Mode(0, 1) (vt+0x484, `0x004176F0`) and does not land.
+    /// Callers: Horizontal_Step's arrival (`0x004CF520`), Process's landing
+    /// trigger (`0x004CE43C`), null MoveTo (`0x004CCDDB`).
+    ///
+    /// RESIDUAL: the refusal sets VERA's idle state, whose tree stands in for
+    /// Enter_Idle_Mode's airborne arm (`aircraft::idle_entry`'s RESIDUAL).
+    /// Trigger: an AirportBound aircraft arriving over a cell without a dock
+    /// it is in contact with. Effect: VERA's tree picks its next move.
     pub(crate) fn begin_fly_landing(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
