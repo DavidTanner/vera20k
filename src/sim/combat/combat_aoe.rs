@@ -4180,7 +4180,6 @@ mod tests {
         sim.substrate.raw_cell_occupation.mark_ground(5, 5, 0x80);
         sim.substrate.raw_cell_occupation.mark_deck(5, 5, 0xA5);
         crate::sim::terrain_object::mark_terrain_occupation(
-            &mut sim.production,
             &terrain_state,
             sim.resolved_terrain.as_mut(),
         );

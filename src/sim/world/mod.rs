@@ -5107,7 +5107,6 @@ impl Simulation {
         let terrain_objects: Vec<_> = self.production.terrain_objects.values().cloned().collect();
         for terrain in &terrain_objects {
             crate::sim::terrain_object::unmark_terrain_occupation(
-                &mut self.production,
                 terrain,
                 Some(&mut resolved_terrain),
             );
@@ -5115,7 +5114,6 @@ impl Simulation {
         for terrain in &terrain_objects {
             if terrain.is_live() {
                 crate::sim::terrain_object::mark_terrain_occupation(
-                    &mut self.production,
                     terrain,
                     Some(&mut resolved_terrain),
                 );
