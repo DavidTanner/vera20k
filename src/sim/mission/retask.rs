@@ -251,10 +251,7 @@ impl Simulation {
     pub fn commit_stop_miner_guard(&mut self, id: u64) {
         let is_stoppable_miner = self.substrate.entities.get(id).is_some_and(|entity| {
             entity.category == crate::map::entities::EntityCategory::Unit
-                && entity
-                    .miner
-                    .as_ref()
-                    .is_some_and(|miner| miner.kind != crate::sim::miner::MinerKind::Slave)
+                && entity.is_harvester()
                 && matches!(
                     entity.mission.current().known(),
                     Some(MissionType::Harvest) | Some(MissionType::Return)

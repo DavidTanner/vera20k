@@ -16,7 +16,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerKind, MinerState, ResourceType};
+use crate::sim::miner::{CargoBale, Miner, MinerConfig, MinerState, ResourceType};
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
@@ -423,12 +423,12 @@ pub(super) fn build_miner_snapshot(
     if entity.dying {
         return None;
     }
-    let miner = entity.miner.as_ref()?;
     // A Slave Miner's own Mission_Harvest is HandleReturnedSlaves
     // (`0x0073E5E9`, chain 6); its slaves harvest through `slave_manager`.
-    if miner.kind == MinerKind::Slave {
+    if !entity.is_harvester() {
         return None;
     }
+    let miner = entity.miner.as_ref()?;
     // The miner's drive loop asks the same getter every mover does, so a
     // `FASTER` miner takes the multiply here.
     let obj = sim.object_type(entity.type_ref(), rules);
@@ -1730,6 +1730,7 @@ mod harvest_scan_dispatch_tests {
     use crate::rules::ini_parser::IniFile;
     use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::miner::MinerKind;
     use crate::sim::mission::MissionType;
     use crate::sim::pathfinding::PathGrid;
 

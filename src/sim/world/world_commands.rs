@@ -1287,7 +1287,12 @@ impl Simulation {
                     return false;
                 }
                 self.begin_megamission_retask(*entity_id, MissionType::Enter, rules);
-                if crate::sim::miner::native_dock_miner(self, *entity_id) {
+                if self
+                    .substrate
+                    .entities
+                    .get(*entity_id)
+                    .is_some_and(crate::sim::game_entity::GameEntity::is_harvester)
+                {
                     crate::sim::miner::clear_unload_latch(self, *entity_id);
                 }
                 let previous_refinery = self
