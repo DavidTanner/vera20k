@@ -106,6 +106,16 @@ pub(crate) fn build_shp_instances(
         .resolved_terrain
         .as_ref()
         .map(crate::map::resolved_terrain::NativeCellQuery::isolated);
+    // `0x00487950` on the local player's map: a sandbox view, or a viewer
+    // with no house, sees no shroud.
+    let shrouded = |cell: (u16, u16)| {
+        !ignore_visibility
+            && local_owner_id
+                .zip(cells.as_ref())
+                .is_some_and(|(viewer, cells)| {
+                    crate::sim::vision::cell_is_shrouded(&sim.fog, cells, viewer, cell)
+                })
+    };
     let encounter_order = super::helpers::tactical_entity_encounter_order(sim);
     for stable_id in encounter_order {
         let Some(entity) = sim.entities().get(stable_id) else {
@@ -403,6 +413,22 @@ pub(crate) fn build_shp_instances(
         } else {
             selected_palette_light
         };
+        // TechnoClass::DrawSHP's curtain arm (`0x0070631F..0x00706389`) on the
+        // body, bib and buildup, and the colour word DrawBody hands their
+        // blits (`0x0043D386..0x0043D544`), tested at the building's
+        // coordinate's cell. SHP vehicles' draws pass no colour word
+        // (`0x0073CE3E`, `0x0073CE7D`).
+        let (body_tint, palette_light) =
+            crate::app::presentation::lighting::curtain_light(entity, tint, palette_light, sim);
+        let colour_word = match state.rules() {
+            Some(rules) if entity.category == EntityCategory::Structure => {
+                let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+                crate::app::presentation::lighting::building_colour_word(entity, sim, rules, || {
+                    shrouded(((x / 256) as u16, (y / 256) as u16))
+                })
+            }
+            _ => 0,
+        };
         // Direct SHP and infantry keep native Ground parent order. Infantry
         // does not use the Unit composite bridge split at 0x73B140.
         // Native per-pixel Z. Buildings (`BuildingClass_DrawBody`, flags
@@ -464,6 +490,8 @@ pub(crate) fn build_shp_instances(
                 [0.0, 0.0],
             )
         };
+        // DrawBody's pieces blit with flags 0x6E00.
+        let body_policy = BlitPolicy::opaque(SpriteEncoding::Plain);
         let body = entry.map(|entry| {
             let instance = SpriteInstance {
                 position: [sx + entry.offset_x, sy + entry.offset_y],
@@ -471,8 +499,14 @@ pub(crate) fn build_shp_instances(
                 uv_origin: entry.uv_origin,
                 uv_size: entry.uv_size,
                 depth,
-                tint,
-                palette_light,
+                tint: body_tint,
+                palette_light: palette_light.with_colour_word(
+                    if body_policy.ors_colour_word(entry.extended) {
+                        colour_word
+                    } else {
+                        0
+                    },
+                ),
                 alpha: 1.0,
                 draw_state,
                 z_adjust,
@@ -493,7 +527,7 @@ pub(crate) fn build_shp_instances(
                     },
                     z_bias: 0,
                     // Body and buildup go through the same Z-writing body draw.
-                    policy: BlitPolicy::opaque(SpriteEncoding::Plain),
+                    policy: body_policy,
                     target,
                     instance,
                 });
@@ -531,8 +565,9 @@ pub(crate) fn build_shp_instances(
                     sy,
                     lift_px,
                     depth,
-                    tint,
+                    body_tint,
                     palette_light,
+                    colour_word,
                     draw_state,
                 );
                 // Building anims render in the same pass as building bodies so they
@@ -562,7 +597,8 @@ pub(crate) fn build_shp_instances(
                     &sim.session.lighting,
                     (pos.rx, pos.ry),
                     sim,
-                    &entity.building_anim_slots,
+                    entity,
+                    &|anim| anim_colour_word(state, sim, cells.as_ref(), &shrouded, anim),
                     world_height,
                     draw_state,
                     lift_px,
@@ -576,6 +612,16 @@ pub(crate) fn build_shp_instances(
                     let turret_offset = art_reg
                         .and_then(|art| art.resolve_metadata_entry(type_str, &rules_obj.image))
                         .map_or(0, |art| art.turret_offset);
+                    // TechnoClass::Draw's curtain arm (`0x0070678D..0x007067E2`)
+                    // and BuildingClass::Draw's colour word (`0x0043DC1C..
+                    // 0x0043DDF1`, DrawBody's) on the voxel cache blit.
+                    let (turret_tint, turret_light) =
+                        crate::app::presentation::lighting::curtain_light(
+                            entity,
+                            tint,
+                            selected_palette_light,
+                            sim,
+                        );
                     emit_building_turret_vxl(
                         unit_atlas,
                         &mut state
@@ -593,10 +639,11 @@ pub(crate) fn build_shp_instances(
                         sy,
                         lift_px,
                         depth,
-                        tint,
+                        turret_tint,
                         // Building VXL43DA80 reads top directly;707194 selects
                         // the scheme. SHP TerrainPalette/ExtraLight don't apply.
-                        selected_palette_light,
+                        turret_light,
+                        colour_word,
                         draw_state,
                         rules_obj.turret_anim_x,
                         rules_obj.turret_anim_y,
@@ -648,6 +695,7 @@ fn emit_building_turret_vxl(
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
+    colour_word: u16,
     draw_state: DrawState,
     anim_x: i32,
     anim_y: i32,
@@ -709,11 +757,12 @@ fn emit_building_turret_vxl(
         // residual; the missing-barrel comparison does not establish it.
         let tx = building_sx + anim_x as f32 + entry.offset_x + ox;
         let ty = building_sy + anim_y as f32 + entry.offset_y + 3.0 + oy;
+        // Building43DA80 -> Techno Draw0x2800: test Z, never write it.
+        let policy = BlitPolicy::z_read(SpriteEncoding::Voxel);
         pieces.push(PlannedBuildingPieceInstance {
             kind: BuildingPieceKind::PoweredOrActiveOverlay,
             z_bias: 0,
-            // Building43DA80 -> Techno Draw0x2800: test Z, never write it.
-            policy: BlitPolicy::z_read(SpriteEncoding::Voxel),
+            policy,
             target: ObjectTexture::UnitAtlasPage(entry.page),
             instance: SpriteInstance {
                 position: [tx, ty],
@@ -722,7 +771,12 @@ fn emit_building_turret_vxl(
                 uv_size: entry.uv_size,
                 depth: building_depth,
                 tint,
-                palette_light,
+                // A voxel frame is a compressed one.
+                palette_light: palette_light.with_colour_word(if policy.ors_colour_word(true) {
+                    colour_word
+                } else {
+                    0
+                }),
                 alpha: 1.0,
                 draw_state,
                 // VXL blit: gradient entry2, lift cancelled, no DrawSHP -2.
@@ -756,6 +810,7 @@ fn emit_building_bib(
     building_depth: f32,
     tint: [f32; 3],
     palette_light: crate::render::palette_light::PaletteLight,
+    colour_word: u16,
     draw_state: DrawState,
 ) {
     let rules_image: String = rules
@@ -794,11 +849,12 @@ fn emit_building_bib(
     //
     // Native Z (`BuildingClass_DrawBody @ 0x0043D9C9`): the bib is a second
     // 0x6E00 draw with gradient entry 0, a7 = `-1 - AdjustForZ(Z)`, no
-    // z-shape; it tests and writes Z like the body.
+    // z-shape; it tests and writes Z like the body, and takes its colour word.
+    let policy = BlitPolicy::opaque(SpriteEncoding::Plain);
     pieces.push(PlannedBuildingPieceInstance {
         kind: BuildingPieceKind::Bib,
         z_bias: 0,
-        policy: BlitPolicy::opaque(SpriteEncoding::Plain),
+        policy,
         target: ObjectTexture::ShpPage(bib_entry.page as usize),
         instance: SpriteInstance {
             position: [bx, by],
@@ -807,7 +863,13 @@ fn emit_building_bib(
             uv_size: bib_entry.uv_size,
             depth: building_depth,
             tint,
-            palette_light,
+            palette_light: palette_light.with_colour_word(
+                if policy.ors_colour_word(bib_entry.extended) {
+                    colour_word
+                } else {
+                    0
+                },
+            ),
             alpha: 1.0,
             draw_state,
             z_adjust: lifted_z_adjust(lift_px, BIB_Z_ADJUST_PX + SHP_DRAW_Z_ADJUST_PX),
@@ -838,7 +900,8 @@ fn emit_building_anims(
     scenario: &crate::sim::scenario_session::ScenarioLightingState,
     cell: (u16, u16),
     sim: &crate::sim::world::Simulation,
-    slots: &[Option<u64>; 21],
+    building: &crate::sim::game_entity::GameEntity,
+    anim_word: &dyn Fn(u64) -> u16,
     world_height: f32,
     draw_state: DrawState,
     lift_px: i32,
@@ -852,8 +915,10 @@ fn emit_building_anims(
         None => return,
     };
     for anim in &art_entry.building_anims {
-        let Some(instance) = slots[usize::from(anim.native_slot)].and_then(|id| sim.anim(id))
-        else {
+        let Some(anim_id) = building.building_anim_slots[usize::from(anim.native_slot)] else {
+            continue;
+        };
+        let Some(instance) = sim.anim(anim_id) else {
             continue;
         };
         // Building's retained slot reaches DrawIt422CA0..4238AF until physical
@@ -921,30 +986,47 @@ fn emit_building_anims(
 
         let config = art_reg.anim_runtime_config(anim_name);
         // Building mark 0043F9A6..0043FA68 supplies explicit selected Convert/top
-        // only when ShouldUseCellDrawer. Its effect brightness hook remains a
-        // residual for affected buildings; ordinary brightness is unchanged.
-        let palette_light = if config.is_none_or(|c| c.should_use_cell_drawer) {
+        // only when ShouldUseCellDrawer, at the light UpdateAnimation keeps
+        // armed (`lighting::building_anim_light`).
+        let (anim_tint, palette_light) = if config.is_none_or(|c| c.should_use_cell_drawer) {
             if config.is_some_and(|c| c.use_normal_light) {
-                attached_palette.with_brightness(1000)
+                (tint, attached_palette.with_brightness(1000))
             } else {
-                attached_palette
+                crate::app::presentation::lighting::building_anim_light(
+                    building,
+                    tint,
+                    attached_palette,
+                    sim,
+                )
             }
         } else {
-            crate::app::presentation::lighting::anim_palette_light(
-                light_grid,
-                Some(scenario),
-                cell,
-                config,
-                false,
+            (
+                tint,
+                crate::app::presentation::lighting::anim_palette_light(
+                    light_grid,
+                    Some(scenario),
+                    cell,
+                    config,
+                    false,
+                ),
             )
         };
+        // DrawIt blits with flags 0x2800 (`z_read`), which takes the word
+        // from either frame encoding.
+        let policy = BlitPolicy::z_read(SpriteEncoding::Plain);
+        let palette_light =
+            palette_light.with_colour_word(if policy.ors_colour_word(anim_entry.extended) {
+                anim_word(anim_id)
+            } else {
+                0
+            });
         // Native Z (`AnimClass__DrawIt @ 0x00422CA0`): an anim draw carries
         // 0x2800 with gradient entry 2 and `YDrawOffset + ZAdjust -
         // AdjustForZ - 2`; it tests Z per pixel and never writes.
         pieces.push(PlannedBuildingPieceInstance {
             kind: BuildingPieceKind::PoweredOrActiveOverlay,
             z_bias: z_adjust_px,
-            policy: BlitPolicy::z_read(SpriteEncoding::Plain),
+            policy,
             target: ObjectTexture::ShpPage(anim_entry.page as usize),
             instance: SpriteInstance {
                 position: [ax, ay],
@@ -952,7 +1034,7 @@ fn emit_building_anims(
                 uv_origin: anim_entry.uv_origin,
                 uv_size: anim_entry.uv_size,
                 depth: anim_depth,
-                tint,
+                tint: anim_tint,
                 palette_light,
                 alpha: 1.0,
                 draw_state,
@@ -970,6 +1052,53 @@ fn emit_building_anims(
             },
         });
     }
+}
+
+/// AnimClass::DrawIt's colour word for the anim `anim`
+/// (`0x004233EE..0x00423630`): a building slot anim (its `+0x118`, set by
+/// CreateAnimForSlot at `0x0045199B`) takes
+/// [`crate::app::presentation::lighting::building_colour_word`] of the first
+/// building among the ground objects of the cell under its coordinate
+/// (`0x00565730`, `0x0047C520`; off the map, the Dummy, which holds none),
+/// with that cell's shroud; any other anim none. The lookup is read, not
+/// executed: the oracle's rows stub the cell.
+fn anim_colour_word(
+    state: &AppState,
+    sim: &crate::sim::world::Simulation,
+    cells: Option<&crate::map::resolved_terrain::NativeCellQuery<'_>>,
+    shrouded: &impl Fn((u16, u16)) -> bool,
+    anim: u64,
+) -> u16 {
+    let (Some(rules), Some(cells), Some(coord)) =
+        (state.rules(), cells, sim.anim_absolute_coord(anim))
+    else {
+        return 0;
+    };
+    if !sim
+        .anim(anim)
+        .is_some_and(|object| object.is_building_anim())
+    {
+        return 0;
+    }
+    let cell = cells.lookup_world(coord.x, coord.y);
+    if matches!(cell, crate::map::cell_index::NativeCellIdentity::Dummy) {
+        return 0;
+    }
+    let (x, y) = cells.coord(cell);
+    let cell = (x as u16, y as u16);
+    sim.substrate
+        .occupancy
+        .first_building_on_layer(
+            cell.0,
+            cell.1,
+            crate::sim::movement::locomotor::MovementLayer::Ground,
+        )
+        .and_then(|id| sim.entities().get(id))
+        .map_or(0, |building| {
+            crate::app::presentation::lighting::building_colour_word(building, sim, rules, || {
+                shrouded(cell)
+            })
+        })
 }
 
 fn resolve_infantry_shp_frame(

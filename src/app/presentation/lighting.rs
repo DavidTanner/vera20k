@@ -93,6 +93,129 @@ pub(crate) fn anim_palette_light(
     }
 }
 
+/// TechnoClass's curtain arm on a draw's intensity: while time is left on
+/// the curtain (`IsIronCurtained @ 0x0041BF40`, vt+0x160), GetEffectTintIntensity
+/// (`0x0070E360`) scales it before the blit picks its LightConvert row.
+/// UnitClass::DrawVoxelBody (`0x0073BF9C..0x0073BFB8`), TechnoClass::DrawSHP
+/// (`0x0070631F..0x00706389`: building bodies, bibs and buildup, SHP
+/// vehicles) and TechnoClass::Draw (`0x0070678D..0x007067E2`: a building's
+/// voxel turret and barrel; DrawSHP's sequence, read rather than executed)
+/// apply it. A draw reads the frame Main_Tick
+/// renders under; its render (`0x0055DBBE`) precedes the logic
+/// (`0x0055DC9E`) and the increment (`0x0055DE81`), so that is `sim`'s
+/// committed `binary_frame`. VERA's compatibility tint, for translucent and
+/// effect draws, is linear in the intensity and takes the same ratio.
+///
+/// RESIDUAL: each draw's flash arm ahead of the curtain's (vt+0x464: a
+/// building's `0x00456F80`, other Technos' `0x0070D190`) reads
+/// TechnoClass+0xF0 (GSI-08.12 in `sim/game_entity.rs`). DrawSHP and
+/// TechnoClass::Draw also scale a building an airstrike aims at that is off
+/// the curtain (`0x0070633E..0x00706375`), with the airstrike's tint
+/// (`sim/superweapon/invulnerability.rs`).
+pub(crate) fn curtain_light(
+    entity: &crate::sim::game_entity::GameEntity,
+    tint: [f32; 3],
+    light: crate::render::palette_light::PaletteLight,
+    sim: &Simulation,
+) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
+    curtain_light_at(entity, tint, light, sim.session.binary_frame)
+}
+
+/// The light BuildingClass::UpdateAnimation gives a building's slot anims
+/// whose type has ShouldUseCellDrawer= (`0x00450A47..0x00450A77`): the cell's
+/// intensity through the building's arm (`0x00456FB0`: the flash arm, then
+/// [`curtain_light`]'s) and cut to 16 bits (`0x00450A69`), which AnimClass::
+/// DrawIt then draws them at unless their type has UseNormalLight=
+/// (`0x004232A3..0x004232C5`). The update runs in the logic before the draw,
+/// at the frame before `sim`'s committed one, and ahead of the frame's
+/// UpdateIronTint (BuildingClass::Update `0x0043FE22`, TechnoClass::AI
+/// `0x0043FE56`).
+///
+/// RESIDUAL: VERA reads the tint stage and timer UpdateIronTint left at that
+/// frame, where native reads the ones before it. The stages' scales meet at
+/// each boundary (`InvulnerabilityState::effect_tint_intensity`'s oracle
+/// rows) but stage 3's start, ten frames into the curtain, whose
+/// `RandomRanged(-5, 5)` offset moves its first scale off 512: there VERA
+/// draws the anims for one frame at 396..627/256 where native draws 512/256.
+/// Above a light of 2000 the cap the scaled stages apply also moves by that
+/// frame at stage 1's start and stage 10's. The event relights that call
+/// GetEffectTintIntensity too
+/// (CreateAnimForSlot `0x00451AEE`, UpdateAnimLighting `0x00452073`, Flash
+/// `0x00456E8C`, placement `0x0043FA12`, ChangeOwner `0x00448E10`) hold
+/// until the next update, at most a frame.
+pub(crate) fn building_anim_light(
+    building: &crate::sim::game_entity::GameEntity,
+    tint: [f32; 3],
+    light: crate::render::palette_light::PaletteLight,
+    sim: &Simulation,
+) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
+    let (tint, light) = curtain_light_at(
+        building,
+        tint,
+        light,
+        sim.session.binary_frame.wrapping_sub(1),
+    );
+    (tint, light.with_brightness(light.brightness() & 0xFFFF))
+}
+
+fn curtain_light_at(
+    entity: &crate::sim::game_entity::GameEntity,
+    tint: [f32; 3],
+    light: crate::render::palette_light::PaletteLight,
+    frame: u32,
+) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
+    let Some(curtain) = entity.invulnerability.as_ref().filter(|curtain| {
+        crate::sim::superweapon::invulnerability::is_invulnerable(Some(curtain), frame)
+    }) else {
+        return (tint, light);
+    };
+    let intensity = light.brightness();
+    let tinted = curtain.effect_tint_intensity(intensity, frame as i32);
+    let ratio = if intensity == 0 {
+        1.0
+    } else {
+        tinted as f32 / intensity as f32
+    };
+    (
+        tint.map(|channel| channel * ratio),
+        light.with_brightness(tinted),
+    )
+}
+
+/// The colour word a building's draws hand their blits, as
+/// BuildingClass_DrawBody (`0x0043D386..0x0043D544`), BuildingClass::Draw
+/// (`0x0043DC1C..0x0043DDF1`) and AnimClass::DrawIt for the building at a
+/// slot anim's cell (`0x004233EE..0x00423630`) compute it: the
+/// `ForceShieldColor=` `[ColorAdd]` word while time is left on a Force
+/// Shield (`IsIronCurtained`, and IronCurtain's byte `+0x1C4` at 1), none
+/// under the Iron Curtain, and none when the local map shrouds the cell the
+/// draw tests (`0x00487950`; `shrouded`, asked only of a shielded building).
+/// Which blits OR it into their pixels is the blitter's
+/// ([`crate::render::tactical_draw_plan::BlitPolicy::ors_colour_word`]).
+///
+/// RESIDUAL: an airstrike's target (`+0x294`) ORs the `LaserTargetColor=`
+/// word (retail HighRed) the same way; it comes with the airstrike.
+pub(crate) fn building_colour_word(
+    building: &crate::sim::game_entity::GameEntity,
+    sim: &Simulation,
+    rules: &RuleSet,
+    shrouded: impl FnOnce() -> bool,
+) -> u16 {
+    let shielded = building.invulnerability.as_ref().is_some_and(|curtain| {
+        curtain.kind == crate::sim::superweapon::invulnerability::InvulnKind::ForceShield
+            && crate::sim::superweapon::invulnerability::is_invulnerable(
+                Some(curtain),
+                sim.session.binary_frame,
+            )
+    });
+    if !shielded || shrouded() {
+        return 0;
+    }
+    rules
+        .color_add
+        .rgb565_word(rules.general.force_shield_color)
+}
+
 pub(crate) fn color_scheme_rgb(
     scenario: Option<&crate::sim::scenario_session::ScenarioLightingState>,
 ) -> [i32; 3] {
@@ -456,6 +579,10 @@ fn collect_live_building_lights(
         .cloned()
         .collect()
 }
+
+#[cfg(test)]
+#[path = "curtain_tint_tests.rs"]
+mod curtain_tint_tests;
 
 #[cfg(test)]
 mod palette_producer_tests {

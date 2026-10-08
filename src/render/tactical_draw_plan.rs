@@ -70,6 +70,28 @@ impl BlitPolicy {
         }
     }
 
+    /// Whether the blitter this policy picks ORs a draw's colour word into the
+    /// pixels it draws. The 16-bit Convert (`0x0048E740`) holds one blitter
+    /// per flag set and frame encoding (pickers `0x00490B90`, compressed
+    /// frames `0x00490E50`). The Z-read family's tinted copies OR the word
+    /// (`0x00494C40`, compressed `0x00498150`), as does the Z-writing
+    /// family's compressed-frame one (`0x00499280`); its uncompressed-frame
+    /// one drops it (`0x004959F0` forwards to the plain copy). The voxel cache
+    /// blit always picks a compressed-frame blitter (`0x0070750E`). Executed:
+    /// `tools/superweapon_oracle.py` `blit_pickers`, `blitters`. The
+    /// translucent families' tinted copies forward to their plain ones too
+    /// (read, not executed).
+    pub const fn ors_colour_word(self, compressed: bool) -> bool {
+        let compressed =
+            compressed || matches!(self.encoding, SpriteEncoding::Voxel | SpriteEncoding::Rle);
+        !self.translucent
+            && match self.render_z {
+                RenderZPolicy::ReadOnly => true,
+                RenderZPolicy::ReadWrite => compressed,
+                RenderZPolicy::None | RenderZPolicy::AlphaReadWrite => false,
+            }
+    }
+
     /// Opaque blit that neither reads nor writes render Z (VERA passthrough
     /// for draws whose native Z behaviour is not yet traced).
     pub const fn z_none(encoding: SpriteEncoding) -> Self {

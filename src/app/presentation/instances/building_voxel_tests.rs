@@ -87,6 +87,7 @@ fn building_voxel_parts_follow_native_frames_order_and_translation() {
             0.5,
             [1.0; 3],
             crate::render::palette_light::PaletteLight::default(),
+            0,
             DrawState::default(),
             3,
             -60,
