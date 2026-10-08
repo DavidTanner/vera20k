@@ -635,6 +635,13 @@ Checked 2026-09-30 against the headless GhidraMCP 5.14.2 server:
   through, and it misdescribes the type. `apply_data_type` types a global and keeps
   its label; a default `DAT_` label then shows as the type and address
   (`CDTimerClass_00abf2a0`).
+- `set_global` also checks the type text against the prefix. A `pp` name needs `**` in
+  it: `VocClass **` passes, and the readback spelling `VocClass * *` is rejected. An
+  `f` name needs text that starts with `bool`, `byte` or `BOOL`, but the type resolver
+  (below) turns a bare `BOOL` into the 1-byte `bool`, and `WinDef.h/BOOL` fails the
+  text check. For a 4-byte flag, type the global with `apply_data_type`
+  (`WinDef.h/BOOL`) first, then call `set_global` with an empty `type_name`: the check
+  then reads the type the global already has (checked 2026-10-08).
 - Labels inside a struct-typed global stop showing in decompiles. Once
   g_DisplaySingleton (0x87F7E8) was typed MouseClass, CreditsClass__AI's write to
   0x884B90 read `...base_SidebarClass.fCreditsChanged = true`, not the label
@@ -832,6 +839,19 @@ Receiver tools, checked on staging copies:
   ordinal, automatic-parameter flag and distinct home against the native contract.
   A four-byte datatype display and matching `RET` cleanup cannot admit a narrowed
   native four-byte argument.
+- The struct, data and variable endpoints (`create_struct`, `add_struct_field`,
+  `modify_struct_field`, `apply_data_type`, `set_global`, `create_function_signature`
+  and the variable-type setters) resolve a type name in this order
+  (`ServiceUtils.resolveDataType`, GhidraMCP 5.14.2):
+  1. a fixed list of C names, matched ignoring case, so `BOOL` is the 1-byte `bool`;
+  2. the root category, as given and then in lower case;
+  3. every category, taking the first type whose name matches ignoring case;
+  4. array and pointer syntax.
+
+  A struct field typed `char[260]` came back as WinNT.h's `CHAR[260]` on 2026-10-08:
+  an existing type matched before the array syntax was read. Give a 4-byte BOOL as
+  `WinDef.h/BOOL`, and compare each readback with the type the server picked.
+  `set_function_prototype` parses C instead.
 - A successful type-size lookup or `validate_function_prototype` reply does not
   establish that the signature parser can resolve a datatype. The validator checks
   format and convention without parsing the types. On 2026-10-02, two `GUID` entries
