@@ -755,6 +755,15 @@ impl Simulation {
             sys.lifetime.hash(hasher);
             sys.facing.hash(hasher);
             sys.done_spawning.hash(hasher);
+            // The rest of the saved system state. `in_logic_vector` is not
+            // saved (load rebuilds it from the logic vector), so it stays out.
+            sys.offset.to_array().hash(hasher);
+            sys.spawn_timer.to_bits().hash(hasher);
+            sys.spark_spawn_frames.hash(hasher);
+            sys.attached_entity.hash(hasher);
+            sys.owner_entity.hash(hasher);
+            sys.target_coords.to_array().hash(hasher);
+            sys.owner_house.hash(hasher);
             sys.particles.len().hash(hasher);
             for p in &sys.particles {
                 p.type_id.0.hash(hasher);
@@ -766,6 +775,13 @@ impl Simulation {
                 p.translucency.hash(hasher);
                 p.state_advance_counter.hash(hasher);
                 p.marked_for_deletion.hash(hasher);
+                p.origin.to_array().hash(hasher);
+                p.direction.map(|v| v.to_bits()).hash(hasher);
+                p.velocity.to_bits().hash(hasher);
+                p.damage_counter.hash(hasher);
+                p.state_ai_advance.hash(hasher);
+                (p.drift_x, p.drift_y, p.drift_z).hash(hasher);
+                p.prev_delta.map(|v| v.to_bits()).hash(hasher);
                 match p.spark {
                     None => 0_u8.hash(hasher),
                     Some(spark) => {
@@ -3348,6 +3364,44 @@ mod particle_hash_tests {
             );
         }
         assert_ne!(base_hash, hash_with_particle(particle_with_spark(None)));
+    }
+
+    fn hash_with_system(system: ParticleSystem) -> u64 {
+        let mut sim = Simulation::new();
+        insert_system(&mut sim, system);
+        sim.state_hash()
+    }
+
+    /// Every saved system and particle field reaches the hash (#855).
+    #[test]
+    fn saved_system_and_particle_fields_change_the_state_hash() {
+        let mut base = fake_system(IVec3::ZERO);
+        base.particles.push(particle_with_spark(None));
+        let base_hash = hash_with_system(base.clone());
+        let owner_house = Simulation::new().interner.intern("Americans");
+        let edits: Vec<Box<dyn Fn(&mut ParticleSystem)>> = vec![
+            Box::new(|s| s.offset = IVec3::new(1, 0, 0)),
+            Box::new(|s| s.spawn_timer = SimFixed::from_num(1)),
+            Box::new(|s| s.spark_spawn_frames = 1),
+            Box::new(|s| s.attached_entity = Some(7)),
+            Box::new(|s| s.owner_entity = Some(7)),
+            Box::new(|s| s.target_coords = IVec3::new(0, 1, 0)),
+            Box::new(move |s| s.owner_house = Some(owner_house)),
+            Box::new(|s| s.particles[0].origin = IVec3::new(0, 0, 1)),
+            Box::new(|s| s.particles[0].direction[1] = SimFixed::from_num(1)),
+            Box::new(|s| s.particles[0].velocity = SimFixed::from_num(1)),
+            Box::new(|s| s.particles[0].damage_counter = 1),
+            Box::new(|s| s.particles[0].state_ai_advance = 1),
+            Box::new(|s| s.particles[0].drift_x = 1),
+            Box::new(|s| s.particles[0].drift_y = 1),
+            Box::new(|s| s.particles[0].drift_z = 1),
+            Box::new(|s| s.particles[0].prev_delta[2] = SimFixed::from_num(1)),
+        ];
+        for (index, edit) in edits.iter().enumerate() {
+            let mut system = base.clone();
+            edit(&mut system);
+            assert_ne!(base_hash, hash_with_system(system), "edit {index}");
+        }
     }
 
     #[test]
