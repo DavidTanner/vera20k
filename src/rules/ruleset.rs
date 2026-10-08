@@ -6579,7 +6579,7 @@ MutateWarhead=MyMutate\n\
             .expect("mixed-case registry warhead lookup resolves");
         assert!(std::ptr::eq(lower, mixed));
         assert_eq!(lower.id, "RegistryOnlyWH");
-        assert_eq!(lower.percent_at_max, 50);
+        assert_eq!(lower.percent_at_max_f64, 0.5);
         let expected = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
         for (actual, expected) in lower.verses_f64.iter().zip(expected) {
             assert!((actual - expected).abs() < 1e-9);
