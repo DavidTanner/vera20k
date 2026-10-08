@@ -844,6 +844,62 @@ after step 9438; idle again after step 9439. So `ForceShieldFading` plays in fra
 so the state hashes are now `12557075081865037104` at 9020 and `2418361531941558131` at
 9600. `XMP03T4.MAP` again completed 300 steps (`8142462839629644773`).
 
+## Lightning Storm observation
+
+[`map_observation.lightning-storm.example.json`](map_observation.lightning-storm.example.json)
+starts America/Battle against a Yuri computer opponent (Easy) with stock rules and
+assets on an [authored map](map_observation/examples/lightning_storm.map): the Psychic
+Dominator fixture with the observer's GAWEAT in place of its YAPPET at (46,42).
+`observe_super_weapons` adds the Super rows: LightningStormSpecial is granted on the
+first step (interned id 31, charge start 0, 9000 frames) and is ready from step 9001. An
+ordinary `LaunchSuperWeapon` at step 9010 aims it at the Neutral HTNK's cell (44,54).
+The loader looks a relative map name up in the retail root: run a profile copy whose
+`launch.selected_map_file` is the tracked map's absolute path.
+
+With release binary SHA-256
+`ace0d7f2bb531086b82792aea3ee659fd8e6717c184b3161352ba415dd015434` (32,042,016 bytes)
+and map SHA-256 `6d301f5350faa4100c136315c189bce5c72ed4f00508c378ae4be42a7ec3bea0`, the
+charge restarts at tick 9010. The first strike lands at step 9329: the Neutral HTNK
+drops from 400 to 150, the observer's MTNK beside it from 300 to 139, and the Neutral E1
+dies. Both tanks are gone at step 9334. Scattered strikes then wear down the Neutral
+HTNK at (40,54) (275 at step 9337, 88 at 9369), and it is gone at step 9460. A copy that
+ends at 9330 shows the Ion lighting, the clouds, a bolt and its explosion on the target
+and the storm's line (state hash `5188934786816000448`, BGRA SHA-256
+`2c56197586e59652d8747d2919b07edc9a32863442391bcebf8fee9199afdcd8`). The 9700-step run
+ends under the ordinary lighting, the struck ground cratered and the Neutral GAPOWR gone
+(state hash `692659393727655047`, BGRA SHA-256
+`4aef64141d85e1ea534ae1c2974f8f2b6f038f8c4f8803e3764e9093700d34e8`). The same binary
+loaded the unchanged retail `XMP03T4.MAP` (`multimd.mix`) and completed 300 steps (state
+hash `8142462839629644773`). These are Rust production observations: the chain's native
+comparisons are the `tools.superweapon_oracle` `storm_*` and `radar_outage` rows, and no
+whole-run timing or pixel equivalence with gamemd is claimed.
+
+## Computer Lightning Storm observation
+
+[`map_observation.ai-lightning-storm.example.json`](map_observation.ai-lightning-storm.example.json)
+starts Russia/Battle against an America computer opponent (`Computer1`, Easy) with stock
+rules and assets on an [authored map](map_observation/examples/ai_lightning_storm.map):
+the computer-nuke fixture with the computer's pre-placed GAWEAT and two GAPOWR in place
+of its NAMISL and NAPOWR, the observer's NACNST at (40,62), `FreeRadar=yes`, and no
+commands. `observe_super_weapons` adds the Super rows; NACNST is the only observed type.
+Run a profile copy whose `launch.selected_map_file` is the tracked map's absolute path.
+
+With the release binary above and map SHA-256
+`ce455951310a682a502868ad79ab04dc06d7ef4760b213abb0d757dd541a578b`, the computer's
+LightningStormSpecial is granted on the first step (charge start 0, 9000 frames) and is
+ready from step 9001. Its Strategy tick fires it at frame 9060 (the charge restarts
+there; its AmericanParaDropSpecial, granted at step 5357, fires in the same frame).
+Strikes wear the observer's yard down from 1000 health at step 9382 to 330 at step 9552.
+A copy that ends at 9400 shows the storm over the yard and the observer's radar closed
+by the storm's outage, though the map grants it free radar (state hash
+`11635672970713069298`, BGRA SHA-256
+`006c3fae3ef0bc754e0532432c3d93da71128616606b18f2c4b55c610320dddd`). The 9700-step run
+ends under the ordinary lighting with the radar back (state hash `6127425217724816917`,
+BGRA SHA-256 `b764e7437e7ccfa39b017c3942af26637092d82f18adbb7b52449599dcc4574f`). These
+are Rust production observations: the chain's native comparisons are the
+`tools.superweapon_oracle` `storm_*`, `radar_outage` and `ai_*` rows, and no whole-run
+timing or pixel equivalence with gamemd is claimed.
+
 ## Computer V3 bombard observation
 
 [`map_observation.ai-v3-bombard.example.json`](map_observation.ai-v3-bombard.example.json)
