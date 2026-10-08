@@ -564,7 +564,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // Snapshot305: Miner.forced_return leaves the hash. A control binary (main
 // with a hash that skips only that fold) gives this value in the same test,
 // with every tripwire above green. Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x285C_4A72_2542_0A08;
+// Snapshot306: the legacy CellClass counters, flags, occlusion caches and
+// visibility marks leave the hash (the ground bits stay), and SightAdmission
+// drops fog_of_war. A control binary (main with a hash that skips only those
+// fields) gives this value in the same test, with every tripwire above green.
+// Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xFD14_176C_FFEF_E340;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
