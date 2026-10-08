@@ -1069,17 +1069,8 @@ impl Simulation {
             owner.hash(hasher);
             fog.cells_raw().hash(hasher);
             fog.shroud_knowledge_raw().hash(hasher);
-            // CellClass visibility counters/flags are serialized simulation
-            // state, not renderer cache; fold their row-major projection too.
-            for cell in fog.cell_runtime_raw() {
-                cell.shroud_counter.hash(hasher);
-                cell.gap_shroud_counter.hash(hasher);
-                cell.alt_flags.hash(hasher);
-                cell.flags.hash(hasher);
-                cell.visibility.hash(hasher);
-                cell.foggedness.hash(hasher);
-            }
-            fog.visibility_marks_raw().hash(hasher);
+            // The CellClass ground bits the aircraft queries read.
+            fog.ground_flags_raw().hash(hasher);
         }
         self.fog.gap_sources.hash(hasher);
         self.fog.sight_admissions.hash(hasher);

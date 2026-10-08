@@ -255,8 +255,8 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     );
     sim.session.house_order.push(viewer);
     let mut view = serde_json::to_value(OwnerVisibility::new(128, 128)).unwrap();
-    for cell in view["cell_runtime"].as_array_mut().unwrap() {
-        cell["alt_flags"] = json!(if input["visible"].as_bool().unwrap_or(true) {
+    for cell in view["ground_flags"].as_array_mut().unwrap() {
+        *cell = json!(if input["visible"].as_bool().unwrap_or(true) {
             16
         } else {
             0
@@ -270,7 +270,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             for cell in cells {
                 let index =
                     cell[1].as_u64().unwrap() as usize * 128 + cell[0].as_u64().unwrap() as usize;
-                view["cell_runtime"][index]["alt_flags"] = json!(flag);
+                view["ground_flags"][index] = json!(flag);
             }
         }
     }

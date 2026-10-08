@@ -881,7 +881,10 @@ use crate::sim::world::Simulation;
 // 304 -> 305: PowerState drops was_low_power (it fed only a discarded
 // transition event) and Miner its forced_return flag (reserved_refinery is
 // only set beside it). Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 305;
+// 305 -> 306: OwnerVisibility keeps one byte of CellClass ground bits per cell
+// instead of the legacy counter projection and visibility marks, and
+// SightAdmission drops its fog_of_war copy. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 306;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3905,7 +3908,8 @@ mod tests {
         // 302 -> 303: unread HoverAttack copy and aircraft pad-index copies.
         // 303 -> 304: a Super's place in the Super timer list.
         // 304 -> 305: write-only power transition latch and miner return flag.
-        assert_eq!(super::SNAPSHOT_VERSION, 305);
+        // 305 -> 306: ground bits replace the legacy visibility counters.
+        assert_eq!(super::SNAPSHOT_VERSION, 306);
     }
 
     #[test]
@@ -6372,7 +6376,7 @@ mod tests {
         sim.fog.width = 8;
         sim.fog.height = 8;
         sim.fog
-            .insert_fogged_object_footprint(viewer, (3, 3), 91, vec![(3, 3), (4, 3)]);
+            .insert_fogged_object_footprint(viewer, 91, vec![(3, 3), (4, 3)]);
         sim.fog.sensors_add_at(viewer, (3, 3), 2);
         assert!(sim.fog.set_cloaked_by_house(7, 3, 3));
         assert!(
