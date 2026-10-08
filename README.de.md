@@ -41,8 +41,7 @@ Schlachten mit 30 Spielern und 20.000 Einheiten haben wir bisher nicht demonstri
 
 Du brauchst:
 
-- **Das Spiel:** Red Alert 2: Yuri's Revenge 1.001. Jede Ausgabe funktioniert; unter macOS
-  kopierst du den Spielordner von einer Windows-Installation.
+- **Das Spiel:** Red Alert 2: Yuri's Revenge.
 - **Rust und Git:** die aktuelle stabile Version von [Rust](https://rustup.rs/), installiert mit
   rustup, und [Git](https://git-scm.com/).
 - **Build-Werkzeuge:** unter Windows die C++-Build-Tools von Visual Studio, deren Installation

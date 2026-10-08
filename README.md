@@ -41,8 +41,7 @@ and several weapons and effects need more work. We haven't demonstrated 30-playe
 
 You need:
 
-- **The game:** Red Alert 2: Yuri's Revenge 1.001. Any edition works; on macOS, copy the game
-  folder from a Windows install.
+- **The game:** Red Alert 2: Yuri's Revenge.
 - **Rust and Git:** current stable [Rust](https://rustup.rs/), installed with rustup, and
   [Git](https://git-scm.com/).
 - **Build tools:** on Windows, the Visual Studio C++ build tools, which the Rust installer offers

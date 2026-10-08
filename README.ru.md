@@ -40,8 +40,7 @@ VERA20k делают игроки для игроков, и последнее �
 
 Понадобится:
 
-- **Игра:** Red Alert 2: Yuri's Revenge 1.001. Подойдёт любое издание; на macOS скопируй папку
-  игры из установки на Windows.
+- **Игра:** Red Alert 2: Yuri's Revenge.
 - **Rust и Git:** актуальная стабильная версия [Rust](https://rustup.rs/), установленная через
   rustup, и [Git](https://git-scm.com/).
 - **Инструменты сборки:** на Windows — C++ Build Tools из Visual Studio, которые предложит

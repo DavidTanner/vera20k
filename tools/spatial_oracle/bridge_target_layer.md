@@ -272,19 +272,12 @@ bridge-receiver collapse plus two restored collapsed futures match for four
 further frames. This is Rust
 production integration; supplied receiver damage is not an ordinary firing proof.
 
-The release example closes that firing boundary separately:
-
-```sh
-cargo build -p vera20k --release --example bridge_target_layer_scene
-cargo build -p vera20k --release --bin vera20k
-target/release/examples/bridge_target_layer_scene "$RA2_DIR" /path/to/new-save-prefix bridge-debris-hills-20260926.yrm
-```
-
-The map argument must name a loose copy of the exact inner Hills payload identified
-above. The example refuses to overwrite saves. It preserves the ordinary Move/Stop
-scene, supplies hostility and an active rearm timer for the G27 boundary, then uses
-an ordinary bank FV and repeated ForceAttackCell commands through the existing
-target/weapon/projectile owners. It recorded 52 projectiles and collapse after
+A release example, `bridge_target_layer_scene` (removed on 2026-10-08), closed that
+firing boundary separately on a loose copy of the exact inner Hills payload identified
+above. It preserved the ordinary Move/Stop scene, supplied hostility and an active
+rearm timer for the G27 boundary, then used an ordinary bank FV and repeated
+ForceAttackCell commands through the existing target/weapon/projectile owners. It
+recorded 52 projectiles and collapse after
 1400 frames; the former deck and ground actors were both retired. The intact save
 is frame69/hash`286e28169efa00f8`, the collapsed save frame1509/hash`3d10a7cf8f09e45a`,
 map hash`c045c269668aa87e`, rules hash`9bf711eab7834933`. Snapshot compatibility is
