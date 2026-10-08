@@ -20,11 +20,6 @@ const BRUTE_TYPE_REF: &str = "BRUTE";
 /// its direct Apply_area_damage call (`MOV EDX, 0x2710`).
 const MUTATE_AOE_DAMAGE: i32 = 10_000;
 
-/// The InfDeath table's mutation arm (`0x005188AE`, entry 9 of `0x00518D58`),
-/// which builds InfantryMutate. Retail `MutateExplosion` has `InfDeath=9`
-/// (production reader).
-const MUTATE_INF_DEATH: u8 = 9;
-
 /// Complete the selected mutation batch and all replacement attempts before returning.
 /// Current immediate BRUTE ownership, placement and corpse timing are deliberate
 /// Rust compatibility policy. Native AnimToInfantry replacement remains separate.
@@ -122,8 +117,16 @@ fn apply_mutate_explosion(
     // ReceiveDamage -> death helper transaction. Snapshot the transformation
     // cells first, preserve the AoE's object-list order, then create Brutes only
     // after every nested death detonation has returned. Only a death the
-    // InfDeath table takes to its mutation arm mutates: not a `JumpJet=` type's
-    // explosion, nor a falling paratrooper's InfDeath 3.
+    // InfDeath table takes with the warhead's own InfDeath mutates: not a
+    // `JumpJet=` type's explosion (`0x00518313`) nor a falling paratrooper's
+    // InfDeath 3 (`0x0051836F..0x0051842F`).
+    //
+    // RESIDUAL (the immediate-Brute policy above): natively only the table's
+    // arm 9 (`0x005188AE`, InfantryMutate) mutates; VERA mutates whatever the
+    // warhead's InfDeath. Trigger: a `MutateExplosionWarhead=` whose
+    // `InfDeath=` is not 9; retail's `MutateExplosion` has 9 (production
+    // reader). Effect: its victims become Brutes as well as playing their own
+    // death.
     let candidates: Vec<(u64, u16, u16)> = receivers
         .iter()
         .filter_map(|receiver| {
@@ -136,7 +139,7 @@ fn apply_mutate_explosion(
                 .and_then(|entity| {
                     (entity.category == EntityCategory::Infantry
                         && sim.infantry_death_arm(entity, warhead.inf_death, rules)
-                            == InfantryDeathArm::Table(MUTATE_INF_DEATH))
+                            == InfantryDeathArm::Table(warhead.inf_death))
                     .then_some((event.target_id, entity.position.rx, entity.position.ry))
                 })
         })
@@ -369,10 +372,7 @@ mod tests {
         let retained = fatal.substrate.entities.get(infantry).unwrap();
         assert_eq!(retained.infantry_sprite_pose(), Some((11, 0)));
         assert!(retained.lifecycle.cell_marked && retained.in_logic_vector);
-        assert!(
-            killed.is_empty(),
-            "this warhead's InfDeath 1 plays Die1, not the mutation arm (0x005188AE)"
-        );
+        assert_eq!(killed, vec![(5, 5)]);
         for cell in [(5, 5), (6, 5)] {
             assert_eq!(
                 fatal
@@ -452,7 +452,7 @@ mod tests {
              [E1]\nStrength=100\nArmor=none\nSpeed=4\n\n\
              [ROCKET]\nStrength=100\nArmor=none\nSpeed=9\nJumpJet=yes\nCrashable=yes\n\n\
              [BRUTE]\nStrength=200\nArmor=none\nSpeed=4\n\n\
-             [MutateExplosion]\nCellSpread=1\nPercentAtMax=1\nInfDeath=9\n\
+             [MutateExplosion]\nCellSpread=1\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         ))
         .expect("mutation rules");
@@ -558,7 +558,7 @@ mod tests {
              [E1]\nStrength=100\nArmor=none\nSpeed=4\nPrimary=DUMMYW\n\n\
              [BRUTE]\nStrength=200\nArmor=none\nSpeed=4\n\n\
              [DUMMYW]\nDamage=1\nROF=1\nRange=1\nWarhead=MutateExplosion\n\n\
-             [MutateExplosion]\nCellSpread=1\nPercentAtMax=1\nInfDeath=9\n\
+             [MutateExplosion]\nCellSpread=1\nPercentAtMax=1\n\
              Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
         ))
         .expect("genetic test rules should parse")
