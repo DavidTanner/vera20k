@@ -33,9 +33,9 @@
 //!   Presentation only.
 //! - The leaf's CellChangeNotify (`0x004A9D94` -> `0x005865F0`) calls
 //!   DiscoveredBy (vt+0x198) on the objects of each cell it changes; VERA
-//!   drops it for every reveal (`map_visible`'s RevealCheck). Skirmish
-//!   objects are discovered when placed (`discover_cell_put_object`); a
-//!   campaign's objects that a reveal uncovers are not discovered by it.
+//!   drops it for every reveal. Skirmish objects are discovered when placed
+//!   (`discover_cell_put_object`); a campaign's objects that a reveal
+//!   uncovers are not discovered by it.
 //!
 //! Ledger: no Scenario draws, timer writes or detach calls.
 //!

@@ -313,7 +313,12 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // Snapshot303: HoverAttack, target_pad and pad_index leave the hash. A control
 // binary (main with a hash that skips only those fields) gives this value in
 // the same test, with every tripwire above green. Control removed.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xD630_9E0F_2B18_E6A3;
+// Snapshot306: the legacy CellClass counters, flags, occlusion caches and
+// visibility marks leave the hash (the ground bits stay), and SightAdmission
+// drops fog_of_war. A control binary (main with a hash that skips only those
+// fields) gives this value in the same test, with every tripwire above green.
+// Control removed.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xFA70_930D_D20D_FC8B;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
