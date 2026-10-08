@@ -2786,13 +2786,8 @@ impl Simulation {
         &mut self,
         events: &[crate::sim::combat::UnitLostEvent],
     ) {
-        let game_mode_nonzero = self.session.game_mode_nonzero;
         for event in events {
-            let human = self
-                .houses
-                .get(&event.owner)
-                .is_some_and(|house| house.is_controlled_by_human(game_mode_nonzero));
-            if !human {
+            if !self.owner_is_human(event.owner) {
                 continue;
             }
             self.sound_events.push(SimSoundEvent::UnitLost {

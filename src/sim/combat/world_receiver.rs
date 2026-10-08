@@ -3122,10 +3122,7 @@ fn retaliation_reaches(
         garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     }
     .in_range();
-    let human = world
-        .houses
-        .get(&victim.owner())
-        .is_some_and(|house| house.is_controlled_by_human(world.session.game_mode_nonzero));
+    let human = world.owner_is_human(victim.owner());
     if in_range || !human {
         return true;
     }
@@ -3318,11 +3315,7 @@ fn reveal_on_fire(world: &mut Simulation, rules: &RuleSet, firer_id: u64, target
     else {
         return;
     };
-    if !world
-        .houses
-        .get(&house)
-        .is_some_and(|state| state.is_controlled_by_human(world.session.game_mode_nonzero))
-    {
+    if !world.owner_is_human(house) {
         return;
     }
     let Some(firer) = world.substrate.entities.get(firer_id) else {

@@ -289,10 +289,7 @@ fn spawn_parachuted(
     if rider.category != EntityCategory::Infantry {
         return Ok(());
     }
-    let human = sim
-        .houses
-        .get(&rider.owner())
-        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
+    let human = sim.owner_is_human(rider.owner());
     let mission = MissionId::from_known(if human {
         MissionType::Guard
     } else {

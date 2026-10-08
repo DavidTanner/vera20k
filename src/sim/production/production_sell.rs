@@ -312,13 +312,9 @@ fn qualifying_undeploy(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
     if !object.construction_yard {
         return true;
     }
-    let game_mode = sim.session.game_mode_nonzero;
-    game_mode
+    sim.session.game_mode_nonzero
         && sale_archive(entity)
-        && sim
-            .houses
-            .get(&entity.owner())
-            .is_some_and(|house| house.is_controlled_by_human(game_mode))
+        && sim.owner_is_human(entity.owner())
         && sim.session.game_options.mcv_redeploy
         && entity.mind_control.controller().is_none()
 }

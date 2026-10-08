@@ -230,10 +230,7 @@ impl Simulation {
                 &self.substrate.entities,
             ),
             leaves_map: entity.is_mission_only(),
-            human: self
-                .houses
-                .get(&entity.owner())
-                .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero)),
+            human: self.owner_is_human(entity.owner()),
             airstrike: entity
                 .mission_leaf
                 .as_aircraft()

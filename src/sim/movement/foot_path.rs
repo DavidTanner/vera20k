@@ -669,10 +669,7 @@ impl Simulation {
         //0x4D4149: the class target setter with NULL; the represented owner
         //serves Techno 0x6FCDB0 and Infantry 0x51B1F0 alike.
         represented_assign_target(actor, None);
-        let human = self
-            .houses
-            .get(&owner)
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        let human = self.owner_is_human(owner);
         let mission = if human {
             MissionType::Guard
         } else {

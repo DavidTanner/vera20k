@@ -1474,11 +1474,7 @@ fn classify_foot_entry<'a>(
             .ok_or("repair overlay receiver lacks registered type")?;
         if flags.crate_type
             && (infantry || !live.sim.session.game_mode_nonzero)
-            && !live
-                .sim
-                .houses
-                .get(&e.owner())
-                .is_some_and(|h| h.is_controlled_by_human(live.sim.session.game_mode_nonzero))
+            && !live.sim.owner_is_human(e.owner())
         {
             return Ok(7);
         }
