@@ -662,10 +662,14 @@ mod tests {
 
     #[test]
     fn mission_leaf_serde_round_trip_preserves_every_raw_field() {
+        // A paradrop plane past its last pass: `+0x6D3` below zero.
+        let mut paradrop = MissionLeafState::aircraft_raw_for_test(1, 2, false);
+        paradrop.set_paradrop_passes_for_test(-1);
         let fixtures = [
             MissionLeafState::unit_raw_for_test(1, 2, 3, u8::MAX),
             MissionLeafState::infantry_raw_for_test(u8::MAX, 41),
             MissionLeafState::aircraft_raw_for_test(u8::MAX, 0, true),
+            paradrop,
             MissionLeafState::building_raw_for_test(u8::MAX),
         ];
 

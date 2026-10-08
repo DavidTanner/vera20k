@@ -423,6 +423,58 @@ fn a_water_target_moves_as_native_does() {
     assert!(replayed > 10, "{replayed}");
 }
 
+/// The production path of a WaterSet click (Rust integration, not a native
+/// comparison: the search order is the shared Find_Nearby_Passable_Cell
+/// port's own evidence). (40, 40) is water no Foot can enter, among land, so
+/// Launch case 5 sends the plane to a land cell beside it.
+#[test]
+fn a_water_click_sends_the_plane_to_land_beside_it() {
+    let (rules, mut sim, americans) = paradrop_world(retail_list_rules(1024));
+    set_tile(&mut sim, TARGET, 3);
+    let cell = sim
+        .resolved_terrain
+        .as_mut()
+        .unwrap()
+        .cell_mut(TARGET.0, TARGET.1)
+        .unwrap();
+    // Water: Foot's speed there is 0.
+    cell.land_type = 2;
+    cell.speed_costs.foot = Some(0);
+    cell.base_speed_costs.foot = Some(0);
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
+    let sw_type = charge_super(&mut sim, americans, PARADROP);
+
+    assert!(launch(
+        &mut sim,
+        &rules,
+        americans,
+        TARGET.0,
+        TARGET.1,
+        ParaDropKind::Generic,
+        sw_type
+    ));
+
+    let [plane] = planes(&sim)[..] else {
+        panic!("one plane");
+    };
+    let target = sim
+        .substrate
+        .entities
+        .get(plane)
+        .unwrap()
+        .attack_target
+        .as_ref()
+        .map(|attack| attack.target);
+    let Some(TargetKind::Cell(x, y)) = target else {
+        panic!("a cell target: {target:?}");
+    };
+    assert_ne!((x, y), TARGET);
+    assert!(
+        x.abs_diff(TARGET.0) <= 1 && y.abs_diff(TARGET.1) <= 1,
+        "{x},{y}"
+    );
+}
+
 /// SendParadropPlanes with case 5's arguments: the plane is constructed in
 /// the ScenarioInit bracket and is mission-only at its edge pick (the
 /// house's own edge, `GetEdge`); it queues mission 26, targets the cell,
