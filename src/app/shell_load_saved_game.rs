@@ -59,20 +59,13 @@ impl App {
         )
     }
 
-    fn load_saved_game_pointer(state: &AppState) -> (i32, i32) {
-        (
-            state.match_state.input.cursor_x.round() as i32,
-            state.match_state.input.cursor_y.round() as i32,
-        )
-    }
-
     pub(super) fn handle_load_saved_game_mouse(state: &mut AppState, pressed: bool) {
         let layout = Self::load_saved_game_layout(state);
         let extent = (
             state.renderer.gpu.config.width,
             state.renderer.gpu.config.height,
         );
-        let pointer = Self::load_saved_game_pointer(state);
+        let pointer = state.match_state.input.cursor_px();
         let Some(browser) = state.frontend.load_saved_game.as_mut() else {
             return;
         };
@@ -113,7 +106,7 @@ impl App {
             return;
         }
         let layout = Self::load_saved_game_layout(state);
-        let (_, y) = Self::load_saved_game_pointer(state);
+        let (_, y) = state.match_state.input.cursor_px();
         if let Some(browser) = state.frontend.load_saved_game.as_mut() {
             saved_file_input::update_scroll(
                 browser,
@@ -185,7 +178,7 @@ impl App {
             return None;
         }
         let layout = Self::load_saved_game_layout(state);
-        let (x, y) = Self::load_saved_game_pointer(state);
+        let (x, y) = state.match_state.input.cursor_px();
         match crate::ui::skirmish_shell::saved_seed_control_at(&layout.browser, x, y)? {
             SavedSeedControl::List => Some(crate::ui::shell::saved_games::LOAD_LIST_HELP_KEY),
             SavedSeedControl::Action => Some(LOAD_SAVED_GAME_PAGE.stacked[0].tooltip_key),

@@ -78,7 +78,7 @@ pub(crate) fn on_mouse_move(state: &mut AppState) {
         state.match_state.match_presentation.tooltips.on_button(now);
         return;
     }
-    let (x, y) = (state.match_state.input.cursor_x.round() as i32, state.match_state.input.cursor_y.round() as i32);
+    let (x, y) = state.match_state.input.cursor_px();
     if state.frontend.screen == GameScreen::InGame && state.match_state.input.cursor_coordinates {
         // Native724200 resolves the current region/text at the mouse move,
         // including ordinary sidebar tips while the coordinate toggle is on.
