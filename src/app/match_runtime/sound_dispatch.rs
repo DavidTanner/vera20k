@@ -785,19 +785,9 @@ pub(super) fn dispatch_sim_sound_events(
                 // `0x004468FA..0x00446935`: `AuxBuilding=` absent, or
                 // the building's own house owns one
                 // (`CountOwnedInstances` on `Owner+0x5550`).
-                let aux_satisfied = match rules
-                    .super_weapon(&type_name)
-                    .and_then(|sw| sw.aux_building.as_deref())
-                {
-                    None => true,
-                    Some(aux) => sim.substrate.entities.values().any(|e| {
-                        e.owner() == owner
-                            && !e.dying
-                            && !e.lifecycle.in_limbo
-                            && e.category == crate::map::entities::EntityCategory::Structure
-                            && sim.interner.resolve(e.type_ref()).eq_ignore_ascii_case(aux)
-                    }),
-                };
+                let aux_satisfied = rules.super_weapon(&type_name).is_none_or(|sw| {
+                    crate::sim::superweapon::aux_building_present(sim, rules, owner, sw)
+                });
                 if !eva_producers::super_weapon_detected_allowed(
                     &sim.house_alliances,
                     &owner_name,
