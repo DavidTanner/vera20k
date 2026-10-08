@@ -84,15 +84,17 @@ impl TrackFamily {
 }
 
 impl TrackProgress {
-    /// Selector publication precedes fresh acceptance's later cursor-zero
-    /// write (Drive4B4016..4034 then4B4659; Ship6A3642..3660 then6A3C88).
-    pub(crate) fn select_fresh(&mut self, first: u8, second: u8) -> bool {
-        if first >= 8 || second >= 8 {
-            return false;
-        }
-        self.turn_index = drive_track::fresh_turn_index(first, second) as i32;
+    /// Publish a fresh selector ([`drive_track::fresh_turn_index`]) with the
+    /// reversed byte cleared. Selector publication precedes fresh acceptance's
+    /// later cursor-zero write (Drive4B4016..4034 then4B4659; Ship6A3642..3660
+    /// then6A3C88).
+    pub(crate) fn select_fresh(&mut self, turn_index: usize) {
+        assert!(
+            turn_index < 64,
+            "a fresh selector is one of the 64 from/to entries"
+        );
+        self.turn_index = turn_index as i32;
         self.reversed = false;
-        true
     }
 
     pub(crate) fn accept_fresh(&mut self) {
