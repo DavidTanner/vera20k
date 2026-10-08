@@ -1836,7 +1836,7 @@ impl Simulation {
                         return None;
                     }
                     let (foundation_w, foundation_h) =
-                        crate::sim::production::foundation_dimensions(&object.foundation);
+                        crate::rules::foundation::foundation_dimensions(&object.foundation);
                     Some(crate::sim::combat::DestroyedGarrisonBuilding {
                         building_id: stable_id,
                         type_id: entity.type_ref(),

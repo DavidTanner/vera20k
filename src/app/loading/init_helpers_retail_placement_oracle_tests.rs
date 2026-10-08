@@ -13,13 +13,14 @@ use crate::map::map_file::{self, MapFile};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::theater;
+use crate::rules::foundation::foundation_dimensions;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::power_system::tick_power_states;
 use crate::sim::production::{
-    foundation_dimensions, placement_preview_for_owner_without_overlays, ready_buildings_for_owner,
+    placement_preview_for_owner_without_overlays, ready_buildings_for_owner,
 };
 use crate::sim::world::Simulation;
 

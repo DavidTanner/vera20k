@@ -1192,7 +1192,7 @@ pub(crate) fn update_building_placement_preview(state: &mut AppState) {
     let (fw, fh, foundation_str) = rules
         .object(type_id)
         .map(|obj| {
-            let (w, h) = production::foundation_dimensions(&obj.foundation);
+            let (w, h) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
             (w, h, obj.foundation.clone())
         })
         .unwrap_or((1, 1, "1x1".to_string()));

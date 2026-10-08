@@ -10,7 +10,7 @@ use crate::sim::find_nearby_cell::{
 };
 use crate::sim::world::{PlacementEvidence, Simulation};
 
-use super::production_tech::foundation_dimensions;
+use crate::rules::foundation::foundation_dimensions;
 
 /// Native primary FreeUnit facing byte. Under the project facing convention,
 /// 0xC0 is west.

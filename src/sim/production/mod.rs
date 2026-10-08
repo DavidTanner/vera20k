@@ -63,9 +63,8 @@ pub(crate) use self::production_sell::{
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
 pub use self::production_tech::{
-    building_base_foundation_cells, building_footprint_cells, building_movement_blocking_cells,
-    foundation_dimensions, is_matching_factory, producer_candidates_for_owner_category,
-    structure_satisfies_prerequisite,
+    building_base_foundation_cells, building_movement_blocking_cells, is_matching_factory,
+    producer_candidates_for_owner_category, structure_satisfies_prerequisite,
 };
 pub use self::production_types::*;
 

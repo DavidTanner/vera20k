@@ -173,7 +173,7 @@ pub(crate) fn blocker_plane_source(
     if entity.category == EntityCategory::Structure {
         let size = rules
             .and_then(|r| r.object(interner.resolve(entity.type_ref())))
-            .map(|obj| crate::sim::production::foundation_dimensions(&obj.foundation))
+            .map(|obj| crate::rules::foundation::foundation_dimensions(&obj.foundation))
             .unwrap_or((1, 1));
         Some(BlockerPlaneSource::Building { origin: pos, size })
     } else {

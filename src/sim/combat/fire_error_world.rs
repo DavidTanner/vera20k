@@ -439,7 +439,7 @@ pub(crate) fn garrison_weapon<'r>(
         .and_then(|occupant_obj| {
             combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy())
         })?;
-    let (width, height) = crate::sim::production::foundation_dimensions(&obj.foundation);
+    let (width, height) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
     let cells = i32::from(width.min(height) / 2) + rules.garrison_rules.occupy_weapon_range;
     Some((
         weapon,

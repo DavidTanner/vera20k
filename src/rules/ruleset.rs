@@ -4419,12 +4419,6 @@ impl RuleSet {
         value
     }
 
-    /// Deprecated: `object` is now case-insensitive. Retained as an alias so
-    /// the existing call sites keep compiling without churn.
-    pub fn object_case_insensitive(&self, id: &str) -> Option<&ObjectType> {
-        self.object(id)
-    }
-
     /// Look up a TerrainObjectType by section name, case-insensitive.
     pub fn terrain_object_type_case_insensitive(&self, name: &str) -> Option<&TerrainObjectType> {
         self.terrain_object_types.get(&name.to_ascii_uppercase())
@@ -4942,26 +4936,25 @@ impl RuleSet {
 
     /// Whether a structure type is marked as a refinery in rules.ini.
     pub fn is_refinery_type(&self, structure_id: &str) -> bool {
-        self.object_case_insensitive(structure_id)
-            .is_some_and(|obj| obj.refinery)
+        self.object(structure_id).is_some_and(|obj| obj.refinery)
     }
 
     /// Resolve BuildingType FreeUnit, read by Grand_Opening446AA9. The native
     /// tail does not require Refinery; the type reader has already allocated
     /// a referenced UnitType, including names absent from VehicleTypes.
     pub fn building_free_unit(&self, structure_id: &str) -> Option<&str> {
-        let obj = self.object_case_insensitive(structure_id)?;
+        let obj = self.object(structure_id)?;
         let free_unit = obj.free_unit.as_deref()?;
-        let resolved = self.object_case_insensitive(free_unit)?;
+        let resolved = self.object(free_unit)?;
         Some(resolved.id.as_str())
     }
 
     /// Whether a harvester type may dock at a specific structure according to Dock=.
     pub fn harvester_can_dock_at(&self, harvester_id: &str, structure_id: &str) -> bool {
-        let Some(harvester) = self.object_case_insensitive(harvester_id) else {
+        let Some(harvester) = self.object(harvester_id) else {
             return false;
         };
-        let Some(_structure) = self.object_case_insensitive(structure_id) else {
+        let Some(_structure) = self.object(structure_id) else {
             return false;
         };
         harvester

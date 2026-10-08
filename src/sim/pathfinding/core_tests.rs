@@ -872,7 +872,7 @@ fn test_from_map_data_skips_no_tile() {
 }
 
 #[test]
-fn test_block_building_footprint() {
+fn test_block_building_movement_cells() {
     let cells: Vec<MapCell> = (0..10u16)
         .flat_map(|rx| {
             (0..10u16).map(move |ry| MapCell {
@@ -889,7 +889,7 @@ fn test_block_building_footprint() {
     assert!(grid.is_walkable(3, 3));
     assert!(grid.is_walkable(4, 4));
     // Block a 2x2 building at (3, 3).
-    grid.block_building_footprint(3, 3, "2x2", &[], &[], false);
+    grid.block_building_movement_cells(3, 3, "2x2", false);
     assert!(!grid.is_walkable(3, 3));
     assert!(!grid.is_walkable(4, 3));
     assert!(!grid.is_walkable(3, 4));

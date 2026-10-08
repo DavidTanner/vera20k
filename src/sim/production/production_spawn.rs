@@ -531,7 +531,7 @@ fn resolve_produced_unit_cell_coords(
         },
         0,
     );
-    coords.z = crate::sim::cell_kernel::cell_floor_height(level, slope, coords.x, coords.y).ok()?;
+    coords.z = crate::util::lepton::ground_height_leptons(level, slope, coords.x, coords.y).ok()?;
     Some(crate::sim::components::DriveCoord {
         x: coords.x,
         y: coords.y,
@@ -997,7 +997,7 @@ fn preferred_exit_offsets(rules: &RuleSet, structure_id: &str) -> Vec<(i16, i16)
             return exit_candidates_around(primary_x, primary_y);
         }
         // No ExitCoord: generate offsets from foundation perimeter.
-        let (w, h) = super::production_tech::foundation_dimensions(&obj.foundation);
+        let (w, h) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
         return foundation_perimeter_offsets(w as i16, h as i16);
     }
     // Unknown structure: simple default.

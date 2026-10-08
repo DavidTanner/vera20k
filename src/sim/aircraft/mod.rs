@@ -37,7 +37,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::MissionTimer;
 use crate::sim::movement::locomotor::AirMovePhase;
-use crate::sim::production::foundation_dimensions;
+use crate::rules::foundation::foundation_dimensions;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
@@ -499,7 +499,7 @@ fn mission_step(
             } else if spawn_child {
                 // Hold station; the parent's manager issues the recall.
             } else if out_of_ammo || spent_and_idle {
-                let nearest = find_nearest_airfield_for(
+                let nearest = crate::sim::docking::aircraft_dock::find_nearest_airfield(
                     sim,
                     rules,
                     entity.owner(),
@@ -611,7 +611,7 @@ fn mission_step(
                             sim.substrate.entities.get(*airfield_id).and_then(|af| {
                                 let obj = sim.object_type(af.type_ref(), rules)?;
                                 let foundation =
-                                    crate::sim::production::foundation_dimensions(&obj.foundation);
+                                    crate::rules::foundation::foundation_dimensions(&obj.foundation);
                                 obj.pads.get(reserved_pad as usize).map(|pad| {
                                     crate::sim::docking::pad_geometry::pad_cell_for(
                                         (af.position.rx, af.position.ry),
@@ -786,7 +786,7 @@ fn idle_stand_in(
         .is_some_and(|l| l.altitude > SIM_ZERO);
     let ammo = entity.aircraft_ammo.as_ref();
 
-    let nearest = find_nearest_airfield_for(
+    let nearest = crate::sim::docking::aircraft_dock::find_nearest_airfield(
         sim,
         rules,
         entity.owner(),
@@ -910,57 +910,3 @@ fn apply_mission_mutation(
     m.fire_at.is_some()
 }
 
-/// Find nearest airfield for a given aircraft.
-/// Returns (stable_id, dock_rx, dock_ry) if found.
-fn find_nearest_airfield_for(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: crate::sim::intern::InternedId,
-    type_ref: crate::sim::intern::InternedId,
-    from: (u16, u16),
-) -> Option<(u64, u16, u16)> {
-    let aircraft_type_str = sim.interner.resolve(type_ref);
-    let aircraft_obj = rules.object(aircraft_type_str)?;
-    let dock_list = &aircraft_obj.dock;
-    if dock_list.is_empty() {
-        return None;
-    }
-
-    let mut best: Option<(u64, u16, u16, u32)> = None;
-    for entity in sim.substrate.entities.values() {
-        if entity.category != EntityCategory::Structure {
-            continue;
-        }
-        if entity.health.current == 0 || entity.dying || entity.lifecycle.in_limbo {
-            continue;
-        }
-        if entity.owner() != owner {
-            continue;
-        }
-        let entity_type_str = sim.interner.resolve(entity.type_ref());
-        let Some(obj) = rules.object(entity_type_str) else {
-            continue;
-        };
-        if !obj.unit_reload && !obj.helipad {
-            continue;
-        }
-        if !dock_list
-            .iter()
-            .any(|d| d.eq_ignore_ascii_case(entity_type_str))
-        {
-            continue;
-        }
-        let (w, h) = foundation_dimensions(&obj.foundation);
-        let dock_rx = entity.position.rx + w / 2;
-        let dock_ry = entity.position.ry + h / 2;
-        let dx = (from.0 as i32 - dock_rx as i32).unsigned_abs();
-        let dy = (from.1 as i32 - dock_ry as i32).unsigned_abs();
-        let dist = dx * dx + dy * dy;
-
-        if best.is_none() || dist < best.unwrap().3 {
-            best = Some((entity.stable_id(), dock_rx, dock_ry, dist));
-        }
-    }
-
-    best.map(|(sid, rx, ry, _)| (sid, rx, ry))
-}

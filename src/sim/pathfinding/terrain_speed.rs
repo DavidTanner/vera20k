@@ -211,7 +211,7 @@ fn ground_height_at_world(world: (i32, i32), terrain: &ResolvedTerrainGrid) -> i
             .map_or((0, 0), |c| (c.level, c.slope_type)),
         _ => (0, 0),
     };
-    crate::sim::cell_kernel::cell_floor_height(level, slope, world.0, world.1).unwrap_or_else(
+    crate::util::lepton::ground_height_leptons(level, slope, world.0, world.1).unwrap_or_else(
         |_| i32::from(level as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
     )
 }

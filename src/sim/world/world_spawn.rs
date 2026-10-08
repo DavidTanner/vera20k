@@ -18,6 +18,7 @@ use super::{
 use crate::map::entities::{EntityCategory, MapEntity};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
+use crate::rules::foundation::foundation_dimensions;
 use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::pack_base_plan_cell;
@@ -28,7 +29,7 @@ use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
 };
 use crate::sim::intern::InternedId;
-use crate::sim::production::{self, ProductionCategory, foundation_dimensions};
+use crate::sim::production::{self, ProductionCategory};
 use crate::sim::vision::MAX_SIGHT_RANGE;
 use crate::util::fixed_math::SimFixed;
 
