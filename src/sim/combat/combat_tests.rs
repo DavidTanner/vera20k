@@ -5687,13 +5687,6 @@ fn test_prone_infantry_takes_scaled_aoe_damage() {
     );
 }
 
-#[test]
-fn test_cell_distance() {
-    assert!((cell_distance(0, 0, 3, 4) - 5.0).abs() < 0.01);
-    assert!((cell_distance(5, 5, 5, 5) - 0.0).abs() < f32::EPSILON);
-    assert!((cell_distance(0, 0, 1, 0) - 1.0).abs() < f32::EPSILON);
-}
-
 /// No fire path reads shroud or fog: GetFireError `0x006FC0B0`, the class
 /// fire routines and Greatest_Threat never call `IsShrouded @ 0x00586360`,
 /// and `IsFogged @ 0x005865E0` is a constant false. A target on a cell its

@@ -391,46 +391,6 @@ pub fn projectile_bridge_crossing(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectileCellObstacle {
-    None,
-    Building(u64),
-    Overlay,
-}
-
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub fn projectile_cell_obstacle(
-    candidate_z: i32,
-    floor_z: i32,
-    building_id: Option<u64>,
-    overlay_connected: bool,
-    building_is_target: bool,
-    building_late_exemption: bool,
-    building_vslot_exemption: bool,
-    target_owner_allied_with_building: bool,
-) -> ProjectileCellObstacle {
-    if candidate_z < floor_z || candidate_z >= floor_z.saturating_add(150) {
-        return ProjectileCellObstacle::None;
-    }
-    if let Some(building_id) = building_id {
-        let exempt = building_is_target
-            || building_late_exemption
-            || building_vslot_exemption
-            || target_owner_allied_with_building;
-        return if exempt {
-            ProjectileCellObstacle::None
-        } else {
-            ProjectileCellObstacle::Building(building_id)
-        };
-    }
-    if overlay_connected {
-        ProjectileCellObstacle::Overlay
-    } else {
-        ProjectileCellObstacle::None
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectileCollisionResponse {
     TargetZClamp(ProjectileCoord),
     SlopeMatrixReflect {
@@ -639,30 +599,6 @@ pub(crate) fn projectile_slope_reflect_double(
             NativeF64Bits::from_bits(f64::from(f32::from_bits(value.bits())).to_bits())
         }),
     )
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProjectileBurstPlan {
-    pub detonation_count: u32,
-    pub random_radius_rolls: u32,
-    pub random_coordinate_calls: u32,
-}
-
-#[cfg(test)]
-pub fn projectile_burst_plan(airburst: bool, cluster: i32) -> ProjectileBurstPlan {
-    if airburst {
-        return ProjectileBurstPlan {
-            detonation_count: 1,
-            random_radius_rolls: 0,
-            random_coordinate_calls: 0,
-        };
-    }
-    let count = cluster.max(0) as u32;
-    ProjectileBurstPlan {
-        detonation_count: count,
-        random_radius_rolls: count,
-        random_coordinate_calls: count,
-    }
 }
 
 /// The next cluster coordinate of
@@ -3052,38 +2988,10 @@ mod tests {
             projectile_bridge_crossing(100, 100, 100),
             ProjectileBridgeCrossing::None
         );
-        assert_eq!(
-            projectile_cell_obstacle(249, 100, None, true, false, false, false, false),
-            ProjectileCellObstacle::Overlay
-        );
-        assert_eq!(
-            projectile_cell_obstacle(250, 100, None, true, false, false, false, false),
-            ProjectileCellObstacle::None
-        );
-        assert_eq!(
-            projectile_cell_obstacle(100, 100, Some(7), true, true, false, false, false),
-            ProjectileCellObstacle::None
-        );
     }
 
     #[test]
-    fn burst_shrapnel_and_special_priority_match_closed_vectors() {
-        assert_eq!(
-            projectile_burst_plan(true, 8),
-            ProjectileBurstPlan {
-                detonation_count: 1,
-                random_radius_rolls: 0,
-                random_coordinate_calls: 0
-            }
-        );
-        assert_eq!(
-            projectile_burst_plan(false, 3),
-            ProjectileBurstPlan {
-                detonation_count: 3,
-                random_radius_rolls: 3,
-                random_coordinate_calls: 3
-            }
-        );
+    fn shrapnel_and_special_priority_match_closed_vectors() {
         assert_eq!(projectile_shrapnel_count(-8, true, 3), 5);
         assert_eq!(projectile_shrapnel_count(-8, false, 99), 3);
         assert_eq!(
