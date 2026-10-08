@@ -9,6 +9,7 @@ use super::Simulation;
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::SequenceKind;
+use crate::sim::movement::infantry_action::DO_PARADROP;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum InfantryDeathSequence {
@@ -97,19 +98,79 @@ impl InfantryDeathPostlude {
 /// infantryman's death builds it whatever the warhead (`0x00518313`).
 const INFANTRY_EXPLODE_INF_DEATH: u8 = 3;
 
+/// The InfDeath an infantryman dies with while its action is still Paradrop
+/// (`+0x6C4` 0x21), whatever the warhead's (`0x0051836F..0x0051842F`): a
+/// paratrooper shot in its fall, where Do_Action refuses every death
+/// sequence (`0x0051D722`), explodes and is UnInit.
+///
+/// RESIDUAL: with an `InfDeath=8` warhead (retail `Virus` and `VirusGas`, by
+/// the production reader) native first builds InfantryVirus at the Location,
+/// spawns one gas particle of its `SpawnsParticle=` type there into
+/// GasCloudSys (`0x0062E430`) and deletes the anim (`0x0051837E..0x0051842C`);
+/// VERA ports no gas particles (`AnimClass::Middle`'s RESIDUAL). Trigger: a
+/// Virus shot or gas kill on a falling paratrooper. Effect: no gas puff over
+/// its explosion, and the draws of both constructions are skipped: the
+/// particle's draws Scenario Random once (`0x0062B842` or `0x0062B870`) and
+/// again for a type whose `+0x314` is 1 (`0x0062B7F2`). Frequency: rare.
+const PARADROP_INF_DEATH: u8 = INFANTRY_EXPLODE_INF_DEATH;
+
+/// The arm of `InfantryClass::ReceiveDamage`'s death ladder (`0x00517FA0`)
+/// that takes a killed infantryman, as far as VERA ports the ladder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InfantryDeathArm {
+    /// A `JumpJet=` type (`+0xD94`, `0x00518313`): InfantryExplode whatever
+    /// the warhead, then a `Crashable=` one's crash.
+    JumpJetExplode { crashable: bool },
+    /// The InfDeath table (`0x00518D58`) with this InfDeath.
+    Table(u8),
+}
+
 impl Simulation {
+    /// The arm that takes infantryman `entity` when a warhead with
+    /// `inf_death` kills it: [`InfantryDeathArm::JumpJetExplode`] for a
+    /// `JumpJet=` type, else the table with the warhead's InfDeath, which
+    /// [`PARADROP_INF_DEATH`] replaces while its action is still Paradrop.
+    pub(crate) fn infantry_death_arm(
+        &self,
+        entity: &crate::sim::game_entity::GameEntity,
+        inf_death: u8,
+        rules: &RuleSet,
+    ) -> InfantryDeathArm {
+        let (jumpjet, crashable) = self
+            .object_type(entity.type_ref(), rules)
+            .map_or((false, false), |object| (object.jumpjet, object.crashable));
+        if jumpjet {
+            return InfantryDeathArm::JumpJetExplode { crashable };
+        }
+        let paradrop = entity
+            .mission_leaf
+            .as_infantry()
+            .is_some_and(|leaf| leaf.doing() == DO_PARADROP);
+        InfantryDeathArm::Table(if paradrop {
+            PARADROP_INF_DEATH
+        } else {
+            inf_death
+        })
+    }
+
     /// Select the represented concrete recipe after recursive DeathWeapon
     /// damage. Effects remain in the consuming postlude; Do_Action owns the
     /// class sequence admission and shared Stage independently of drawing.
     ///
-    /// A `JumpJet=` type (`+0xD94`, `0x00518313`) builds InfantryExplode
-    /// whatever the warhead, ahead of the InfDeath table. A `Crashable=` one
-    /// (`+0xD95`, `0x005185F1`) then crashes (`Crash(NULL)`, `0x0051860B`):
-    /// accepted, it stays alive at Health 0 and falls (`world::jumpjet_cruise`,
+    /// The arm is [`Self::infantry_death_arm`]'s. A `JumpJet=` type's
+    /// `Crashable=` one (`+0xD95`, `0x005185F1`) crashes after its
+    /// InfantryExplode (`Crash(NULL)`, `0x0051860B`): accepted, it stays alive
+    /// at Health 0 and falls (`world::jumpjet_cruise`,
     /// `movement::infantry_action`); refused on the ground, it is UnInit. An
     /// infantryman flown by the Jumpjet locomotor first runs the arm's
     /// Stop_Driver (`0x005180FE`) and Stun (`0x00518108`), which stop its
     /// locomotor with Scenario draws.
+    ///
+    /// RESIDUAL: native tests `Crashable=` after every anim arm, not only the
+    /// JumpJet one. Trigger: a `Crashable=` type without `JumpJet=`, which
+    /// retail lacks (its Crashable infantry, JUMPJET and LUNR, are JumpJet
+    /// types by the production reader). Effect: it would crash instead of
+    /// being UnInit.
     ///
     /// RESIDUAL: a walker skips that Stop_Driver and Stun. Trigger: every
     /// infantry death. Effect: none observable: its Walk stop and Stun repeat
@@ -167,23 +228,25 @@ impl Simulation {
             entity,
             self.resolved_terrain.as_ref(),
         );
-        let (jumpjet, crashable) = self
-            .object_type(entity.type_ref(), rules)
-            .map_or((false, false), |object| (object.jumpjet, object.crashable));
-        let recipe = if jumpjet {
-            if crashable && self.foot_crash(id, None, rules, overlay_registry) {
-                ReceiverDeathRecipe::CrashExplode
-            } else {
-                ReceiverDeathRecipe::ExternalAnim(INFANTRY_EXPLODE_INF_DEATH)
+        let recipe = match self.infantry_death_arm(entity, inf_death, rules) {
+            InfantryDeathArm::JumpJetExplode { crashable } => {
+                if crashable && self.foot_crash(id, None, rules, overlay_registry) {
+                    ReceiverDeathRecipe::CrashExplode
+                } else {
+                    ReceiverDeathRecipe::ExternalAnim(INFANTRY_EXPLODE_INF_DEATH)
+                }
             }
-        } else if let Some(sequence) = InfantryDeathSequence::for_inf_death(inf_death) {
-            self.begin_infantry_death_sequence(id, sequence, rules);
-            ReceiverDeathRecipe::Sequence
-        } else if crate::sim::animation::inf_death_spawns_anim(inf_death) {
-            ReceiverDeathRecipe::ExternalAnim(inf_death)
-        } else {
-            immediate_uninit_ids.push(id);
-            ReceiverDeathRecipe::Cleanup
+            InfantryDeathArm::Table(inf_death) => {
+                if let Some(sequence) = InfantryDeathSequence::for_inf_death(inf_death) {
+                    self.begin_infantry_death_sequence(id, sequence, rules);
+                    ReceiverDeathRecipe::Sequence
+                } else if crate::sim::animation::inf_death_spawns_anim(inf_death) {
+                    ReceiverDeathRecipe::ExternalAnim(inf_death)
+                } else {
+                    immediate_uninit_ids.push(id);
+                    ReceiverDeathRecipe::Cleanup
+                }
+            }
         };
         if !matches!(
             recipe,

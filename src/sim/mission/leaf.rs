@@ -70,6 +70,16 @@ pub(crate) struct AircraftMissionLeaf {
     /// Aircraft+6D4, independent of the pending-ammunition byte+6C8.
     transition_ready_latch: u8,
     airstrike_manager_present: bool,
+    /// Aircraft `+0x6D3`, the paradrop passes left: the constructor writes 5
+    /// (`0x00413D74`), each Mission_ParadropApproach turn into Overfly takes
+    /// one (`0x00415950`), and each drop restores 5 (`0x00415E93`).
+    /// Overfly comes round again only while it is above 0 (`0x0041599F`).
+    #[serde(default = "initial_paradrop_passes")]
+    paradrop_passes: i8,
+}
+
+const fn initial_paradrop_passes() -> i8 {
+    5
 }
 
 /// Building reusable mission-ready latch.
@@ -292,6 +302,22 @@ impl MissionLeafState {
         self.expect_aircraft_mut().action_latch = u8::from(active);
     }
 
+    /// Mission_ParadropApproach's `DEC byte [+0x6D3]` (`0x00415950`).
+    pub(crate) fn take_paradrop_pass(&mut self) {
+        let leaf = self.expect_aircraft_mut();
+        leaf.paradrop_passes = leaf.paradrop_passes.wrapping_sub(1);
+    }
+
+    /// Drop_Payload's `MOV byte [+0x6D3], 5` (`0x00415E93`).
+    pub(crate) fn restore_paradrop_passes(&mut self) {
+        self.expect_aircraft_mut().paradrop_passes = initial_paradrop_passes();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_paradrop_passes_for_test(&mut self, passes: i8) {
+        self.expect_aircraft_mut().paradrop_passes = passes;
+    }
+
     /// Building `+0x6DD`, written by Mission_Guard (`0x00449701`),
     /// Mission_Attack (`0x0044B008`), the first opening (`0x004467C9`) and
     /// cleared by Update's ready checks (`0x0043FE4D`, `0x0043FFAD`).
@@ -392,6 +418,7 @@ impl MissionLeafState {
             action_latch,
             transition_ready_latch,
             airstrike_manager_present,
+            paradrop_passes: initial_paradrop_passes(),
         })
     }
 
@@ -473,7 +500,12 @@ impl AircraftMissionLeaf {
             action_latch: 0,
             transition_ready_latch: 1,
             airstrike_manager_present: false,
+            paradrop_passes: initial_paradrop_passes(),
         }
+    }
+
+    pub(crate) const fn paradrop_passes(&self) -> i8 {
+        self.paradrop_passes
     }
 
     pub(crate) const fn action_latch(&self) -> u8 {
@@ -630,10 +662,14 @@ mod tests {
 
     #[test]
     fn mission_leaf_serde_round_trip_preserves_every_raw_field() {
+        // A paradrop plane past its last pass: `+0x6D3` below zero.
+        let mut paradrop = MissionLeafState::aircraft_raw_for_test(1, 2, false);
+        paradrop.set_paradrop_passes_for_test(-1);
         let fixtures = [
             MissionLeafState::unit_raw_for_test(1, 2, 3, u8::MAX),
             MissionLeafState::infantry_raw_for_test(u8::MAX, 41),
             MissionLeafState::aircraft_raw_for_test(u8::MAX, 0, true),
+            paradrop,
             MissionLeafState::building_raw_for_test(u8::MAX),
         ];
 

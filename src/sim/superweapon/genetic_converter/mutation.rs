@@ -9,7 +9,7 @@ use crate::sim::combat::combat_aoe::{
 };
 use crate::sim::intern::InternedId;
 use crate::sim::superweapon::cell_grid::{native_cells_3x3, selected_cell_list};
-use crate::sim::world::Simulation;
+use crate::sim::world::{InfantryDeathArm, Simulation};
 use std::collections::BTreeSet;
 
 /// Brute type_ref for Tier 1. Generalize to rules.general.animation_to_infantry[0]
@@ -116,9 +116,17 @@ fn apply_mutate_explosion(
     // Mutation is infantry-only, but its damage still enters the ordinary
     // ReceiveDamage -> death helper transaction. Snapshot the transformation
     // cells first, preserve the AoE's object-list order, then create Brutes only
-    // after every nested death detonation has returned. A `JumpJet=` type's
-    // death explodes ahead of the InfDeath table (`0x00518313`, before the
-    // mutation arm `0x005188AE`), so it never mutates.
+    // after every nested death detonation has returned. Only a death the
+    // InfDeath table takes with the warhead's own InfDeath mutates: not a
+    // `JumpJet=` type's explosion (`0x00518313`) nor a falling paratrooper's
+    // InfDeath 3 (`0x0051836F..0x0051842F`).
+    //
+    // RESIDUAL (the immediate-Brute policy above): natively only the table's
+    // arm 9 (`0x005188AE`, InfantryMutate) mutates; VERA mutates whatever the
+    // warhead's InfDeath. Trigger: a `MutateExplosionWarhead=` whose
+    // `InfDeath=` is not 9; retail's `MutateExplosion` has 9 (production
+    // reader). Effect: its victims become Brutes as well as playing their own
+    // death.
     let candidates: Vec<(u64, u16, u16)> = receivers
         .iter()
         .filter_map(|receiver| {
@@ -129,14 +137,10 @@ fn apply_mutate_explosion(
                 .entities
                 .get(event.target_id)
                 .and_then(|entity| {
-                    let jumpjet = sim
-                        .object_type(entity.type_ref(), rules)
-                        .is_some_and(|object| object.jumpjet);
-                    (entity.category == EntityCategory::Infantry && !jumpjet).then_some((
-                        event.target_id,
-                        entity.position.rx,
-                        entity.position.ry,
-                    ))
+                    (entity.category == EntityCategory::Infantry
+                        && sim.infantry_death_arm(entity, warhead.inf_death, rules)
+                            == InfantryDeathArm::Table(warhead.inf_death))
+                    .then_some((event.target_id, entity.position.rx, entity.position.ry))
                 })
         })
         .collect();
@@ -472,6 +476,75 @@ mod tests {
         let killed = apply_mutate_explosion(&mut sim, &rules, 5, 5, owner, None);
         assert_eq!(killed, vec![(5, 5)]);
         assert_eq!(sim.substrate.entities.get(11).unwrap().health.current, 0);
+    }
+
+    /// A paratrooper whose action is still Paradrop dies as InfDeath 3
+    /// (`0x0051836F..0x0051842F`), ahead of the mutation arm (`0x005188AE`),
+    /// so the blast that turns the rifleman beside it into a Brute only kills
+    /// it. Here it stands on its landing frame, before the sequencer's
+    /// Paradrop-to-Ready tail.
+    #[test]
+    fn mutate_explosion_leaves_a_paratrooper_unmutated() {
+        use crate::rules::art_data::ArtRegistry;
+        let mut rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n0=E1\n1=BRUTE\n\n\
+             [VehicleTypes]\n\n[AircraftTypes]\n\n[BuildingTypes]\n\n\
+             [Warheads]\n0=MutateExplosion\n\n\
+             [General]\nMutateExplosion=yes\n\n\
+             [CombatDamage]\nMaxDamage=10000\nMutateExplosionWarhead=MutateExplosion\n\n\
+             [E1]\nStrength=100\nArmor=none\nSpeed=4\n\n\
+             [BRUTE]\nStrength=200\nArmor=none\nSpeed=4\n\n\
+             [MutateExplosion]\nCellSpread=1\nPercentAtMax=1\nInfDeath=9\n\
+             Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        ))
+        .expect("mutation rules");
+        let art = IniFile::from_str(
+            "[E1]\nSequence=E1Sequence\n\
+             [E1Sequence]\nReady=0,1,1\nGuard=0,1,1\nWalk=8,6,6\nDie1=134,15,0\n\
+             Die2=149,15,0\nParadrop=418,1,0\n",
+        );
+        rules.install_art_fixture(ArtRegistry::from_ini(&art));
+        let sequences = crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art);
+        rules.replace_animation_sequences_for_test(
+            crate::rules::animation_sequence::build_animation_sequence_catalog(
+                &rules,
+                Some(&sequences),
+            ),
+        );
+        let mut sim = Simulation::with_seed(1);
+        let owner = sim.interner.intern("Americans");
+        let soviet = sim.interner.intern("Soviet");
+        for (id, rx) in [(10, 5), (11, 6)] {
+            let mut infantry = GameEntity::test_default(id, "E1", "Soviet", rx, 5);
+            infantry.owner = soviet;
+            infantry.type_ref = sim.interner.intern("E1");
+            infantry.category = EntityCategory::Infantry;
+            infantry.mission_leaf =
+                crate::sim::mission::leaf::MissionLeafState::for_entity_category(
+                    EntityCategory::Infantry,
+                );
+            infantry.is_voxel = false;
+            infantry.health = Health { current: 100 };
+            sim.substrate.entities.insert(infantry);
+            let _ = sim.reveal(id);
+        }
+        assert!(
+            sim.infantry_do_action(
+                11,
+                crate::sim::movement::infantry_action::DO_PARADROP,
+                true,
+                &rules
+            )
+            .unwrap()
+        );
+        let killed = apply_mutate_explosion(&mut sim, &rules, 5, 5, owner, None);
+        assert_eq!(killed, vec![(5, 5)]);
+        assert!(
+            sim.substrate
+                .entities
+                .get(11)
+                .is_none_or(|paratrooper| paratrooper.health.current == 0)
+        );
     }
 
     fn genetic_test_rules() -> RuleSet {

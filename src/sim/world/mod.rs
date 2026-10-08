@@ -40,7 +40,7 @@ mod infantry_terminal;
 mod jumpjet_cruise;
 #[cfg(test)]
 pub(crate) use infantry_terminal::InfantryDeathSequence;
-pub(crate) use infantry_terminal::{InfantryDeathPostlude, InfantryTerminal};
+pub(crate) use infantry_terminal::{InfantryDeathArm, InfantryDeathPostlude, InfantryTerminal};
 mod aircraft_attack;
 mod aircraft_fire_location;
 mod aircraft_move;
@@ -780,8 +780,9 @@ pub enum SimSoundEvent {
     /// Tank-bunker walls-down cue — emitted on normal exit / clear teardown.
     /// App resolves to [AudioVisual] BunkerWallsDownSound (retail "TankBunkerDown").
     BunkerWallsDown { rx: u16, ry: u16 },
-    /// A paratrooper was dropped from a carrier aircraft.
-    /// Played at the drop position; app layer resolves to [AudioVisual] ChuteSound.
+    /// A paratrooper left the paradrop plane (`AircraftClass::Drop_Payload`
+    /// plays `[AudioVisual] ChuteSound=` at the plane's Location,
+    /// `0x00415E21`): the plane's cell.
     ChuteSound { rx: u16, ry: u16 },
     /// A C4-capable infantry claimed a plant on a CanC4 building.
     /// Played at the attacker's position. App resolves to

@@ -973,8 +973,9 @@ impl Simulation {
         //   direction argument and retains the existing facing seam.
         // - The Aircraft +0x6C9 latch (`0x004143F2..0x004143FC`), set when a
         //   first passenger rides at Unlimbo. Dormant: carriers take their
-        //   passengers after Unlimbo, and the paradrop writes the latch itself
-        //   (`0x0065E7B8`, `0x0065DCE9`), in the paradrop chain.
+        //   passengers after Unlimbo, and `superweapon::paradrop` records why
+        //   VERA keeps no latch for the paradrop's own writes (`0x0065E7B8`,
+        //   `0x0065DCE9`).
         if let Some(rules) = context.rules
             && let Some(entity) = self.substrate.entities.get_mut(stable_id)
         {
@@ -2499,19 +2500,10 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::ConcealClearDrawnStateBoundary);
 
-        // ObjectConceal5F4E98 invokes Techno6F4A40 here, before +81 Limbo
-        // is set at5F4E9E (the same byte tested by the5F4D45 entry guard).
-        // Human ownership preserves +41B; +41A/+41C are never cleared here.
-        let owner_controlled_by_human = self
-            .substrate
-            .entities
-            .get(stable_id)
-            .and_then(|entity| self.houses.get(&entity.owner()))
-            .map(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        // ObjectConceal5F4E98 invokes vt+0x11C here, before +81 Limbo is set
+        // at5F4E9E (the same byte tested by the5F4D45 entry guard).
+        self.techno_clear_discovery_on_conceal(stable_id);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            if owner_controlled_by_human == Some(false) {
-                entity.discovery.discovered_by_current_house = false;
-            }
             entity.lifecycle.in_limbo = true;
             // `BuildingClass::Limbo` destroys its owned BuildingLight before
             // the remaining building-count/base-node teardown.
@@ -2524,6 +2516,29 @@ impl Simulation {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::ConcealClearRedrawBoundary);
         ConcealOutcome::Concealed
+    }
+
+    /// `TechnoClass::ClearDiscoveryOnConceal @ 0x006F4A40` (vt+0x11C): an
+    /// object whose house a human does not control
+    /// ([`HouseState::is_controlled_by_human`], `0x0050B730`) forgets that
+    /// the current house discovered it (`+0x41B`). `+0x41A` and `+0x41C`
+    /// stay. Object Conceal calls it (`0x005F4E98`), and so does a paradrop
+    /// plane that took a refused passenger back (`0x00415EC1`).
+    ///
+    /// [`HouseState::is_controlled_by_human`]:
+    /// crate::sim::house_state::HouseState::is_controlled_by_human
+    pub(crate) fn techno_clear_discovery_on_conceal(&mut self, stable_id: u64) {
+        let human = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .and_then(|entity| self.houses.get(&entity.owner()))
+            .map(|house| house.is_controlled_by_human(self.session.game_mode_nonzero));
+        if human == Some(false)
+            && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+        {
+            entity.discovery.discovered_by_current_house = false;
+        }
     }
 
     /// TechnoClass Limbo sends synchronous BREAK to every contact before the

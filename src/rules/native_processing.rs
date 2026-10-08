@@ -146,14 +146,14 @@ impl RulesLayerStack {
             native_type_construction_trace,
             crate_rules,
             powerups,
-            general_anim_lists,
+            general_type_lists,
             missile_spawn,
         ) = processor.finish();
         Ok(ProcessedRulesLayers {
             ini,
             crate_rules,
             powerups,
-            general_anim_lists,
+            general_type_lists,
             missile_spawn,
             content_hash: self.content_hash(),
             native_type_construction_trace,
@@ -277,20 +277,36 @@ fn process_native_noncampaign_rules_prepass_inner(
     (trace, [after_countries, after_general, after_house_bodies])
 }
 
-/// Retained RulesClass vectors, distinct from the process-resident AnimType
-/// registry. The constructor @ 0x00665827 initializes them empty; ReadGeneral
+/// Retained RulesClass type vectors, distinct from the process-resident type
+/// registries. The constructor @ 0x00665827 initializes them empty; ReadGeneral
 /// @ 0x0066DA90/0x0066DB93 replaces MetallicDebris/BridgeExplosions only after
 /// a nonempty ReadString128. Native execution:
 /// tools/rules_oracle/bridge_anim_lists.{py,json}. WeatherConClouds
 /// (`+0x2BC`, `0x0066DD28`) and WeatherConBolts (`+0x2D8`, `0x0066DE2B`) take
 /// the same ReadString128/FindOrAllocate body.
 #[derive(Debug, Default)]
-struct GeneralAnimLists {
+struct GeneralTypeLists {
     metallic_debris: Vec<String>,
     bridge_explosions: Vec<String>,
     weather_con_clouds: Vec<String>,
     weather_con_bolts: Vec<String>,
+    /// `AmerParaDropInf=`, `AllyParaDropInf=`, `SovParaDropInf=` and
+    /// `YuriParaDropInf=` (`+0xC04`, `+0xC3C`, `+0xC74`, `+0xCAC`, emptied by
+    /// the constructor at `0x00666649..0x006666D8`), read at
+    /// `0x00670648..0x00670780` through the InfantryType list reader
+    /// `0x0067BB10`: the same body, through `InfantryTypeClass::FindOrAllocate
+    /// @ 0x00524CB0`.
+    paradrop_infantry: [Vec<String>; 4],
 }
+
+/// The `[General]` keys of [`GeneralTypeLists::paradrop_infantry`], in its
+/// order.
+const PARADROP_INFANTRY_KEYS: [&str; 4] = [
+    "AmerParaDropInf",
+    "AllyParaDropInf",
+    "SovParaDropInf",
+    "YuriParaDropInf",
+];
 
 /// Result of applying an ordered rules stack.
 #[derive(Debug)]
@@ -298,7 +314,7 @@ pub struct ProcessedRulesLayers {
     ini: IniFile,
     crate_rules: CrateRules,
     powerups: PowerupTable,
-    general_anim_lists: GeneralAnimLists,
+    general_type_lists: GeneralTypeLists,
     missile_spawn: MissileSpawnRules,
     content_hash: u64,
     native_type_construction_trace: NativeTypeConstructionTrace,
@@ -517,19 +533,25 @@ impl ProcessedRulesLayers {
     }
 
     pub(crate) fn metallic_debris(&self) -> &[String] {
-        &self.general_anim_lists.metallic_debris
+        &self.general_type_lists.metallic_debris
     }
 
     pub(crate) fn bridge_explosions(&self) -> &[String] {
-        &self.general_anim_lists.bridge_explosions
+        &self.general_type_lists.bridge_explosions
     }
 
     pub(crate) fn weather_con_clouds(&self) -> &[String] {
-        &self.general_anim_lists.weather_con_clouds
+        &self.general_type_lists.weather_con_clouds
     }
 
     pub(crate) fn weather_con_bolts(&self) -> &[String] {
-        &self.general_anim_lists.weather_con_bolts
+        &self.general_type_lists.weather_con_bolts
+    }
+
+    /// The four `*ParaDropInf=` lists as stored type IDs: American, Allied,
+    /// Soviet, Yuri.
+    pub(crate) fn paradrop_infantry(&self) -> &[Vec<String>; 4] {
+        &self.general_type_lists.paradrop_infantry
     }
 
     #[cfg(test)]
@@ -901,7 +923,7 @@ struct RulesPassProcessor {
     ordinary: Option<IniFile>,
     crate_rules: CrateRulesAccumulator,
     powerups: PowerupsAccumulator,
-    general_anim_lists: GeneralAnimLists,
+    general_type_lists: GeneralTypeLists,
     missile_spawn: MissileSpawnRules,
     families: HashMap<RulesTypeFamily, Vec<ProcessedType>>,
     native_type_construction_events: Vec<NativeTypeConstructionEvent>,
@@ -924,7 +946,7 @@ impl Default for RulesPassProcessor {
             ordinary: None,
             crate_rules: CrateRulesAccumulator::default(),
             powerups: PowerupsAccumulator::default(),
-            general_anim_lists: GeneralAnimLists::default(),
+            general_type_lists: GeneralTypeLists::default(),
             missile_spawn: MissileSpawnRules::default(),
             families: HashMap::new(),
             native_type_construction_events: Vec::new(),
@@ -1285,13 +1307,17 @@ impl RulesPassProcessor {
                 "MetallicDebris" | "BridgeExplosions" | "WeatherConClouds" | "WeatherConBolts"
             ) {
                 if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
-                    let lists = &mut self.general_anim_lists;
+                    let lists = &mut self.general_type_lists;
                     *match key {
                         "MetallicDebris" => &mut lists.metallic_debris,
                         "BridgeExplosions" => &mut lists.bridge_explosions,
                         "WeatherConClouds" => &mut lists.weather_con_clouds,
                         _ => &mut lists.weather_con_bolts,
                     } = resolved;
+                }
+            } else if let Some(side) = PARADROP_INFANTRY_KEYS.iter().position(|&k| k == key) {
+                if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
+                    self.general_type_lists.paradrop_infantry[side] = resolved;
                 }
             } else if matches!(
                 key,
@@ -2026,7 +2052,7 @@ impl RulesPassProcessor {
         NativeTypeConstructionTrace,
         CrateRules,
         PowerupTable,
-        GeneralAnimLists,
+        GeneralTypeLists,
         MissileSpawnRules,
     ) {
         let allocated_super_weapon_type_count = self
@@ -2124,7 +2150,7 @@ impl RulesPassProcessor {
             },
             self.crate_rules.finish(),
             self.powerups.finish(),
-            self.general_anim_lists,
+            self.general_type_lists,
             self.missile_spawn,
         )
     }

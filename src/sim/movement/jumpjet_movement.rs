@@ -418,7 +418,6 @@ pub(crate) fn infantry_destination_coordinate(
     use super::locomotor::MovementLayer;
     use crate::sim::{cell_kernel, occupancy::RawCellKey};
     let cell = terrain.native_cell_identity(((input.x / 256) as i16, (input.y / 256) as i16));
-    let xy = terrain.native_cell_coord(cell);
     let level = match cell {
         crate::map::cell_index::NativeCellIdentity::Real(index) => terrain.cells()[index].level,
         crate::map::cell_index::NativeCellIdentity::Dummy => {
@@ -436,17 +435,9 @@ pub(crate) fn infantry_destination_coordinate(
     } else {
         MovementLayer::Ground
     };
-    let ground = raw.bits_at(key, MovementLayer::Ground);
-    let selected = raw.bits_at(key, layer);
-    let gate_open = selected & 0x20 == 0
-        && ground & 0x40 != 0
-        && super::bump_crush::ground_gate_is_open(
-            occupancy,
-            entities,
-            rules,
-            interner,
-            (xy.0 as u16, xy.1 as u16),
-        );
+    let gate_open = super::bump_crush::native_ground_gate_open(
+        raw, occupancy, entities, rules, interner, key, layer,
+    );
     let slot = super::bump_crush::place_infantry_in_native_cell(
         raw, key, layer, input, false, gate_open, rng,
     )?;

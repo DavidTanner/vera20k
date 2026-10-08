@@ -340,52 +340,41 @@ fn infantry_terminal_effect_only_cleanup_follows_recursive_deaths() {
 fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
     use crate::sim::aircraft::{AircraftMission, tick_aircraft_missions};
     use crate::sim::world::InfantryTerminal;
-    for silent_exit in [false, true] {
-        let (mut sim, rules) = fixture_with_extra(
-            "[E1]\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\nAirportBound=yes\n",
-        );
-        let victim = sim
-            .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-            .unwrap();
-        // Leave the initial ground list through the production Mark/movement
-        // transaction. Changing only the altitude cache after Unlimbo would
-        // leave a ground member behind without a native REMOVE producer.
-        assert!(sim.begin_fly_takeoff(victim, Some(&rules)));
-        sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules), None);
-        let entity = sim.substrate.entities.get_mut(victim).unwrap();
-        assert!(entity.aircraft_mission.is_some(), "authored Fly admission");
-        assert!(
-            entity.aircraft_ammo.is_none(),
-            "Infantry has no Aircraft ammo"
-        );
-        assert!(entity.locomotor.as_ref().unwrap().altitude > crate::util::fixed_math::SIM_ZERO);
-        entity.aircraft_mission = Some(if silent_exit {
-            AircraftMission::ParaDropOverfly {
-                exit_rx: 5,
-                exit_ry: 5,
-                drop_cooldown: 0,
-                payload_count: 0,
-            }
-        } else {
-            AircraftMission::Idle
-        });
-        tick_aircraft_missions(&mut sim, &rules);
-        let entity = sim.substrate.entities.get(victim).unwrap();
-        assert_eq!(
-            entity.infantry_terminal,
-            Some(InfantryTerminal::RetireNextVisit)
-        );
-        assert!(entity.dying && entity.aircraft_mission.is_none());
-        assert!(
-            !sim.sound_events
-                .iter()
-                .any(|event| matches!(event, crate::sim::world::SimSoundEvent::UnitLost { .. }))
-        );
-        sim.advance_tick(&[], Some(&rules), None, None, 100);
-        assert!(!sim.substrate.entities.contains(victim));
-        assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
-        assert!(!sim.live_object_order_snapshot().contains(&victim));
-    }
+    let (mut sim, rules) = fixture_with_extra(
+        "[E1]\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\nAirportBound=yes\n",
+    );
+    let victim = sim
+        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
+        .unwrap();
+    // Leave the initial ground list through the production Mark/movement
+    // transaction. Changing only the altitude cache after Unlimbo would
+    // leave a ground member behind without a native REMOVE producer.
+    assert!(sim.begin_fly_takeoff(victim, Some(&rules)));
+    sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules), None);
+    let entity = sim.substrate.entities.get_mut(victim).unwrap();
+    assert!(entity.aircraft_mission.is_some(), "authored Fly admission");
+    assert!(
+        entity.aircraft_ammo.is_none(),
+        "Infantry has no Aircraft ammo"
+    );
+    assert!(entity.locomotor.as_ref().unwrap().altitude > crate::util::fixed_math::SIM_ZERO);
+    entity.aircraft_mission = Some(AircraftMission::Idle);
+    tick_aircraft_missions(&mut sim, &rules);
+    let entity = sim.substrate.entities.get(victim).unwrap();
+    assert_eq!(
+        entity.infantry_terminal,
+        Some(InfantryTerminal::RetireNextVisit)
+    );
+    assert!(entity.dying && entity.aircraft_mission.is_none());
+    assert!(
+        !sim.sound_events
+            .iter()
+            .any(|event| matches!(event, crate::sim::world::SimSoundEvent::UnitLost { .. }))
+    );
+    sim.advance_tick(&[], Some(&rules), None, None, 100);
+    assert!(!sim.substrate.entities.contains(victim));
+    assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
+    assert!(!sim.live_object_order_snapshot().contains(&victim));
 }
 
 #[test]

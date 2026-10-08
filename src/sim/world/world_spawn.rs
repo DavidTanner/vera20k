@@ -1208,24 +1208,16 @@ impl Simulation {
             });
         //481298..481313 reaches the live ground Gate only after ordinary
         //vehicle/object gates. Reuse its Building4525F0/Door4A51B0 owner.
-        let gate_open = !priority && {
-            let ground = self
-                .substrate
-                .raw_cell_occupation
-                .bits_at(key, MovementLayer::Ground);
-            ground & crate::sim::cell_kernel::INFANTRY_OCCUPATION_VEHICLE_BIT == 0
-                && ground & crate::sim::cell_kernel::INFANTRY_OCCUPATION_OBJECT_BIT != 0
-                && match key {
-                    RawCellKey::Real(x, y) => bump_crush::ground_gate_is_open(
-                        &self.substrate.occupancy,
-                        &self.substrate.entities,
-                        rules,
-                        &self.interner,
-                        (x, y),
-                    ),
-                    RawCellKey::Dummy => false,
-                }
-        };
+        let gate_open = !priority
+            && bump_crush::native_ground_gate_open(
+                &self.substrate.raw_cell_occupation,
+                &self.substrate.occupancy,
+                &self.substrate.entities,
+                rules,
+                &self.interner,
+                key,
+                MovementLayer::Ground,
+            );
         let spot = bump_crush::place_infantry_in_native_cell(
             &self.substrate.raw_cell_occupation,
             key,

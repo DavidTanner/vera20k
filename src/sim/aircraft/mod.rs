@@ -96,28 +96,6 @@ pub enum AircraftMission {
         /// Pad index this aircraft is parked on (0-based).
         pad_index: u32,
     },
-
-    /// Standard superweapon paradrop carrier in its Open-equivalent mission.
-    /// Kept under the older Rust name for save compatibility; stock SW PDPLANE
-    /// starts here (gamemd mission 0x1A), not in binary Mission_ParaDropApproach.
-    /// Transitions to the Rescue-equivalent state when distance ≤ ParadropRadius.
-    ParaDropApproach { target_rx: u16, target_ry: u16 },
-
-    /// Standard superweapon paradrop carrier in its Rescue-equivalent mission.
-    /// Kept under the older Rust name for save compatibility; this is not
-    /// binary Mission_ParaDropOverfly for stock SW launches.
-    /// Dispenses payload at the Mission_Rescue cadence: one Drop_Payload call
-    /// per Rescue execution, then 5 native gameplay frames before the next.
-    /// Transitions to silent despawn at the opposite edge once cargo is empty.
-    ParaDropOverfly {
-        /// Opposite-edge cell to fly to once cargo is empty.
-        exit_rx: u16,
-        exit_ry: u16,
-        /// Ticks until next drop allowed (Mission_Rescue 5-frame cadence).
-        drop_cooldown: u16,
-        /// Decrements per drop; parity drives V-pattern side (paradrop P25).
-        payload_count: u8,
-    },
 }
 
 impl AircraftMission {
@@ -152,10 +130,11 @@ pub fn tick_aircraft_missions(
 /// native handlers: an alive aircraft whose mission timer is due runs its
 /// current mission's handler (jump table `0x005B34E8`) and restarts the
 /// timer with the frames it returns. These are Retreat (`0x00415A50`,
-/// vtable `+0x230`), Unload (`0x004151E0`, `+0x23C`) and the Spy Plane's
-/// two (`+0x26C`, `+0x270`). Mission_Move and Mission_Attack hold their
-/// state in `AircraftMission` and run in [`dispatch_aircraft_mission`],
-/// beside VERA's aircraft state machine for the other missions.
+/// vtable `+0x230`), Unload (`0x004151E0`, `+0x23C`), the paradrop plane's
+/// two (`0x004158E0`, `0x00415960`) and the Spy Plane's two (`+0x26C`,
+/// `+0x270`). Mission_Move and Mission_Attack hold their state in
+/// `AircraftMission` and run in [`dispatch_aircraft_mission`], beside VERA's
+/// aircraft state machine for the other missions.
 pub(crate) fn dispatch_native_mission(
     sim: &mut Simulation,
     id: u64,
@@ -178,12 +157,67 @@ pub(crate) fn dispatch_native_mission(
         Some(MissionType::Unload) => {
             crate::sim::transport_unload::mission_unload(sim, id, rules, overlay_registry)
         }
+        Some(MissionType::ParadropApproach) => paradrop_mission::approach(sim, id, rules),
+        Some(MissionType::ParadropOverfly) => {
+            paradrop_mission::overfly(sim, id, rules, overlay_registry)
+        }
         Some(MissionType::SpyplaneApproach) => spyplane_mission::approach(sim, id, rules),
         Some(MissionType::SpyplaneOverfly) => spyplane_mission::overfly(sim, id, rules),
         _ => return,
     };
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission.write_dispatch_epilogue(now as i32, delay);
+    }
+}
+
+/// Whether `entity` flies a paradrop or Spy Plane mission, whose native
+/// handlers steer it ([`paradrop_mission`], [`spyplane_mission`]): VERA's
+/// pre-combat pursuit stage, a ground stand-in that would halt the plane
+/// within its weapon's `Range=` of its Target cell, leaves it alone.
+pub(crate) fn native_missions_steer(entity: &crate::sim::game_entity::GameEntity) -> bool {
+    use crate::sim::mission::MissionType;
+    matches!(
+        entity.mission.current().known(),
+        Some(
+            MissionType::ParadropApproach
+                | MissionType::ParadropOverfly
+                | MissionType::SpyplaneApproach
+                | MissionType::SpyplaneOverfly
+        )
+    )
+}
+
+/// `ObjectClass::Distance_To @ 0x005F6440` from the aircraft; a NULL target
+/// answers 0 (`0x005F644B..0x005F6456`).
+fn target_distance(
+    sim: &Simulation,
+    id: u64,
+    target: Option<crate::sim::combat::TargetKind>,
+) -> i32 {
+    let entities = &sim.substrate.entities;
+    target
+        .zip(entities.get(id))
+        .and_then(|(target, plane)| {
+            crate::sim::combat::object_distance_to(plane, &target, entities)
+        })
+        .unwrap_or(0)
+}
+
+/// Whether the aircraft has no NavCom (`+0x5A4`).
+fn nav_com_absent(sim: &Simulation, id: u64) -> bool {
+    sim.substrate
+        .entities
+        .get(id)
+        .is_some_and(|plane| plane.navigation.nav_com.is_none())
+}
+
+/// `Queue_Mission(mission, 0)` (vt+0x1E8 = `0x0041BA90`).
+fn queue_mission(sim: &mut Simulation, id: u64, mission: crate::sim::mission::MissionType) {
+    if let Some(plane) = sim.substrate.entities.get_mut(id) {
+        crate::sim::mission::authority::queue_entity_mission_deferred(
+            plane,
+            crate::sim::mission::MissionId::from_known(mission),
+        );
     }
 }
 
@@ -364,10 +398,6 @@ struct MissionMutation {
     begin_landing: bool,
     /// Fly BeginTakeoff4CF950 through the world owner.
     begin_takeoff: bool,
-    // Paradrop-specific apply-phase signals.
-    paradrop_try_drop: bool,
-    paradrop_payload_count_pre: u8,
-    paradrop_silent_despawn: bool,
 }
 
 impl MissionMutation {
@@ -383,9 +413,6 @@ impl MissionMutation {
             self_destruct: false,
             begin_landing: false,
             begin_takeoff: false,
-            paradrop_try_drop: false,
-            paradrop_payload_count_pre: 0,
-            paradrop_silent_despawn: false,
         }
     }
 }
@@ -691,47 +718,6 @@ fn mission_step(
             // Otherwise: stay parked, do nothing.
         }
 
-        AircraftMission::ParaDropApproach {
-            target_rx,
-            target_ry,
-        } => {
-            let outcome = paradrop_mission::tick_approach(sim, rules, id, *target_rx, *target_ry);
-            // Mission 26's in-radius arm queues 27 (`0x00415946`); the
-            // class AI's Ready/Commence starts it this frame.
-            if matches!(outcome.new_mission, AircraftMission::ParaDropOverfly { .. })
-                && let Some(entity) = sim.substrate.entities.get_mut(id)
-            {
-                crate::sim::mission::authority::queue_entity_mission_deferred(
-                    entity,
-                    crate::sim::mission::MissionId::from_known(
-                        crate::sim::mission::MissionType::ParadropOverfly,
-                    ),
-                );
-            }
-            m.new_mission = outcome.new_mission;
-            m.move_to = outcome.move_to;
-        }
-
-        AircraftMission::ParaDropOverfly {
-            exit_rx,
-            exit_ry,
-            drop_cooldown,
-            payload_count,
-        } => {
-            let outcome = paradrop_mission::tick_overfly(
-                sim,
-                id,
-                *exit_rx,
-                *exit_ry,
-                *drop_cooldown,
-                *payload_count,
-            );
-            m.new_mission = outcome.new_mission;
-            m.move_to = outcome.move_to;
-            m.paradrop_try_drop = outcome.try_drop;
-            m.paradrop_payload_count_pre = outcome.payload_count_pre_dec;
-            m.paradrop_silent_despawn = outcome.silent_despawn;
-        }
     }
     Some(m)
 }
@@ -919,75 +905,6 @@ fn apply_mission_mutation(
         sim.issue_air_cell_destination(m.id, (rx, ry), speed, Some(rules));
     }
 
-    // Standard SW cadence is Mission_Rescue returning 5 game frames after one
-    // Drop_Payload call; ParaDropWeapon ROF= is not used.
-    if m.paradrop_try_drop {
-        let aircraft_id = m.id;
-        let drop_interval = drop_payload::PARADROP_DROP_INTERVAL_FRAMES;
-        let result = drop_payload::try_drop(
-            sim,
-            rules,
-            aircraft_id,
-            m.paradrop_payload_count_pre,
-            registry,
-        );
-        let frame = sim.session.binary_frame as i32;
-        if let Some(entity) = sim.substrate.entities.get_mut(aircraft_id) {
-            if let Some(AircraftMission::ParaDropOverfly {
-                exit_rx,
-                exit_ry,
-                payload_count,
-                ..
-            }) = entity.aircraft_mission.clone()
-            {
-                let new_mission = match result {
-                    drop_payload::DropResult::Success => {
-                        // `Drop_Payload @ 0x00415E88..0x00415EAA`: beside the
-                        // LandingState write, a drop restarts the rearm timer
-                        // (`+0x2EC`) with no duration.
-                        entity.rearm_timer.start(frame, 0);
-                        AircraftMission::ParaDropOverfly {
-                            exit_rx,
-                            exit_ry,
-                            drop_cooldown: drop_interval,
-                            payload_count: payload_count.saturating_sub(1),
-                        }
-                    }
-                    drop_payload::DropResult::ImpassableRetry
-                    | drop_payload::DropResult::AttachFailedRetry => {
-                        // Leave mission cadence at 0 — retry on the next
-                        // Rescue-equivalent execution. payload_count is already
-                        // restored via cargo head re-insert.
-                        AircraftMission::ParaDropOverfly {
-                            exit_rx,
-                            exit_ry,
-                            drop_cooldown: 0,
-                            payload_count,
-                        }
-                    }
-                    drop_payload::DropResult::NoCargo => AircraftMission::Idle,
-                };
-                entity.aircraft_mission = Some(new_mission);
-            }
-        }
-    }
-
-    // Silent despawn for a carrier that exited the playfield with empty cargo
-    // (the exit RESIDUAL in `paradrop_mission`). Native is silent too:
-    // mission 27 (`0x00415960`) never removes the carrier, and the removals
-    // that do, `aircraft::leave_map` and the Fly locomotor's Retreat exit
-    // (`0x004CD5E2`), are a bare `UnInit` (`+0xF8`) with no
-    // `Death_Announcement` (`+0x3B8`).
-    if m.paradrop_silent_despawn {
-        let infantry_terminal = sim.begin_raw_infantry_death(m.id);
-        if let Some(entity) = sim.substrate.entities.get_mut(m.id) {
-            if !infantry_terminal {
-                entity.health.current = 0;
-                entity.dying = true;
-            }
-            entity.aircraft_mission = None;
-        }
-    }
     // Call-local dispatch receipt. Preserve the live Target and its existing
     // timing; combat will admit once, emit the burst and commit the suffix.
     m.fire_at.is_some()

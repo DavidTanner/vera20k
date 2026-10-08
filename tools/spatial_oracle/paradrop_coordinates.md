@@ -40,7 +40,7 @@ zero turn rate; it is not a new FacingClass interpolation comparison.
 `paradrop_world_coordinates_match_all_native_headings` compares production
 coordinate math against every native digest and the explicit samples.
 `paradrop_landing_cell_matches_original_coordinate_prefix` runs all 52 samples
-at the first origin through `try_drop`, including infantry subcell placement,
+at the first origin through `drop_payload`, including infantry subcell placement,
 Reveal and cargo departure. `paradrop_uses_native_cell_for_occupancy_admission`
 checks both admission and retry when either of the two adjacent cells is full.
 

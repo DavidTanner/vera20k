@@ -109,12 +109,14 @@ pub(super) fn visit(
     let Some(obj) = rules.object(world.interner.resolve(snap.type_id)) else {
         return;
     };
-    // Aircraft FireAt415EEE dispatches DropPayload while passengers remain.
-    // Its retained payload counter and6C9 admission history still need migration;
-    // keep that required carrier arm blocked rather than firing its gun instead.
-    // RESIDUAL: the blocked carrier stays in its strike state and re-requests
-    // every due visit. No stock AircraftType has Passengers=, and PDPLANE's
-    // cargo flies ParaDrop, so this arm is unreachable with retail data.
+    // `AircraftClass::FireAt` drops a passenger instead of firing while its
+    // cargo has a first one (`0x00415EEE..0x00415EFD`: Drop_Payload,
+    // `aircraft::drop_payload`) and answers no bullet.
+    // RESIDUAL: that arm is blocked here: the carrier fires nothing, stays in
+    // its strike state and re-requests every due visit. Wiring it needs the
+    // strike states' handling of FireAt's empty answer. No stock AircraftType
+    // has Passengers=, and PDPLANE's cargo flies the paradrop missions, so
+    // this arm is unreachable with retail data.
     if world
         .substrate
         .entities

@@ -1576,8 +1576,6 @@ impl GameEntity {
                 AircraftMission::ReturnToBase { .. } => (MissionType::Enter, 0),
                 AircraftMission::Docking { sub_state, .. } => (MissionType::Enter, *sub_state),
                 AircraftMission::DockedIdle { .. } => (MissionType::Guard, 0),
-                AircraftMission::ParaDropApproach { .. } => (MissionType::ParadropApproach, 0),
-                AircraftMission::ParaDropOverfly { .. } => (MissionType::ParadropOverfly, 0),
             };
         }
         if self.pending_entry.is_some() {

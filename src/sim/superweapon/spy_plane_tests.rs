@@ -22,24 +22,24 @@ const SPY_PLANE: &str = "SpyPlaneSpecial";
 const TARGET: (u16, u16) = (40, 40);
 const FLY: &str = "{4A582746-9839-11D1-B709-00A024DDAFD1}";
 
-fn oracle() -> Value {
+pub(super) fn oracle() -> Value {
     serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json")).unwrap()
 }
 
-fn rows<'a>(oracle: &'a Value, section: &str) -> &'a [Value] {
+pub(super) fn rows<'a>(oracle: &'a Value, section: &str) -> &'a [Value] {
     oracle[section].as_array().unwrap()
 }
 
-fn int(value: &Value) -> i32 {
+pub(super) fn int(value: &Value) -> i32 {
     i32::try_from(value.as_i64().unwrap()).unwrap()
 }
 
-fn flag(row: &Value, key: &str) -> bool {
+pub(super) fn flag(row: &Value, key: &str) -> bool {
     row[key].as_bool().unwrap()
 }
 
 /// The row's events named `name`, in order.
-fn events<'a>(row: &'a Value, name: &'a str) -> impl Iterator<Item = &'a Value> + 'a {
+pub(super) fn events<'a>(row: &'a Value, name: &'a str) -> impl Iterator<Item = &'a Value> + 'a {
     row["events"]
         .as_array()
         .unwrap()
@@ -118,7 +118,7 @@ fn retail_rules() -> Option<RuleSet> {
 /// `rules` on a flat 64-cell map whose `Size=` is 32 by 32 with LocalSize
 /// 2,4,28,22: the North edge runs along cells whose coordinates sum to 36,
 /// the diamond ends at 96, and the target (40, 40) is well inside.
-fn world(rules: RuleSet) -> (RuleSet, Simulation, InternedId) {
+pub(super) fn world(rules: RuleSet) -> (RuleSet, Simulation, InternedId) {
     let (rules, mut sim, americans) = world_with(rules, 64, &[]);
     sim.playfield_bounds = Some(PlayfieldBounds::from_raw_local_size(32, 32, [2, 4, 28, 22]));
     sim.playfield_size_height = Some(32);
@@ -149,13 +149,13 @@ fn camera_sounds(sim: &Simulation) -> usize {
 }
 
 /// The edge an oracle event names (`Edge` order: North, East, South, West).
-fn edge(event: &Value) -> Edge {
+pub(super) fn edge(event: &Value) -> Edge {
     Edge::from_index(u8::try_from(int(&event[1])).unwrap()).unwrap()
 }
 
 /// The cell `find_paradrop_edge_cell` picks on `edge` from the current
 /// Scenario stream, `draws` words in.
-fn expected_pick(sim: &Simulation, edge: Edge, draws: usize) -> (u16, u16) {
+pub(super) fn expected_pick(sim: &Simulation, edge: Edge, draws: usize) -> (u16, u16) {
     let mut rng = sim.scenario_rng.clone();
     for _ in 0..draws {
         rng.next_u32();

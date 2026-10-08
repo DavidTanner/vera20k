@@ -857,7 +857,10 @@ use crate::sim::world::Simulation;
 // 297 -> 298: remove cached cloak Rules/query fields and visual phase; retain
 // Techno+24C raw f32 displacement bits. The unmerged first-reveal candidate
 // also used version297 for a different layout; neither layout can resume.
-const SNAPSHOT_VERSION: u32 = 298;
+// 298 -> 299: an aircraft's mission leaf saves its paradrop passes (+0x6D3);
+// the paradrop carrier's two AircraftMission states are removed, its flight
+// now the native missions 26 and 27. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 299;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3876,7 +3879,9 @@ mod tests {
         // 296 -> 297: the Lightning Storm's globals and cloud lists; a House's
         // radar outage timer.
         // 297 -> 298: canonical cloak query and retained native displacement.
-        assert_eq!(super::SNAPSHOT_VERSION, 298);
+        // 298 -> 299: the aircraft's paradrop passes; no paradrop carrier
+        // AircraftMission states.
+        assert_eq!(super::SNAPSHOT_VERSION, 299);
     }
 
     #[test]

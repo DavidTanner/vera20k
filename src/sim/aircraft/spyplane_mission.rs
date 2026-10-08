@@ -24,10 +24,8 @@
 //! this plane never reaches.
 
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
-use crate::sim::game_entity::GameEntity;
-use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::mission::MissionType;
 use crate::sim::world::edge_cell::Edge;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
@@ -37,15 +35,6 @@ const OVERFLY_DISTANCE: i32 = 0x300;
 
 /// The frames Mission_SpyplaneOverfly returns (`0x004158C8`).
 const OVERFLY_FRAMES: i32 = 3;
-
-/// Whether `entity` flies a Spy Plane mission, whose handlers below steer
-/// it: VERA's pre-combat pursuit stage, a ground stand-in that would halt
-/// the plane within its camera's `Range=` of its Target, leaves it alone.
-pub(crate) fn steers(entity: &GameEntity) -> bool {
-    let current = entity.mission.current();
-    current == MissionId::from_known(MissionType::SpyplaneApproach)
-        || current == MissionId::from_known(MissionType::SpyplaneOverfly)
-}
 
 /// `Mission_SpyplaneApproach @ 0x004155F0`. The distance to the Target
 /// (`ObjectClass::Distance_To @ 0x005F6440`, 0 with no Target) comes first.
@@ -67,14 +56,14 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         return frames;
     };
     let target = entity.attack_target.as_ref().map(|attack| attack.target);
-    let distance = target_distance(sim, id, target);
+    let distance = super::target_distance(sim, id, target);
     let range = weapon(sim, id, rules).map(|(range, _)| range);
     match target {
         None => {
             sim.assign_aircraft_destination(id, None, rules);
-            queue(sim, id, MissionType::Retreat);
+            super::queue_mission(sim, id, MissionType::Retreat);
         }
-        Some(target) if nav_com_absent(sim, id) => {
+        Some(target) if super::nav_com_absent(sim, id) => {
             sim.assign_aircraft_destination(id, Some(target.into()), rules);
         }
         Some(_) => {
@@ -84,7 +73,7 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         }
     }
     if distance <= OVERFLY_DISTANCE {
-        queue(sim, id, MissionType::SpyplaneOverfly);
+        super::queue_mission(sim, id, MissionType::SpyplaneOverfly);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.mission_leaf.set_aircraft_action_latch(true);
         }
@@ -102,26 +91,14 @@ pub(super) fn overfly(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         return OVERFLY_FRAMES;
     };
     let target = entity.attack_target.as_ref().map(|attack| attack.target);
-    let distance = target_distance(sim, id, target);
+    let distance = super::target_distance(sim, id, target);
     if weapon(sim, id, rules).is_some_and(|(range, _)| distance <= range) {
         snapshot(sim, id, rules, false);
     }
-    if nav_com_absent(sim, id) {
+    if super::nav_com_absent(sim, id) {
         head_for_opposite_edge(sim, id, rules);
     }
     OVERFLY_FRAMES
-}
-
-/// `ObjectClass::Distance_To @ 0x005F6440` from the plane; a NULL target
-/// answers 0 (`0x005F644B..0x005F6456`).
-fn target_distance(sim: &Simulation, id: u64, target: Option<TargetKind>) -> i32 {
-    let entities = &sim.substrate.entities;
-    target
-        .zip(entities.get(id))
-        .and_then(|(target, plane)| {
-            crate::sim::combat::object_distance_to(plane, &target, entities)
-        })
-        .unwrap_or(0)
 }
 
 /// GetWeapon(0) (vt+0x3F8 = `0x0070E140`) at the plane's veterancy: its
@@ -133,23 +110,6 @@ fn weapon(sim: &Simulation, id: u64, rules: &RuleSet) -> Option<(i32, i32)> {
     let weapon = crate::sim::combat::combat_weapon::primary_for_tier(object, plane.veterancy())
         .and_then(|weapon| rules.weapon(weapon))?;
     Some((weapon.range_leptons, weapon.damage))
-}
-
-fn nav_com_absent(sim: &Simulation, id: u64) -> bool {
-    sim.substrate
-        .entities
-        .get(id)
-        .is_some_and(|plane| plane.navigation.nav_com.is_none())
-}
-
-/// `Queue_Mission(mission, 0)` (vt+0x1E8 = `0x0041BA90`).
-fn queue(sim: &mut Simulation, id: u64, mission: MissionType) {
-    if let Some(plane) = sim.substrate.entities.get_mut(id) {
-        crate::sim::mission::authority::queue_entity_mission_deferred(
-            plane,
-            MissionId::from_known(mission),
-        );
-    }
 }
 
 /// The opposite edge (`HouseClass @ 0x0050DAC0`), a cell on it
