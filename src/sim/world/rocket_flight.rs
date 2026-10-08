@@ -303,9 +303,10 @@ impl Simulation {
 
 #[cfg(test)]
 pub(super) mod retail_tests {
-    //! Production composition witness: a stock V3 Launcher on retail Hills
-    //! force-attacks a tank through an ordinary command and bound runtime
-    //! frames. The flight's native comparison is
+    //! Production composition witnesses: a stock V3 Launcher on retail Hills
+    //! and a Dreadnought on retail Lost Lake force-attack a target through an
+    //! ordinary command and bound runtime frames. The flight's native
+    //! comparison is
     //! `movement::rocket_movement::tests`, the missile's Mission_Move and
     //! Find_Attack_Cell `world::aircraft_move::tests`, its idle mode and
     //! Mission_Retreat `aircraft::idle_entry::tests` and
@@ -608,5 +609,466 @@ pub(super) mod retail_tests {
                 assert!(anim_names.contains(name), "{name} puffs are constructed");
             }
         }
+    }
+
+    /// Open water for a Dreadnought (its 5x5 neighbourhood all water, with no
+    /// bridge) and flat walkable In_Bounds ground `distance` cells east or
+    /// west of it for a target, with the playfield around both and the path
+    /// between them.
+    fn naval_sites(
+        scenario: &crate::headless_scenario::HeadlessScenario,
+        distance: u16,
+    ) -> Vec<((u16, u16), (u16, u16))> {
+        let sim = scenario.sim();
+        let terrain = sim.resolved_terrain.as_ref().unwrap();
+        let navigation = sim.path_grid().unwrap();
+        let in_playfield = |x: i32, y: i32| {
+            sim.map_cell_in_bounds((x as i16, y as i16))
+                && crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+                    (x, y),
+                    sim.playfield_bounds,
+                    Some(terrain),
+                )
+        };
+        let open_water = |x: u16, y: u16| {
+            (-2..=2).all(|dx| {
+                (-2..=2).all(|dy| {
+                    let (cx, cy) = (i32::from(x) + dx, i32::from(y) + dy);
+                    in_playfield(cx, cy)
+                        && terrain.cell(cx as u16, cy as u16).is_some_and(|cell| {
+                            cell.is_water && !cell.bridge_facts.has_structural_bridge()
+                        })
+                })
+            }) && sim.substrate.occupancy.get(x, y).is_none()
+        };
+        let open_ground = |x: u16, y: u16| {
+            (-3..=3).all(|d| in_playfield(i32::from(x) + d, i32::from(y) + d))
+                && terrain.cell(x, y).is_some_and(|cell| {
+                    cell.slope_type == 0
+                        && !cell.is_water
+                        && !cell.bridge_facts.has_structural_bridge()
+                })
+                && navigation
+                    .cell(x, y)
+                    .is_some_and(|cell| cell.ground_walkable)
+                && sim.substrate.occupancy.get(x, y).is_none()
+        };
+        terrain
+            .cells()
+            .iter()
+            .filter(|cell| open_water(cell.rx, cell.ry))
+            .flat_map(|cell| {
+                let (x, y) = (cell.rx, cell.ry);
+                [x.checked_add(distance), x.checked_sub(distance)]
+                    .into_iter()
+                    .flatten()
+                    .filter(move |&tx| {
+                        let (lo, hi) = (x.min(tx), x.max(tx));
+                        (lo..=hi).all(|cx| in_playfield(i32::from(cx), i32::from(y)))
+                    })
+                    .map(move |tx| ((x, y), (tx, y)))
+            })
+            .filter(|&(_, (tx, ty))| open_ground(tx, ty))
+            .collect()
+    }
+
+    /// A Dreadnought on retail Lost Lake force-attacks a Soviet MCV ashore
+    /// through an ordinary command: each volley's two missiles leave 20
+    /// frames apart (the SpawnTimer), every missile comes down on the MCV,
+    /// and the pool rebuilds itself for a second volley (`SpawnRegenRate=`).
+    /// The pieces' native comparisons are the manager's
+    /// (`spawn_manager::oracle_tests`), the launch coordinate's
+    /// (`tools/projectile_oracle/ifv_fire_coord.json`), the DMisl flight's
+    /// (`movement::rocket_movement::tests`) and the tracker's
+    /// (`kamikaze::tests`); this run claims no whole-volley native comparison.
+    #[test]
+    #[ignore = "requires the configured retail install and stock Lostlake.mmx"]
+    fn retail_dreadnought_volleys_land_on_the_target_and_regenerate() {
+        let retail = std::env::var("RA2_DIR")
+            .map(std::path::PathBuf::from)
+            .expect("RA2_DIR names the retail install");
+        let mut scenario = crate::headless_scenario::load(&retail, "Lostlake.mmx", 0x0B21_D6E5)
+            .expect("load retail Lost Lake through the production loader");
+        let candidates = naval_sites(&scenario, 15);
+        let owner = scenario.sim().session.current_house.expect("launch house");
+        let owner_name = scenario.sim().interner.resolve(owner).to_owned();
+        let runtime = &mut scenario.runtime;
+        let rules = &runtime.resources.rules;
+        let regen_rate = rules.object("DRED").expect("[DRED]").spawn_regen_rate as u64;
+        let sim = &mut runtime.simulation;
+        let ((dred_cell, target_cell), dred, target) = candidates
+            .into_iter()
+            .find_map(|(launcher, target)| {
+                let mcv = sim.spawn_object("SMCV", &owner_name, target.0, target.1, 0, rules)?;
+                match sim.spawn_object("DRED", &owner_name, launcher.0, launcher.1, 0, rules) {
+                    Some(dred) => Some(((launcher, target), dred, mcv)),
+                    None => {
+                        sim.uninit(mcv);
+                        None
+                    }
+                }
+            })
+            .expect("Lost Lake admits a Dreadnought on open water and an MCV ashore");
+        sim.resolve_type_handles(rules);
+        let strength = sim.substrate.entities.get(target).unwrap().health.current;
+        let dred_start = position_world_coord(&sim.substrate.entities.get(dred).unwrap().position);
+        // (launch frame, slot, missile), and each missile's detonation frame
+        // and last location.
+        let mut launches = Vec::new();
+        let mut landed = std::collections::BTreeMap::new();
+        let mut flying = std::collections::BTreeMap::new();
+        let mut health_log = vec![(0, strength)];
+        for frame in 0..2400u64 {
+            let commands = if frame == 0 {
+                vec![CommandEnvelope::new(
+                    owner,
+                    runtime.simulation.session.tick + 1,
+                    Command::ForceAttack {
+                        attacker_id: dred,
+                        target_id: target,
+                    },
+                )]
+            } else {
+                Vec::new()
+            };
+            runtime
+                .advance_frame_for_tooling(&commands, SIM_TICK_MS)
+                .expect("advance production frame");
+            let sim = &runtime.simulation;
+            let slots = sim
+                .substrate
+                .entities
+                .get(dred)
+                .and_then(|e| e.spawn_manager.as_ref())
+                .map(|m| m.slots.clone())
+                .unwrap_or_default();
+            for (slot, missile) in slots
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, s)| Some((slot, s.spawn?)))
+            {
+                let out = sim
+                    .substrate
+                    .entities
+                    .get(missile)
+                    .is_some_and(|e| !e.lifecycle.in_limbo);
+                if out && !flying.contains_key(&missile) && !landed.contains_key(&missile) {
+                    launches.push((frame, slot, missile));
+                    flying.insert(missile, None);
+                }
+            }
+            for (&missile, last) in flying.iter_mut() {
+                match sim
+                    .substrate
+                    .entities
+                    .get(missile)
+                    .filter(|e| e.is_object_alive())
+                {
+                    Some(e) => *last = Some(position_world_coord(&e.position)),
+                    None => {
+                        landed.insert(missile, (frame, *last));
+                    }
+                }
+            }
+            flying.retain(|missile, _| !landed.contains_key(missile));
+            let health = sim
+                .substrate
+                .entities
+                .get(target)
+                .filter(|e| e.is_object_alive())
+                .map_or(0, |e| e.health.current);
+            if health_log.last().is_some_and(|&(_, last)| last != health) {
+                health_log.push((frame, health));
+            }
+            if health == 0 || landed.len() >= 4 {
+                break;
+            }
+        }
+        let sim = &runtime.simulation;
+        let dred_end = position_world_coord(&sim.substrate.entities.get(dred).unwrap().position);
+        println!(
+            "DRED at {dred_cell:?}, SMCV at {target_cell:?}: launches {launches:?}, \
+             landings {landed:?}, target health {health_log:?}, DRED moved {}",
+            (dred_start.x, dred_start.y) != (dred_end.x, dred_end.y)
+        );
+        assert!(launches.len() >= 4, "two volleys launch: {launches:?}");
+        for volley in launches.chunks(2).take(2) {
+            assert_eq!(
+                (volley[0].1, volley[1].1, volley[1].0 - volley[0].0),
+                (0, 1, 20),
+                "slot 0 then slot 1, 20 frames apart: {launches:?}"
+            );
+        }
+        assert!(
+            launches[2].0 - launches[1].0 >= regen_rate,
+            "the second volley waits out the regeneration: {launches:?}"
+        );
+        let center = [
+            i32::from(target_cell.0) * 256 + 128,
+            i32::from(target_cell.1) * 256 + 128,
+        ];
+        for &(frame, location) in landed.values() {
+            let location = location.expect("each missile flew");
+            assert!(
+                (location.x - center[0]).abs() <= 512 && (location.y - center[1]).abs() <= 512,
+                "each missile comes down on the MCV at frame {frame}: {location:?}"
+            );
+        }
+        let mut landing_frames: Vec<u64> = landed.values().map(|&(frame, _)| frame).collect();
+        landing_frames.sort_unstable();
+        let damage_frames: Vec<u64> = health_log[1..].iter().map(|&(frame, _)| frame).collect();
+        assert_eq!(
+            damage_frames, landing_frames,
+            "each detonation damages the target in its own frame: {health_log:?}"
+        );
+        assert_eq!(
+            (dred_start.x, dred_start.y),
+            (dred_end.x, dred_end.y),
+            "the Dreadnought fires from where it stands"
+        );
+    }
+
+    /// Two enemy Flak Tracks beside a V3 Launcher on retail Hills shoot its
+    /// rocket down in flight, through an ordinary command and bound runtime
+    /// frames. The rocket is a target only once the climb has put it in the
+    /// AircraftTracker. The killing hit plays its `Explosion=` anim, and
+    /// Crash keeps the rocket alive with no Health and drops it from every
+    /// Flak Track (`AircraftClass::ReceiveDamage @ 0x004165C0`). The next
+    /// frame's Process tail (`0x00662D74..0x00662FE1`) detonates it in the
+    /// air, short of the target. The kill does not touch the launcher: its
+    /// slot was freed when the rocket's KamikazeWait ran out, and it rebuilds
+    /// the rocket `SpawnRegenRate=` after that. The pieces' evidence stays
+    /// with their owners: the scan (`combat::greatest_threat`), the crash
+    /// (`tools/spatial_oracle/aircraft_crash.py`), the flight
+    /// (`movement::rocket_movement::tests`) and the manager
+    /// (`spawn_manager::oracle_tests`). This run claims no
+    /// whole-interception native comparison.
+    #[test]
+    #[ignore = "requires the configured retail install and stock Hills.mmx"]
+    fn retail_flak_tracks_shoot_down_a_v3_rocket_in_flight() {
+        use crate::sim::spawn_manager::SpawnSlotState;
+        use crate::skirmish_launch::{
+            AiDifficulty, LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster,
+            SkirmishAiSlot,
+        };
+        let retail = std::env::var("RA2_DIR")
+            .map(std::path::PathBuf::from)
+            .expect("RA2_DIR names the retail install");
+        let mut session = crate::headless_scenario::battle_session("Hills.mmx");
+        session.opponents.push(SkirmishAiSlot {
+            country: LaunchCountry::Russia,
+            country_random: false,
+            color_index: 1,
+            color_random: false,
+            start_position: LaunchStartPosition::Auto,
+            team: LaunchTeam::None,
+            difficulty: AiDifficulty::Easy,
+        });
+        session.pre_fill_house_roster = PreFillHouseRoster::from_compact_skirmish(1);
+        let launch =
+            crate::sim::scenario_bootstrap::MatchLaunchDescriptor::from_resolved(session).unwrap();
+        let mut scenario =
+            crate::headless_scenario::load_with_launch(&retail, "Hills.mmx", 0x0B21_D6E5, launch)
+                .expect("load retail Hills with a computer opponent");
+        let candidates = sites(&scenario);
+        let owner = scenario.sim().session.current_house.expect("launch house");
+        let owner_name = scenario.sim().interner.resolve(owner).to_owned();
+        let enemy_name = scenario
+            .sim()
+            .houses
+            .iter()
+            .find(|(name, house)| **name != owner && !house.multiplay_passive)
+            .map(|(name, _)| scenario.sim().interner.resolve(*name).to_owned())
+            .expect("the computer house");
+        let runtime = &mut scenario.runtime;
+        let rules = &runtime.resources.rules;
+        let regen_rate = rules.object("V3").expect("[V3]").spawn_regen_rate as u64;
+        let explosions: BTreeSet<String> = rules
+            .object("V3ROCKET")
+            .expect("[V3ROCKET]")
+            .explosion_anims
+            .iter()
+            .map(|name| name.to_ascii_uppercase())
+            .collect();
+        let sim = &mut runtime.simulation;
+        // The first site that admits the V3, its target and both Flak Tracks,
+        // which stand halfway along the path, two cells either side of it.
+        let ((launcher_cell, target_cell), v3, target, flak) = candidates
+            .into_iter()
+            .find_map(|(launcher, target)| {
+                let mut placed = Vec::new();
+                let tank = sim.spawn_object("MTNK", &enemy_name, target.0, target.1, 0, rules);
+                placed.extend(tank);
+                let v3 = sim.spawn_object("V3", &owner_name, launcher.0, launcher.1, 0, rules);
+                placed.extend(v3);
+                let flak: Vec<_> = [launcher.1 - 2, launcher.1 + 2]
+                    .into_iter()
+                    .filter_map(|y| {
+                        sim.spawn_object("HTK", &enemy_name, launcher.0 + 5, y, 0, rules)
+                    })
+                    .collect();
+                placed.extend(flak.iter().copied());
+                match (tank, v3, flak.len()) {
+                    (Some(tank), Some(v3), 2) => Some(((launcher, target), v3, tank, flak)),
+                    _ => {
+                        for id in placed {
+                            sim.uninit(id);
+                        }
+                        None
+                    }
+                }
+            })
+            .expect("Hills admits a V3, its target and two Flak Tracks");
+        sim.resolve_type_handles(rules);
+        let strength = sim.substrate.entities.get(target).unwrap().health.current;
+        let target_z =
+            position_world_coord(&sim.substrate.entities.get(target).unwrap().position).z;
+        let missile = sim
+            .substrate
+            .entities
+            .get(v3)
+            .and_then(|e| e.spawn_manager.as_ref())
+            .and_then(|m| m.slots[0].spawn)
+            .expect("the V3 builds its missile");
+        let mut seen_anims: BTreeSet<_> = sim.anims().map(|(&id, _)| id).collect();
+        let mut tracked = None;
+        let mut freed = None;
+        let mut acquired = None;
+        let mut killed = None;
+        let mut detonated = None;
+        let mut refilled = None;
+        let mut death_anims = Vec::new();
+        let mut detonation_anims = Vec::new();
+        let mut last_location = None;
+        for frame in 0..1500u64 {
+            let commands = if frame == 0 {
+                vec![CommandEnvelope::new(
+                    owner,
+                    runtime.simulation.session.tick + 1,
+                    Command::ForceAttack {
+                        attacker_id: v3,
+                        target_id: target,
+                    },
+                )]
+            } else {
+                Vec::new()
+            };
+            runtime
+                .advance_frame_for_tooling(&commands, SIM_TICK_MS)
+                .expect("advance production frame");
+            let sim = &runtime.simulation;
+            let new_anims: Vec<(String, crate::sim::anim_class::AnimWorldCoord)> = sim
+                .anims()
+                .filter(|(id, _)| !seen_anims.contains(*id))
+                .map(|(_, anim)| {
+                    (
+                        sim.interner.resolve(anim.type_id).to_ascii_uppercase(),
+                        anim.world_coord,
+                    )
+                })
+                .collect();
+            seen_anims.extend(sim.anims().map(|(&id, _)| id));
+            let slot = sim
+                .substrate
+                .entities
+                .get(v3)
+                .and_then(|e| e.spawn_manager.as_ref())
+                .map(|m| m.slots[0].clone())
+                .expect("the V3's slot");
+            assert_eq!(
+                sim.substrate.entities.get(target).unwrap().health.current,
+                strength,
+                "the rocket never reaches the target"
+            );
+            if slot.state == SpawnSlotState::Regenerating {
+                freed.get_or_insert(frame);
+            }
+            if detonated.is_some() {
+                if slot.state == SpawnSlotState::ReadyDocked && slot.spawn.is_some() {
+                    refilled = Some(frame);
+                    break;
+                }
+                continue;
+            }
+            let Some(entity) = sim
+                .substrate
+                .entities
+                .get(missile)
+                .filter(|entity| entity.is_object_alive())
+            else {
+                detonated = Some(frame);
+                detonation_anims = new_anims;
+                continue;
+            };
+            last_location = Some(position_world_coord(&entity.position));
+            let targeted = flak.iter().any(|&id| {
+                sim.substrate.entities.get(id).is_some_and(|flak| {
+                    flak.attack_target.as_ref().map(|attack| attack.target)
+                        == Some(crate::sim::combat::TargetKind::Entity(missile))
+                })
+            });
+            if entity.air_spatial_bucket().is_some() {
+                tracked.get_or_insert(frame);
+            }
+            if targeted && acquired.is_none() {
+                assert!(
+                    tracked.is_some(),
+                    "a Flak Track targets the rocket only once it is in the AircraftTracker"
+                );
+                acquired = Some(frame);
+            }
+            if entity.health.current == 0 && killed.is_none() {
+                killed = Some(frame);
+                death_anims = new_anims;
+                assert!(entity.crashing, "Crash keeps the dead rocket alive");
+                assert!(
+                    flak.iter().all(|&id| sim
+                        .substrate
+                        .entities
+                        .get(id)
+                        .is_none_or(|flak| flak.attack_target.is_none())),
+                    "Crash's Detach_All drops the rocket from every Flak Track"
+                );
+            }
+        }
+        println!(
+            "V3 at {launcher_cell:?}, MTNK at {target_cell:?}, flak {flak:?}: tracked {tracked:?}, \
+             slot freed {freed:?}, acquired {acquired:?}, killed {killed:?}, detonated {detonated:?} at \
+             {last_location:?}, refilled {refilled:?}; death anims {death_anims:?}, \
+             detonation anims {detonation_anims:?}"
+        );
+        let (tracked, acquired) = (
+            tracked.unwrap(),
+            acquired.expect("a Flak Track acquires it"),
+        );
+        let killed = killed.expect("the Flak Tracks shoot the rocket down");
+        assert!(tracked <= acquired && acquired < killed);
+        assert_eq!(
+            detonated,
+            Some(killed + 1),
+            "the next frame's Process detonates the dead rocket"
+        );
+        assert!(
+            death_anims
+                .iter()
+                .any(|(name, _)| explosions.contains(name)),
+            "the killing hit plays an `Explosion=` anim: {death_anims:?}"
+        );
+        let location = last_location.unwrap();
+        assert!(
+            detonation_anims
+                .iter()
+                .any(|(_, coord)| (coord.x - location.x).abs() <= 256
+                    && (coord.y - location.y).abs() <= 256
+                    && coord.z > target_z + 128),
+            "the rocket explodes in the air where it fell: {detonation_anims:?}"
+        );
+        let freed = freed.expect("the slot frees");
+        assert!(freed < killed, "the slot frees before the kill");
+        let refilled = refilled.expect("the slot rebuilds its rocket");
+        assert!(
+            (freed + regen_rate..freed + regen_rate + 20).contains(&refilled),
+            "the rocket is rebuilt at the first manager pass after SpawnRegenRate"
+        );
     }
 }

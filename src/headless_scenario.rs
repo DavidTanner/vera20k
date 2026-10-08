@@ -30,7 +30,9 @@ use crate::sim::scenario_session::ScenarioDescriptor;
 use crate::sim::world::Simulation;
 
 /// A Battle session on `selected_map_file` with the local player alone.
-fn battle_session(selected_map_file: &str) -> crate::skirmish_launch::SkirmishLaunchSession {
+pub(crate) fn battle_session(
+    selected_map_file: &str,
+) -> crate::skirmish_launch::SkirmishLaunchSession {
     use crate::skirmish_launch::{
         LaunchCountry, LaunchStartPosition, LaunchTeam, PreFillHouseRoster, SkirmishLaunchMode,
         SkirmishLaunchOptions, SkirmishLaunchSession, SkirmishLocalSlot,
