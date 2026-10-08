@@ -38,11 +38,6 @@ Thumbs.db
 !/docs/zh-CN/
 !/docs/images/
 !/docs/images/**
-# Focused evidence and task plans are tracked; historical research is archived.
-!/docs/research/
-!/docs/research/**
-!/docs/plans/
-!/docs/plans/**
 
 .mcp.json
 /.claude/*

@@ -69,7 +69,7 @@ capture screenshots, critic reviews or static disassembly packets.
 
 Each cohesive gamemd-derived Rust behavior carries nearby native identity/address
 and source; sim-behavior commits cite their evidence.
-Consult the [Ghidra reference](docs/research/ghidra-workflow.md) for access,
+Consult the [Ghidra reference](docs/ghidra-workflow.md) for access,
 interpretation pitfalls and shared-database edits.
 
 ## Retail data
@@ -254,10 +254,8 @@ once every required check passes. Confirm it merged before publishing your next 
 ## Knowledge and guidance
 
 Keep current contracts, focused implementation rationale and reproducible native
-evidence close to their code or tools. Historical investigations live in the
-[research archive](docs/research/README.md); consult them explicitly when useful,
-recheck their claims, and update the current owner rather than maintaining chains
-of superseded reports. Retention or an index status is not proof of correctness.
+evidence close to their code or tools. Update the current owner rather than
+maintaining chains of superseded reports. Retention is not proof of correctness.
 
 Internet documentation lookup is allowed without routine approval. Resolve uncertain
 technical behavior using authoritative references, specifications and upstream source;

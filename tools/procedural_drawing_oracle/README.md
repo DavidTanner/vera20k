@@ -2,7 +2,7 @@
 
 The current chain is **selected local stock MTNK Attack lines against a ground Unit**.
 Factory rally and ordinary ground Unit Move drawing are integrated. The whole-scope native/Rust censuses are in
-[the checkpoint](../../docs/plans/procedural-drawing.md). No unresolved census
+the checkpoint. No unresolved census
 entry is completed by documenting it.
 
 ## Selected ground Unit Attack

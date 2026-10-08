@@ -10,7 +10,7 @@ logical-crop hashes: they cover half-open `presentation_rect` crops in the
 1920x1080 DDrawCompat surface. The comparator reconstructs each presentation
 crop from the full logical frame using the verified point mapping
 `source=floor((2*destination_offset+1)*5/18)` relative to the content rectangle
-`[240,0,1680,1080)`, then hashes the resulting tight BGRA8 bytes. It never
+`240,0,1680,1080)`, then hashes the resulting tight BGRA8 bytes. It never
 compares a direct `logical_rect` crop with a guard digest.
 
 Compare an existing bundle:
@@ -168,4 +168,4 @@ means invalid input. Every result explicitly says `parity_certification: NONE`.
 The parsed-map digest hashes a Rust Debug representation solely to detect a
 selection change within this capture. It is not a stable asset fingerprint.
 Native input enrollment, reference capture and pixel comparison remain separate
-work. See the [bounded capture evidence](../../docs/research/skirmish-ui/2026-09-12-production-capture.md).
+work. See the [bounded capture evidence.
