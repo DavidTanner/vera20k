@@ -449,13 +449,7 @@ impl Simulation {
         if old_owner == new_owner {
             return;
         }
-        let game_mode_nonzero = self.session.game_mode_nonzero;
-        let human = |sim: &Self, house: InternedId| {
-            sim.houses
-                .get(&house)
-                .is_some_and(|h| h.is_controlled_by_human(game_mode_nonzero))
-        };
-        if !(human(self, old_owner) || human(self, new_owner)) {
+        if !(self.owner_is_human(old_owner) || self.owner_is_human(new_owner)) {
             return;
         }
         if self

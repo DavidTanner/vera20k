@@ -1928,10 +1928,7 @@ impl Simulation {
         // the local player's (`IsHumanPlayer`, here whether a human controls
         // it) is AI-repairable (`+0x6CB`; its AI-rebuildable `+0x6CA` has no
         // building reader).
-        if !self
-            .houses
-            .get(&owner_id)
-            .is_some_and(|house| house.is_controlled_by_human(self.session.game_mode_nonzero))
+        if !self.owner_is_human(owner_id)
             && let Some(building) = self.substrate.entities.get_mut(new_sid)
         {
             building.ai_repairable = true;

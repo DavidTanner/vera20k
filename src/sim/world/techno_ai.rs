@@ -1215,10 +1215,7 @@ fn open_transport_reach_step(
     if target_scan::can_fire_at(sim, rules, id, target, weapon, overlay_registry) {
         return;
     }
-    let human = sim
-        .houses
-        .get(&entity.owner())
-        .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero));
+    let human = sim.owner_is_human(entity.owner());
     let approaches = match entity.mission.current().known() {
         Some(MissionType::Attack) => true,
         Some(MissionType::AreaGuard) => human,
@@ -1265,11 +1262,7 @@ fn allied_target_drop_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
         .and_then(|controller| sim.substrate.entities.get(controller))
         .map(|controller| controller.owner());
     let house = controller_house.unwrap_or(entity.owner());
-    if sim
-        .houses
-        .get(&house)
-        .is_some_and(|state| state.is_controlled_by_human(sim.session.game_mode_nonzero))
-    {
+    if sim.owner_is_human(house) {
         return;
     }
     // `0x004F9AF0` tests the target's Object flag first: a cell is never

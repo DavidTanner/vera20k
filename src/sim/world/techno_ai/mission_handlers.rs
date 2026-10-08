@@ -269,10 +269,7 @@ pub(crate) fn dispatch_foot_mission(
                     .substrate
                     .entities
                     .get(id)
-                    .and_then(|actor| sim.houses.get(&actor.owner()))
-                    .is_some_and(|house| {
-                        house.is_controlled_by_human(sim.session.game_mode_nonzero)
-                    }) =>
+                    .is_some_and(|actor| sim.owner_is_human(actor.owner())) =>
         {
             //51F4D3's House50B730 gate precedes this deployed arm.
             // Order is load-bearing: `0x0051F500` calls `[vtable+0x428]`

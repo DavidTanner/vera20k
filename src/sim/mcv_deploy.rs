@@ -120,10 +120,7 @@ pub(crate) fn hunt_deploys(sim: &Simulation, id: u64, rules: &RuleSet) -> bool {
     deploys_into(sim, entity, rules).is_some_and(|yard| {
         yard.build_const_eligible
             || entity.attack_target.is_some()
-            || sim
-                .houses
-                .get(&entity.owner())
-                .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
+            || sim.owner_is_human(entity.owner())
     })
 }
 
@@ -240,10 +237,7 @@ pub(crate) fn try_to_deploy(
     // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0), the Unit
     // receiver's null arm.
     if !has_destination(sim)
-        && !sim
-            .houses
-            .get(&owner)
-            .is_some_and(|house| house.is_controlled_by_human(sim.session.game_mode_nonzero))
+        && !sim.owner_is_human(owner)
         && let Err(cause) = sim.scatter_null(id, ScatterFlags::new(false, false), rules, registry)
     {
         log::debug!("MCV {id} did not scatter: {cause}");
