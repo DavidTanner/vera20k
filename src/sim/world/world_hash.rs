@@ -1726,7 +1726,6 @@ impl Simulation {
                     None::<(u16, u16)>.hash(hasher);
                     crate::sim::mission::MissionTimer::default().hash(hasher);
                 }
-                miner.forced_return.hash(hasher);
                 if native_ore_field {
                     // Unit+0x6D1/+0x6D2; the shared Stage is folded above.
                     miner.unload_active.hash(hasher);

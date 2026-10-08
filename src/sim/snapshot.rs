@@ -878,7 +878,10 @@ use crate::sim::world::Simulation;
 // resume.
 // 303 -> 304: a Super saves its place in the Super timer list (0x00A83D50).
 // Prior records lack it.
-const SNAPSHOT_VERSION: u32 = 304;
+// 304 -> 305: PowerState drops was_low_power (it fed only a discarded
+// transition event) and Miner its forced_return flag (reserved_refinery is
+// only set beside it). Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 305;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2039,9 +2042,10 @@ fn restore_object_references(
         }
     }
 
-    // These manager maps are derived/transitional mirrors rather than modeled
-    // native pointer slots. Restore prunes them only after the authoritative
-    // object graph has passed validation.
+    // The primary-factory links (the native primary byte, written by
+    // Building448070 and the player's cycle order) and the airfield pad
+    // reservations name objects by id. Restore prunes ids the validated object
+    // graph no longer holds.
     sim.production.retain_primary_factory_links(&entity_ids);
     sim.production.airfield_docks.cleanup_dead(&entity_ids);
 
@@ -3900,7 +3904,8 @@ mod tests {
         // 301 -> 302: FogState drops its unread v81 generation wire shadow.
         // 302 -> 303: unread HoverAttack copy and aircraft pad-index copies.
         // 303 -> 304: a Super's place in the Super timer list.
-        assert_eq!(super::SNAPSHOT_VERSION, 304);
+        // 304 -> 305: write-only power transition latch and miner return flag.
+        assert_eq!(super::SNAPSHOT_VERSION, 305);
     }
 
     #[test]

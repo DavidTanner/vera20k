@@ -1320,7 +1320,6 @@ impl Simulation {
                 if let Some(refinery_id) = explicit_refinery {
                     miner.reserved_refinery = Some(refinery_id);
                 }
-                miner.forced_return = true;
                 // Clear any in-progress movement — the miner system will path to refinery.
                 e.movement_target = None;
                 // Commit the Harvest mission and the ForcedReturn cursor of
@@ -3359,7 +3358,6 @@ mod tests {
         let miner_entity = sim.substrate.entities.get(1).unwrap();
         let miner = miner_entity.miner.as_ref().unwrap();
         assert_eq!(miner.reserved_refinery, Some(3));
-        assert!(miner.forced_return);
         assert_eq!(miner_entity.miner_state(), Some(MinerState::ForcedReturn));
         // The order's radio break leaves the old refinery on both ends and
         // the unload latch with it; a latch left up would refuse every later
@@ -3399,7 +3397,6 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(miner.reserved_refinery, None);
-        assert!(miner.forced_return);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::ForcedReturn)
@@ -3432,7 +3429,6 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(miner.reserved_refinery, None);
-        assert!(!miner.forced_return);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::SearchOre)
