@@ -159,7 +159,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
                     triggers: result.scenario.triggers,
                     events: result.scenario.events,
                     actions: result.scenario.actions,
-                    waypoints: result.scenario.waypoints.clone(),
+                    waypoints: result.scenario.waypoints,
                 },
             });
     state.match_state.match_presentation.combat_lights.clear();
@@ -245,7 +245,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         .overlays
         .replace_from_source(result.scenario.overlays);
     state.match_state.match_presentation.terrain_objects = result.scenario.terrain_objects;
-    state.match_state.match_presentation.waypoints = result.scenario.waypoints;
     state.match_state.match_presentation.cell_tags = result.scenario.cell_tags;
     state.match_state.match_presentation.tags = result.scenario.tags;
     state.match_state.match_presentation.overlay_names = result.presentation.overlay_names;

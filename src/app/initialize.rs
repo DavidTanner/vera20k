@@ -565,7 +565,6 @@ impl App {
                     installed_playfield_authority: None,
                     overlays: Default::default(),
                     terrain_objects: Vec::new(),
-                    waypoints: HashMap::new(),
                     cell_tags: HashMap::new(),
                     tags: HashMap::new(),
                     overlay_names: BTreeMap::new(),
