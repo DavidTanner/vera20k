@@ -32,7 +32,6 @@ pub(crate) use self::refinery_dock::{
 };
 
 use crate::rules::object_type::ObjectType;
-use crate::rules::ruleset::GeneralRules;
 
 /// Which kind of resource a map cell or cargo bale contains.
 #[derive(
@@ -154,15 +153,6 @@ pub struct MinerConfig {
     pub war_miner_capacity: u16,
     /// Chrono Miner bale capacity (500 / 25 = 20 bales for ore).
     pub chrono_miner_capacity: u16,
-
-    // -- Timing (in sim ticks at 15Hz = RA2 game frames) --
-    /// Whole-frame dump gate: the unload accumulator advances one frame per
-    /// unloading tick and a resource slot drains once it reaches this value.
-    /// Default 15 = ceil(HarvesterDumpRate(0.016) × 900) = ceil(14.4). Because
-    /// the accumulator is integer-stepped, storing the ceiling reproduces
-    /// gamemd's `rate × 900 <= accumulator` crossing exactly — no float in the
-    /// gate, no tenths-rounding drift for modded rates.
-    pub unload_tick_interval: u16,
 }
 
 impl Default for MinerConfig {
@@ -174,31 +164,11 @@ impl Default for MinerConfig {
             war_miner_capacity: 40,
             // Chrono Miner: 20 bales * 25 = 500 ore, 20 * 50 = 1000 gems
             chrono_miner_capacity: 20,
-            // HarvesterDumpRate=0.016 × 900 = 14.4 frames/gate; the integer
-            // accumulator crosses at ceil(14.4) = 15. The whole slot drains per
-            // gate (one ore gate + one gem gate, ~15 frames each).
-            unload_tick_interval: 15,
         }
     }
 }
 
 impl MinerConfig {
-    /// Create a MinerConfig from parsed `[General]` rules data.
-    ///
-    /// Replaces hardcoded defaults with data-driven values from rules.ini.
-    /// Bale values and capacities stay at defaults (not exposed in [General]).
-    pub fn from_general_rules(general: &GeneralRules) -> Self {
-        // HarvesterDumpRate is a double in gamemd (default 0.016). The dump gate
-        // is `rate × 900 <= accumulator`; ruleset already stored ceil(rate × 900)
-        // as a whole-frame threshold, so the gate stays integer-exact here.
-        let unload_interval = general.harvester_dump_frames.max(1);
-
-        Self {
-            unload_tick_interval: unload_interval,
-            ..Self::default()
-        }
-    }
-
     /// Create a `MinerConfig` from a full `RuleSet`, sourcing per-bale credit
     /// values from the `[Tiberiums]` registry so ore/gem payout tracks the mod's
     /// `Value=` overrides instead of hardcoded constants.
@@ -228,7 +198,7 @@ impl MinerConfig {
                 crate::rules::tiberium_type::TiberiumTypeId(1),
                 defaults.gem_bale_value,
             ),
-            ..Self::from_general_rules(&rules.general)
+            ..defaults
         }
     }
 }

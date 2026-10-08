@@ -964,12 +964,6 @@ pub struct GameEntity {
     pub dying: bool,
     /// Retained Infantry lifetime policy; sprite animation stores progress only.
     pub(crate) infantry_terminal: Option<crate::sim::world::InfantryTerminal>,
-    /// Ticks remaining before a permanently blocked infantry scatters sideways.
-    /// Set when movement is stuck on a non-temporary obstacle; counts down each tick.
-    /// When it reaches 0, the unit scatters to a random adjacent cell instead of
-    /// endlessly repathing to the same blocked destination.
-    /// Original engine: 30-frame scatter queue interval.
-    pub blocked_scatter_timer: u8,
     /// FootClass movement-sound handle state. Native starts the configured
     /// MoveSound on the object's own post-locomotor AI tail and keeps it alive
     /// through brief moving-now dropouts with a three-visit grace countdown.
@@ -1747,7 +1741,6 @@ impl GameEntity {
             immune_to_radiation: false,
             dying: false,
             infantry_terminal: None,
-            blocked_scatter_timer: 0,
             move_sound_active: false,
             move_sound_countdown: 0,
             crashing: false,
