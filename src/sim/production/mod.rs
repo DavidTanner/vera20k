@@ -31,7 +31,7 @@ mod wall_placement;
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
     BuildEligibility, CancelOutcome, Factory, FactoryHolder, FactoryRegistry, FactoryView,
-    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, SpecialItem, StepOutcome,
+    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, StepOutcome,
     TimeToBuildInputs, category_for_object, time_to_build,
 };
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};

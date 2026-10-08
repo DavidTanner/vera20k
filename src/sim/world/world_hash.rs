@@ -1000,9 +1000,8 @@ impl Simulation {
     /// Hash the authoritative factory registry in the deterministic temporal sweep
     /// order (`iter_insertion_ordered`, by `insertion_seq` = front `enqueue_order`) —
     /// the SAME order `step_all` charges in, so the fold order is part of the hash
-    /// contract. Explicit-field folding (NOT `#[derive(Hash)]`) so `SpecialItem`'s
-    /// three states + the Option presence tags fold distinctly, consistent with the
-    /// rest of this file.
+    /// contract. Explicit-field folding (NOT `#[derive(Hash)]`) so the Option
+    /// presence tags fold distinctly, consistent with the rest of this file.
     fn hash_factory_registry(&self, hasher: &mut impl Hasher) {
         for (holder, f) in self.production.factories.holders_insertion_ordered() {
             // The building that holds a computer's factory (`BuildingClass+0x524`);
@@ -1039,14 +1038,6 @@ impl Simulation {
             f.manual.hash(hasher);
             if f.has_changed() {
                 b"factory-changed-5d".hash(hasher);
-            }
-            match f.special {
-                crate::sim::production::SpecialItem::NoneNeg1 => 0u8.hash(hasher),
-                crate::sim::production::SpecialItem::NoneZero => 1u8.hash(hasher),
-                crate::sim::production::SpecialItem::Item(v) => {
-                    2u8.hash(hasher);
-                    v.hash(hasher);
-                }
             }
             // P5d: the queue-of-record (was the per-`BuildQueueItem` `queues_by_owner` fold,
             // now retired). Folds in FIFO (`VecDeque`) order — deterministic by construction.

@@ -157,7 +157,7 @@ fn production_authoritative_hash_includes_factory_fields() {
     let base = mid_build().state_hash();
 
     type FMut = fn(&mut crate::sim::production::Factory);
-    let factory_muts: [FMut; 9] = [
+    let factory_muts: [FMut; 8] = [
         |f| f.progress += 1,
         |f| f.balance += 1,
         |f| f.step_timer = CdTimer::started(123, f.step_timer.duration()),
@@ -166,7 +166,6 @@ fn production_authoritative_hash_includes_factory_fields() {
         |f| f.suspended = !f.suspended,
         |f| f.step_rate_frames += 1,
         |f| f.manual = !f.manual,
-        |f| f.special = crate::sim::production::SpecialItem::NoneZero,
     ];
     for m in factory_muts {
         let mut sim = mid_build();

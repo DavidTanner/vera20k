@@ -888,7 +888,9 @@ use crate::sim::world::Simulation;
 // it. Prior records cannot resume.
 // 307 -> 308: ProductionState drops terrain_occupation_bits, a per-cell copy of
 // the terrain objects' occupation that nothing read. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 308;
+// 308 -> 309: Factory drops its special item, which every writer set to the
+// -1 "none" and nothing read. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 309;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3915,7 +3917,8 @@ mod tests {
         // 305 -> 306: ground bits replace the legacy visibility counters.
         // 306 -> 307: the session's LocalSize copy.
         // 307 -> 308: the unread terrain occupation copy.
-        assert_eq!(super::SNAPSHOT_VERSION, 308);
+        // 308 -> 309: the Factory special item.
+        assert_eq!(super::SNAPSHOT_VERSION, 309);
     }
 
     #[test]
