@@ -136,104 +136,120 @@ impl ShpFile {
         let frame_count = Self::frame_count_from_bytes(data)?;
         let width: u16 = read_u16_le(data, 2);
         let height: u16 = read_u16_le(data, 4);
+        let mut frames: Vec<ShpFrame> = Vec::with_capacity(usize::from(frame_count));
+        for i in 0..usize::from(frame_count) {
+            frames.push(Self::frame_at(data, i)?);
+        }
+        Ok(ShpFile {
+            width,
+            height,
+            frames,
+        })
+    }
 
-        let mut frames: Vec<ShpFrame> = Vec::with_capacity(frame_count as usize);
+    /// Decode frame `index`'s palette indices from the file's raw bytes, as
+    /// [`Self::from_bytes`] decodes each frame. It reads only that frame, so
+    /// it can succeed on a file whose other frames `from_bytes` rejects.
+    pub fn decode_frame(data: &[u8], index: usize) -> Result<Vec<u8>, AssetError> {
+        let frame_count = Self::frame_count_from_bytes(data)?;
+        if index >= usize::from(frame_count) {
+            return Err(AssetError::ShpFrameOutOfRange {
+                index: index as u16,
+                count: frame_count,
+            });
+        }
+        Ok(Self::frame_at(data, index)?.pixels)
+    }
 
-        for i in 0..frame_count as usize {
-            let hdr_offset: usize = 8 + i * 24;
+    /// Frame `i`'s header and decoded pixels; the caller checked that the
+    /// header table holds it.
+    fn frame_at(data: &[u8], i: usize) -> Result<ShpFrame, AssetError> {
+        let hdr_offset: usize = 8 + i * 24;
 
-            let frame_x: u16 = read_u16_le(data, hdr_offset);
-            let frame_y: u16 = read_u16_le(data, hdr_offset + 2);
-            let frame_width: u16 = read_u16_le(data, hdr_offset + 4);
-            let frame_height: u16 = read_u16_le(data, hdr_offset + 6);
-            let format: u8 = data[hdr_offset + 8];
-            // Bytes 9-11: padding/reserved
-            // Bytes 12-14: radar minimap colour (R, G, B); byte 15 unused
-            // Bytes 16-19: reserved (always 0)
-            // Bytes 20-23: data_offset (absolute file offset to this frame's pixel data)
-            let radar_color: [u8; 3] = [
-                data[hdr_offset + 12],
-                data[hdr_offset + 13],
-                data[hdr_offset + 14],
-            ];
-            let data_offset: u32 = read_u32_le(data, hdr_offset + 20);
+        let frame_x: u16 = read_u16_le(data, hdr_offset);
+        let frame_y: u16 = read_u16_le(data, hdr_offset + 2);
+        let frame_width: u16 = read_u16_le(data, hdr_offset + 4);
+        let frame_height: u16 = read_u16_le(data, hdr_offset + 6);
+        let format: u8 = data[hdr_offset + 8];
+        // Bytes 9-11: padding/reserved
+        // Bytes 12-14: radar minimap colour (R, G, B); byte 15 unused
+        // Bytes 16-19: reserved (always 0)
+        // Bytes 20-23: data_offset (absolute file offset to this frame's pixel data)
+        let radar_color: [u8; 3] = [
+            data[hdr_offset + 12],
+            data[hdr_offset + 13],
+            data[hdr_offset + 14],
+        ];
+        let data_offset: u32 = read_u32_le(data, hdr_offset + 20);
 
-            // A frame with zero dimensions has no pixel data (empty frame).
-            if frame_width == 0 || frame_height == 0 {
-                frames.push(ShpFrame {
-                    frame_x,
-                    frame_y,
-                    frame_width,
-                    frame_height,
-                    format,
-                    radar_color,
-                    pixels: Vec::new(),
-                });
-                continue;
-            }
-
-            let pixel_count: usize = frame_width as usize * frame_height as usize;
-            let frame_data_start: usize = data_offset as usize;
-
-            if data_offset == 0 {
-                return Err(AssetError::ParseError {
-                    format: "SHP".to_string(),
-                    detail: format!("Frame {} is nonempty but has a zero data offset", i),
-                });
-            }
-
-            // Bounds check: make sure data_offset points inside the file.
-            if frame_data_start >= data.len() {
-                return Err(AssetError::ParseError {
-                    format: "SHP".to_string(),
-                    detail: format!(
-                        "Frame {} data offset {} is past end of file ({})",
-                        i,
-                        frame_data_start,
-                        data.len()
-                    ),
-                });
-            }
-
-            let frame_slice: &[u8] = &data[frame_data_start..];
-            let pixels: Vec<u8> = if format & FORMAT_RLE_ZERO_BIT != 0 {
-                decode_rle_frame(frame_slice, frame_width as usize, frame_height as usize)?
-            } else {
-                let end = frame_data_start.checked_add(pixel_count).ok_or_else(|| {
-                    AssetError::ParseError {
-                        format: "SHP".to_string(),
-                        detail: format!("Frame {} raw data extent overflows address space", i),
-                    }
-                })?;
-                if end > data.len() {
-                    return Err(AssetError::ParseError {
-                        format: "SHP".to_string(),
-                        detail: format!(
-                            "Frame {} raw data extends past end of file ({} > {})",
-                            i,
-                            end,
-                            data.len()
-                        ),
-                    });
-                }
-                data[frame_data_start..end].to_vec()
-            };
-
-            frames.push(ShpFrame {
+        // A frame with zero dimensions has no pixel data (empty frame).
+        if frame_width == 0 || frame_height == 0 {
+            return Ok(ShpFrame {
                 frame_x,
                 frame_y,
                 frame_width,
                 frame_height,
                 format,
                 radar_color,
-                pixels,
+                pixels: Vec::new(),
             });
         }
 
-        Ok(ShpFile {
-            width,
-            height,
-            frames,
+        let pixel_count: usize = frame_width as usize * frame_height as usize;
+        let frame_data_start: usize = data_offset as usize;
+
+        if data_offset == 0 {
+            return Err(AssetError::ParseError {
+                format: "SHP".to_string(),
+                detail: format!("Frame {} is nonempty but has a zero data offset", i),
+            });
+        }
+
+        // Bounds check: make sure data_offset points inside the file.
+        if frame_data_start >= data.len() {
+            return Err(AssetError::ParseError {
+                format: "SHP".to_string(),
+                detail: format!(
+                    "Frame {} data offset {} is past end of file ({})",
+                    i,
+                    frame_data_start,
+                    data.len()
+                ),
+            });
+        }
+
+        let frame_slice: &[u8] = &data[frame_data_start..];
+        let pixels: Vec<u8> = if format & FORMAT_RLE_ZERO_BIT != 0 {
+            decode_rle_frame(frame_slice, frame_width as usize, frame_height as usize)?
+        } else {
+            let end = frame_data_start.checked_add(pixel_count).ok_or_else(|| {
+                AssetError::ParseError {
+                    format: "SHP".to_string(),
+                    detail: format!("Frame {} raw data extent overflows address space", i),
+                }
+            })?;
+            if end > data.len() {
+                return Err(AssetError::ParseError {
+                    format: "SHP".to_string(),
+                    detail: format!(
+                        "Frame {} raw data extends past end of file ({} > {})",
+                        i,
+                        end,
+                        data.len()
+                    ),
+                });
+            }
+            data[frame_data_start..end].to_vec()
+        };
+
+        Ok(ShpFrame {
+            frame_x,
+            frame_y,
+            frame_width,
+            frame_height,
+            format,
+            radar_color,
+            pixels,
         })
     }
 
@@ -465,6 +481,31 @@ mod tests {
             assert_eq!((frame.frame_width, frame.frame_height), (0, 0));
             assert!(frame.pixels.is_empty());
         }
+    }
+
+    #[test]
+    fn a_frame_decodes_alone_and_an_index_past_the_last_is_out_of_range() {
+        // The raw 2x2 test frame, then a frame whose data starts past the end.
+        let one = make_test_shp_raw();
+        let mut data = one[..8].to_vec();
+        data[6..8].copy_from_slice(&2u16.to_le_bytes());
+        let mut first = one[8..32].to_vec();
+        first[20..24].copy_from_slice(&56u32.to_le_bytes());
+        let mut second = first.clone();
+        second[20..24].copy_from_slice(&1000u32.to_le_bytes());
+        data.extend(first);
+        data.extend(second);
+        data.extend_from_slice(&one[32..]);
+
+        assert!(
+            ShpFile::from_bytes(&data).is_err(),
+            "frame 1 fails the file"
+        );
+        assert_eq!(ShpFile::decode_frame(&data, 0).unwrap(), vec![1, 2, 3, 0]);
+        assert!(matches!(
+            ShpFile::decode_frame(&data, 2),
+            Err(AssetError::ShpFrameOutOfRange { index: 2, count: 2 })
+        ));
     }
 
     #[test]

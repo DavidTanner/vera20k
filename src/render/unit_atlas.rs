@@ -501,15 +501,11 @@ impl UnitAtlas {
             let rects: Vec<_> = group
                 .sprites
                 .iter()
-                .map(|(origin, sprite)| {
-                    (
-                        *origin,
-                        [sprite.width, sprite.height],
-                        sprite.pixels.as_slice(),
-                    )
-                })
+                .map(|(origin, sprite)| (*origin, [sprite.width, sprite.height]))
                 .collect();
-            atlas_growth::write_band(queue, texture.view.texture(), 1, &rects);
+            atlas_growth::write_band(queue, texture.view.texture(), 1, &rects, |i| {
+                group.sprites[i].1.pixels.as_slice()
+            });
             let page_size = [texture.width, texture.height];
             for (origin, sprite) in group.sprites {
                 let entry = unit_entry(&sprite, origin, group.page, page_size);
