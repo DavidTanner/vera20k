@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use winit::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
+use winit::keyboard::{Key, KeyCode, KeyLocation, ModifiersState, NamedKey};
 
 use crate::assets::asset_manager::AssetManager;
 use crate::rules::ini_parser::IniFile;
@@ -341,19 +341,102 @@ fn fallback_for_virtual_key(virtual_key: u16) -> Option<HotkeyFallback> {
     })
 }
 
+/// The physical modifier keys currently held, one flag per side.
+///
+/// Modifier state is derived from the key press/release edges and never from
+/// `WindowEvent::ModifiersChanged`. winit re-derives that event from the
+/// modifier flags of every mouse event, and on macOS the mouse events
+/// delivered while the built-in keyboard holds Control carry no Control flag:
+/// the trace of 2026-10-08 shows `ControlLeft Pressed`, `CONTROL`, then an
+/// empty modifier set before the first click, which turned every Ctrl+click
+/// into a plain Move. An external keyboard's Ctrl did not drop. Tracking the
+/// edges makes the game's view of Ctrl/Shift/Alt independent of what the
+/// platform attaches to mouse events; a release that never arrives (Alt+Tab)
+/// is already covered by the focus-edge reset.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct HeldModifierKeys {
+    bits: u8,
+}
+
+impl HeldModifierKeys {
+    const LSHIFT: u8 = 1 << 0;
+    const RSHIFT: u8 = 1 << 1;
+    const LCONTROL: u8 = 1 << 2;
+    const RCONTROL: u8 = 1 << 3;
+    const LALT: u8 = 1 << 4;
+    const RALT: u8 = 1 << 5;
+
+    fn flag(code: KeyCode) -> Option<u8> {
+        Some(match code {
+            KeyCode::ShiftLeft => Self::LSHIFT,
+            KeyCode::ShiftRight => Self::RSHIFT,
+            KeyCode::ControlLeft => Self::LCONTROL,
+            KeyCode::ControlRight => Self::RCONTROL,
+            KeyCode::AltLeft => Self::LALT,
+            KeyCode::AltRight => Self::RALT,
+            _ => return None,
+        })
+    }
+
+    /// Apply one key edge. Returns false when `code` is not a modifier key.
+    fn record(&mut self, code: KeyCode, pressed: bool) -> bool {
+        let Some(flag) = Self::flag(code) else {
+            return false;
+        };
+        if pressed {
+            self.bits |= flag;
+        } else {
+            self.bits &= !flag;
+        }
+        true
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.bits = 0;
+    }
+
+    /// The modifier set the held keys produce: a side-agnostic bit per modifier.
+    pub(crate) fn state(self) -> ModifiersState {
+        let mut state = ModifiersState::empty();
+        state.set(
+            ModifiersState::SHIFT,
+            self.bits & (Self::LSHIFT | Self::RSHIFT) != 0,
+        );
+        state.set(
+            ModifiersState::CONTROL,
+            self.bits & (Self::LCONTROL | Self::RCONTROL) != 0,
+        );
+        state.set(
+            ModifiersState::ALT,
+            self.bits & (Self::LALT | Self::RALT) != 0,
+        );
+        state
+    }
+}
+
+/// Record one keyboard edge into the held modifier keys and refresh the two
+/// modifier views. Returns false, changing nothing, when the key is not a
+/// modifier.
+///
 /// Shell controls observe the live message pump while gameplay retains its
 /// paused admission snapshot. A3 capture must not latch a modifier into gameplay
 /// when its key-up occurs later in the paused parent.
-pub(crate) fn record_modifier_event(
+pub(crate) fn record_modifier_key(
+    held: &mut HeldModifierKeys,
     live: &mut ModifiersState,
     gameplay: &mut ModifiersState,
-    incoming: ModifiersState,
+    code: KeyCode,
+    pressed: bool,
     paused: bool,
-) {
-    *live = incoming;
-    if !paused {
-        *gameplay = incoming;
+) -> bool {
+    if !held.record(code, pressed) {
+        return false;
     }
+    *live = held.state();
+    if !paused {
+        *gameplay = *live;
+    }
+    true
 }
 
 pub(crate) fn modifier_bits(modifiers: ModifiersState) -> u16 {
@@ -1265,24 +1348,56 @@ mod tests {
 #[cfg(test)]
 mod modifier_owner_tests {
     use super::*;
+
+    #[derive(Default)]
+    struct Views {
+        held: HeldModifierKeys,
+        live: ModifiersState,
+        gameplay: ModifiersState,
+    }
+
+    impl Views {
+        fn edge(&mut self, code: KeyCode, pressed: bool, paused: bool) -> bool {
+            record_modifier_key(
+                &mut self.held,
+                &mut self.live,
+                &mut self.gameplay,
+                code,
+                pressed,
+                paused,
+            )
+        }
+    }
+
     #[test]
     fn child_capture_modifier_and_parent_release_do_not_leak_into_resumed_commands() {
-        let mut live = ModifiersState::empty();
-        let mut gameplay = ModifiersState::empty();
-        record_modifier_event(
-            &mut live,
-            &mut gameplay,
-            ModifiersState::SHIFT | ModifiersState::CONTROL,
-            true,
-        );
-        assert_eq!(modifier_bits(live), 0x300);
-        assert!(gameplay.is_empty());
+        let mut views = Views::default();
+        assert!(views.edge(KeyCode::ShiftLeft, true, true));
+        assert!(views.edge(KeyCode::ControlLeft, true, true));
+        assert_eq!(modifier_bits(views.live), 0x300);
+        assert!(views.gameplay.is_empty());
         // Back returns to pausedBBB while keys remain held; key-up occurs there.
-        record_modifier_event(&mut live, &mut gameplay, ModifiersState::empty(), true);
-        assert!(live.is_empty());
-        assert!(gameplay.is_empty());
-        record_modifier_event(&mut live, &mut gameplay, ModifiersState::ALT, false);
-        assert_eq!(live, gameplay);
-        assert_eq!(modifier_bits(gameplay), 0x400);
+        assert!(views.edge(KeyCode::ShiftLeft, false, true));
+        assert!(views.edge(KeyCode::ControlLeft, false, true));
+        assert!(views.live.is_empty());
+        assert!(views.gameplay.is_empty());
+        assert!(views.edge(KeyCode::AltLeft, true, false));
+        assert_eq!(views.live, views.gameplay);
+        assert_eq!(modifier_bits(views.gameplay), 0x400);
+    }
+
+    /// A non-modifier key leaves both views untouched, and the two sides of a
+    /// modifier are held independently: Control stays down until both are up.
+    #[test]
+    fn modifier_sides_release_independently() {
+        let mut views = Views::default();
+        assert!(!views.edge(KeyCode::KeyA, true, false));
+        assert!(views.gameplay.is_empty());
+        assert!(views.edge(KeyCode::ControlLeft, true, false));
+        assert!(views.edge(KeyCode::ControlRight, true, false));
+        assert!(views.edge(KeyCode::ControlLeft, false, false));
+        assert_eq!(views.gameplay, ModifiersState::CONTROL);
+        assert!(views.edge(KeyCode::ControlRight, false, false));
+        assert!(views.gameplay.is_empty());
     }
 }

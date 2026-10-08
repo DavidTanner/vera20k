@@ -56,6 +56,9 @@ pub(crate) struct PlatformState {
     /// Live message-pump modifiers for focused shell controls. Gameplay keeps
     /// its separate paused-input admission snapshot.
     pub(crate) live_modifiers: winit::keyboard::ModifiersState,
+    /// The physical modifier keys held, the source both modifier views are
+    /// derived from (see `HeldModifierKeys`).
+    pub(crate) held_modifier_keys: crate::app::input::hotkeys::HeldModifierKeys,
     /// Whether this application currently owns the foreground.
     ///
     /// gamemd tracks the same edge-triggered byte from `WM_ACTIVATEAPP` and
@@ -99,6 +102,7 @@ impl PlatformState {
         Self {
             window,
             live_modifiers: winit::keyboard::ModifiersState::empty(),
+            held_modifier_keys: Default::default(),
             window_active: true,
             window_hidden: false,
             frame_pacer_epoch: Instant::now(),
