@@ -855,9 +855,8 @@ impl Simulation {
     ///   deploy action before any write; the adapter keeps only a committed
     ///   Walk head, so a Jumpjet or Teleport man drops it and his locomotor
     ///   flies its Stop alone;
-    /// - an Aircraft's null arm (0x41AA8B -> 0x41ADAC) is Foot's own; its Fly
-    ///   Stop preserves the represented adapter behavior; its landing and
-    ///   airfield selection remain a residual in `locomotor_stop_moving`.
+    /// - an Aircraft's null arm (0x41AA8B -> 0x41ADAC) is Foot's own, whose
+    ///   Fly Stop re-targets a moving aircraft (`Simulation::fly_stop_moving`).
     ///
     /// A Building takes Building455D50 ([`Self::set_building_destination`]):
     /// it clears an eligible rally ArchiveTarget and never writes Foot NavCom.

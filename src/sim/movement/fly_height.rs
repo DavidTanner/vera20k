@@ -167,7 +167,9 @@ impl FlyRuntime {
         self.moving = false;
     }
 
-    pub(crate) fn clear_destination_after_failed_landing(&mut self) {
+    /// Destination = the empty coordinate after a C4 self-destruct: the
+    /// landing retry's (`0x004CEBCD`) and Stop_Moving's (`0x004CD273`).
+    pub(crate) fn clear_destination(&mut self) {
         self.destination = [0; 3];
     }
 
@@ -449,7 +451,14 @@ pub(crate) struct HeightOutput {
     pub height: i32,
     /// The descent block ran (`0x004CDED8..0x004CDFB6`): Process's landing
     /// drift follows its SetHeight.
-    pub descended: bool,
+    descended: bool,
+}
+
+impl HeightOutput {
+    /// The descent block ran: Process's landing drift follows.
+    pub(crate) fn descended(&self) -> bool {
+        self.descended
+    }
 }
 
 #[cfg(test)]

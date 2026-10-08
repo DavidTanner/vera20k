@@ -76,13 +76,13 @@ const MAP_EDGE_SCATTER: i32 = 0x40;
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlyMapEdge {
     /// `MapClass+0xF4`, `+0xF8`: the `Size=` diamond `In_Bounds` tests.
-    pub width: i32,
-    pub height: i32,
+    width: i32,
+    height: i32,
     /// The LocalSize `0x00565660` measures from.
-    pub bounds: crate::sim::cell_rect::PlayfieldBounds,
+    bounds: crate::sim::cell_rect::PlayfieldBounds,
     /// `MapClass+0x12C`, MapRect's width: `Resize @ 0x00565C10` writes
     /// `Size.W + Size.H - 1`.
-    pub span: i32,
+    span: i32,
 }
 
 /// The cell of a coordinate as `0x0041BEA0` (vt+0x1B8) and the Fly's cell
@@ -394,7 +394,7 @@ impl Simulation {
             terrain,
             rules.map(|rules| (rules, &self.interner)),
         );
-        if height.descended {
+        if height.descended() {
             self.fly_landing_drift(id, rules);
         }
         let terrain = self.resolved_terrain.as_ref();

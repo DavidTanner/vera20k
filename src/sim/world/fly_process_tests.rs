@@ -1,6 +1,7 @@
-//! Fly Process (`0x004CCB40`) frame by frame, and its map-edge admission,
-//! against the original executable: `tools/spatial_oracle/fly_process.json`
-//! and `tools/spatial_oracle/fly_map_edge.json`.
+//! Fly Process (`0x004CCB40`) frame by frame, its map-edge admission and
+//! Stop_Moving (`0x004CCFD0`) against the original executable:
+//! `tools/spatial_oracle/fly_process.json`, `fly_map_edge.json` and
+//! `fly_stop.json`.
 
 use super::{FlyMapEdge, fly_map_edge};
 use crate::map::entities::EntityCategory;
@@ -53,24 +54,37 @@ fn dock_offsets(dock: &serde_json::Value) -> Vec<[i32; 3]> {
     )
 }
 
-/// The row's types: `TEST` (Speed through the production reader), the
-/// `VICTIM` its Target is and the `PAD` its dock is. A Projectile ROT of 0
-/// makes the weapon strafe (`0x0041B7F0`). Clear ground costs Track 1.0, as
-/// the oracle's land cost table.
+/// The oracle's BuildingTypes by index: a row's `docks` and buildings name
+/// them so.
+const BUILDING_TYPES: [&str; 2] = ["PAD", "DEPOT"];
+
+/// The row's types: `TEST` (Speed through the production reader, `Dock=`
+/// from the row's `docks`), the `VICTIM` its Target is, the `PAD` its dock
+/// is and a `DEPOT`. A Projectile ROT of 0 makes the weapon strafe
+/// (`0x0041B7F0`). Clear ground costs Track and Foot 1.0, as the oracle's
+/// land cost table.
 fn rules_for(input: &serde_json::Value) -> RuleSet {
     let dock = &input["dock"];
     let offsets = dock_offsets(dock);
     let [width, height] = ints(&dock["foundation"], [3, 2]);
+    let docks: Vec<&str> = input["docks"].as_array().map_or_else(Vec::new, |docks| {
+        docks
+            .iter()
+            .map(|index| BUILDING_TYPES[index.as_u64().unwrap() as usize])
+            .collect()
+    });
     let mut rules = RuleSet::from_ini(&IniFile::from_str(&format!(
         "[General]\nFlightLevel=1500\n[AudioVisual]\nPoseDir={}\n\
-         [AircraftTypes]\n0=TEST\n[VehicleTypes]\n0=VICTIM\n[BuildingTypes]\n0=PAD\n\
+         [AircraftTypes]\n0=TEST\n[VehicleTypes]\n0=VICTIM\n\
+         [BuildingTypes]\n0=PAD\n1=DEPOT\n\
          [TEST]\nStrength={}\nSpeed={}\nFlightLevel={}\nSlowdownDistance={}\n\
          HunterSeeker={}\nIsDropship={}\nFlyBy={}\nFighter={}\nLandable={}\n\
-         AirportBound={}\nPitchAngle=0\nAmmo=1\nPrimary=TestGun\n\
+         AirportBound={}\nPitchAngle=0\nAmmo=1\nPrimary=TestGun\nDock={}\n\
          Locomotor={{4A582746-9839-11D1-B709-00A024DDAFD1}}\n\
          [TestGun]\nDamage=10\nRange=5\nROF=10\nProjectile=TestShot\nWarhead=TestWH\n\
          [TestShot]\nROT={}\n[TestWH]\nVerses=100%\n[VICTIM]\nStrength=100\n\
-         [PAD]\nHelipad={}\nUnitRepair={}\nNumberOfDocks={}\n[Clear]\nTrack=100%\n",
+         [PAD]\nHelipad={}\nUnitRepair={}\nNumberOfDocks={}\n[DEPOT]\nStrength=500\n\
+         [Clear]\nTrack=100%\nFoot=100%\n",
         int(input, "pose_dir", 2),
         int(input, "strength", 150),
         int(input, "ini_speed", 14),
@@ -82,6 +96,7 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
         flag(input, "fighter", false),
         flag(input, "landable", true),
         flag(input, "airport_bound", false),
+        docks.join(","),
         if flag(input, "strafe", false) { 0 } else { 3 },
         flag(dock, "helipad", true),
         flag(dock, "unit_repair", false),
@@ -99,7 +114,7 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
 
 /// One living aircraft in the row's in-flight state at its first frame, as
 /// `fly_process.py` builds it: over flat ground of 128x128 cells with MapSize
-/// 64x64 and LocalSize 0,0,64,64, registered in the air tracker and Display
+/// 64x64 and LocalSize 0,0,64,64 (or the row's), registered in the air tracker and Display
 /// at its height; a Target and a dock building where the row has them.
 fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     let rules = rules_for(input);
@@ -107,8 +122,13 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     let mut sim = Simulation::with_seed(0);
     sim.session.map_width = 128;
     sim.session.map_height = 128;
+    let [left, top, local_width, local_height] = ints(&input["local"], [0, 0, 64, 64]);
     sim.playfield_bounds = Some(PlayfieldBounds::from_normalized_local_size(
-        64, 0, 0, 64, 64,
+        64,
+        left,
+        top,
+        local_width,
+        local_height,
     ));
     sim.playfield_size_height = Some(64);
     install_common_raw_terrain(&mut sim, 128, 128, 0, None);
@@ -145,8 +165,13 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     ammo.current = int(input, "ammo", 1) as i32;
     entity.aircraft_ammo = Some(ammo);
     // The legacy mission state, which Begin_Landing's refusal sets idle in
-    // place of Enter_Idle_Mode (`begin_fly_landing`'s RESIDUAL).
-    entity.aircraft_mission = Some(crate::sim::aircraft::AircraftMission::Move { sub_state: 2 });
+    // place of Enter_Idle_Mode (`begin_fly_landing`'s RESIDUAL), and which
+    // owns the current mission an Attack row's Stop_Moving reads.
+    entity.aircraft_mission = Some(if int(input, "mission", 2) == 1 {
+        crate::sim::aircraft::AircraftMission::Attack { sub_state: 0 }
+    } else {
+        crate::sim::aircraft::AircraftMission::Move { sub_state: 2 }
+    });
     if input["target"].is_array() {
         entity.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(TARGET),
@@ -255,6 +280,115 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
         sim.substrate.entities.insert(building);
         sim.add_entity_occupancy(DOCK);
     }
+    (sim, rules)
+}
+
+/// A Stop row's world as `fly_stop.py` builds it: the Process fixture with
+/// the row's pitch and Location, its Units (`technos`, not Marked) and its
+/// buildings (Marked unless in Limbo), in the oracle's ObjectClass order
+/// (aircraft, Units, buildings), the buildings also the House's list in row
+/// order.
+fn stop_fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
+    let (mut sim, rules) = fixture(input);
+    let owner = sim.substrate.entities.get(AIRCRAFT).unwrap().owner();
+    let enemy = sim.interner.intern("Russians");
+    let entity = sim.substrate.entities.get_mut(AIRCRAFT).unwrap();
+    if let Some(pitch) = input["pitch"].as_f64() {
+        entity.flight_attitude =
+            serde_json::from_value(serde_json::json!({ "pitch": SimFixed::from_num(pitch) }))
+                .unwrap();
+    }
+    if input["location"].is_array() {
+        let [x, y, z] = ints(&input["location"], [0; 3]);
+        entity.position.rx = (x.div_euclid(256)).max(0) as u16;
+        entity.position.ry = (y.div_euclid(256)).max(0) as u16;
+        entity.position.sub_x = SimFixed::from_num(x - i32::from(entity.position.rx) * 256);
+        entity.position.sub_y = SimFixed::from_num(y - i32::from(entity.position.ry) * 256);
+        entity.position.exact_z_leptons = Some(z);
+    }
+    let empty = Vec::new();
+    for (n, techno) in input["technos"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .enumerate()
+    {
+        let [x, y, z] = ints(&techno["xyz"], [0; 3]);
+        let mut unit = GameEntity::new_at_frame_zero_for_test(
+            10 + n as u64,
+            (x / 256) as u16,
+            (y / 256) as u16,
+            0,
+            0,
+            if flag(techno, "enemy", false) {
+                enemy
+            } else {
+                owner
+            },
+            Health { current: 100 },
+            sim.interner.intern("VICTIM"),
+            EntityCategory::Unit,
+            0,
+            5,
+            true,
+        );
+        unit.lifecycle.object_alive = true;
+        unit.lifecycle.in_limbo = flag(techno, "limbo", false);
+        unit.position.sub_x = SimFixed::from_num(x % 256);
+        unit.position.sub_y = SimFixed::from_num(y % 256);
+        unit.position.exact_z_leptons = Some(z);
+        sim.substrate.entities.insert(unit);
+    }
+    let mut list = Vec::new();
+    for (n, building) in input["buildings"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .enumerate()
+    {
+        let id = 20 + n as u64;
+        let [bx, by] = ints(&building["origin"], [0, 0]);
+        let [width, height] = ints(&building["foundation"], [2, 2]);
+        let kind = BUILDING_TYPES[int(building, "type", 0) as usize];
+        let mut structure = GameEntity::new_at_frame_zero_for_test(
+            id,
+            bx as u16,
+            by as u16,
+            0,
+            0,
+            if flag(building, "enemy", false) {
+                enemy
+            } else {
+                owner
+            },
+            Health { current: 1000 },
+            sim.interner.intern(kind),
+            EntityCategory::Structure,
+            0,
+            5,
+            true,
+        );
+        structure.lifecycle.object_alive = true;
+        structure.foundation = format!("{width}x{height}").into();
+        structure.position.exact_z_leptons = Some(0);
+        sim.substrate.entities.insert(structure);
+        if flag(building, "limbo", false) {
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .lifecycle
+                .in_limbo = true;
+        } else {
+            sim.add_entity_occupancy(id);
+        }
+        list.push(id);
+    }
+    sim.houses
+        .entry(owner)
+        .or_insert_with(|| crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 1))
+        .base_projection
+        .replace_buildings_for_test(list);
     (sim, rules)
 }
 
@@ -479,4 +613,108 @@ fn fly_map_edge_gate_matches_native_rows() {
         compared += 1;
     }
     assert_eq!(compared, 46);
+}
+
+/// Every row of `fly_stop.json`: what Stop_Moving (`0x004CCFD0`) does
+/// ([`Simulation::fly_stop_order`]) against the call native made in place
+/// of its stubbed class setter or ReceiveDamage, and the Scenario RNG after
+/// it. The airfield search's zone calls all ask MovementZone Normal without
+/// bridge resolution, as VERA's does.
+#[test]
+fn fly_stop_matches_native_rows() {
+    use crate::sim::world::fly_orders::FlyStopOrder;
+    let oracle: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/fly_stop.json",
+    ))
+    .unwrap();
+    let rows = oracle["stop"].as_array().unwrap();
+    assert_eq!(rows.len(), 30);
+    let mut failures = Vec::new();
+    for row in rows {
+        let input = &row["input"];
+        let name = input["name"].as_str().unwrap();
+        for zone in row["zones"].as_array().unwrap() {
+            assert_eq!(
+                (&zone[2], &zone[3]),
+                (&serde_json::json!(0), &serde_json::json!(0))
+            );
+        }
+        let (mut sim, rules) = stop_fixture(input);
+        let order = sim.fly_stop_order(AIRCRAFT, &rules);
+        let native = row["calls"].as_array().unwrap();
+        let expected = match native.first() {
+            None => None,
+            Some(call) if call[0] == "receive_damage" => Some(FlyStopOrder::SelfDestruct),
+            Some(call) => {
+                let [x, y] = [call[1][1].as_i64().unwrap(), call[1][2].as_i64().unwrap()];
+                Some(FlyStopOrder::Destination(Some(NavTargetRef::cell(
+                    x as u16, y as u16,
+                ))))
+            }
+        };
+        if order != expected {
+            failures.push(format!("{name}: {order:?} vs native {expected:?}"));
+        }
+        if u64::from(sim.scenario_rng.next_u32()) != row["next_random"].as_u64().unwrap() {
+            failures.push(format!("{name}: Scenario RNG diverged"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// No retail Unit or Infantry type has the Fly locomotor, so Fly's arms for
+/// an owner that is not an Aircraft (Stop_Moving's `0x004CD132`, the map
+/// edge's vt+0x4DC) are dormant.
+#[test]
+fn retail_fly_owners_are_aircraft() {
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::rules::object_type::ObjectCategory;
+    let Some((rules_ini, _)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        return;
+    };
+    let rules = RuleSet::from_ini(&rules_ini).unwrap();
+    let ground: Vec<&str> = rules
+        .all_objects()
+        .filter(|object| {
+            object.locomotor == LocomotorKind::Fly
+                && matches!(
+                    object.category,
+                    ObjectCategory::Vehicle | ObjectCategory::Infantry
+                )
+        })
+        .map(|object| object.id.as_str())
+        .collect();
+    assert!(ground.is_empty(), "{ground:?}");
+    assert!(
+        rules
+            .all_objects()
+            .any(|object| object.locomotor == LocomotorKind::Fly)
+    );
+}
+
+/// The Stop command's null destination reaches Fly's Stop_Moving through the
+/// production setter: an aircraft flying outside an attack is sent on to the
+/// cell under it, which clear Track-passable land gives without a Scenario
+/// draw, and Foot's null arm then drops that NavCom again (`0x004D96BC`).
+#[test]
+fn stop_command_sends_a_flying_aircraft_to_the_cell_under_it() {
+    let (mut sim, rules) = stop_fixture(&serde_json::json!({ "nav_com": true }));
+    let before = sim.scenario_rng.clone().next_u32();
+    assert!(sim.apply_command(
+        "Americans",
+        &crate::sim::command::Command::Stop {
+            entity_id: AIRCRAFT
+        },
+        Some(&rules),
+    ));
+    let entity = sim.substrate.entities.get(AIRCRAFT).unwrap();
+    let fly = entity.locomotor.as_ref().unwrap().fly_runtime().unwrap();
+    let destination = fly.destination();
+    assert!(fly.moving());
+    assert_eq!(
+        (destination.x, destination.y),
+        (60 * 256 + 128, 64 * 256 + 128)
+    );
+    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(sim.scenario_rng.clone().next_u32(), before);
 }

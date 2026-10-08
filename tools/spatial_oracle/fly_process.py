@@ -64,18 +64,18 @@ def foundation_index(u, width, height):
     raise OracleError(f'no foundation {width}x{height}')
 
 
-def build(case):
+def build(case, stub_slots=STUB_SLOTS):
     x, y = case.get('cell', START)
     z = case.get('z', 1500)
     f, _ = landing_fixture(dict(cell=[x, y], z=z, landing=False, registration_z=z,
                                 airport_bound=case.get('airport_bound', False)))
     u = f.u
     calls = []
-    # Owner: the Aircraft vtable cloned so the two exceptions can be recorded.
+    # Owner: the Aircraft vtable cloned so the exceptions can be recorded.
     u.mem_write(STUBS, b'\xCC' * 0x100)
     vt = bytearray(u.mem_read(AIRCRAFT_VT, 0x600))
     stub_at = {}
-    for n, (slot, (name, pops)) in enumerate(STUB_SLOTS.items()):
+    for n, (slot, (name, pops)) in enumerate(stub_slots.items()):
         address = STUBS + 0x10 * n
         vt[slot:slot + 4] = dwords(address)
         stub_at[address] = (name, pops)

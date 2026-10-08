@@ -10,6 +10,7 @@
 //! - Part of sim/ — depends on sim/components, sim/combat, sim/docking, rules/.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
+mod airfield;
 pub mod attack_mission;
 pub mod drop_payload;
 mod idle_entry;
