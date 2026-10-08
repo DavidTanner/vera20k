@@ -817,7 +817,6 @@ mod tests {
         AiDifficulty, LaunchStartPosition, LaunchTeam, SkirmishAiSlot, SkirmishLaunchMode,
         SkirmishLaunchOptions, SkirmishLocalSlot,
     };
-    use crate::ui::main_menu::StartPosition;
 
     fn map_named(file_name: &str) -> MapMenuEntry {
         MapMenuEntry {
@@ -1723,7 +1722,7 @@ Credits=12345\r\n";
         snapshot.scenario_index = 999;
         let runtime = runtime(snapshot, 3);
         let mut shell = SkirmishShellState::default();
-        shell.player_start_position = StartPosition::Auto;
+        shell.player_start_position = LaunchStartPosition::Auto;
 
         runtime.hydrate_shell(&mut shell, &[map()], &[mode()]);
 

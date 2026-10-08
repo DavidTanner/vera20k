@@ -7,20 +7,19 @@ use crate::skirmish_launch::{
     SkirmishAiSlot, SkirmishLaunchMode, SkirmishLaunchSession, SkirmishLocalSlot,
 };
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::StartPosition;
 
 use super::SkirmishShellState;
 
 fn launch_start_position(
     slot: usize,
-    start_position: StartPosition,
+    start_position: LaunchStartPosition,
 ) -> Result<LaunchStartPosition, LaunchValidationError> {
     match start_position {
-        StartPosition::Auto => Ok(LaunchStartPosition::Auto),
-        StartPosition::Position(position) if position < SKIRMISH_PLAYER_SLOT_COUNT as u8 => {
+        LaunchStartPosition::Auto => Ok(LaunchStartPosition::Auto),
+        LaunchStartPosition::Position(position) if position < SKIRMISH_PLAYER_SLOT_COUNT as u8 => {
             Ok(LaunchStartPosition::Position(position))
         }
-        StartPosition::Position(position) => {
+        LaunchStartPosition::Position(position) => {
             Err(LaunchValidationError::InvalidStartPosition { slot, position })
         }
     }

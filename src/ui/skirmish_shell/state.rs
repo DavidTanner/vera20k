@@ -52,8 +52,7 @@ pub use trackbars::{
     handle_option_mouse_wheel, trackbar_visual_value,
 };
 
-use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT, LaunchCountry};
-use crate::ui::main_menu::StartPosition;
+use crate::skirmish_launch::{AiDifficulty, HOUSE_COLOR_COUNT, LaunchCountry, LaunchStartPosition};
 
 use self::player_name::inactive_ai_team_default;
 #[cfg(test)]
@@ -106,7 +105,7 @@ pub enum SkirmishComboItem {
     Country(SkirmishCountryChoice),
     ColorSentinel(i32),
     Color(usize),
-    Start(StartPosition),
+    Start(LaunchStartPosition),
     Team(i32),
 }
 
@@ -233,7 +232,7 @@ pub struct SkirmishShellOpponent {
     pub country_random: bool,
     pub color_index: usize,
     pub color_claimed: bool,
-    pub start_position: StartPosition,
+    pub start_position: LaunchStartPosition,
     pub team: i32,
     pub difficulty: AiDifficulty,
 }
@@ -247,7 +246,7 @@ impl SkirmishShellOpponent {
         self.enabled = false;
         self.country_random = true;
         self.color_claimed = false;
-        self.start_position = StartPosition::Auto;
+        self.start_position = LaunchStartPosition::Auto;
         self.team = team_default;
     }
 }
@@ -289,7 +288,7 @@ fn default_opponents(first_country: LaunchCountry) -> Vec<SkirmishShellOpponent>
                 country_random: false,
                 color_index: (idx + 1) % HOUSE_COLOR_COUNT,
                 color_claimed: row_type.is_active(),
-                start_position: StartPosition::Auto,
+                start_position: LaunchStartPosition::Auto,
                 team: 3,
                 difficulty: AiDifficulty::Easy,
             };

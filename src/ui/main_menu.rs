@@ -1,17 +1,9 @@
-//! The shared skirmish start choice, startup errors and development loading
-//! presentation. The country choice is `skirmish_launch::LaunchCountry`.
+//! Startup errors and development loading presentation. The skirmish menu's
+//! country and start choices are the launch record's `LaunchCountry` and
+//! `LaunchStartPosition`.
 //! Normal match setup belongs to the retail shell in `skirmish_shell`.
 
 use crate::ui::client_theme;
-
-/// Player's chosen start position on the map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StartPosition {
-    /// No start reserved; the launch assigns one (the shell's Random entry).
-    Auto,
-    /// Specific waypoint index.
-    Position(u8),
-}
 
 /// Display an actionable startup failure. This surface cannot launch a match.
 /// Returns true when the player chooses to quit.

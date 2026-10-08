@@ -2,9 +2,10 @@
 
 use crate::map::scenario_menu::MapMenuEntry;
 use crate::sim::game_options::GameOptions;
-use crate::skirmish_launch::{LaunchCountry, SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions};
+use crate::skirmish_launch::{
+    LaunchCountry, LaunchStartPosition, SKIRMISH_PLAYER_SLOT_COUNT, SkirmishLaunchOptions,
+};
 use crate::skirmish_modes::{SkirmishGameMode, mode_by_id};
-use crate::ui::main_menu::StartPosition;
 use crate::ui::shell::trackbar::TrackbarHold;
 
 use super::super::SkirmishStatics;
@@ -241,7 +242,7 @@ pub struct SkirmishShellState {
     pub player_country_random: bool,
     pub player_color_index: usize,
     pub player_color_claimed: bool,
-    pub player_start_position: StartPosition,
+    pub player_start_position: LaunchStartPosition,
     pub player_team: i32,
     pub starting_credits: i32,
     pub game_speed: i32,
@@ -328,7 +329,7 @@ impl Default for SkirmishShellState {
             player_color_claimed: true,
             // Native population selects Random when the local row owns no
             // numbered start reservation.
-            player_start_position: StartPosition::Auto,
+            player_start_position: LaunchStartPosition::Auto,
             player_team: -2,
             starting_credits: options.starting_credits,
             game_speed: options.game_speed,
@@ -660,7 +661,7 @@ mod tests {
     fn fresh_shell_starts_with_an_unreserved_random_position() {
         assert_eq!(
             SkirmishShellState::default().player_start_position,
-            StartPosition::Auto
+            LaunchStartPosition::Auto
         );
     }
 }

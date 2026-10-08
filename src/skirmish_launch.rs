@@ -232,7 +232,9 @@ impl LaunchCountry {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub enum LaunchStartPosition {
+    /// No start reserved; the launch assigns one (the shell's Random entry).
     Auto,
+    /// Specific waypoint index.
     Position(u8),
 }
 
