@@ -715,7 +715,10 @@ fn fly_death_stun_matches_native_rows() {
             .lifecycle_test_events_for_test()
             .iter()
             .filter_map(|event| match event {
-                LifecycleTestEvent::FlyStopOrdered { id: AIRCRAFT, order } => Some(*order),
+                LifecycleTestEvent::FlyStopOrdered {
+                    id: AIRCRAFT,
+                    order,
+                } => Some(*order),
                 _ => None,
             })
             .collect();

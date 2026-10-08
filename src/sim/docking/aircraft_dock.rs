@@ -715,7 +715,6 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     m.new_reload_timer = Some(timer);
                 }
             }
-
         }
 
         mutations.push(m);

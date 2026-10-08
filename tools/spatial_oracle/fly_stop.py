@@ -15,6 +15,12 @@ answers zone 1 for every cell (the fixture has no zone tables), so every zone te
 makes passes. A row's buildings stand on cells whose content (+0xE4) is the building and whose
 ground occupation (+0x124) carries the building bit 0x80, as its Mark leaves them.
 
+Stun rows call FootClass::Stun (0x004D5660, Aircraft vt+0x3A0) on the same aircraft at
+Health 0, as TechnoClass::ReceiveDamage's death arm does: its NULL destinations run
+AircraftClass::Assign_Destination (0x0041AA80) and Foot's setter natively, Stop_Driver and
+TechnoClass::Stun (0x006FCD40) with its Assign_Target too; the radio broadcast (vt+0x280),
+Detach_All (vt+0xDC) and the deselect (vt+0x150) are recorded and returned.
+
 Edge rows call 0x00586AC0 directly for cells around several Size/LocalSize rectangles.
 """
 from pathlib import Path
@@ -271,8 +277,9 @@ if __name__ == '__main__':
             'Rows supply the owner state (mission, loaner +0x3D4, Location, Fly moving byte and pitch), a LocalSize where they inset it, the AircraftType Dock= list (+0x3EC, count +0x3F8), the House building list (+0x6C, count +0x78) and ObjectClass::Array (the aircraft first, then the row\'s Units, then its buildings). Buildings are BuildingClass objects with original BuildingType foundations; other technos are Units on the UnitClass vtable sharing the aircraft\'s type pointer.',
         ],
         substitutions=[
-            'Aircraft vt+0x480 Assign_Destination and vt+0x16C ReceiveDamage recorded with their arguments and returned without running.',
+            'Aircraft vt+0x480 Assign_Destination and vt+0x16C ReceiveDamage recorded with their arguments and returned without running; in Stun rows a NULL Assign_Destination runs its original body.',
+            'Stun rows: vt+0x280 radio broadcast, vt+0xDC Detach_All and vt+0x150 deselect recorded with their arguments and returned without running.',
             'MapClass::GetZoneID 0x0056D230 answers 1 for every call; the calls Find_Nearest_Friendly_Airfield makes are recorded with their cell, movement zone and bridge flag.',
         ],
-        scope='ILocomotion Stop_Moving of a living aircraft: not moving, pitch, Find_Attack_Cell around the cell under it (free and held by a building), Find_Nearest_Friendly_Airfield on Attack (Dock= weighting, list order, the own-cell search near a building, Limbo, the ObjectClass fallback and the own-cell answer), the edge cell outside the playfield (in a LocalSize margin and beyond the Size diamond) and the loaner exception, and the cell (0, 0) self-destruct; and 0x00586AC0 over four Size/LocalSize rectangles. Excludes the arm for a Fly owner that is not an Aircraft, team members (vt+0x4DC through 0x006EC300), real zone tables, and cells beyond the MapClass cell array (the shared dummy cell, whose coordinate every later lookup restamps).',
+        scope='ILocomotion Stop_Moving of a living aircraft: not moving, pitch, Find_Attack_Cell around the cell under it (free and held by a building), Find_Nearest_Friendly_Airfield on Attack (Dock= weighting, list order, the own-cell search near a building, Limbo, the ObjectClass fallback and the own-cell answer), the edge cell outside the playfield (in a LocalSize margin and beyond the Size diamond) and the loaner exception, and the cell (0, 0) self-destruct; the death-arm Stun of a moving, attacking (with and without a TarCom) and still aircraft over free and building-held cells; and 0x00586AC0 over four Size/LocalSize rectangles. Excludes the arm for a Fly owner that is not an Aircraft, team members (vt+0x4DC through 0x006EC300), real zone tables, and cells beyond the MapClass cell array (the shared dummy cell, whose coordinate every later lookup restamps).',
     ))

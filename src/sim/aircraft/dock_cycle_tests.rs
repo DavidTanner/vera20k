@@ -109,7 +109,11 @@ fn parked_aircraft_with_a_target_leaves_its_pad_to_attack() {
             .replace("[VehicleTypes]\n", "[VehicleTypes]\n0=VICTIM\n")
     )))
     .expect("rules");
-    assert!(rules.object("ORCA").is_some_and(|orca| orca.primary().is_some()));
+    assert!(
+        rules
+            .object("ORCA")
+            .is_some_and(|orca| orca.primary().is_some())
+    );
     let mut sim = Simulation::new();
     let airfield = sim
         .spawn_object_at_height("GAAIRC", "Americans", 10, 10, 0, 0, &rules)
@@ -132,8 +136,10 @@ fn parked_aircraft_with_a_target_leaves_its_pad_to_attack() {
     for _ in 0..600 {
         let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
         let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
-        if matches!(entity.aircraft_mission, Some(AircraftMission::Attack { .. }))
-            && !entity.radio_contacts.contains(airfield)
+        if matches!(
+            entity.aircraft_mission,
+            Some(AircraftMission::Attack { .. })
+        ) && !entity.radio_contacts.contains(airfield)
             && crate::sim::movement::air_movement::fly_moving(entity)
         {
             relaunched = true;
