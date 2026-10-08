@@ -40,7 +40,6 @@ pub use self::production_economy::is_harvester_type;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
     place_production_with_overlays, placement_preview_for_owner_with_overlays,
-    placement_preview_for_owner_without_overlays,
 };
 #[cfg(test)]
 pub(crate) use self::production_queue::dispatch_production_changes_for_tests;

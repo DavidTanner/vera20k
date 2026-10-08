@@ -20,22 +20,6 @@ use super::production_types::*;
 use super::wall_placement;
 use crate::rules::foundation::foundation_dimensions;
 
-/// Placement preview for object types that do not require overlay metadata.
-///
-/// Wall callers must use `placement_preview_for_owner_with_overlays`; naming
-/// this compatibility entry point explicitly prevents live wall-capable paths
-/// from silently dropping the overlay registry.
-pub fn placement_preview_for_owner_without_overlays(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    type_id: &str,
-    rx: u16,
-    ry: u16,
-) -> Option<BuildingPlacementPreview> {
-    placement_preview_for_owner_with_overlays(sim, rules, owner, type_id, rx, ry, None)
-}
-
 pub fn placement_preview_for_owner_with_overlays(
     sim: &Simulation,
     rules: &RuleSet,
