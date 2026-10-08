@@ -293,6 +293,11 @@ fn upload_to_gpu(
     // overlay and before the software cursor (O10).
     let (tooltip_fill, tooltip_text) = crate::app::input::tooltips::build_tooltip_instances(state);
 
+    // TacticalClass::Draw's timer lines, which follow the PixelFX sparkles;
+    // built before the pool borrow (they step the Supers' blinks).
+    let (super_timer_fill, super_timer_text) =
+        crate::app::presentation::super_timers::build_super_timer_instances(state);
+
     let pool: &mut InstanceBufferPool = &mut state.renderer.instance_pool;
 
     // Debug overlays
@@ -333,6 +338,8 @@ fn upload_to_gpu(
 
     // Residual effects keep their existing uploads and pass ownership.
     pool.upload(&state.renderer.gpu, "cell_sparkles", &world.cell_sparkles);
+    pool.upload(&state.renderer.gpu, "super_timer_fill", &super_timer_fill);
+    pool.upload(&state.renderer.gpu, "super_timer_text", &super_timer_text);
     pool.upload(&state.renderer.gpu, "weapon_waves", &world.weapon_waves);
     pool.upload(
         &state.renderer.gpu,

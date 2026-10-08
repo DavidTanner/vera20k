@@ -61,7 +61,7 @@ fn comparison_model(state: &AppState) -> Result<ScoreScreenModel> {
     let color = |name: &str| -> Result<[u8; 3]> {
         let entry = crate::rules::color_scheme::scheme_entry_by_name(&rules.color_schemes, name)
             .with_context(|| format!("[Colors] has no {name}"))?;
-        Ok(crate::app::match_runtime::sim_tick::score_row_rgb(
+        Ok(crate::rules::house_colors::house_text_rgb(
             &rules.color_schemes,
             crate::rules::house_colors::HouseColorIndex(entry as u8),
         ))

@@ -31,6 +31,16 @@ pub struct HouseColorIndex(pub u8);
 /// Used for Neutral, Special, Civilian buildings that have no player color.
 pub const NO_REMAP: HouseColorIndex = HouseColorIndex(255);
 
+/// The colour gamemd prints a house's text in: `HSV_To_RGB` of its colour
+/// scheme's base HSV (scheme `+0x308`, its `[Colors]` entry), as
+/// Fancy_Text_Print_Wide (`0x004A61C0`) does for the timer lines and the
+/// score dialog for its rows (`0x005C9E0C`). White for an entry `[Colors]`
+/// lacks.
+pub fn house_text_rgb(schemes: &[ColorSchemeEntry], color: HouseColorIndex) -> [u8; 3] {
+    crate::rules::color_scheme::scheme_hsv_by_entry(schemes, usize::from(color.0))
+        .map_or([0xFF; 3], hsv_to_rgb)
+}
+
 /// Number of shades per house color band (matches palette indices 16–31).
 const RAMP_SIZE: usize = 16;
 

@@ -547,6 +547,7 @@ impl App {
                     combat_lights: Default::default(),
                     line_trails: Default::default(),
                     hidden_super_anims: Default::default(),
+                    super_timer_blinks: Default::default(),
                     minimap: None,
                     radar_anim: None,
                     radar_animation_source: None,

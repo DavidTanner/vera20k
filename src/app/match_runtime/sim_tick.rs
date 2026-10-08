@@ -192,16 +192,6 @@ fn score_row_display_name(
     handle.unwrap_or(fallback).to_string()
 }
 
-/// A score row's colour: `HSV_To_RGB` of the house colour scheme's base HSV
-/// (`0x005C9E0C`, scheme `+0x308`, the `[Colors]` entry).
-pub(crate) fn score_row_rgb(
-    schemes: &[crate::rules::color_scheme::ColorSchemeEntry],
-    color: crate::rules::house_colors::HouseColorIndex,
-) -> [u8; 3] {
-    crate::rules::color_scheme::scheme_hsv_by_entry(schemes, usize::from(color.0))
-        .map_or([0xFF; 3], crate::rules::color_scheme::hsv_to_rgb)
-}
-
 /// What names and colours the score rows.
 struct ScoreRowSources<'a> {
     handle: Option<&'a str>,
@@ -239,7 +229,7 @@ fn resolve_score_rows(
                     sources.computer,
                     fallback.as_deref().unwrap_or(&owner_name),
                 ),
-                rgb: score_row_rgb(sources.schemes, color),
+                rgb: crate::rules::house_colors::house_text_rgb(sources.schemes, color),
                 kills: raw.kills,
                 losses: raw.losses,
                 built: raw.built,
@@ -1805,7 +1795,7 @@ mod camera_cadence_tests;
 mod modal_pump_tests {
     use super::{
         ScoreRowSources, SessionMode, modal_pump_should_advance_sim, resolve_score_rows,
-        score_row_rgb, should_record_replay_tick, wall_clock_service_admission,
+        should_record_replay_tick, wall_clock_service_admission,
     };
 
     #[test]
@@ -2043,7 +2033,7 @@ mod modal_pump_tests {
         for (name, units) in [("DarkRed", [31, 6, 3]), ("DarkBlue", [4, 26, 26])] {
             let entry = crate::rules::color_scheme::scheme_entry_by_name(&schemes, name)
                 .unwrap_or_else(|| panic!("[Colors] {name}"));
-            let rgb = score_row_rgb(
+            let rgb = crate::rules::house_colors::house_text_rgb(
                 &schemes,
                 crate::rules::house_colors::HouseColorIndex(entry as u8),
             );

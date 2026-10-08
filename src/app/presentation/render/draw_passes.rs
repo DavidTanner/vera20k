@@ -653,6 +653,30 @@ pub(super) fn dispatch_draw_passes(
         );
     }
 
+    // --- Step 10.6: timer lines ---
+    // TacticalClass::Draw's Scenario, Super and blackout timers
+    // (`0x006D4941..0x006D4B25`) follow the sparkles: black boxes, then text,
+    // screen-fixed but clipped to the tactical view.
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        state
+            .match_state
+            .match_presentation
+            .selection_overlay
+            .as_ref()
+            .map(|o| o.white_texture()),
+        "super_timer_fill",
+    );
+    draw_pooled_ui_passthrough(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        Some(state.renderer.bit_font.atlas()),
+        "super_timer_text",
+    );
+
     // --- Screen-fixed UI: sidebar, minimap, cursor — use UI camera (zoom=1.0) ---
     // Chrome owns the whole window: the sidebar column, the message list that
     // starts at the tactical origin, tooltips, and the cursor, which the native
@@ -1070,7 +1094,7 @@ mod tests {
     }
 
     #[test]
-    fn gsi_13_01_pixel_fx_is_last_tactical_write_before_screen_chrome() {
+    fn gsi_13_01_pixel_fx_and_the_timer_lines_end_vera_tactical_writes() {
         let first_rally = source_offset("\"factory_rally_first\"");
         let combat_lights = source_offset(".combat_light_renderer");
         let second_rally = source_offset("\"factory_rally_second\"");
@@ -1078,6 +1102,8 @@ mod tests {
         let status = source_offset("\"status_unit_fill\"");
         let placement = source_offset("\"placement_invalid\"");
         let sparkle = source_offset("pool.get(\"cell_sparkles\")");
+        let timer_fill = source_offset("\"super_timer_fill\"");
+        let timer_text = source_offset("\"super_timer_text\"");
         let screen_fixed = source_offset("// --- Screen-fixed UI:");
         let full_window_scissor = source_offset(
             "pass.set_scissor_rect(0, 0, state.render_width(), state.render_height());",
@@ -1093,15 +1119,20 @@ mod tests {
         assert!(status < combat_lights);
         assert!(status < placement);
         assert!(placement < sparkle);
-        assert!(sparkle < screen_fixed);
+        // 6D492B, then the timer lines 6D4941..6D4B25. Native then draws
+        // the tactical text (6D4B2B, 6D4E20), which VERA does not port.
+        assert!(sparkle < timer_fill);
+        assert!(timer_fill < timer_text);
+        assert!(timer_text < screen_fixed);
         assert!(screen_fixed < full_window_scissor);
         assert!(full_window_scissor < first_screen_submission);
 
         let final_tactical_slice = &SOURCE[sparkle..screen_fixed];
         assert_eq!(
-            final_tactical_slice.matches(".draw").count(),
-            1,
-            "PixelFX must remain the final tactical draw submission"
+            final_tactical_slice.matches(".draw").count()
+                + final_tactical_slice.matches("draw_pooled").count(),
+            3,
+            "PixelFX and the timer lines must remain VERA's final tactical draw submissions"
         );
     }
 
