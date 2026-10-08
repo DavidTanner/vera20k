@@ -160,9 +160,9 @@ pub(crate) enum TargetFacts<'a> {
     Cell {
         /// `CellClass+0xEC LandType`.
         land_type: u8,
-        /// `CellClass+0x38` tile index inside the theater water tile set
-        /// (`[0x00AA0738] .. +14`; body at `0x004867E0`, CellClass vtable
-        /// `+0x50`).
+        /// The cell's tile is in the theater's WaterSet: the negation of
+        /// CellClass vt+0x50 (`0x004867E0`, see
+        /// [`ResolvedTerrainGrid::native_cell_is_water_set_tile`]).
         tile_in_water_set: bool,
         /// `CellClass+0x140 Flags & 0x100` (structural bridge cell).
         bridge_flag: bool,
@@ -197,15 +197,21 @@ pub(crate) struct ParasiteVictimFacts {
 }
 
 impl ParasiteVictimFacts {
-    /// A NULL victim cell passes the water gate (`0x00485060` is not reached).
+    /// The water gate (`0x0062A950..0x0062A96D`) tests the victim's GetCell
+    /// (vt+0x1BC, `0x005F6960` for every Foot): the cell at its Location, or
+    /// off the map the shared dummy, whose tile 0xFFFF is never WaterSet. A
+    /// fixture without a map passes. Native comparison:
+    /// `tools/spatial_oracle/parasite_water_gate.json`.
     pub(crate) fn of(
         target: &GameEntity,
         target_obj: &ObjectType,
         terrain: Option<&ResolvedTerrainGrid>,
     ) -> Self {
-        let on_water_set = terrain
-            .and_then(|grid| grid.cell(target.position.rx, target.position.ry))
-            .is_none_or(|cell| cell.is_water);
+        let on_water_set = terrain.is_none_or(|grid| {
+            grid.native_cell_is_water_set_tile(
+                grid.native_cell_identity((target.position.rx as i16, target.position.ry as i16)),
+            )
+        });
         Self {
             infectable: matches!(
                 target.category,
@@ -1039,21 +1045,15 @@ pub(crate) fn techno_target_facts<'a>(
 }
 
 /// Target facts for a force-fire cell.
-///
-/// RESIDUAL: the native water-set predicate compares the cell's tile index
-/// against `[0x00AA0738] .. +14`; VERA reads the cell's base `LandType ==
-/// Water` instead. Trigger: a Boomer force-firing a cell whose water tile
-/// carries a non-water LandType override; effect: torpedo vs cruise slot;
-/// frequency: negligible in ordinary play.
 pub(crate) fn cell_target_facts(
     rx: u16,
     ry: u16,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> TargetFacts<'static> {
-    match terrain.and_then(|grid| grid.cell(rx, ry)) {
-        Some(cell) => TargetFacts::Cell {
+    match terrain.and_then(|grid| grid.cell(rx, ry).map(|cell| (grid, cell))) {
+        Some((grid, cell)) => TargetFacts::Cell {
             land_type: cell.yr_cell_land_type,
-            tile_in_water_set: cell.is_water,
+            tile_in_water_set: grid.tile_is_water_set(cell.final_tile_index),
             bridge_flag: cell.bridge_facts.has_structural_bridge(),
         },
         None => TargetFacts::Cell {
@@ -1131,6 +1131,30 @@ mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::passenger::PassengerRole;
+
+    /// A force-fire cell's WaterSet answer is its tile's (`0x004867E0`), not
+    /// its LandType: a shore cell of Water land lies outside the set, and a
+    /// bridge deck of Road land over open water inside it.
+    #[test]
+    fn cell_target_water_set_reads_the_tile_window() {
+        let mut terrain = crate::sim::tiberium::test_support::flat_terrain(4, 4);
+        terrain.set_projectile_water_set_base(314);
+        let shore = terrain.cell_mut(1, 1).unwrap();
+        shore.final_tile_index = 400;
+        shore.yr_cell_land_type = LandType::Water.as_index();
+        shore.is_water = true;
+        let deck = terrain.cell_mut(2, 2).unwrap();
+        deck.final_tile_index = 319;
+        deck.yr_cell_land_type = LandType::Road.as_index();
+        let water_set = |x, y| match cell_target_facts(x, y, Some(&terrain)) {
+            TargetFacts::Cell {
+                tile_in_water_set, ..
+            } => tile_in_water_set,
+            _ => unreachable!("a cell target"),
+        };
+        assert!(!water_set(1, 1));
+        assert!(water_set(2, 2));
+    }
 
     #[test]
     fn passive_scan_occupied_building_uses_weapon_identity_without_target_fallback() {

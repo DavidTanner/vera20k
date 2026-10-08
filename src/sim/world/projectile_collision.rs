@@ -1862,10 +1862,12 @@ impl ProjectileCollisionWorld<'_> {
                 CellRef::Real(c) => c.final_tile_index,
                 CellRef::Dummy { .. } => 0xFFFF,
             };
-            let base = self
+            // Cell vt+0x50 (`0x004867E0`): outside the WaterSet window. Without
+            // a map the cell is the dummy, whose tile is outside every window.
+            if !self
                 .terrain
-                .map_or(-1, |terrain| terrain.projectile_water_set_base());
-            if tile < base || tile >= base.wrapping_add(14) {
+                .is_some_and(|terrain| terrain.tile_is_water_set(tile))
+            {
                 return true;
             }
         }
