@@ -169,7 +169,6 @@ pub(crate) fn load_with_launch(
     let theater = theater::load_theater(&mut assets, &map.header.theater)
         .ok_or_else(|| format!("load theater {}", map.header.theater))?;
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
-    rules.general.resolve_art_rates(&art_ini);
     let infantry_sequences =
         crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
     let overlay_registry = OverlayTypeRegistry::from_ini(&rules_ini, Some(&art_ini));

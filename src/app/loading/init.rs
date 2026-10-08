@@ -1945,7 +1945,6 @@ impl MapLoadInitial {
         )
         .expect("retail generated-map rules");
         rules.install_art_data(ArtRegistry::from_ini(&art_ini));
-        rules.general.resolve_art_rates(&art_ini);
         let infantry_sequences =
             crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art_ini);
         let overlay_registry = OverlayTypeRegistry::from_ini(&rules_ini, Some(&art_ini));
@@ -2607,7 +2606,6 @@ pub(crate) fn load_map_from_initial(
         populated,
         fallback,
     );
-    rules.general.resolve_art_rates(&fixed_art_ini);
     let infantry_sequences =
         crate::rules::infantry_sequence::parse_infantry_sequence_registry(&fixed_art_ini);
     // Rules + art parsed, merged, and processed (gamemd command-bar/CD/rules
