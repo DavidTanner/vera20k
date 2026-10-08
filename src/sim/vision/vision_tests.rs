@@ -407,6 +407,7 @@ fn gsi_08_12_veteran_sight_multiplies_only_for_sight_ability_holders() {
             leptons_per_sight_increase: 0,
             reveal_by_height: false,
             fog_of_war: false,
+            ..default_config()
         };
         recompute_owner_visibility_with_rules(
             &store,
@@ -464,6 +465,7 @@ fn elevation_grants_no_sight_bonus_at_any_reachable_terrain_level() {
         leptons_per_sight_increase: 2000,
         reveal_by_height: false,
         fog_of_war: false,
+        ..default_config()
     };
     let fog = recompute_owner_visibility(
         &store,
@@ -507,6 +509,7 @@ fn test_elevation_sight_bonus_z0_gives_no_bonus() {
         leptons_per_sight_increase: 2000,
         reveal_by_height: false,
         fog_of_war: false,
+        ..default_config()
     };
     let fog = recompute_owner_visibility(
         &store,
@@ -547,6 +550,7 @@ fn test_elevation_sight_bonus_disabled_when_zero() {
         leptons_per_sight_increase: 0,
         reveal_by_height: false,
         fog_of_war: false,
+        ..default_config()
     };
     let fog = recompute_owner_visibility(
         &store,
@@ -1605,7 +1609,7 @@ fn the_height_shift_reduces_to_half_the_terrain_level() {
 fn an_airborne_viewer_reveals_under_its_sprite() {
     let (w, h) = (64u16, 64u16);
     let mut vis = OwnerVisibility::new(w, h);
-    for (x, y) in super::collect_reveal_cells(30, 30, 1, 1500, false, None, w, h) {
+    for (x, y) in super::collect_reveal_cells(30, 30, 1, 1500, false, None, (w, h), None) {
         vis.mark_visible(x, y);
     }
     assert!(
@@ -1628,11 +1632,11 @@ fn an_airborne_viewer_sees_past_a_cliff() {
     // 0, and far below one cruising at 1500 leptons (level 14).
     let heights: Vec<u8> = vec![12; usize::from(w) * usize::from(h)];
     let mut grounded = OwnerVisibility::new(w, h);
-    for (x, y) in super::collect_reveal_cells(30, 30, 5, 0, true, Some(&heights), w, h) {
+    for (x, y) in super::collect_reveal_cells(30, 30, 5, 0, true, Some(&heights), (w, h), None) {
         grounded.mark_visible(x, y);
     }
     let mut flying = OwnerVisibility::new(w, h);
-    for (x, y) in super::collect_reveal_cells(30, 30, 5, 1500, true, Some(&heights), w, h) {
+    for (x, y) in super::collect_reveal_cells(30, 30, 5, 1500, true, Some(&heights), (w, h), None) {
         flying.mark_visible(x, y);
     }
 
@@ -2148,7 +2152,15 @@ fn shroud_current_sight_first_fire_and_psychic_have_distinct_pending_history() {
     };
     let mut psychic = fire.clone();
     reveal_radius(&mut fire, owner, 10, 10, 2);
-    reveal_radius_for_direct_allies(&mut psychic, owner, 10, 10, 2, &interner);
+    psychic_reveal(
+        &mut psychic,
+        owner,
+        (10, 10),
+        0,
+        2,
+        &default_config(),
+        &interner,
+    );
     assert!(fire.is_cell_revealed(owner, 10, 10));
     assert!(psychic.is_cell_revealed(owner, 10, 10));
     fire.flush_pending_gap_conceal(120);

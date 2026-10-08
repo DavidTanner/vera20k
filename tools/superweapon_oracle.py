@@ -25,7 +25,8 @@ radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
 (iron_curtain_launch, curtain_overrides) and src/sim/superweapon/paradrop_tests.rs
 (paradrop_launch, send_paradrop_planes, paradrop_missions, drop_payload,
 spawn_parachuted) and src/sim/superweapon/genetic_converter_tests.rs
-(genetic_launch, infantry_mutate_death, make_infantry).
+(genetic_launch, infantry_mutate_death, make_infantry) and
+src/sim/superweapon/psychic_reveal_tests.rs (psychic_launch).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -252,6 +253,10 @@ fixture machinery):
   Unlimbo's coordinate and facing and its refused retry (the stage stepped
   back), the bridge lift (Mark up, OnBridge, Mark down), Hunt for a house
   that is not human, and the UnInit.
+- psychic_launch: Launch 0x6CC390 from its entry for a Type= 11 Super, case
+  11 (0x6CD70C..0x6CD7E7): the charge gate, the cell's coordinate, both
+  MapClass::RevealArea 0x5678E0 calls' arguments, PlayAtCoord 0x750E20 of
+  PsychicRevealActivateSound and the player's tail.
 """
 from pathlib import Path
 import math
@@ -6534,6 +6539,93 @@ def make_infantry():
     return rows
 
 
+# ------------------------------------------------------------ psychic_launch
+
+TYPE_PSYCHIC_REVEAL = 11
+PSYCHIC = BASE + 0x300000
+PR_CELL = PSYCHIC
+PR_CELL_VT = PSYCHIC + 0x1000
+PR_HOUSE = PSYCHIC + 0x2000
+PR_CELL_ARG = PSYCHIC + 0x3000
+STUB_PR_CELL_COORDS = STUBS + 0xF50
+
+PR_TARGET = (40, 40)
+PR_SOUND = 78
+
+
+def psychic_launch_row(*, target=PR_TARGET, level=0, bridge=False, radius=15, charged=True,
+                       player=False):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 11:
+    case 11 (0x6CD70C..0x6CD7E7) and the shared tail 0x6CD51E.
+    MapClass::operator[] 0x5657A0 answers one fixture cell: its GetCoords
+    (vt+0x48) answers the centre raised 104 leptons per `level`, and its
+    +0x140 carries the bridge bit when `bridge`. `radius` is
+    PsychicRevealRadius= (Rules+0xFEC). MapClass::RevealArea 0x5678E0,
+    PlayAtCoord 0x750E20 and the EVA queue calls are recorded stubs."""
+    emu = Emu()
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, PR_HOUSE)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.write32(SW_TYPE + 0xB4, TYPE_PSYCHIC_REVEAL)
+    emu.write32(RULES + 0xFEC, radius)
+    emu.write32(RULES + 0x254, PR_SOUND)
+    emu.write32(SELECTED_SUPER, 9)
+    emu.uc.mem_write(PR_CELL_ARG, struct.pack('<hh', *target))
+    emu.write32(PR_CELL, PR_CELL_VT)
+    emu.write32(PR_CELL + 0x140, 0x100 if bridge else 0)
+    emu.write32(PR_CELL_VT + 0x48, STUB_PR_CELL_COORDS)
+
+    def lookup(e):
+        e.events.append(['cell', read_cell(e, e.arg(0))])
+        return PR_CELL
+
+    def coords(e):
+        out = e.arg(0)
+        write_coord(e, out, [target[0] * 256 + 128, target[1] * 256 + 128,
+                             level * LEVEL_LEPTONS])
+        return out
+
+    def reveal_area(e):
+        e.events.append(['reveal_area', e.uc.reg_read(UC_X86_REG_ECX) == MAP,
+                         read_coord(e, e.arg(0)), i32(e.arg(1)), e.arg(2) == PR_HOUSE,
+                         [i32(e.arg(n)) for n in range(3, 7)], i32(e.arg(7))])
+        return 0
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(STUB_PR_CELL_COORDS, coords, 4)
+    emu.hook(0x5678E0, reveal_area, 0x20)
+    emu.hook(0x750E20, lambda e: e.events.append(
+        ['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0))]), 4)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[PR_CELL_ARG, int(player)])
+    return dict(target=list(target), level=level, bridge=bridge, radius=radius,
+                charged=charged, player=player, events=emu.events,
+                selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def psychic_launch():
+    rows = []
+    for charged in (True, False):
+        for player in (False, True):
+            rows.append(psychic_launch_row(charged=charged, player=player))
+    # The coordinate is the cell's GetCoords: its height and no bridge deck.
+    for level, bridge in ((1, False), (4, False), (4, True)):
+        rows.append(psychic_launch_row(level=level, bridge=bridge))
+    # The radius goes to RevealArea as read; RevealArea clamps it
+    # (tools/spatial_oracle/reveal_area.py).
+    for radius in (0, 3, 11):
+        rows.append(psychic_launch_row(radius=radius, player=True))
+    rows.append(psychic_launch_row(target=(0, 0)))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -6588,6 +6680,7 @@ def generate():
             'genetic_launch': genetic_launch(),
             'infantry_mutate_death': infantry_mutate_death(),
             'make_infantry': make_infantry(),
+            'psychic_launch': psychic_launch(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -6659,7 +6752,9 @@ if __name__ == '__main__':
                'spot tests, the Die2 fallback and the InfantryMutate anim with its '
                'house and remap; and AnimClass::AI\'s MakeInfantry block: the clear, '
                'the AnimToInfantry bound, the Civilian-house fallback, CreateObject, '
-               'Unlimbo and its retry, the bridge lift and Hunt'),
+               'Unlimbo and its retry, the bridge lift and Hunt; the Psychic Reveal: '
+               'Launch case 11\'s gate, coordinate, RevealArea arguments, sound and '
+               'the player\'s tail'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -6914,7 +7009,11 @@ if __name__ == '__main__':
                        '(+0xDF8) is 16 past its slot; SideClass::Find_Index 0x6A46D0 answers '
                        'the row\'s Civilian side; the anim\'s, type\'s, infantry\'s and '
                        'cell\'s virtuals are recorded stubs; the cell\'s GetCoords answers '
-                       '(40, 41)\'s centre at Z 208'],
+                       '(40, 41)\'s centre at Z 208',
+                       'psychic_launch: MapClass::operator[] 0x5657A0 answers one fixture '
+                       'cell (GetCoords the centre raised 104 leptons per level, +0x140 the '
+                       'bridge bit); MapClass::RevealArea 0x5678E0, PlayAtCoord 0x750E20 and '
+                       'the EVA queue calls are recorded stubs'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -6974,4 +7073,5 @@ if __name__ == '__main__':
                       'InfantryClass::SpawnParachuted': 0x521760,
                       'SuperClass::Launch_case9': 0x6CC390,
                       'InfantryClass::ReceiveDamage_infdeath9': 0x5188AE,
-                      'AnimClass::AI_make_infantry': 0x424932}))
+                      'AnimClass::AI_make_infantry': 0x424932,
+                      'SuperClass::Launch_case11': 0x6CC390}))

@@ -35,21 +35,20 @@ pub(crate) fn chrono_warp_selected(targeting: Option<&TargetingMode>, rules: &Ru
 }
 
 /// The selection writes of the local player's Supers: Launch case 3 selects
-/// the Chrono Warp (`0x006CC46E`), cases 1, 2, 4, 5, 6, 7, 8, 9 and 10
+/// the Chrono Warp (`0x006CC46E`), cases 1, 2, 4, 5, 6, 7, 8, 9, 10 and 11
 /// clear the selection on their player's tail (`0x006CD04F`, `0x006CCD9A`,
 /// `0x006CCD1C`, `0x006CD50F` for both paradrops, `0x006CCE41`,
-/// `0x006CD6F8`, `0x006CDA53`, `0x006CD2CB`), and the revoke/suspend pass
-/// clears it when the selected Super's hold changes or it is lost
-/// (`HouseClass @ 0x0050AF10`, `0x0050B181..0x0050B190`). Other houses'
-/// Supers leave it alone.
+/// `0x006CD6F8`, `0x006CDA53`, `0x006CD2CB`, `0x006CD7D3`), and the
+/// revoke/suspend pass clears it when the selected Super's hold changes or
+/// it is lost (`HouseClass @ 0x0050AF10`, `0x0050B181..0x0050B190`). Other
+/// houses' Supers leave it alone.
 ///
-/// RESIDUAL: the player's tails of cases 0 and 11 clear the selection too
-/// (`0x006CDCC3` and `0x006CDE16`, `0x006CD7D3`), each beside its Ready
-/// line's drop, which `sound_dispatch::launch_drops_ready_line` lacks for
-/// them as well. Trigger: the local player's Nuke or Psychic Reveal
-/// launching while a Super is selected (the click drops VERA's own
-/// selection, so a later selection before the delayed launch runs). Effect:
-/// that selection stays.
+/// RESIDUAL: the player's tail of case 0 clears the selection too
+/// (`0x006CDCC3` and `0x006CDE16`), beside its Ready line's drop, which
+/// `sound_dispatch::launch_drops_ready_line` lacks for it as well. Trigger:
+/// the local player's Nuke launching while a Super is selected (the click
+/// drops VERA's own selection, so a later selection before the delayed
+/// launch runs). Effect: that selection stays.
 pub(super) fn follow_selection_writes(
     targeting: &mut Option<TargetingMode>,
     events: &[SimSoundEvent],
@@ -94,7 +93,8 @@ pub(super) fn follow_selection_writes(
                 | SuperWeaponKind::PsychicDominator
                 | SuperWeaponKind::SpyPlane
                 | SuperWeaponKind::GeneticConverter
-                | SuperWeaponKind::ForceShield,
+                | SuperWeaponKind::ForceShield
+                | SuperWeaponKind::PsychicReveal,
             ) if selected.is_some() => {
                 *targeting = None;
             }
@@ -255,9 +255,10 @@ mod tests {
     /// `genetic_launch`, each charged row of the player's ends with the
     /// selection at -1 and every other row leaves it, and VERA's launches
     /// report every charged row once (`iron_curtain_tests`,
-    /// `genetic_converter_tests`).
+    /// `genetic_converter_tests`); so for case 11 (`0x006CD7D3`,
+    /// `psychic_launch`, `psychic_reveal_tests`).
     #[test]
-    fn the_local_iron_curtain_and_genetic_mutator_launches_clear_the_selection() {
+    fn the_local_iron_curtain_genetic_mutator_and_psychic_reveal_launches_clear_the_selection() {
         let Some((rules, mut sim, local)) = retail_world() else {
             return;
         };
@@ -269,6 +270,7 @@ mod tests {
         for (section, name) in [
             ("iron_curtain_launch", "IronCurtainSpecial"),
             ("genetic_launch", "GeneticConverterSpecial"),
+            ("psychic_launch", "PsychicRevealSpecial"),
         ] {
             let sw_type = sim.interner.intern(name);
             let rows = oracle[section].as_array().unwrap();
