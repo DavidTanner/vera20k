@@ -955,23 +955,26 @@ fn gsi_13_08_warpout_keeps_all_frames_and_drives_the_progressive_alpha_ladder() 
     }
 }
 
-fn make_raw_test_shp(frame_count: u16) -> Vec<u8> {
-    let headers_end = 8usize + usize::from(frame_count) * 24;
-    let mut data = Vec::with_capacity(headers_end + usize::from(frame_count));
-    data.extend_from_slice(&0u16.to_le_bytes());
-    data.extend_from_slice(&1u16.to_le_bytes());
-    data.extend_from_slice(&1u16.to_le_bytes());
-    data.extend_from_slice(&frame_count.to_le_bytes());
-    for frame in 0..frame_count {
-        data.extend_from_slice(&0u16.to_le_bytes());
-        data.extend_from_slice(&0u16.to_le_bytes());
-        data.extend_from_slice(&1u16.to_le_bytes());
-        data.extend_from_slice(&1u16.to_le_bytes());
-        data.extend_from_slice(&[0u8; 12]);
-        let offset = u32::try_from(headers_end + usize::from(frame)).unwrap();
-        data.extend_from_slice(&offset.to_le_bytes());
+/// An SHP(TS) of raw frames at the canvas origin, each `size` filled with its
+/// palette index; the canvas is the largest frame.
+fn raw_shp(frames: &[([u32; 2], u8)]) -> Vec<u8> {
+    let canvas = |axis: usize| frames.iter().map(|(size, _)| size[axis]).max().unwrap_or(0);
+    let mut data = Vec::new();
+    for word in [0, canvas(0), canvas(1), frames.len() as u32] {
+        data.extend_from_slice(&(word as u16).to_le_bytes());
     }
-    data.extend(std::iter::repeat_n(1u8, usize::from(frame_count)));
+    let mut offset = 8 + frames.len() * 24;
+    for &([width, height], _) in frames {
+        for word in [0, 0, width, height] {
+            data.extend_from_slice(&(word as u16).to_le_bytes());
+        }
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&u32::try_from(offset).unwrap().to_le_bytes());
+        offset += (width * height) as usize;
+    }
+    for &([width, height], index) in frames {
+        data.extend(std::iter::repeat_n(index, (width * height) as usize));
+    }
     data
 }
 
@@ -1011,7 +1014,10 @@ fn gsi_13_04_tem_only_tile_root_uses_iso_palette_and_registers_every_frame() {
         candidates,
         vec!["CUSTOM_TILE_ANIM.TEM", "CUSTOM_TILE_ANIM.SHP"]
     );
-    let tem_only = HashMap::from([("CUSTOM_TILE_ANIM.TEM".to_string(), make_raw_test_shp(4))]);
+    let tem_only = HashMap::from([(
+        "CUSTOM_TILE_ANIM.TEM".to_string(),
+        raw_shp(&[([1, 1], 1); 4]),
+    )]);
     assert!(!tem_only.contains_key("CUSTOM_TILE_ANIM.SHP"));
     let data = candidates
         .iter()
@@ -1111,13 +1117,13 @@ pub(crate) fn native_palette_probe_page() -> NativePaletteProbe {
         .expect("probe SHP decodes");
     let mut palettes = ShpPalettes::default();
     let sprite = render_shp_frame(&source, &palette, true, &key, None, &mut palettes).unwrap();
-    assert_eq!(sprite.indices, (0..=255u8).collect::<Vec<_>>());
+    assert_eq!(sprite.indices(), (0..=255u8).collect::<Vec<_>>());
     let size = [262, 3];
     let mut indices = vec![0; size[0] * size[1]];
     let mut rgba = vec![0; size[0] * size[1] * 4];
     // The 256x1 frame sits at (3, 1).
     let start = size[0] + 3;
-    indices[start..start + 256].copy_from_slice(&sprite.indices);
+    indices[start..start + 256].copy_from_slice(&sprite.indices());
     rgba[start * 4..(start + 256) * 4]
         .copy_from_slice(&source.shp.frame_to_rgba(0, &palette).unwrap());
     assert_eq!(&indices[265..521], (0..=255u8).collect::<Vec<_>>());
@@ -1341,15 +1347,24 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         &gpu.queue,
         wgpu::TextureFormat::Bgra8UnormSrgb,
     );
-    let sprite = |type_id: &str, index: u8, [width, height]: [u32; 2], palette| RenderedShpSprite {
+    // One raw frame a sprite, filled with its palette index.
+    let frames = [([3, 2], 7), ([4, 3], 11), ([2, 5], 9)];
+    let shp = raw_shp(&frames);
+    let sprite = |type_id: &str, frame: usize, palette| RenderedShpSprite {
         key: make_shp_key(type_id, 0),
         palette,
-        indices: vec![index; (width * height) as usize],
-        width,
-        height,
+        shp: &shp,
+        frame,
+        width: frames[frame].0[0],
+        height: frames[frame].0[1],
         offset_x: 0.0,
         offset_y: 0.0,
-        canvas_rect: [0.0, 0.0, width as f32, height as f32],
+        canvas_rect: [
+            0.0,
+            0.0,
+            frames[frame].0[0] as f32,
+            frames[frame].0[1] as f32,
+        ],
         extended: false,
     };
     let palette = |color: fn(u8) -> crate::assets::pal_file::Color| Palette {
@@ -1363,7 +1378,7 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         &gpu.device,
         &gpu.queue,
         &batch,
-        vec![sprite("RESIDENT", 7, [3, 2], resident_row)],
+        vec![sprite("RESIDENT", 0, resident_row)],
         palettes,
     );
     let resident = *atlas.get(&make_shp_key("RESIDENT", 0)).unwrap();
@@ -1378,10 +1393,7 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
         &gpu.device,
         &gpu.queue,
         &batch,
-        vec![
-            sprite("WIDE", 11, [4, 3], new_row),
-            sprite("TALL", 9, [2, 5], resident_row),
-        ],
+        vec![sprite("WIDE", 1, new_row), sprite("TALL", 2, resident_row)],
         palettes,
     );
 
@@ -1456,12 +1468,12 @@ fn refreshed_sprites_upload_to_a_growth_page_and_leave_resident_ones_in_place() 
 
 #[test]
 #[ignore = "requires a wgpu adapter; actual band uploads"]
-fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
+fn map_load_pages_upload_in_shelf_bands_decoding_each_sprite_frame() {
     // Shelves at rows 0, 4 and 7 of a 10x8 page, as the pack lays them out.
     // A zero- or one-byte band uploads each shelf on its own, 31 bytes (one
     // past the first shelf's 30) the first two shelves together, and an
-    // unbounded band all of them in one write; each must put every sprite on
-    // its rectangle, leave the rest zero, and free the sprites' pixels.
+    // unbounded band all of them in one write; each must decode every
+    // sprite's frame onto its rectangle and leave the rest zero.
     let gpu = crate::render::terrain_draw_gpu_tests::Gpu::new();
     let batch = BatchRenderer::new_with_device(
         &gpu.device,
@@ -1483,13 +1495,16 @@ fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
             expected[start..start + width as usize].fill(index);
         }
     }
+    let shp = raw_shp(&shelves.map(|(index, size, _)| (size, index)));
     for band_bytes in [0, 1, 31, u64::MAX] {
-        let mut sprites: Vec<RenderedShpSprite> = shelves
+        let sprites: Vec<RenderedShpSprite> = shelves
             .iter()
-            .map(|&(index, [width, height], _)| RenderedShpSprite {
+            .enumerate()
+            .map(|(frame, &(index, [width, height], _))| RenderedShpSprite {
                 key: make_shp_key(&format!("SHELF{index}"), 0),
                 palette: 0,
-                indices: vec![index; (width * height) as usize],
+                shp: &shp,
+                frame,
                 width,
                 height,
                 offset_x: 0.0,
@@ -1508,13 +1523,9 @@ fn map_load_pages_upload_in_shelf_bands_and_release_sprite_pixels() {
             &gpu.device,
             &gpu.queue,
             &indices,
-            &mut sprites,
+            &sprites,
             &placed,
             band_bytes,
-        );
-        assert!(
-            sprites.iter().all(|sprite| sprite.indices.is_empty()),
-            "band {band_bytes}: written sprites release their indices"
         );
         assert_eq!(
             gpu.read_uint_texels(&indices.create_view(&Default::default()), [0, 0], size),

@@ -167,11 +167,7 @@ fn bullet_frame_lookup_preserves_native_stencil_and_rejects_out_of_range() {
         .chunks_exact(2)
         .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap())
         .collect();
-    let source = ShpSource {
-        shp: ShpFile::from_bytes(&bytes).unwrap(),
-        found_name: "120MM.SHP".to_string(),
-        draw_offsets: (0, 0),
-    };
+    let source = ShpSource::decode(&bytes, "120MM.SHP".to_string(), (0, 0)).unwrap();
     let rules = simple_rules("");
     let projectile = rules.projectile("Cannon").unwrap();
     let key = projectile_key("Cannon", projectile, 0, HouseColorIndex(0));
@@ -192,7 +188,7 @@ fn bullet_frame_lookup_preserves_native_stencil_and_rejects_out_of_range() {
         &mut ShpPalettes::default(),
     )
     .unwrap();
-    assert_eq!(rendered.indices, source.shp.frames[0].pixels);
+    assert_eq!(rendered.frame, 0);
     assert_eq!([rendered.width, rendered.height], [4, 4]);
     assert_eq!([rendered.offset_x, rendered.offset_y], [-2.0, -2.0]);
     assert_eq!(rendered.canvas_rect, [-12.0, -12.0, 24.0, 24.0]);
@@ -352,9 +348,9 @@ fn retail_hills_projectile_assets_match_original_reader_and_physical_bytes() {
         &mut palettes,
     )
     .unwrap();
-    assert_eq!(sprite.indices, source.shp.frames[0].pixels);
+    assert_eq!(sprite.frame, 0);
     let sprite_rgba = palettes.rgba(&sprite);
-    for (index, rgba) in sprite.indices.iter().zip(sprite_rgba.chunks_exact(4)) {
+    for (index, rgba) in sprite.indices().iter().zip(sprite_rgba.chunks_exact(4)) {
         let c = corpus["palettes"][0]["colors"]
             .as_array()
             .unwrap()
