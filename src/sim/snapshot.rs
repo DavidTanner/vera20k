@@ -848,7 +848,9 @@ use crate::sim::world::Simulation;
 // 294 -> 295: the scenario's lighting saves the nuke flash (0x00A9FABC and its
 // timer) and NukeAmbientChangeRate= (+0x3578); a bullet saves its wait on a
 // NUKE impact's anim (+0x154/+0x158). Prior records lack them.
-const SNAPSHOT_VERSION: u32 = 295;
+// 295 -> 296: a Super saves the Force Shield's fade countdown (+0x50) and its
+// coordinate (+0x54). Prior records lack them.
+const SNAPSHOT_VERSION: u32 = 296;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3863,7 +3865,8 @@ mod tests {
         // 293 -> 294: the Iron Curtain's tint stage and timer.
         // 294 -> 295: the nuke flash and NukeAmbientChangeRate= in the
         // scenario's lighting; a bullet's wait on its NUKE anim.
-        assert_eq!(super::SNAPSHOT_VERSION, 295);
+        // 295 -> 296: the Force Shield's fade countdown and coordinate.
+        assert_eq!(super::SNAPSHOT_VERSION, 296);
     }
 
     #[test]

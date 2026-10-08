@@ -48,7 +48,8 @@ an observer-off replay proving unchanged frame bytes and gameplay boundaries.
 Optional v2 `observe_super_weapons: true` adds a `super_weapons` list to each
 observed House row: every Super the House holds, ordered by the interned type id
 an ordinary `LaunchSuperWeapon` command names, with its grant, readiness, hold,
-charge start, duration and remaining frames. The rows count toward the sample
+charge start, duration and remaining frames, and the Force Shield's fade countdown
+(`SuperClass+0x50`, -1 when idle) and its coordinate. The rows count toward the sample
 budget. `false` or an absent field adds nothing; version 1 rejects the option,
 and present null/nonboolean values are invalid.
 
@@ -829,6 +830,19 @@ chain's native comparisons are the
 `tools.superweapon_oracle` `drawshp_curtain_arm`, `building_colour_word`,
 `anim_colour_word`, `building_anim_light`, `blit_pickers` and `blitters` rows, and no
 pixel equivalence with gamemd is claimed.
+
+With release binary SHA-256
+`19790e84f6d54d78c8bf5d03510e89f53d11d6b6f41f514e050eea0319835e80`
+(31,998,688 bytes), Launch case 10's native building walk (`superweapon/force_shield.rs`)
+shields four buildings again ("4 buildings shielded"), and the 9020 and 9600 frames are
+byte-identical to the earlier binary's (`06c2d859…`, `442c7cb0…`). The Super rows carry
+the fade countdown (`SuperClass+0x50`): idle (-1) through step 9013; 425 at
+(14464, 14464, 0), the cell's centre, once the launch step completes (step 9014); 1
+after step 9438; idle again after step 9439. So `ForceShieldFading` plays in frame 9438,
+425 frames after the launch frame: the 425th SuperClass::AI call, as the
+`tools.superweapon_oracle` `super_fade` rows execute natively. The countdown is hashed,
+so the state hashes are now `12557075081865037104` at 9020 and `2418361531941558131` at
+9600. `XMP03T4.MAP` again completed 300 steps (`8142462839629644773`).
 
 ## Siege Chopper deployment observation
 

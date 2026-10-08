@@ -862,7 +862,8 @@ class MapObservationTests(unittest.TestCase):
             'LaunchSuperWeapon': {'sw_type_id': 2500, 'target_rx': 87, 'target_ry': 53}}})
         self.profile_path.write_text(json.dumps(self.profile))
         nuke = {'type': 'NukeSpecial', 'interned_id': 2500, 'granted': True, 'ready': True,
-                'on_hold': False, 'charge_start': 0, 'charge_duration': 9000, 'remaining': 0}
+                'on_hold': False, 'charge_start': 0, 'charge_duration': 9000, 'remaining': 0,
+                'fade_countdown': -1, 'fade_coords': [0, 0, 0]}
         self.house_frames = {step: [{'owner': 'Computer1', 'economy': None,
                                      'super_weapons': [dict(nuke, ready=step < 3)]}]
                              for step in range(4)}
@@ -877,6 +878,7 @@ class MapObservationTests(unittest.TestCase):
                    lambda m: rows(m)['super_weapons'][0].update(ready=1),
                    lambda m: rows(m)['super_weapons'][0].update(type=''),
                    lambda m: rows(m)['super_weapons'][0].update(charge_start=1 << 31),
+                   lambda m: rows(m)['super_weapons'][0].update(fade_coords=[0, 0]),
                    lambda m: rows(m)['super_weapons'].append(dict(nuke))]
         for index, change in enumerate(changes):
             with self.subTest(index=index):

@@ -67,8 +67,9 @@ confirmed in Ghidra; commit, publish and merge validated chains.
     `invulnerability_tests.rs` and `units.rs`; production observations
     ([map_observation.md](../../tools/map_observation.md#computer-iron-curtain-observation)).
 11. The curtain's tint on buildings and Terror Drones, and the Force Shield's colour:
-    TechnoClass::DrawSHP's arm `0x70631F` (building bodies, bibs, buildup, SHP
-    vehicles), TechnoClass::Draw's `0x70678D` (building voxel turrets), the slot anims'
+    merged (YuriPlanet/vera20k#1118). TechnoClass::DrawSHP's arm `0x70631F` (building
+    bodies, bibs, buildup, SHP vehicles), TechnoClass::Draw's `0x70678D` (building voxel
+    turrets), the slot anims'
     relight `0x451F60`, and the `ForceShieldColor=` word that BuildingClass_DrawBody,
     BuildingClass::Draw and AnimClass::DrawIt hand their blits, which the tinted
     blitters OR into each pixel (`app/presentation/lighting.rs`,
@@ -77,21 +78,32 @@ confirmed in Ghidra; commit, publish and merge validated chains.
     `building_anim_light`, `blit_pickers`, `blitters`, replayed in
     `app/presentation/curtain_tint_tests.rs`; production observations
     ([map_observation.md](../../tools/map_observation.md#computer-force-shield-observation)).
+12. The Force Shield's launch: Launch case 10 `0x6CD072` (`superweapon/force_shield.rs`):
+    the BuildingClass::Array walk (IsAlliedWith `0x4F9A50` asked of each building's
+    owner, a 3D Distance3D below the radius, the two skipped coordinates), the
+    deck coordinate shared with cases 1, 3, 4 and 9 (`superweapon::deck_coords`), the
+    fade countdown that SuperClass::AI's head `0x6CBCA8` steps for every Super and the
+    `SpecialSound=` it plays (`superweapon/mod.rs`), Grant keeping it, and the player's
+    tail. The invented `NoForceShield=` key is gone; the five `[General]` keys read as
+    ints with the constructor's defaults. Oracle sections `force_shield_launch`,
+    `super_fade`, replayed in `superweapon/force_shield_tests.rs`; production
+    observation
+    ([map_observation.md](../../tools/map_observation.md#computer-force-shield-observation)).
 
 `fire::launch` now dispatches every Launch arm; none refuses a click. `ai_fire.rs` RESIDUALS lists the AI-side gaps (preferred
 target writers, AI_FindTeamTarget `0x50D170`, building cloak stage).
 
 ## Next chains (one PR each)
 
-- The Force Shield's launch, case 10 `0x6CD072`: `superweapon/force_shield.rs` picks
-  its buildings with no native evidence for the walk.
 - Script action 56 `0x6EFE60` for the campaign's Chronosphere teams (SOV02SMD.MAP),
   with `Find_Best_Target_Building 0x6EEBD0`, which actions 46 and 47 share.
 - The existing types' gaps: Deactivate's start = -1, the offline-provider hold
   `+0x660`, the paradrop plane's Retreat exit `0x415A50` (a residual in
-  `aircraft/paradrop_mission.rs`), the player tails of Launch cases 0, 1, 2, 9, 10
-  and 11 (a residual in `app/match_runtime/super_selection.rs`), and TechnoClass::Draw's
-  curtain arm for voxel aircraft (a residual in `superweapon/invulnerability.rs`).
+  `aircraft/paradrop_mission.rs`), the player tails of Launch cases 0, 1, 2, 9 and 11
+  (a residual in `app/match_runtime/super_selection.rs`), TechnoClass::Draw's curtain
+  arm for voxel aircraft (a residual in `superweapon/invulnerability.rs`), and
+  `IronCurtainInvokeAnim=`'s default: VERA's `IRONBLST`, the constructor's null type
+  (`Rules+0x348`, `0x00665B1A`); dormant on retail, which sets the key.
 
 The ChronoWarpTo paths (`0x4DF7F0`, `0x522FE0`) are map-trigger only; they stay a
 residual in `superweapon/chronosphere.rs`. The map trigger action

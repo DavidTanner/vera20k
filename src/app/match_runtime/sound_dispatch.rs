@@ -331,8 +331,9 @@ pub(super) fn dispatch_sim_sound_events(
                     }
                 });
                 // The player's tail of cases 4 (`0x006CCD17..0x006CCD2D`),
-                // 5, 6 and 8 (`0x006CD51E`) and 7 (`0x006CCE3C..0x006CCE52`):
-                // after the case's line, the queued Ready line is dropped.
+                // 5, 6 and 8 (`0x006CD51E`), 7 (`0x006CCE3C..0x006CCE52`)
+                // and 10 (`0x006CD2B7..0x006CD2DC`): after the case's line,
+                // the queued Ready line is dropped.
                 if let Some(ready) = launch_drops_ready_line(sw.kind)
                     && owner_is_local(&sim.interner, owner, local_owner_name)
                 {
@@ -991,7 +992,8 @@ fn base_under_attack_siren(
 /// its own (`0x006CCE52`, `EVA_PsychicDominatorReady`), and cases 5, 6 and 8
 /// theirs through the shared tail `0x006CD51E`: the paradrops
 /// `EVA_ReinforcementsReady` (`0x006CD519`), the Spy Plane
-/// `EVA_SpyPlaneReady` (`0x006CD702`). Each tail also clears the local
+/// `EVA_SpyPlaneReady` (`0x006CD702`); the Force Shield's case 10 its own
+/// (`0x006CD2C6`, `EVA_ForceShieldReady`). Each tail also clears the local
 /// selection (`super_selection::follow_selection_writes`, whose RESIDUAL
 /// lists the cases whose tails neither owner ports yet).
 fn launch_drops_ready_line(
@@ -1003,6 +1005,7 @@ fn launch_drops_ready_line(
         K::PsychicDominator => Some("EVA_PsychicDominatorReady"),
         K::ParaDrop | K::AmerParaDrop => Some("EVA_ReinforcementsReady"),
         K::SpyPlane => Some("EVA_SpyPlaneReady"),
+        K::ForceShield => Some("EVA_ForceShieldReady"),
         _ => None,
     }
 }
