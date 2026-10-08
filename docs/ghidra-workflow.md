@@ -675,11 +675,16 @@ Checked 2026-10-01, struct tools:
 - Send `create_struct` and `recreate_struct` `fields` as a JSON string. In a JSON array,
   each offset reaches the parser as a Gson double (`3589.0`), which `Integer.parseInt`
   rejects. The field is then appended instead, so the layout comes out packed.
+- `create_struct` resolves each field type before the struct exists, so a field that
+  points to the struct being created (a list link) is written `void *` without an
+  error (checked 2026-10-08). Create it as `void *` and retype it afterwards with
+  `modify_struct_field` (`new_type` and `new_name`).
 - Strict naming is the default when the project has no `.ghidra-mcp/conventions.json`.
   It puts a Hungarian type prefix on struct field names on create, `add_struct_field`
   and `modify_struct_field`, and a per-call `strict_mode` does not change that. Struct
   types, `sbyte` and the plain `pointer` type keep the name as given. A `uint` field
-  gets `dw`. Readbacks spell `unsigned char` as `uchar` and a pointer to pointer as `T *
+  gets `dw`, and a `char *` field `p`: `pszFilename` comes back as `pPszFilename`.
+  Readbacks spell `unsigned char` as `uchar` and a pointer to pointer as `T *
   *`, so a plan compared with readbacks must use those spellings.
 - A retype clears the field name. Pass `new_name` to `modify_struct_field`;
   `modify_struct_field_type` always drops the name.
