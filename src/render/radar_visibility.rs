@@ -6,8 +6,9 @@
 use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
+use crate::rules::object_type::Ability;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::veterancy::VeterancyRank;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_of};
 use crate::sim::intern::InternedId;
 use crate::sim::vision::FogState;
 
@@ -351,11 +352,11 @@ pub(super) fn build_radar_object_update(
         radar_fresh_mode_one_membership(entity, playfield_bounds, resolved_terrain);
     let cloak_state = entity.cloak.as_ref().map_or(0, |cloak| cloak.state);
     let veteran_radar_invisible = object.is_some_and(|object| {
-        match crate::sim::combat::veterancy::rank_of(entity.veterancy_raw) {
-            VeterancyRank::Rookie => false,
-            VeterancyRank::Veteran => object.veteran_radar_invisible,
-            VeterancyRank::Elite => object.veteran_radar_invisible || object.elite_radar_invisible,
-        }
+        has_weapon_ability(
+            rank_of(entity.veterancy_raw),
+            object,
+            Ability::RadarInvisible,
+        )
     });
     let visibility = if foundation.is_some() {
         RadarRegistrationVisibilityFacts::Building(RadarBuildingVisibilityFacts {

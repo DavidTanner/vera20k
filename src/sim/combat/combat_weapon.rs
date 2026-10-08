@@ -26,6 +26,7 @@
 use super::TargetKind;
 use super::armor_index;
 use super::combat_targeting::AttackerSnapshot;
+use super::veterancy::RANK_ELITE_U16;
 use crate::map::entities::EntityCategory;
 use crate::map::houses::{HouseAllianceMap, is_allied_with};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -61,10 +62,6 @@ pub(crate) struct SelectedWeapon<'a> {
     /// Native weapon-array index returned by the selection ladder.
     pub index: i32,
 }
-
-/// Elite veterancy threshold used by `VeterancyClass::IsElite` inside
-/// `GetWeapon`.
-const ELITE_VETERANCY: u16 = 200;
 
 /// Native `AbstractClass::WhatAmI` families the ladder distinguishes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,10 +299,11 @@ pub(crate) fn weapon_for_index(
 }
 
 /// Whether `TechnoClass::GetWeapon @ 0x0070E140` answers slot `index` with the
-/// elite record: an elite object whose `EliteWeapon[index]` names a weapon.
-/// Callers that read the record's other fields (the elite FLH) ask this too.
+/// elite record: an elite object (`VeterancyClass::IsElite`) whose
+/// `EliteWeapon[index]` names a weapon. Callers that read the record's other
+/// fields (the elite FLH) ask this too.
 pub(crate) fn uses_elite_weapon(obj: &ObjectType, veterancy: u16, index: usize) -> bool {
-    veterancy >= ELITE_VETERANCY && obj.elite_weapon_at(index).is_some()
+    veterancy >= RANK_ELITE_U16 && obj.elite_weapon_at(index).is_some()
 }
 
 /// `GetWeapon(0)` weapon id at the given veterancy.
@@ -1120,7 +1118,7 @@ pub(crate) fn occupant_weapon<'a>(
     occupant: &ObjectType,
     veterancy: u16,
 ) -> Option<&'a WeaponType> {
-    let occupy = if veterancy >= ELITE_VETERANCY {
+    let occupy = if veterancy >= RANK_ELITE_U16 {
         occupant.elite_occupy_weapon.as_deref()
     } else {
         occupant.occupy_weapon.as_deref()

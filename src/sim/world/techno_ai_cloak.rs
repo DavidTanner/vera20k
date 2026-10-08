@@ -1,8 +1,10 @@
 //! Stock Techno cloak producer at the Techno AI head.
 
 use crate::map::entities::EntityCategory;
+use crate::rules::object_type::Ability;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::intern::InternedId;
 use crate::sim::mission::concrete_effects::{
     assign_target_commits, represented_assign_target_admitted,
@@ -28,8 +30,7 @@ fn stock_cloak_tick_facts(
         return None;
     }
     let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    let rank_cloak = entity.veterancy() >= 100 && object.veteran_cloak
-        || entity.veterancy() >= 200 && object.elite_cloak;
+    let rank_cloak = has_weapon_ability(rank_from_u16(entity.veterancy()), object, Ability::Cloak);
     if !object.cloakable && !rank_cloak {
         return None;
     }
@@ -588,8 +589,7 @@ pub(super) fn tick_stock_cloak_producer(
     let Some(object) = rules.object(sim.interner.resolve(type_ref)) else {
         return;
     };
-    let rank_cloak =
-        veterancy >= 100 && object.veteran_cloak || veterancy >= 200 && object.elite_cloak;
+    let rank_cloak = has_weapon_ability(rank_from_u16(veterancy), object, Ability::Cloak);
     if !object.cloakable && !rank_cloak {
         return;
     }

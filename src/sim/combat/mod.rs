@@ -1786,8 +1786,11 @@ pub(crate) fn death_arm_explodes(
     let numbered_weapon = combat_weapon::weapon_for_index(obj, veterancy, current_weapon_number)
         .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
     obj.explodes
-        || (veterancy >= 100 && obj.veteran_explodes)
-        || (veterancy >= 200 && obj.elite_explodes)
+        || self::veterancy::has_weapon_ability(
+            self::veterancy::rank_from_u16(veterancy),
+            obj,
+            crate::rules::object_type::Ability::Explodes,
+        )
         || numbered_weapon.is_some_and(|weapon| weapon.suicide)
 }
 

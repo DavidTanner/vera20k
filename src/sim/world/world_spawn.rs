@@ -19,11 +19,12 @@ use crate::map::entities::{EntityCategory, MapEntity};
 use crate::map::overlay_types::OverlayTypeRegistry;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::foundation::foundation_dimensions;
-use crate::rules::object_type::{ObjectCategory, ObjectType};
+use crate::rules::object_type::{Ability, ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::pack_base_plan_cell;
 use crate::sim::base_plan_generation::{preflight_recalc, recalc_base_plan};
 use crate::sim::combat::TargetKind;
+use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::components::{BuildingUp, Health};
 use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
@@ -1545,8 +1546,7 @@ impl Simulation {
         let Some(object) = rules.object(self.interner.resolve(type_ref)) else {
             return;
         };
-        let rank_cloak =
-            veterancy >= 100 && object.veteran_cloak || veterancy >= 200 && object.elite_cloak;
+        let rank_cloak = has_weapon_ability(rank_from_u16(veterancy), object, Ability::Cloak);
         if !object.cloakable && !rank_cloak {
             return;
         }
