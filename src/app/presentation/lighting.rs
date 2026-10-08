@@ -518,7 +518,7 @@ pub(crate) fn derive_lighting_view(
     let building_lights = collect_live_building_lights(simulation, detail_level);
     let radiation_lights = match (simulation, rules) {
         (Some(sim), Some(rules)) => {
-            crate::app::presentation::radiation_light::collect_radiation_lights(sim, rules)
+            crate::sim::radiation_light::collect_radiation_lights(sim, rules)
         }
         _ => Vec::new(),
     };
