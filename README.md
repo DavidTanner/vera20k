@@ -16,7 +16,7 @@
 VERA20k is a rewrite of the original engine, `gamemd.exe`. It uses the original game files,
 so you'll need your own copy of Red Alert 2: Yuri's Revenge.
 
-VERA20k is made by gamers, for gamers, and players have the final say in where it goes.
+VERA20k is made by gamers, for gamers, and gamers have the final say in where it goes.
 
 <img src="docs/images/vera20k-screenshots.png" alt="VERA20k skirmish setup screen and in-game view" width="100%">
 
@@ -24,12 +24,12 @@ VERA20k is made by gamers, for gamers, and players have the final say in where i
 
 1. Keep the gameplay, visuals and atmosphere of the original Red Alert 2: Yuri's Revenge.
 2. Support bigger battles: up to **30 players** and **20,000 units** on larger maps.
-3. Incorporate new RTS features.
+3. Incorporate known RTS features, old and new, and some never seen before.
 4. Integrated multiplayer client
 
 ## Current status
 
-**Early development.** Local skirmish is playable on Windows against a basic AI. Retail and
+**Mid development.** Local skirmish is playable on Windows against a basic AI. Retail and
 random maps, menus, base building, harvesting, combat and save/load are in place, but there's
 still a lot to fix and finish.
 
@@ -39,7 +39,9 @@ and several weapons and effects need more work. We haven't demonstrated 30-playe
 
 ## Build and run
 
-You need current stable Rust, a GPU with Vulkan, DirectX 12 or Metal, and the game installed.
+You need current stable [Rust](https://rustup.rs/), a GPU with Vulkan, DirectX 12 or Metal,
+and the game installed. Any edition of Yuri's Revenge 1.001 works; on macOS, copy the game
+folder from a Windows install. Debian and Ubuntu also need `libasound2-dev` and `pkg-config`.
 VERA20k has been played on Windows, Linux and macOS.
 
 ```sh
@@ -50,25 +52,38 @@ cp config.toml.example config.toml
 cargo run --release --bin vera20k
 ```
 
-Use `--release` to play; debug builds are too slow. See
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up) for platform setup and running the tests.
+Write `ra2_dir` with forward slashes, like `C:/Games/RA2`. Use `--release` to play; debug
+builds are too slow. The log is in `logs/ra2.log`.
 
 ## How we work
 
-Most of the code is written by AI coding agents that I direct. We use Ghidra to study the
-original engine, then port its behavior to Rust and check it with
-[comparison tools](tools/native_oracle.md) and playtesting. My agents follow
-[AGENTS.md](AGENTS.md). Contributors follow [CONTRIBUTING.md](CONTRIBUTING.md).
+Most of the code is written by AI coding agents. They use Ghidra to study the original
+engine, then port its behavior to Rust and check it with [comparison tools](tools/native_oracle.md)
+and playtesting. Agents follow [AGENTS.md](AGENTS.md); contributors follow the rules below.
 
 ## Contributing
 
-Help is welcome. You can write code, test the game, improve the docs, or play it next to the
-original and tell us what feels wrong. You don't need reverse-engineering experience to help.
+Help is welcome. You can write code, refactor the engine, test the game, share ideas, or play
+it next to the original and tell us what feels wrong. Open a PR and we'll take it from there;
+for anything large, ask first in an issue or on [Discord](https://discord.gg/kmjRUn5m5F).
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), browse the
-[good first issues](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue), or say
-hi on [Discord](https://discord.gg/kmjRUn5m5F). The
-[architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits together.
+Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/`,
+`src/ui/` and `src/sidebar/`; you don't need the Python tools in `tools/`. The
+[architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits
+together. Run the tests with `cargo test -p vera20k --lib`. Tests that need the game's INI
+files skip themselves, and still count as passed, until you run
+`cargo run --bin extract-ini [game folder]`.
+
+1. **The original is the reference.** Cite the native function in a comment, as the code
+   around it does (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), or say in the PR where
+   the behavior comes from. Don't guess.
+2. **One owner per piece of state.** Extend the existing owner; delete the old path you replace.
+3. **Deterministic simulation.** Same inputs, same result on every OS and CPU. Use `SimFixed`
+   in `src/sim/`, and keep random draws and same-frame effects in the original's order.
+4. **Add a test** for gameplay changes.
+5. **Never commit game files** (`.mix`, INI, art, audio, video, `.exe`) or anything in `ini/`.
+
+Contributions are licensed under the GPLv3, like the rest of the project; there's no CLA.
 
 ## Credits and legal
 

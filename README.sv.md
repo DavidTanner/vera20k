@@ -11,12 +11,8 @@
 
 # VERA20k
 
-Red Alert 2: Yuri's Revenge — återskapat i Rust för stora flerspelarslag.
-
 VERA20k är en nyimplementation av originalmotorn, `gamemd.exe`. Den använder de ursprungliga
-spelfilerna, så du behöver en egen kopia av Red Alert 2: Yuri's Revenge. Spelet ingår i *Command & Conquer
-The Ultimate Collection* på [Steam](https://store.steampowered.com/bundle/39394/) och
-[EA](https://www.ea.com/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc).
+spelfilerna, så du behöver en egen kopia av Red Alert 2: Yuri's Revenge.
 
 VERA20k görs av spelare, för spelare, och det är spelarna som har sista ordet om vart projektet
 ska gå.
@@ -27,12 +23,12 @@ ska gå.
 
 1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Red Alert 2: Yuri's Revenge.
 2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på större kartor.
-3. Integrera nya RTS-funktioner.
+3. Integrera kända RTS-funktioner, gamla som nya, och några som aldrig setts förut.
 4. Integrerad flerspelarklient
 
 ## Aktuellt läge
 
-**Tidig utveckling.** Lokala skirmishmatcher går att spela på Windows mot en enkel AI.
+**Mitt i utvecklingen.** Lokala skirmishmatcher går att spela på Windows mot en enkel AI.
 Kartor från originalspelet och slumpgenererade kartor, menyer, basbygge, resursinsamling,
 strider samt möjligheten att spara och ladda spel finns på plats, men mycket återstår
 att fixa och färdigställa.
@@ -43,8 +39,10 @@ med 30 spelare och 20 000 enheter.
 
 ## Bygg och kör
 
-Du behöver den senaste stabila versionen av Rust, ett grafikkort med Vulkan, DirectX 12 eller Metal,
-och spelet installerat. VERA20k har spelats på Windows, Linux och macOS.
+Du behöver den senaste stabila versionen av [Rust](https://rustup.rs/), ett grafikkort med Vulkan,
+DirectX 12 eller Metal, och spelet installerat. Alla utgåvor av Yuri's Revenge 1.001 fungerar; på
+macOS kopierar du spelmappen från en Windows-installation. Debian och Ubuntu behöver också
+`libasound2-dev` och `pkg-config`. VERA20k har spelats på Windows, Linux och macOS.
 
 ```sh
 git clone https://github.com/YuriPlanet/vera20k.git
@@ -54,26 +52,41 @@ cp config.toml.example config.toml
 cargo run --release --bin vera20k
 ```
 
-Använd `--release` när du spelar; debugbyggen är för långsamma. Se
-[CONTRIBUTING.md](CONTRIBUTING.md#set-up) för plattformsspecifika förberedelser och hur du kör testerna.
+Skriv `ra2_dir` med vanliga snedstreck, till exempel `C:/Games/RA2`. Använd `--release` när du
+spelar; debugbyggen är för långsamma. Loggen hamnar i `logs/ra2.log`.
 
 ## Så arbetar vi
 
-Större delen av koden skrivs av AI-agenter som jag leder. Vi använder Ghidra för att studera
-originalmotorn, portar sedan dess beteende till Rust och kontrollerar det med
-[jämförelseverktyg](tools/native_oracle.md) och speltester. Mina agenter följer
-[AGENTS.md](AGENTS.md). Bidragsgivare följer [CONTRIBUTING.md](CONTRIBUTING.md).
+Större delen av koden skrivs av AI-agenter. De använder Ghidra för att studera originalmotorn,
+portar sedan dess beteende till Rust och kontrollerar det med
+[jämförelseverktyg](tools/native_oracle.md) och speltester. Agenterna följer
+[AGENTS.md](AGENTS.md); bidragsgivare följer reglerna nedan.
 
 ## Bidra
 
-All hjälp är välkommen. Du kan skriva kod, testa spelet, förbättra dokumentationen eller spela
-det sida vid sida med originalet och berätta vad som känns fel. Du behöver inte ha erfarenhet
-av reverse engineering för att hjälpa till.
+All hjälp är välkommen. Du kan skriva kod, refaktorera motorn, testa spelet, dela idéer eller
+spela det sida vid sida med originalet och berätta vad som känns fel. Öppna en PR så tar vi det
+därifrån; gäller det något stort, fråga först i ett issue eller på
+[Discord](https://discord.gg/kmjRUn5m5F).
 
-Läs [CONTRIBUTING.md](CONTRIBUTING.md), titta på
-[bra första uppgifter](https://github.com/YuriPlanet/vera20k/labels/good%20first%20issue) eller säg
-hej på [Discord](https://discord.gg/kmjRUn5m5F).
+Spelmekaniken finns i `src/sim/`, renderingen i `src/render/` och menyer och inmatning i
+`src/app/`, `src/ui/` och `src/sidebar/`; Python-verktygen i `tools/` behöver du inte.
 [Arkitekturöversikten](https://yuriplanet.github.io/vera20k/sv/) förklarar hur motorn hänger ihop.
+Kör testerna med `cargo test -p vera20k --lib`. Tester som behöver spelets INI-filer hoppar över
+sig själva, och räknas ändå som godkända, tills du kör `cargo run --bin extract-ini [spelmapp]`.
+
+1. **Originalet är referensen.** Ange originalfunktionen i en kommentar, som koden runt omkring
+   gör (`/// MissionClass::Mission_Dispatch @ 0x005B3060`), eller skriv i PR:en var beteendet
+   kommer ifrån. Gissa inte.
+2. **En ägare per tillstånd.** Bygg ut den befintliga ägaren och ta bort den gamla vägen du
+   ersätter.
+3. **Deterministisk simulering.** Samma indata, samma resultat på alla operativsystem och
+   processorer. Använd `SimFixed` i `src/sim/`, och behåll slumpdragningar och effekter inom
+   samma bildruta i originalets ordning.
+4. **Lägg till ett test** när du ändrar spelmekaniken.
+5. **Checka aldrig in spelfiler** (`.mix`, INI, grafik, ljud, video, `.exe`) eller något i `ini/`.
+
+Bidrag licensieras under GPLv3, precis som resten av projektet; det finns inget CLA.
 
 ## Tack och juridisk information
 
