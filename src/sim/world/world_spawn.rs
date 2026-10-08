@@ -670,7 +670,15 @@ impl Simulation {
         stable_id: u64,
         authored: Option<crate::sim::mission::MissionType>,
     ) {
-        if self.is_dispatchable_miner(stable_id) || self.queue_placed_building_guard(stable_id) {
+        // A harvester keeps the Harvest that Unlimbo's idle mode gave it
+        // (`UnitClass::Enter_Idle_Mode @ 0x00738970`, harvester arm
+        // `0x00738BD8`, owned by `foot_unlimbo_idle_mode`).
+        let harvester = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(crate::sim::game_entity::GameEntity::is_harvester);
+        if harvester || self.queue_placed_building_guard(stable_id) {
             return;
         }
         let Some(mission) = authored else {
@@ -762,18 +770,6 @@ impl Simulation {
             );
         }
         false
-    }
-
-    /// A miner the harvest dispatch drives (not a Slave Miner): Unlimbo's idle
-    /// mode already gave it Harvest (`UnitClass::Enter_Idle_Mode @ 0x00738970`,
-    /// harvester arm `0x00738BD8`, owned by `foot_unlimbo_idle_mode`), which a
-    /// map placement keeps.
-    fn is_dispatchable_miner(&self, stable_id: u64) -> bool {
-        self.substrate
-            .entities
-            .get(stable_id)
-            .and_then(|e| e.miner.as_ref())
-            .is_some_and(|m| m.kind != crate::sim::miner::MinerKind::Slave)
     }
 
     /// Spawn one object instance (used by production). Returns the stable_id on success.

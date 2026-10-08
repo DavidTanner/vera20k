@@ -1549,6 +1549,16 @@ impl GameEntity {
         })
     }
 
+    /// The type's `Harvester=` (`+0xE0E`): a War or Chrono Miner, which runs
+    /// the harvest and refinery dock missions. The Slave Miner carries a Miner
+    /// component only as an order marker (`sim::slave_manager`), so it is not
+    /// one.
+    pub fn is_harvester(&self) -> bool {
+        self.miner
+            .as_ref()
+            .is_some_and(|miner| miner.kind != crate::sim::miner::MinerKind::Slave)
+    }
+
     /// The committed mission read at TechnoAI6FA697, before its class's
     /// subsequent Ready/Commence checkpoint. Clearing a target or destination
     /// does not change this selector; only the mission owner can commence a
