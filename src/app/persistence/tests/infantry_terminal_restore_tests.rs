@@ -281,7 +281,7 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
         let remaining_visits = match terminal {
             InfantryTerminal::AwaitingConsequences => unreachable!("not a save boundary"),
             InfantryTerminal::RetireNextVisit => {
-                assert!(saved.mark_raw_mutation_victim(victim));
+                assert!(saved.begin_raw_infantry_death(victim));
                 1
             }
             InfantryTerminal::Sequence(sequence) => {

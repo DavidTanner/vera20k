@@ -272,7 +272,7 @@ impl Simulation {
             .expect("same Unit")
             .retain_deploy_anim(anim);
         self.set_anim_owner_object(anim, Some(id), rules);
-        self.set_deploy_anim_remap(anim, remap_house);
+        self.set_anim_house_remap(anim, remap_house);
         Ok(anim)
     }
 }

@@ -459,15 +459,14 @@ impl Simulation {
         self.admit_death_anim(
             rules,
             type_id,
-            crate::sim::combat::destruction_effects::DeathAnimSpawn {
-                coord: crate::sim::anim_class::AnimWorldCoord {
+            crate::sim::combat::destruction_effects::DeathAnimSpawn::at(
+                crate::sim::anim_class::AnimWorldCoord {
                     x: location.x,
                     y: location.y,
                     z: location.z,
                 },
-                delay: 0,
-                draws: None,
-            },
+                0,
+            ),
         );
     }
 

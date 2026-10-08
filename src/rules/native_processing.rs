@@ -297,6 +297,11 @@ struct GeneralTypeLists {
     /// `0x0067BB10`: the same body, through `InfantryTypeClass::FindOrAllocate
     /// @ 0x00524CB0`.
     paradrop_infantry: [Vec<String>; 4],
+    /// `AnimToInfantry=` (`+0xCE4`, items `+0xCE8`, count `+0xCF4`, emptied
+    /// by the constructor at `0x00666781`), read at `0x006707DC` through the
+    /// same InfantryType list reader `0x0067BB10`: the types a `MakeInfantry=`
+    /// anim's end creates (`AnimClass::AI @ 0x004249F9`).
+    anim_to_infantry: Vec<String>,
 }
 
 /// The `[General]` keys of [`GeneralTypeLists::paradrop_infantry`], in its
@@ -552,6 +557,10 @@ impl ProcessedRulesLayers {
     /// Soviet, Yuri.
     pub(crate) fn paradrop_infantry(&self) -> &[Vec<String>; 4] {
         &self.general_type_lists.paradrop_infantry
+    }
+
+    pub(crate) fn anim_to_infantry(&self) -> &[String] {
+        &self.general_type_lists.anim_to_infantry
     }
 
     #[cfg(test)]
@@ -1318,6 +1327,10 @@ impl RulesPassProcessor {
             } else if let Some(side) = PARADROP_INFANTRY_KEYS.iter().position(|&k| k == key) {
                 if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
                     self.general_type_lists.paradrop_infantry[side] = resolved;
+                }
+            } else if key == "AnimToInfantry" {
+                if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
+                    self.general_type_lists.anim_to_infantry = resolved;
                 }
             } else if matches!(
                 key,

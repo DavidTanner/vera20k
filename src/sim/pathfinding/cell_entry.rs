@@ -824,7 +824,9 @@ pub(crate) fn is_water_surface_cell_passable(
     movement_zone == MovementZone::WaterBeach && cell.zone_type == zone_class::BEACH
 }
 
-fn speed_type_allows_cell(cell: &ResolvedTerrainCell, speed_type: SpeedType) -> bool {
+/// The cell's land row (`Ground[LandType]`, `0x0089EA40`) for `speed_type`:
+/// false where it gives no speed (`FCOMP 0.0`); an unbound row admits.
+pub(crate) fn speed_type_allows_cell(cell: &ResolvedTerrainCell, speed_type: SpeedType) -> bool {
     cell.speed_costs
         .cost_for_speed_type(speed_type)
         .is_none_or(|cost| cost > 0)

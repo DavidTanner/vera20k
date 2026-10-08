@@ -104,6 +104,58 @@ pub(crate) fn charge_chronosphere(sim: &mut Simulation, owner: InternedId) -> In
     charge_super(sim, owner, "ChronoSphereSpecial")
 }
 
+/// Constructs `kind` for the Americans on `cell`'s ground or bridge list at
+/// `level` (a deck object 416 leptons over the ground), holding the
+/// Chronosphere's warp latch when `latch` (on its Teleport), and reveals it.
+pub(crate) fn place(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    kind: &str,
+    (x, y): (u16, u16),
+    level: u8,
+    bridge: bool,
+    latch: bool,
+) -> u64 {
+    let deck = if bridge { 4 } else { 0 };
+    let id = sim
+        .construct_object_limbo_at_height(kind, "Americans", x, y, 0, level + deck, rules)
+        .unwrap_or_else(|| panic!("{kind} constructs at {x},{y}"));
+    let frame = sim.session.binary_frame;
+    let entity = sim.substrate.entities.get_mut(id).unwrap();
+    crate::sim::movement::ground_pose::put_location(
+        &mut entity.position,
+        DriveCoord {
+            x: i32::from(x) * 256 + 128,
+            y: i32::from(y) * 256 + 128,
+            z: i32::from(level + deck) * 104,
+        },
+    );
+    entity.position.z = level + deck;
+    entity.on_bridge = bridge;
+    if latch {
+        let house = entity.owner();
+        entity
+            .locomotor
+            .as_mut()
+            .and_then(|locomotor| locomotor.teleport_runtime_mut())
+            .expect("a latched Foot on its Teleport")
+            .arm_chrono(crate::sim::movement::teleport_movement::ChronoWarp::new(
+                DriveCoord { x: 0, y: 0, z: 0 },
+                house,
+                frame,
+            ));
+    }
+    assert!(matches!(
+        sim.reveal(id),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    assert_eq!(
+        sim.substrate.entities.get(id).unwrap().chrono_warp_latch(),
+        latch
+    );
+    id
+}
+
 /// A charged Super of type `name` for `owner`, replacing any it has: its
 /// recharge timer has run out.
 pub(crate) fn charge_super(sim: &mut Simulation, owner: InternedId, name: &str) -> InternedId {

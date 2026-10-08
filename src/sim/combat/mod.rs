@@ -758,6 +758,22 @@ fn infantry_prone_raw_damage(
     X87::ftol_i32_low_masked(X87::mul(X87::load_i32(damage), multiplier)).max(1)
 }
 
+/// InfantryClass::ReceiveDamage's next head (`0x00517FF5..0x00518010`): an
+/// `InfDeath=9` warhead (`+0x120`) does no damage to an infantryman above the
+/// ground or its deck (GetHeight, vt+0x1C8, `ObjectClass::GetHeight @
+/// 0x005F5F40`), such as a paratrooper in its fall or a Rocketeer in flight.
+/// Retail's two InfDeath 9 warheads are the Genetic Mutator's.
+fn infantry_spared_mutation(
+    target: &GameEntity,
+    warhead: &WarheadType,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> bool {
+    const MUTATE_INF_DEATH: u8 = 9;
+    target.category == EntityCategory::Infantry
+        && warhead.inf_death == MUTATE_INF_DEATH
+        && crate::sim::movement::air_movement::current_fly_height(target, terrain) > 0
+}
+
 /// What an `AttackTarget` is pointing at — an entity or a ground cell.
 ///
 /// Force-fire on empty terrain (Ctrl + click cell) sets the `Cell` variant.
@@ -1499,12 +1515,13 @@ pub struct ExplosionEffect {
     /// height gate reads it). `z` is the level byte of the same point.
     pub world_z: i32,
     /// A death producer's own constructor call (`Death_Explosion`, the
-    /// Aircraft death arm, `DestructionEffects`): `AnimClass(type, coord,
-    /// delay, 1, 0x600, 0, 0)` at an exact coordinate. `None` rows construct
-    /// with the warhead impact's `(0, 1, 0x2600, -15)` at the impact's cell,
-    /// sub-cell and exact `world_z`: the impact anim and the InfDeath anims. The TechnoClass
-    /// debris anims are death constructions at `center + 0x14 Z` (`0x007024AA`,
-    /// `0x00702566`) that already took their constructor draws.
+    /// Aircraft death arm, `DestructionEffects`, the infantry InfDeath arms):
+    /// `AnimClass(type, coord, delay, 1, 0x600, 0, 0)` at an exact
+    /// coordinate. `None` rows construct with the warhead impact's
+    /// `(0, 1, 0x2600, -15)` at the impact's cell, sub-cell and exact
+    /// `world_z`. The TechnoClass debris anims are death constructions at
+    /// `center + 0x14 Z` (`0x007024AA`, `0x00702566`) that already took their
+    /// constructor draws.
     pub death: Option<destruction_effects::DeathAnimSpawn>,
 }
 
@@ -1574,35 +1591,6 @@ fn building_center_smudge_request(
         foundation_w: foundation_w as u8,
         foundation_h: foundation_h as u8,
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn emit_infantry_death_anim(
-    general: &crate::rules::ruleset::GeneralRules,
-    inf_death: u8,
-    rx: u16,
-    ry: u16,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
-    z: u8,
-    world_z_leptons: i32,
-    interner: &mut StringInterner,
-    explosion_effects: &mut Vec<ExplosionEffect>,
-) {
-    let Some(anim_name) = general.infantry_death_anim(inf_death) else {
-        return;
-    };
-    let anim_name = interner.intern(anim_name);
-    explosion_effects.push(ExplosionEffect {
-        shp_name: anim_name,
-        rx,
-        ry,
-        sub_x,
-        sub_y,
-        z,
-        world_z: world_z_leptons,
-        death: None,
-    });
 }
 
 /// One captured TerrainClass receiver in a fixed Apply_area_damage transaction.
@@ -2139,9 +2127,8 @@ impl crate::sim::voxel_anim::DeathDebrisHost for DeathDebrisWorldHost<'_, '_> {
                 z,
                 world_z: self.anim_coord.z,
                 death: Some(destruction_effects::DeathAnimSpawn {
-                    coord: self.anim_coord,
-                    delay: 0,
                     draws: Some(draws),
+                    ..destruction_effects::DeathAnimSpawn::at(self.anim_coord, 0)
                 }),
             };
             if world_receiver::callbacks_enabled(self.world) {
@@ -2323,12 +2310,16 @@ fn resolve_receive_damage(
     // InfantryClass mutates the positive raw i32 before forwarding to the
     // shared Techno receiver. Its sign is therefore Techno's original-sign
     // snapshot used by the IC/FS gate below.
-    let receiver_input = infantry_prone_raw_damage(
-        target,
-        warhead,
-        event.damage,
-        receiver_flags.ignore_defenses,
-    );
+    let receiver_input = if infantry_spared_mutation(target, warhead, terrain) {
+        0
+    } else {
+        infantry_prone_raw_damage(
+            target,
+            warhead,
+            event.damage,
+            receiver_flags.ignore_defenses,
+        )
+    };
 
     let allied = |asker: InternedId, other: InternedId| {
         crate::map::houses::is_allied_with(
@@ -3362,54 +3353,6 @@ mod impact_height_tests {
             ]
         );
         assert!(!survivor_cells.contains(&(12, 21)));
-    }
-
-    #[test]
-    fn gsi_04_11_fatal_infantry_special_anim_emits_effect_at_the_body_height() {
-        let mut interner = test_interner();
-        let general = crate::rules::ruleset::GeneralRules::default();
-        let cases = [
-            (1, None),
-            (2, None),
-            (3, Some("S_BANG34")),
-            (4, Some("FLAMEGUY")),
-            (5, Some("ELECTRO")),
-            (6, Some("YURIDIE")),
-            (7, Some("NUKEDIE")),
-            (8, Some("VIRUSD")),
-            (9, Some("GENDEATH")),
-            (10, Some("BRUTDIE")),
-        ];
-        for (inf_death, expected_name) in cases {
-            let mut effects = Vec::new();
-            emit_infantry_death_anim(
-                &general,
-                inf_death,
-                7,
-                8,
-                SimFixed::from_num(64),
-                SimFixed::from_num(192),
-                2,
-                208,
-                &mut interner,
-                &mut effects,
-            );
-            let Some(expected_name) = expected_name else {
-                assert!(effects.is_empty(), "InfDeath {inf_death}");
-                continue;
-            };
-            assert_eq!(effects.len(), 1, "InfDeath {inf_death}");
-            assert_eq!(interner.resolve(effects[0].shp_name), expected_name);
-            assert_eq!(
-                (
-                    effects[0].rx,
-                    effects[0].ry,
-                    effects[0].z,
-                    effects[0].world_z
-                ),
-                (7, 8, 2, 208)
-            );
-        }
     }
 
     /// `TechnoClass::ReceiveDamage`'s metallic debris loop

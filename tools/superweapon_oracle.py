@@ -24,7 +24,8 @@ nuke_lighting_read) and src/sim/superweapon/force_shield_tests.rs
 radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
 (iron_curtain_launch, curtain_overrides) and src/sim/superweapon/paradrop_tests.rs
 (paradrop_launch, send_paradrop_planes, paradrop_missions, drop_payload,
-spawn_parachuted).
+spawn_parachuted) and src/sim/superweapon/genetic_converter_tests.rs
+(genetic_launch, infantry_mutate_death, make_infantry).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -230,6 +231,27 @@ fixture machinery):
 - spawn_parachuted: InfantryClass::SpawnParachuted 0x521760 with
   IsControlledByHuman 0x50B730 run natively: Paradrop's answer, the mission
   it queues and the Do_Action.
+- genetic_launch: Launch 0x6CC390 from its entry for a Type= 9 Super, case 9
+  (0x6CD7E7..0x6CDA62): the charge gate, the deck coordinate and the IonBlast
+  anim 5 leptons over it, the EVA line and its mute byte, PlayAtCoord
+  0x750E20 of GeneticMutatorActivateSound, radar event 13, then with
+  MutateExplosion= Apply_area_damage 0x489280's arguments, else the 3x3 walk
+  (each cell's +0x140 choosing its bridge or ground list, +0x30 read before
+  each call) giving each Infantry WhatAmI its type's Strength through
+  ReceiveDamage, and the player's tail.
+- infantry_mutate_death: InfantryClass::ReceiveDamage's InfDeath 9 arm
+  0x5188AE..0x518B2C as a slice: the Unmark/Mark of the infantryman's
+  occupancy, the building scan of the cell's ground list, the Ground table's
+  Foot cost against OnBridge, 0x481180's spot against the empty coordinate
+  0xA8F200, the Die2 fallback, and the InfantryMutate anim's arguments, house
+  (SetOwnerHouse 0x424CA0, natively), remap (ColorScheme +0x30C) and
+  MarkCellOccupancy.
+- make_infantry: AnimClass::AI's MakeInfantry block 0x424932..0x424B30 as a
+  slice: ClearCellOccupancy, the MakeInfantry-against-count bound, the
+  Civilian house fallback over HouseClass::Array, CreateObject's house,
+  Unlimbo's coordinate and facing and its refused retry (the stage stepped
+  back), the bridge lift (Mark up, OnBridge, Mark down), Hunt for a house
+  that is not human, and the UnInit.
 """
 from pathlib import Path
 import math
@@ -5918,6 +5940,600 @@ def spawn_parachuted():
                                                  game_mode=game_mode))
     return rows
 
+# ------------------------------------------------------------ genetic_launch
+
+TYPE_GENETIC_CONVERTER = 9
+GENETIC = BASE + 0x300000
+GM_CELLS = GENETIC
+GM_CELL_STRIDE = 0x200
+GM_CELL_VT = GENETIC + 0x4000
+GM_OBJECTS = GENETIC + 0x5000
+GM_OBJECT_STRIDE = 0x300
+GM_OBJECT_VT = GENETIC + 0xB000
+GM_HOUSE = GENETIC + 0xC000
+GM_ANIM_TYPE = GENETIC + 0xD000
+GM_CELL_ARG = GENETIC + 0xE000
+GM_TYPES = GENETIC + 0xF000
+GM_TYPE_STRIDE = 0x100
+GM_WARHEAD = GENETIC + 0x12000
+GM_EXPLOSION_WARHEAD = GENETIC + 0x13000
+STUB_GM_CELL_COORDS = STUBS + 0xE40
+STUB_GM_WHAT = STUBS + 0xE50
+STUB_GM_TYPE = STUBS + 0xE60
+STUB_GM_DAMAGE = STUBS + 0xE70
+
+GM_TARGET = (40, 40)
+GM_SOUND = 77
+WHAT_UNIT = 1
+WHAT_BUILDING = 6
+WHAT_INFANTRY = 0xF
+
+
+def gm_object(index):
+    return GM_OBJECTS + GM_OBJECT_STRIDE * index
+
+
+def gm_obj(offset=(0, 0), *, bridge=False, what=WHAT_INFANTRY, strength=125, unlink=False,
+           drop_next=False):
+    """An object in the target cell offset by `offset`, on its bridge (+0xE8)
+    or ground (+0xE4) list, whose WhatAmI (vt+0x2C) answers `what` and whose
+    type (vt+0x84) holds Strength `strength` (+0xA0). Inside its
+    ReceiveDamage, `unlink` clears its own +0x30 and `drop_next` takes the
+    object after it off the list (that one's +0x30 cleared, this one's
+    +0x30 moved past it)."""
+    return dict(offset=list(offset), bridge=bridge, what=what, strength=strength,
+                unlink=unlink, drop_next=drop_next)
+
+
+def genetic_launch_row(*, objects=(), target=GM_TARGET, bridges=(), levels=None, charged=True,
+                       player=False, mute=False, explosion=True):
+    """Launch 0x6CC390 from its entry for a type whose Type= (+0xB4) is 9:
+    case 9 (0x6CD7E7..0x6CDA62) and the shared tail 0x6CD51E.
+    MapClass::operator[] 0x5657A0 answers one fixture cell per coordinate:
+    its GetCoords (vt+0x48) answers the centre raised 104 leptons per level
+    (`levels`, by offset), its +0x140 carries the bridge bit for the offsets
+    in `bridges`, and its ground (+0xE4) and bridge (+0xE8) lists link the
+    row's objects, in row order, through +0x30. `explosion` is
+    MutateExplosion= (Rules+0x17C8). The anim constructor, PlayEVA,
+    PlayAtCoord 0x750E20, CreateRadarEvent, Apply_area_damage 0x489280, each
+    object's WhatAmI, GetTechnoType and ReceiveDamage (vt+0x16C) and the EVA
+    queue calls are recorded stubs."""
+    levels = levels or {}
+    emu = Emu()
+    emu.invoke(0x6CAE00)
+    emu.write32(0xB0C07C, BRIDGE_HEIGHT)
+    emu.write32(SUPER + 0x28, SW_TYPE)
+    emu.write32(SUPER + 0x2C, GM_HOUSE)
+    write8(emu, SUPER + 0x6F, charged)
+    emu.write32(SW_TYPE + 0xB4, TYPE_GENETIC_CONVERTER)
+    emu.write32(RULES + 0x298, GM_ANIM_TYPE)
+    emu.write32(RULES + 0x250, GM_SOUND)
+    write8(emu, RULES + 0x17C8, explosion)
+    emu.write32(RULES + 0xF98, GM_WARHEAD)
+    emu.write32(RULES + 0xF9C, GM_EXPLOSION_WARHEAD)
+    emu.write32(SELECTED_SUPER, 9)
+    emu.write32(MUTE_LAUNCHES, int(mute))
+    emu.uc.mem_write(GM_CELL_ARG, struct.pack('<hh', *target))
+    cells = {}
+
+    def cell_at(looked):
+        offset = (looked[0] - target[0], looked[1] - target[1])
+        if offset not in cells:
+            this = GM_CELLS + GM_CELL_STRIDE * len(cells)
+            emu.write32(this, GM_CELL_VT)
+            emu.write32(this + 0x140, 0x100 if offset in bridges else 0)
+            cells[offset] = this
+        return cells[offset]
+
+    heads = {}
+    for index, spec in enumerate(objects):
+        this = gm_object(index)
+        emu.write32(this, GM_OBJECT_VT)
+        kind = GM_TYPES + GM_TYPE_STRIDE * index
+        emu.write32(kind + 0xA0, spec['strength'])
+        key = (tuple(spec['offset']), spec['bridge'])
+        if key in heads:
+            emu.write32(heads[key][-1] + 0x30, this)
+            heads[key].append(this)
+        else:
+            heads[key] = [this]
+    for (offset, bridge), listed in heads.items():
+        cell = cell_at((target[0] + offset[0], target[1] + offset[1]))
+        emu.write32(cell + (0xE8 if bridge else 0xE4), listed[0])
+
+    def index_of(e):
+        return (e.uc.reg_read(UC_X86_REG_ECX) - GM_OBJECTS) // GM_OBJECT_STRIDE
+
+    def lookup(e):
+        looked = read_cell(e, e.arg(0))
+        e.events.append(['cell', looked])
+        return cell_at(looked)
+
+    def coords(e):
+        out = e.arg(0)
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        offset = next(key for key, value in cells.items() if value == this)
+        x, y = target[0] + offset[0], target[1] + offset[1]
+        write_coord(e, out, [x * 256 + 128, y * 256 + 128,
+                             levels.get(offset, 0) * LEVEL_LEPTONS])
+        return out
+
+    def what(e):
+        index = index_of(e)
+        e.events.append(['what', index])
+        return objects[index]['what']
+
+    def techno_type(e):
+        index = index_of(e)
+        e.events.append(['type', index])
+        return GM_TYPES + GM_TYPE_STRIDE * index
+
+    def damage(e):
+        index = index_of(e)
+        this = gm_object(index)
+        e.events.append(['damage', index, e.read_i32(e.arg(0)), i32(e.arg(1)),
+                         e.arg(2) == GM_WARHEAD, i32(e.arg(3)), e.arg(4) & 0xFF,
+                         e.arg(5) & 0xFF, e.arg(6) == GM_HOUSE])
+        if objects[index]['unlink']:
+            e.write32(this + 0x30, 0)
+        if objects[index]['drop_next']:
+            after = e.read32(this + 0x30)
+            if after:
+                e.write32(this + 0x30, e.read32(after + 0x30))
+                e.write32(after + 0x30, 0)
+        return 0
+
+    def anim(e):
+        e.events.append(['anim', e.arg(0) == GM_ANIM_TYPE, read_coord(e, e.arg(1)),
+                         [i32(e.arg(n)) for n in range(2, 7)]])
+        return e.uc.reg_read(UC_X86_REG_ECX)
+
+    def area_damage(e):
+        e.events.append(['area_damage', read_coord(e, e.uc.reg_read(UC_X86_REG_ECX)),
+                         i32(e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0)),
+                         e.arg(1) == GM_EXPLOSION_WARHEAD, e.arg(2) & 0xFF,
+                         e.arg(3) == GM_HOUSE])
+        return 0
+
+    def vox_find(e):
+        e.events.append(['vox_find', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return 33
+
+    emu.write32(GM_CELL_VT + 0x48, STUB_GM_CELL_COORDS)
+    for slot, stub in ((0x2C, STUB_GM_WHAT), (0x84, STUB_GM_TYPE), (0x16C, STUB_GM_DAMAGE)):
+        emu.write32(GM_OBJECT_VT + slot, stub)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(STUB_GM_CELL_COORDS, coords, 4)
+    emu.hook(STUB_GM_WHAT, what, 0)
+    emu.hook(STUB_GM_TYPE, techno_type, 0)
+    emu.hook(STUB_GM_DAMAGE, damage, 0x1C)
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(0x752700, lambda e: e.events.append(
+        ['eva', read_name(e, e.uc.reg_read(UC_X86_REG_ECX)), i32(e.uc.reg_read(UC_X86_REG_EDX)),
+         i32(e.arg(0))]), 4)
+    emu.hook(0x750E20, lambda e: e.events.append(
+        ['play_at', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         read_coord(e, e.uc.reg_read(UC_X86_REG_EDX)), i32(e.arg(0))]), 4)
+    emu.hook(0x65FA70, lambda e: e.events.append(
+        ['radar_event', i32(e.uc.reg_read(UC_X86_REG_ECX)),
+         list(struct.unpack('<hh', struct.pack('<I', e.arg(0))))]), 4)
+    emu.hook(0x489280, area_damage, 0x10)
+    emu.hook(0x753250, vox_find, 0)
+    emu.hook(0x752A40, lambda e: e.events.append(
+        ['vox_remove', e.uc.reg_read(UC_X86_REG_ECX)]), 0)
+    emu.invoke(0x6CC390, ecx=SUPER, args=[GM_CELL_ARG, int(player)])
+    return dict(target=list(target), objects=list(objects),
+                bridges=[list(offset) for offset in bridges],
+                levels=[[list(offset), level] for offset, level in levels.items()],
+                charged=charged, player=player, mute=mute, explosion=explosion,
+                events=emu.events, selected_super=emu.read_i32(SELECTED_SUPER))
+
+
+def genetic_launch():
+    rows = []
+    # MutateExplosion=yes: one area damage at the cell's (deck) coordinate.
+    for player in (False, True):
+        rows.append(genetic_launch_row(player=player))
+    rows.append(genetic_launch_row(charged=False, player=True))
+    rows.append(genetic_launch_row(mute=True))
+    rows.append(genetic_launch_row(bridges=((0, 0),)))
+    for level in (1, 4):
+        rows.append(genetic_launch_row(levels={(0, 0): level},
+                                       bridges=((0, 0),) if level == 4 else ()))
+    # MutateExplosion=no: the 3x3 walk, each infantryman taking its Strength.
+    spread = tuple(gm_obj(offset, strength=100 + n) for n, offset in
+                   enumerate(reversed(IC_OFFSETS)))
+    rows.append(genetic_launch_row(objects=spread, explosion=False))
+    rows.append(genetic_launch_row(objects=spread, explosion=False, player=True))
+    rows.append(genetic_launch_row(objects=spread, explosion=False, charged=False))
+    rows.append(genetic_launch_row(objects=spread, explosion=False, mute=True))
+    # Only an Infantry WhatAmI is damaged; its type is read for each.
+    rows.append(genetic_launch_row(explosion=False, objects=(
+        gm_obj(what=WHAT_UNIT), gm_obj(strength=0), gm_obj(what=WHAT_BUILDING),
+        gm_obj(strength=-5), gm_obj(strength=0x7FFFFFFF))))
+    # The next object is read before the call: an object leaving its list
+    # inside the call does not end the walk, but one taken off the list
+    # after it is still visited, and the list ends there.
+    rows.append(genetic_launch_row(explosion=False, objects=(
+        gm_obj(), gm_obj(unlink=True), gm_obj(), gm_obj((1, 0)))))
+    rows.append(genetic_launch_row(explosion=False, objects=(
+        gm_obj(), gm_obj(drop_next=True), gm_obj(), gm_obj(), gm_obj((1, 0)))))
+    # A bridge cell walks its deck list only.
+    on_both = (gm_obj(), gm_obj(bridge=True), gm_obj((1, 0)), gm_obj((1, 0), bridge=True),
+               gm_obj((0, 1), bridge=True))
+    rows.append(genetic_launch_row(explosion=False, objects=on_both))
+    rows.append(genetic_launch_row(explosion=False, objects=on_both, bridges=((0, 0),)))
+    rows.append(genetic_launch_row(explosion=False, objects=on_both,
+                                   bridges=((1, 0), (0, 1))))
+    # The block wraps each word: a target at the map's edge.
+    rows.append(genetic_launch_row(explosion=False, objects=(gm_obj((-1, -1)), gm_obj((1, 1))),
+                                   target=(0, 0)))
+    return rows
+
+
+# ----------------------------------------------------- infantry_mutate_death
+
+GM_DEATH = GENETIC + 0x20000
+GM_INFANTRY = GM_DEATH
+GM_INFANTRY_VT = GM_DEATH + 0x1000
+GM_DEATH_CELL = GM_DEATH + 0x2000
+GM_DEATH_CELL_VT = GM_DEATH + 0x3000
+GM_LISTED = GM_DEATH + 0x4000
+GM_LISTED_STRIDE = 0x100
+GM_LISTED_VT = GM_DEATH + 0x5000
+GM_SOURCE = GM_DEATH + 0x6000
+GM_SOURCE_HOUSE = GM_DEATH + 0x7000
+GM_ARG_HOUSE = GM_DEATH + 0x8000
+GM_MUTATE_ANIM_TYPE = GM_DEATH + 0x9000
+GM_ANIM_VT = GM_DEATH + 0xA000
+GM_SCHEMES = GM_DEATH + 0xB000
+GM_DEATH_FRAME = GM_DEATH + 0xC000
+STUB_GM_UNMARK = STUBS + 0xE80
+STUB_GM_MARK = STUBS + 0xE90
+STUB_GM_INF_COORDS = STUBS + 0xEA0
+STUB_GM_LISTED_WHAT = STUBS + 0xEB0
+STUB_GM_ANIM_MARK = STUBS + 0xEC0
+
+GROUND_TABLE = 0x89EA40
+COLOR_SCHEMES = 0xB054D4
+GM_LOCATION = (40 * 256 + 100, 41 * 256 + 60, 208)
+GM_LAND = 3
+
+
+def infantry_mutate_death_row(*, location=GM_LOCATION, listed=(), foot_cost=1.0,
+                              on_bridge=False, spot=True, source=True, house=True,
+                              source_scheme=4, house_scheme=7):
+    """InfantryClass::ReceiveDamage's InfDeath 9 arm 0x5188AE..0x518B2C run
+    as a slice (ESI the infantryman, the frame's source argument at
+    [ESP+0xE0] and house argument at [ESP+0xEC]) to the Crashable test
+    0x5185F1, or to the Die2 call 0x5185DD. MapClass::operator[] 0x5657A0
+    and GetCellAt 0x565730 answer one fixture cell, whose ground list
+    (+0xE4) holds `listed` (WhatAmI answers), whose LandType (+0xEC) is 3 and
+    whose Foot cost in the Ground table 0x89EA40 is `foot_cost`; 0x481180
+    answers a spot or the empty coordinate 0xA8F200. Mark/Unmark
+    (vt+0xF0/vt+0xF4), GetCoords, the anim constructor and the anim's
+    MarkCellOccupancy (vt+0xF0) are recorded stubs; SetOwnerHouse 0x424CA0
+    runs natively over the source's house (+0x21C) or the house argument,
+    and the remap comes from ColorScheme::Array 0xB054D4."""
+    emu = Emu()
+    infantry = GM_INFANTRY
+    emu.write32(infantry, GM_INFANTRY_VT)
+    write_coord(emu, infantry + 0x9C, location)
+    write8(emu, infantry + 0x8C, on_bridge)
+    for slot, stub in ((0xF4, STUB_GM_UNMARK), (0xF0, STUB_GM_MARK),
+                       (0x48, STUB_GM_INF_COORDS)):
+        emu.write32(GM_INFANTRY_VT + slot, stub)
+    emu.write32(GM_DEATH_CELL, GM_DEATH_CELL_VT)
+    emu.write32(GM_DEATH_CELL + 0xEC, GM_LAND)
+    emu.uc.mem_write(GROUND_TABLE + GM_LAND * 0x24, struct.pack('<f', foot_cost))
+    for index, what in enumerate(listed):
+        this = GM_LISTED + GM_LISTED_STRIDE * index
+        emu.write32(this, GM_LISTED_VT)
+        emu.write32(this + 0x80, what)
+        emu.write32(this + 0x30, this + GM_LISTED_STRIDE if index + 1 < len(listed) else 0)
+    emu.write32(GM_DEATH_CELL + 0xE4, GM_LISTED if listed else 0)
+    emu.write32(GM_LISTED_VT + 0x2C, STUB_GM_LISTED_WHAT)
+    emu.write32(RULES + 0xB4, GM_MUTATE_ANIM_TYPE)
+    emu.write32(GM_SOURCE + 0x21C, GM_SOURCE_HOUSE)
+    emu.write32(GM_SOURCE_HOUSE + 0x16054, source_scheme)
+    emu.write32(GM_ARG_HOUSE + 0x16054, house_scheme)
+    emu.write32(COLOR_SCHEMES, GM_SCHEMES)
+    for index in range(10):
+        scheme = GM_SCHEMES + 0x100 + 0x400 * index
+        emu.write32(GM_SCHEMES + 4 * index, scheme)
+        emu.write32(scheme + 0x30C, 0xC0DE00 + index)
+    anims = []
+
+    def unmark(e):
+        e.events.append(['unmark', read_coord(e, e.arg(0))])
+
+    def mark(e):
+        e.events.append(['mark', read_coord(e, e.arg(0))])
+
+    def lookup(e):
+        e.events.append(['cell', read_cell(e, e.arg(0))])
+        return GM_DEATH_CELL
+
+    def cell_at(e):
+        e.events.append(['cell_at', read_coord(e, e.arg(0))])
+        return GM_DEATH_CELL
+
+    def listed_what(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        e.events.append(['what', (this - GM_LISTED) // GM_LISTED_STRIDE])
+        return e.read32(this + 0x80)
+
+    def subposition(e):
+        if e.uc.reg_read(UC_X86_REG_ECX) != GM_DEATH_CELL:
+            raise OracleError('0x481180 on another cell')
+        e.events.append(['subposition', read_coord(e, e.arg(1)),
+                         [e.arg(n) & 0xFF for n in range(2, 5)]])
+        x, y, _ = read_coord(e, e.arg(1))
+        write_coord(e, e.arg(0), [x + 21, y - 13, 7] if spot else [0, 0, 0])
+        return e.arg(0)
+
+    def anim(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        e.events.append(['anim', e.arg(0) == GM_MUTATE_ANIM_TYPE, read_coord(e, e.arg(1)),
+                         [i32(e.arg(n)) for n in range(2, 7)]])
+        e.write32(this, GM_ANIM_VT)
+        write_coord(e, this + 0x9C, read_coord(e, e.arg(1)))
+        anims.append(this)
+        return this
+
+    def anim_mark(e):
+        e.events.append(['anim_mark', e.uc.reg_read(UC_X86_REG_ECX) in anims,
+                         read_coord(e, e.arg(0))])
+
+    emu.write32(GM_ANIM_VT + 0xF0, STUB_GM_ANIM_MARK)
+    emu.hook(STUB_GM_UNMARK, unmark, 4)
+    emu.hook(STUB_GM_MARK, mark, 4)
+    emu.hook(STUB_GM_INF_COORDS, coords_stub(lambda: read_coord(emu, infantry + 0x9C)), 4)
+    emu.hook(0x5657A0, lookup, 4)
+    emu.hook(0x565730, cell_at, 4)
+    emu.hook(STUB_GM_LISTED_WHAT, listed_what, 0)
+    emu.hook(0x481180, subposition, 0x14)
+    emu.hook(0x421EA0, anim, 0x1C)
+    emu.hook(STUB_GM_ANIM_MARK, anim_mark, 4)
+    uc = emu.uc
+    frame = STACK_BASE + STACK_SIZE - 0x2000
+    emu.write32(frame + 0xE0, GM_SOURCE if source else 0)
+    emu.write32(frame + 0xEC, GM_ARG_HOUSE if house else 0)
+    uc.reg_write(UC_X86_REG_ESP, frame)
+    uc.reg_write(UC_X86_REG_ESI, infantry)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    end = run_checked(uc, 0x5188AE, (0x5185F1, 0x5185DD), count=100_000)
+    action = None
+    if end == 0x5185DD:
+        sp = uc.reg_read(UC_X86_REG_ESP)
+        action = [emu.read_i32(sp), emu.read_i32(sp + 4), emu.read_i32(sp + 8)]
+    owner = remap = None
+    if anims:
+        owner = {0: None, GM_SOURCE_HOUSE: 'source', GM_ARG_HOUSE: 'house'}.get(
+            emu.read32(anims[0] + 0x180), hex(emu.read32(anims[0] + 0x180)))
+        remap = emu.read32(anims[0] + 0xD4)
+    return dict(location=list(location), listed=list(listed), foot_cost=foot_cost,
+                on_bridge=on_bridge, spot=spot, source=source, house=house,
+                source_scheme=source_scheme, house_scheme=house_scheme,
+                mutated=end == 0x5185F1, action=action, anim_owner=owner,
+                anim_remap=remap, events=emu.events)
+
+
+def infantry_mutate_death():
+    rows = [infantry_mutate_death_row()]
+    # The anim's house: the source's, else the house argument, else none.
+    rows += [infantry_mutate_death_row(source=False),
+             infantry_mutate_death_row(source=False, house=False),
+             infantry_mutate_death_row(house=False)]
+    # A Building on the cell's ground list stops it after the spot test;
+    # other objects do not.
+    for listed in ((WHAT_INFANTRY,), (WHAT_UNIT, WHAT_INFANTRY), (WHAT_BUILDING,),
+                   (WHAT_INFANTRY, WHAT_BUILDING, WHAT_UNIT)):
+        rows.append(infantry_mutate_death_row(listed=listed))
+    # Ground the Foot cannot enter stops it, unless the infantryman is on a
+    # bridge; no spot stops it.
+    for foot_cost in (0.0, -0.0, 0.5):
+        for on_bridge in (False, True):
+            rows.append(infantry_mutate_death_row(foot_cost=foot_cost, on_bridge=on_bridge))
+    rows.append(infantry_mutate_death_row(spot=False))
+    rows.append(infantry_mutate_death_row(spot=False, foot_cost=0.0))
+    rows.append(infantry_mutate_death_row(spot=False, listed=(WHAT_BUILDING,)))
+    # The cell from the coordinate's leptons, at a negative coordinate.
+    rows.append(infantry_mutate_death_row(location=(-100, 300, 0)))
+    rows.append(infantry_mutate_death_row(location=(40 * 256 + 255, 40 * 256, 624)))
+    return rows
+
+
+# -------------------------------------------------------------- make_infantry
+
+GM_MAKE = GENETIC + 0x40000
+GM_MAKE_ANIM = GM_MAKE
+GM_MAKE_ANIM_VT = GM_MAKE + 0x1000
+GM_MAKE_ANIM_TYPE = GM_MAKE + 0x2000
+GM_MAKE_HOUSES = GM_MAKE + 0x3000
+GM_MAKE_HOUSE_STRIDE = 0x100
+GM_MAKE_HOUSE_TYPES = GM_MAKE + 0x4000
+GM_MAKE_ITEMS = GM_MAKE + 0x5000
+GM_MAKE_INF_TYPES = GM_MAKE + 0x20000
+GM_MAKE_INF_TYPE_STRIDE = 0x1000
+GM_MAKE_INF_TYPE_VT = GM_MAKE + 0xE000
+GM_MAKE_INF_ITEMS = GM_MAKE + 0xF000
+GM_MAKE_INFANTRY = GM_MAKE + 0x10000
+GM_MAKE_INFANTRY_STRIDE = 0x1000
+GM_MAKE_INFANTRY_VT = GM_MAKE + 0x18000
+GM_MAKE_CELL = GM_MAKE + 0x19000
+GM_MAKE_CELL_VT = GM_MAKE + 0x1A000
+GM_MAKE_HOUSE_ITEMS = GM_MAKE + 0x1B000
+STUB_GM_ANIM_CLEAR = STUBS + 0xED0
+STUB_GM_ANIM_COORDS = STUBS + 0xEE0
+STUB_GM_CREATE = STUBS + 0xEF0
+STUB_GM_UNLIMBO = STUBS + 0xF00
+STUB_GM_MAKE_CELL_COORDS = STUBS + 0xF10
+STUB_GM_INF_MARK = STUBS + 0xF20
+STUB_GM_QUEUE = STUBS + 0xF30
+STUB_GM_ANIM_UNINIT = STUBS + 0xF40
+
+HOUSE_COUNT = 0xA80238
+INFANTRY_TYPE_ITEMS = 0xA8E34C
+GM_MAKE_LOCATION = (40 * 256 + 100, 41 * 256 + 60, 208)
+GM_CIVILIAN_SIDE = 3
+
+
+def make_infantry_row(*, make_infantry=0, count=1, owner=0, houses=((0, False, False),
+                      (GM_CIVILIAN_SIDE, False, False)), civilian_side=GM_CIVILIAN_SIDE,
+                      unlimbo=True, bridge=False, location=GM_MAKE_LOCATION, stage=11):
+    """AnimClass::AI's MakeInfantry block 0x424932..0x424B30 run as a slice
+    on a fixture frame (ESI the anim, EAX its type, EBP -1, EDI 0) to its
+    ends. The anim's type holds MakeInfantry (+0x34C); Rules AnimToInfantry
+    (+0xCE8, count +0xCF4) lists `count` InfantryTypes whose ArrayIndex
+    (+0xDF8) points into InfantryTypeClass::Array 0xA8E34C. HouseClass::Array
+    0xA8022C holds `houses`, each (its type's side +0xBC, Defeated +0x1F5,
+    IsHuman +0x1EC); `owner` indexes the anim's house (+0x180), None for
+    none. SideClass::Find_Index 0x6A46D0 answers `civilian_side` for
+    "Civilian". The anim's ClearCellOccupancy (vt+0xF4), GetCoords (vt+0x48)
+    and UnInit (vt+0xF8), the type's CreateObject (vt+0x8C), the infantry's
+    Unlimbo (vt+0xD8, answering `unlimbo`), Mark (vt+0x124) and Queue_Mission
+    (vt+0x1E8) and the cell's GetCoords are recorded stubs; MapClass::
+    operator[] 0x5657A0 answers a cell whose +0x140 carries the bridge bit
+    when `bridge`."""
+    emu = Emu()
+    anim = GM_MAKE_ANIM
+    emu.write32(anim, GM_MAKE_ANIM_VT)
+    emu.write32(anim + 0xC8, GM_MAKE_ANIM_TYPE)
+    emu.write32(GM_MAKE_ANIM_TYPE + 0x34C, make_infantry)
+    write_coord(emu, anim + 0x9C, location)
+    emu.write32(anim + 0xAC, stage)
+    for index, (side, defeated, human) in enumerate(houses):
+        this = GM_MAKE_HOUSES + GM_MAKE_HOUSE_STRIDE * index
+        kind = GM_MAKE_HOUSE_TYPES + 0x100 * index
+        emu.write32(this + 0x34, kind)
+        emu.write32(kind + 0xBC, side)
+        write8(emu, this + 0x1F5, defeated)
+        write8(emu, this + 0x1EC, human)
+        emu.write32(GM_MAKE_HOUSE_ITEMS + 4 * index, this)
+    emu.write32(HOUSE_ITEMS, GM_MAKE_HOUSE_ITEMS)
+    emu.write32(HOUSE_COUNT, len(houses))
+    emu.write32(anim + 0x180, 0 if owner is None else GM_MAKE_HOUSES + GM_MAKE_HOUSE_STRIDE * owner)
+    # AnimToInfantry's items, then one past them (read when MakeInfantry
+    # equals the count).
+    emu.write32(RULES + 0xCE8, GM_MAKE_ITEMS + 0x40)
+    emu.write32(RULES + 0xCF4, count)
+    for slot in range(-16, 17):
+        kind = GM_MAKE_INF_TYPES + GM_MAKE_INF_TYPE_STRIDE * (slot + 16)
+        emu.write32(GM_MAKE_ITEMS + 0x40 + 4 * slot, kind)
+        emu.write32(kind + 0xDF8, slot + 16)
+        emu.write32(GM_MAKE_INF_ITEMS + 4 * (slot + 16), kind)
+        emu.write32(kind, GM_MAKE_INF_TYPE_VT)
+    emu.write32(INFANTRY_TYPE_ITEMS, GM_MAKE_INF_ITEMS)
+    emu.write32(GM_MAKE_CELL, GM_MAKE_CELL_VT)
+    emu.write32(GM_MAKE_CELL + 0x140, 0x100 if bridge else 0)
+    for slot, stub in ((0xF4, STUB_GM_ANIM_CLEAR), (0x48, STUB_GM_ANIM_COORDS),
+                       (0xF8, STUB_GM_ANIM_UNINIT)):
+        emu.write32(GM_MAKE_ANIM_VT + slot, stub)
+    emu.write32(GM_MAKE_INF_TYPE_VT + 0x8C, STUB_GM_CREATE)
+    for slot, stub in ((0xD8, STUB_GM_UNLIMBO), (0x124, STUB_GM_INF_MARK),
+                       (0x1E8, STUB_GM_QUEUE)):
+        emu.write32(GM_MAKE_INFANTRY_VT + slot, stub)
+    emu.write32(GM_MAKE_CELL_VT + 0x48, STUB_GM_MAKE_CELL_COORDS)
+    created = []
+
+    def house_name(address):
+        if address == 0:
+            return None
+        return (address - GM_MAKE_HOUSES) // GM_MAKE_HOUSE_STRIDE
+
+    def find_side(e):
+        e.events.append(['find_side', read_name(e, e.uc.reg_read(UC_X86_REG_ECX))])
+        return civilian_side
+
+    def create(e):
+        kind = e.uc.reg_read(UC_X86_REG_ECX)
+        this = GM_MAKE_INFANTRY + GM_MAKE_INFANTRY_STRIDE * len(created)
+        e.write32(this, GM_MAKE_INFANTRY_VT)
+        created.append(this)
+        e.events.append(['create', e.read_i32(kind + 0xDF8) - 16, house_name(e.arg(0))])
+        return this
+
+    def unlimbo_stub(e):
+        e.events.append(['unlimbo', read_coord(e, e.arg(0)), e.arg(1) & 0xFFFF])
+        return int(unlimbo)
+
+    def mark(e):
+        this = e.uc.reg_read(UC_X86_REG_ECX)
+        e.events.append(['mark', e.arg(0), read8(e, this + 0x8C)])
+
+    def queue(e):
+        e.events.append(['queue', i32(e.arg(0)), e.arg(1) & 0xFF])
+
+    def cell_coords(e):
+        out = e.arg(0)
+        write_coord(e, out, [40 * 256 + 128, 41 * 256 + 128, 208])
+        return out
+
+    def lookup(e):
+        e.events.append(['cell', read_cell(e, e.arg(0))])
+        return GM_MAKE_CELL
+
+    emu.hook(STUB_GM_ANIM_CLEAR, lambda e: e.events.append(
+        ['clear', read_coord(e, e.arg(0))]), 4)
+    emu.hook(STUB_GM_ANIM_COORDS, coords_stub(lambda: read_coord(emu, anim + 0x9C)), 4)
+    emu.hook(STUB_GM_ANIM_UNINIT, lambda e: e.events.append(
+        ['uninit', read8(e, anim + 0x179)]), 0)
+    emu.hook(0x6A46D0, find_side, 0)
+    emu.hook(STUB_GM_CREATE, create, 4)
+    emu.hook(STUB_GM_UNLIMBO, unlimbo_stub, 8)
+    emu.hook(STUB_GM_INF_MARK, mark, 4)
+    emu.hook(STUB_GM_QUEUE, queue, 8)
+    emu.hook(STUB_GM_MAKE_CELL_COORDS, cell_coords, 4)
+    emu.hook(0x5657A0, lookup, 4)
+    uc = emu.uc
+    frame = STACK_BASE + STACK_SIZE - 0x2000
+    uc.reg_write(UC_X86_REG_ESP, frame)
+    uc.reg_write(UC_X86_REG_ESI, anim)
+    uc.reg_write(UC_X86_REG_EAX, GM_MAKE_ANIM_TYPE)
+    uc.reg_write(UC_X86_REG_EBP, 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EDI, 0)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    end = run_checked(uc, 0x424932, (0x424B1B, 0x424B29, 0x424B31), count=100_000)
+    return dict(make_infantry=make_infantry, count=count, owner=owner,
+                houses=[list(house) for house in houses], civilian_side=civilian_side,
+                unlimbo=unlimbo, bridge=bridge, location=list(location), stage=stage,
+                end={0x424B1B: 'uninit', 0x424B29: 'retry', 0x424B31: 'plain'}[end],
+                anim_owner=house_name(emu.read32(anim + 0x180)),
+                stage_after=emu.read_i32(anim + 0xAC), events=emu.events)
+
+
+def make_infantry():
+    rows = [make_infantry_row(make_infantry=-1), make_infantry_row()]
+    # MakeInfantry against the list's count: past it, at it (read past the
+    # vector) and negative.
+    for make, count in ((1, 1), (2, 1), (0, 0), (-2, 1), (3, 4)):
+        rows.append(make_infantry_row(make_infantry=make, count=count))
+    # The house: none or defeated falls back to the first Civilian-side
+    # house; with none such, no house stops it or the defeated one keeps it.
+    rows += [make_infantry_row(owner=None),
+             make_infantry_row(owner=None, houses=((0, False, False), (1, False, False))),
+             make_infantry_row(owner=0, houses=((0, True, False), (GM_CIVILIAN_SIDE, False, False))),
+             make_infantry_row(owner=0, houses=((0, True, False), (1, False, False))),
+             make_infantry_row(owner=1, houses=((0, False, False), (GM_CIVILIAN_SIDE, True, False),
+                                                (GM_CIVILIAN_SIDE, False, False))),
+             make_infantry_row(owner=None, houses=()),
+             make_infantry_row(owner=None, civilian_side=-1)]
+    # Hunt unless the house is human.
+    rows.append(make_infantry_row(houses=((0, False, True),)))
+    rows.append(make_infantry_row(owner=None, houses=((GM_CIVILIAN_SIDE, False, True),)))
+    # Unlimbo refused: the stage steps back and the anim stays.
+    rows.append(make_infantry_row(unlimbo=False))
+    rows.append(make_infantry_row(unlimbo=False, stage=0))
+    # A bridge cell lifts the infantryman onto the deck when the anim is
+    # above the cell's ground coordinate.
+    for z in (208, 209, 624):
+        rows.append(make_infantry_row(bridge=True, location=(40 * 256 + 100, 41 * 256 + 60, z)))
+    rows.append(make_infantry_row(bridge=False, location=(40 * 256 + 100, 41 * 256 + 60, 624)))
+    rows.append(make_infantry_row(location=(-100, 300, 0)))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -5969,6 +6585,9 @@ def generate():
             'paradrop_missions': paradrop_missions(),
             'drop_payload': drop_payload(),
             'spawn_parachuted': spawn_parachuted(),
+            'genetic_launch': genetic_launch(),
+            'infantry_mutate_death': infantry_mutate_death(),
+            'make_infantry': make_infantry(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -6032,7 +6651,15 @@ if __name__ == '__main__':
                'both paradrop missions\' branches, passes, latch, destinations and '
                'drops, Drop_Payload\'s landing point, Can_Enter_Cell, spot, sound, '
                'neighbour cell, team, passes, rearm timer and refusal, and '
-               'SpawnParachuted\'s missions and action'),
+               'SpawnParachuted\'s missions and action; the Genetic Mutator: Launch '
+               'case 9\'s gate, anim, EVA, sound, radar event, area damage and its '
+               '3x3 walk\'s lists, WhatAmI test, Strength damage and next-before-call '
+               'cursor, and the player\'s tail; ReceiveDamage\'s InfDeath 9 arm: '
+               'the occupancy unmark and mark, the building, Foot-cost, bridge and '
+               'spot tests, the Die2 fallback and the InfantryMutate anim with its '
+               'house and remap; and AnimClass::AI\'s MakeInfantry block: the clear, '
+               'the AnimToInfantry bound, the Civilian-house fallback, CreateObject, '
+               'Unlimbo and its retry, the bridge lift and Hunt'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -6263,7 +6890,31 @@ if __name__ == '__main__':
                        'timer\'s middle word, a stale local, is not recorded',
                        'spawn_parachuted: ObjectClass::Paradrop 0x5F5940, Queue_Mission '
                        'vt+0x1E8 and Do_Action vt+0x558 are recorded stubs; the owner\'s '
-                       '+0x1EC/+0x1ED and SessionClass::GameMode 0xA8B238 are the row\'s'],
+                       '+0x1EC/+0x1ED and SessionClass::GameMode 0xA8B238 are the row\'s',
+                       'genetic_launch: MapClass::operator[] 0x5657A0 answers one fixture '
+                       'cell per coordinate (GetCoords the centre raised 104 leptons per '
+                       'level, +0x140 the bridge bit, the row\'s objects on +0xE4/+0xE8); '
+                       'each object\'s WhatAmI vt+0x2C answers the row, GetTechnoType vt+0x84 '
+                       'a fixture type holding its Strength; the anim constructor, PlayEVA, '
+                       'PlayAtCoord 0x750E20, CreateRadarEvent, Apply_area_damage 0x489280, '
+                       'ReceiveDamage vt+0x16C and the EVA queue calls are recorded stubs',
+                       'infantry_mutate_death: run as a slice on a fixture frame whose '
+                       '[ESP+0xE0]/[ESP+0xEC] hold the source and house arguments; '
+                       'MapClass::operator[] and GetCellAt 0x565730 answer one fixture cell '
+                       '(LandType 3, its Ground-table Foot cost written at 0x89EA40); '
+                       '0x481180 answers its request moved (+21, -13) at Z 7, or the empty '
+                       'coordinate; Mark/Unmark, GetCoords, the anim constructor and the '
+                       'anim\'s MarkCellOccupancy are recorded stubs; ColorScheme::Array '
+                       '0xB054D4 holds fixture schemes whose +0x30C is 0xC0DE00 plus their '
+                       'index. With neither a source nor a house the arm writes no remap; '
+                       'the 0 recorded then is the stubbed constructor\'s',
+                       'make_infantry: run as a slice (EAX the anim type, EBP -1, EDI 0); '
+                       'AnimToInfantry\'s items sit inside a fixture vector readable 16 '
+                       'entries either side, each its own InfantryType whose ArrayIndex '
+                       '(+0xDF8) is 16 past its slot; SideClass::Find_Index 0x6A46D0 answers '
+                       'the row\'s Civilian side; the anim\'s, type\'s, infantry\'s and '
+                       'cell\'s virtuals are recorded stubs; the cell\'s GetCoords answers '
+                       '(40, 41)\'s centre at Z 208'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -6320,4 +6971,7 @@ if __name__ == '__main__':
                       'AircraftClass::Mission_ParadropApproach': 0x4158E0,
                       'AircraftClass::Mission_ParadropOverfly': 0x415960,
                       'AircraftClass::Drop_Payload': 0x415C60,
-                      'InfantryClass::SpawnParachuted': 0x521760}))
+                      'InfantryClass::SpawnParachuted': 0x521760,
+                      'SuperClass::Launch_case9': 0x6CC390,
+                      'InfantryClass::ReceiveDamage_infdeath9': 0x5188AE,
+                      'AnimClass::AI_make_infantry': 0x424932}))

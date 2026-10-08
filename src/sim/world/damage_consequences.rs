@@ -26,7 +26,6 @@ pub(crate) struct DamageConsequences {
 
 pub(crate) struct DamageCommitReceipt {
     pub(crate) area_result: Option<crate::sim::combat::world_receiver::AreaDamageResult>,
-    pub(crate) fatal_ids: Vec<u64>,
     pub(super) structure_destroyed: bool,
     pub(crate) bridge_state_changed: bool,
 }
@@ -229,7 +228,6 @@ impl DamageConsequences {
         }
         DamageCommitReceipt {
             area_result: None,
-            fatal_ids: effects.despawned_ids,
             structure_destroyed: effects.structure_destroyed,
             bridge_state_changed,
         }

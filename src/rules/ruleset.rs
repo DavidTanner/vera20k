@@ -571,6 +571,10 @@ pub struct GeneralRules {
     pub sov_paradrop: ParadropList,
     /// `YuriParaDropInf=`/`YuriParaDropNum=` (`+0xCAC`/`+0xCC8`).
     pub yuri_paradrop: ParadropList,
+    /// `AnimToInfantry=` (`+0xCE4`), the InfantryTypes a `MakeInfantry=`
+    /// anim's end picks from, from the native processed rules (empty from
+    /// the constructor; retail `BRUTE`).
+    pub anim_to_infantry: Vec<String>,
     /// Unit types that count as a player's home when no buildings remain.
     /// Parsed from `[General] BaseUnit=`. Stock YR: AMCV, SMCV, PCV.
     pub base_unit_types: Vec<String>,
@@ -1508,12 +1512,18 @@ pub struct GeneralRules {
     /// (`PsychicRevealRadius=` in `[CombatDamage]`).
     pub psychic_reveal_radius: u32,
     // --- GeneticConverter ([SpecialWeapons] + [General]) ---
-    /// Warhead used for mutation (`MutateWarhead=` in `[SpecialWeapons]`).
+    /// `[SpecialWeapons] MutateWarhead=` (`+0xF98`, read at `0x006690BB`
+    /// through WarheadTypeClass::FindOrAllocate `0x0075E3B0`): the warhead
+    /// Launch case 9's walk hands each infantryman. The constructor's null
+    /// (`0x00666B3A`): empty.
     pub mutate_warhead: String,
-    /// Warhead used for mutate explosion
-    /// (`MutateExplosionWarhead=` in `[SpecialWeapons]`).
+    /// `[SpecialWeapons] MutateExplosionWarhead=` (`+0xF9C`, `0x006690FA`):
+    /// the warhead of case 9's area damage. The constructor's null
+    /// (`0x00666B40`): empty.
     pub mutate_explosion_warhead: String,
-    /// Whether MutateExplosion is enabled (MutateExplosion= in [General]). Default true.
+    /// `[General] MutateExplosion=` (`+0x17C8`, `0x00671125`): case 9 deals
+    /// area damage instead of walking the 3x3 block. The constructor's false
+    /// (`0x006676ED`); retail sets yes.
     pub mutate_explosion: bool,
     /// Ordered `[General] MetallicDebris=` AnimType references from the native
     /// ReadGeneral128/factory pass. Constructor default is empty, not retail's
@@ -1814,6 +1824,7 @@ impl Default for GeneralRules {
             ally_paradrop: ParadropList::default(),
             sov_paradrop: ParadropList::default(),
             yuri_paradrop: ParadropList::default(),
+            anim_to_infantry: Vec::new(),
             base_unit_types: vec!["AMCV".to_string(), "SMCV".to_string(), "PCV".to_string()],
             multiplayer_ai_cm: Vec::new(),
             pad_aircraft_types: Vec::new(),
@@ -1858,7 +1869,7 @@ impl Default for GeneralRules {
                 Some("YURIDIE".to_string()),
                 Some("NUKEDIE".to_string()),
                 Some("VIRUSD".to_string()),
-                Some("GENDEATH".to_string()),
+                None,
                 Some("BRUTDIE".to_string()),
             ],
             attack_cursor_on_disguise: false,
@@ -2062,9 +2073,9 @@ impl Default for GeneralRules {
             force_shield_fade_sound_time: 50,
             force_shield_invoke_anim: String::new(),
             psychic_reveal_radius: 15,
-            mutate_warhead: "Mutate".to_string(),
-            mutate_explosion_warhead: "MutateExplosion".to_string(),
-            mutate_explosion: true,
+            mutate_warhead: String::new(),
+            mutate_explosion_warhead: String::new(),
+            mutate_explosion: false,
             metallic_debris: Vec::new(),
             weather_con_clouds: Vec::new(),
             weather_con_bolts: Vec::new(),
@@ -2420,10 +2431,13 @@ impl GeneralRules {
             (6, "InfantryHeadPop", "YURIDIE"),
             (7, "InfantryNuked", "NUKEDIE"),
             (8, "InfantryVirus", "VIRUSD"),
-            (9, "InfantryMutate", "GENDEATH"),
+            // `InfantryMutate=` (`+0xB4`, `0x0066E4B6`) keeps the
+            // constructor's null type when absent; retail `GENDEATH`.
+            (9, "InfantryMutate", ""),
             (10, "InfantryBrute", "BRUTDIE"),
         ] {
-            infantry_death_anims[index] = Some(parse_anim_name(key, fallback));
+            infantry_death_anims[index] =
+                Some(parse_anim_name(key, fallback)).filter(|name| !name.is_empty());
         }
         infantry_death_anims[5] = Some(
             ini.section("Animations")
@@ -2624,6 +2638,8 @@ impl GeneralRules {
             ally_paradrop: ParadropList::read_counts(general, "AllyParaDropNum"),
             sov_paradrop: ParadropList::read_counts(general, "SovParaDropNum"),
             yuri_paradrop: ParadropList::read_counts(general, "YuriParaDropNum"),
+            // The processed RulesClass vector is authoritative.
+            anim_to_infantry: Vec::new(),
             base_unit_types: general
                 .read_list("BaseUnit", 0x80)
                 .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
@@ -3032,13 +3048,13 @@ impl GeneralRules {
             force_shield_fade_sound_time: general.read_int("ForceShieldPlayFadeSoundTime", 50),
             force_shield_invoke_anim: general.read_string("ForceShieldInvokeAnim", "", 0x80),
             psychic_reveal_radius: combat_damage.read_int("PsychicRevealRadius", 15) as u32,
-            mutate_warhead: special_weapons.read_string("MutateWarhead", "Mutate", 0x80),
+            mutate_warhead: special_weapons.read_string("MutateWarhead", "", 0x80),
             mutate_explosion_warhead: special_weapons.read_string(
                 "MutateExplosionWarhead",
-                "MutateExplosion",
+                "",
                 0x80,
             ),
-            mutate_explosion: general.read_bool("MutateExplosion", true),
+            mutate_explosion: general.read_bool("MutateExplosion", false),
             // The processed RulesClass vector is authoritative; a merged INI
             // cannot reproduce successful-read replacement or factory identity.
             metallic_debris: Vec::new(),
@@ -3382,6 +3398,7 @@ impl RuleSet {
         rules.general.ally_paradrop.infantry = ally;
         rules.general.sov_paradrop.infantry = sov;
         rules.general.yuri_paradrop.infantry = yuri;
+        rules.general.anim_to_infantry = processed.anim_to_infantry().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
@@ -6391,7 +6408,8 @@ MutateWarhead=MyMutate\n\
         assert_eq!(general.force_shield_invoke_anim, "");
         assert_eq!(general.force_shield_blackout_duration, 800);
         assert_eq!(general.force_shield_fade_sound_time, 50);
-        assert_eq!(general.mutate_explosion_warhead, "MutateExplosion");
+        // The constructor's null warhead (`Rules+0xF9C`, `0x00666B40`).
+        assert_eq!(general.mutate_explosion_warhead, "");
     }
 
     #[test]
