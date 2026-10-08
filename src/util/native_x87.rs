@@ -412,32 +412,48 @@ impl X87Chop53 {
 /// Active `gamemd.exe` `Sqrt_Approx` (`0x004CAC40`).
 ///
 /// The helper first stores its finite positive input as an x87-chopped `f32`,
-/// then indexes the retail 16,384-entry mantissa table.  The table is a pure
-/// arithmetic sequence, so computing its entry keeps the executable's bytes
-/// out of the repository while preserving the exact result bits.
+/// then indexes the retail 16,384-entry mantissa table ([`sqrt_approx_bits`]).
 pub fn sqrt_approx_f32(value: X87Value) -> Result<NativeF32Bits, NativeX87Error> {
     let magnitude = X87Chop53::store_f32(value)?.bits() & 0x7fff_ffff;
     if magnitude == 0 {
         return Ok(NativeF32Bits::POSITIVE_ZERO);
     }
+    Ok(NativeF32Bits::from_bits(sqrt_approx_bits(magnitude)))
+}
 
-    let mut mantissa = magnitude & 0x007f_ffff;
-    let unbiased = ((magnitude >> 23) & 0xff) as i32 - 127;
+/// The table step of `Sqrt_Approx` (`0x004CAC40`) on the bits of a nonzero
+/// `f32`, whose sign it ignores: an odd exponent borrows a factor of two into
+/// the significand, the top 14 bits of that index the mantissa table, and the
+/// exponent is halved arithmetically. Callers answer a zero input themselves.
+/// The random-map generator calls it under its own float model too.
+pub(crate) fn sqrt_approx_bits(bits: u32) -> u32 {
+    let mut mantissa = bits & 0x007f_ffff;
+    let unbiased = ((bits >> 23) & 0xff) as i32 - 127;
     if unbiased & 1 != 0 {
         mantissa |= 0x0080_0000;
     }
+    let half_exponent = unbiased >> 1;
+    sqrt_approx_table_entry(mantissa >> 10).wrapping_add(((half_exponent + 127) as u32) << 23)
+}
 
-    let index = mantissa >> 10;
+/// One entry of `Sqrt_Approx`'s 16,384-entry mantissa table (`0x008650BC`).
+///
+/// The table is pure arithmetic, so it is computed rather than shipped: index
+/// `i` encodes a significand, and the entry is the truncated mantissa of its
+/// square root. Not shipping it also keeps the retail bytes out of this repo.
+/// `map::rmg::sqrt_table` checks all 16,384 entries against the player's own
+/// `gamemd.exe` (`#[ignore]`d, it needs `RA2_DIR`).
+pub(crate) fn sqrt_approx_table_entry(index: u32) -> u32 {
     let significand = if index < 8192 {
+        // Even exponent: the significand lies in [1, 2).
         1.0 + f64::from(index) / 8192.0
     } else {
+        // Odd exponent: the implicit bit is set, so it lies in [2, 4).
         2.0 * (1.0 + f64::from(index - 8192) / 8192.0)
     };
-    let table_entry = ((significand.sqrt() - 1.0) * 8_388_608.0) as u32;
-    let half_exponent = unbiased >> 1;
-    Ok(NativeF32Bits::from_bits(
-        table_entry.wrapping_add(((half_exponent + 127) as u32) << 23),
-    ))
+    // The root always lands in [1, 2), so the exponent field is zero and only
+    // the mantissa varies.
+    ((significand.sqrt() - 1.0) * 8_388_608.0) as u32
 }
 
 /// Evaluate the native height-to-screen conversion with an injected multiplier.
