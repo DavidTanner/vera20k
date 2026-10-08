@@ -42,6 +42,8 @@
 //! T19 (ObjectClass `+0x8D`, `GameEntity::is_falling_down`) fires during a
 //! paradrop's descent, its one VERA producer; no other fall is represented.
 
+use crate::sim::components::Health;
+
 /// The codes, as every producer returns them (`MOV EAX, imm32`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(i32)]
@@ -439,7 +441,7 @@ pub(crate) struct TargetFacts {
     pub bunkered: bool,          // +0x2E4
     pub sinking: bool,           // +0x3CD
     pub docked: bool,            // +0x418
-    pub health: i32,             // +0x6C
+    pub health: Health,          // +0x6C
     /// Foot: `+0x698` the frame a Parasite launch lock ends.
     pub parasite_lock_until: i32,
     /// Unit: deploying or undeploying; another object than the firer holds
@@ -624,7 +626,7 @@ fn unit(facts: &FireFacts, query: &mut impl FireQuery, check_range: bool) -> Fir
             FireTargetKind::Building => facts.target_type.building_vehicle,
             _ => false,
         };
-        if !vehicle || health_ratio_full(target.health, facts.target_type.strength) {
+        if !vehicle || target.health.is_full(facts.target_type.strength) {
             return FireError::Illegal;
         }
     }
@@ -686,7 +688,7 @@ fn infantry(facts: &FireFacts, query: &mut impl FireQuery, check_range: bool) ->
     // I2 `0x0051C8FE`: a medic heals only damaged infantry.
     if weapon_value(facts, query) < 0
         && (target.kind != FireTargetKind::Infantry
-            || health_ratio_full(target.health, facts.target_type.strength))
+            || target.health.is_full(facts.target_type.strength))
     {
         return FireError::Illegal;
     }
@@ -1162,19 +1164,6 @@ pub(crate) fn weapon_damage_value(
         }
     }
     if count == 0 { 0 } else { total / count }
-}
-
-/// `ObjectClass::GetHealthRatio` (`0x005F5C60`, Health / Strength in
-/// binary64) compared `>=` `Rules+0x16F8` (1.0, not an INI key) with an
-/// ordered FCOMP: 0/0 (NaN) is not full and x/0 for x > 0 (+inf) is. The
-/// quotient of two dwords cannot round across 1.0, so the integer form is
-/// exact.
-pub(crate) fn health_ratio_full(health: i32, strength: i32) -> bool {
-    match strength.cmp(&0) {
-        std::cmp::Ordering::Greater => health >= strength,
-        std::cmp::Ordering::Less => health <= strength,
-        std::cmp::Ordering::Equal => health > 0,
-    }
 }
 
 /// U12, B7 and A2: the signed 16-bit difference against the desired

@@ -1387,10 +1387,7 @@ pub(crate) fn mission_repair(
         }
         let contact = sim.substrate.entities.get(unit)?;
         let typ = sim.object_type(contact.type_ref(), rules)?;
-        let damaged = matches!(
-            contact.health.compare_ratio(typ.strength, 1.0),
-            Ordering::Less | Ordering::Unordered
-        );
+        let damaged = !contact.health.is_full(typ.strength);
         let manual_reload = typ.manual_reload;
         let reply = radio::transmit_to_contact(sim, depot, RadioMessage::RepairTick, Some(rules));
         if (damaged || manual_reload)

@@ -3002,7 +3002,7 @@ fn heal_weapon_drops_target(
     let strength = rules
         .object(world.interner.resolve(target.type_ref()))
         .map_or(0, |object| object.strength);
-    fire_error::health_ratio_full(target.health.current, strength)
+    target.health.is_full(strength)
 }
 
 /// StartUncloaking (vt+0x45C) from a building's Mission_Attack CLOAKED arm
