@@ -26,7 +26,7 @@ const TABLE_LEN: usize = 16384;
 mod tests {
     use super::*;
     use crate::map::retail_trig::file_offset_of;
-    use crate::map::rmg::x87::sqrt_table_entry;
+    use crate::util::native_x87::sqrt_approx_table_entry;
 
     fn retail_executable() -> Option<Vec<u8>> {
         let dir = std::env::var("RA2_DIR").ok()?;
@@ -48,7 +48,7 @@ mod tests {
         for index in 0..TABLE_LEN {
             let off = index * 4;
             let retail = u32::from_le_bytes(bytes[off..off + 4].try_into().expect("four bytes"));
-            let computed = sqrt_table_entry(index as u32);
+            let computed = sqrt_approx_table_entry(index as u32);
             if computed != retail {
                 mismatches.push((index, retail, computed));
             }
