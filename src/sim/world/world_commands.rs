@@ -1934,9 +1934,6 @@ impl Simulation {
                 target_ry,
             } => {
                 let Some(rules) = rules else { return false };
-                if !self.session.game_options.super_weapons {
-                    return false;
-                }
                 // The SPECIAL_PLACE event (`EventClass::Execute 0x004C78D6`).
                 let owner = self.interner.intern(command_owner);
                 self.fire_super_weapon(

@@ -172,7 +172,7 @@ impl DamageConsequences {
         }
 
         world.finish_terrain_navigation_changes(rules, &terrain_navigation_changed_cells);
-        if world.session.game_options.super_weapons && effects.structure_destroyed {
+        if effects.structure_destroyed {
             let mut refreshed = Vec::new();
             for &(owner, category) in &dead_infos {
                 if category == EntityCategory::Structure && !refreshed.contains(&owner) {

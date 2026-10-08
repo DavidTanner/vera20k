@@ -330,10 +330,11 @@ impl SuperWeaponInstance {
         self.ready_tick = -1;
     }
 
-    /// `SuperClass::Deactivate @ 0x006CB7B0` when the granting building is
-    /// lost: the grant (`+0x6D`) and the charge (`+0x6F`) end, which takes
-    /// the Super off the timer list; its timer and hold stay as they were.
-    /// The entry stays; a later grant activates it again.
+    /// `SuperClass::Deactivate @ 0x006CB7B0` when no building provides the
+    /// Super any more, or the Super Weapons option withholds it: the grant
+    /// (`+0x6D`) and the charge (`+0x6F`) end, which takes the Super off the
+    /// timer list; its timer and hold stay as they were. The entry stays; a
+    /// later grant activates it again.
     pub fn deactivate(&mut self) {
         self.is_active = false;
         self.is_ready = false;
@@ -828,7 +829,9 @@ pub fn tick_active_superweapon_effects(
 ///
 /// Call when a building is completed, sold, or destroyed. Grants each weapon
 /// the owner's buildings provide and the owner does not hold, including one
-/// revoked earlier, and revokes each one no building provides.
+/// revoked earlier, and revokes each one no building provides. With the
+/// Super Weapons option off, no building provides a `DisableableFromShell=`
+/// type.
 ///
 /// gamemd: the grant pass `HouseClass @ 0x0050B1D0` (Ghidra label
 /// `HouseClass__Grant_Provided_Supers`, called from `BuildingClass::Unlimbo`
@@ -857,6 +860,16 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
     use std::collections::BTreeSet;
 
     let owner_str = sim.interner.resolve(owner).to_string();
+    // The Super Weapons game option (`0x00A8B263`) withholds the
+    // `DisableableFromShell=` types (`+0xE7`): the grant pass skips them
+    // (`0x0050B2A4..0x0050B2B5`) and the hold pass revokes one already
+    // granted (`0x0050B085..0x0050B09B`). The others work with it off.
+    let super_weapons_allowed = sim.session.game_options.super_weapons;
+    let provides = |sw_id: &str| {
+        rules
+            .super_weapon(sw_id)
+            .is_some_and(|sw| super_weapons_allowed || !sw.disableable_from_shell)
+    };
 
     // Collect all SW type IDs (as strings) granted by living buildings of this owner.
     let mut granted_strs: Vec<String> = Vec::new();
@@ -872,15 +885,15 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
         }
         let type_str = sim.interner.resolve(entity.type_ref());
         if let Some(obj) = rules.object(type_str) {
-            if let Some(ref sw_id) = obj.super_weapon {
-                if rules.super_weapon(sw_id).is_some() {
-                    granted_strs.push(sw_id.clone());
-                }
+            if let Some(ref sw_id) = obj.super_weapon
+                && provides(sw_id)
+            {
+                granted_strs.push(sw_id.clone());
             }
-            if let Some(ref sw2_id) = obj.super_weapon2 {
-                if rules.super_weapon(sw2_id).is_some() {
-                    granted_strs.push(sw2_id.clone());
-                }
+            if let Some(ref sw2_id) = obj.super_weapon2
+                && provides(sw2_id)
+            {
+                granted_strs.push(sw2_id.clone());
             }
         }
     }
@@ -935,7 +948,12 @@ pub fn refresh_super_weapons_for_owner(sim: &mut Simulation, rules: &RuleSet, ow
         log::info!("SuperWeapon '{}' granted to '{}'", sw_str, owner_str);
     }
 
-    // Deactivate revoked (building destroyed, no other provides it).
+    // Deactivate revoked (building destroyed, no other provides it, or the
+    // option withholds it). The hold pass revokes only a Super that can hold
+    // (`+0x60`) and is not one-time (`+0x6E`), or any Super of a defeated
+    // house (`0x0050AF5B..0x0050AF78`); VERA's all can hold and none is
+    // one-time (the constructor sets `+0x60`, `0x006CAFC7`; only the crate
+    // and trigger grants, unported, clear it or grant one-time).
     let revoke_ids: Vec<InternedId> = weapons
         .iter()
         .filter(|(sw_iid, inst)| inst.is_active && !granted.contains(sw_iid))
@@ -1323,5 +1341,56 @@ mod frame_tests {
             &mut sim, &rules, silo
         ));
         assert_eq!(reports(&sim), 3, "the loss");
+    }
+
+    /// The Super Weapons option (`0x00A8B263`) on the retail rules, through
+    /// the production reader: off, a house holding a provider of every
+    /// `[SuperWeaponTypes]` entry is granted only the types retail leaves
+    /// without `DisableableFromShell=yes` (the grant pass's skip,
+    /// `0x0050B2A4..0x0050B2B5`); on, every type.
+    #[test]
+    fn the_super_weapons_option_withholds_the_disableable_types() {
+        use super::chronosphere_tests::{retail_rules_binding, world_with};
+        let Some(rules) = retail_rules_binding(&[]) else {
+            return;
+        };
+        let (rules, mut sim, americans) = world_with(rules, 64, &[]);
+        let providers = [
+            "NAMISL", "NAIRON", "GAWEAT", "GACSPH", "GADUMY", "CAAIRP", "AMRADR", "YAPPET",
+            "NARADR", "YAGNTC", "GATECH", "NAPSIS",
+        ];
+        for (index, kind) in (0u16..).zip(providers) {
+            let at = (4 + 10 * (index % 4), 4 + 10 * (index / 4));
+            sim.spawn_object_at_height(kind, "Americans", at.0, at.1, 0, 0, &rules)
+                .unwrap_or_else(|| panic!("{kind} stands"));
+        }
+        let granted = |sim: &Simulation| {
+            rules
+                .super_weapon_order
+                .iter()
+                .filter(|name| {
+                    sim.interner
+                        .get(name)
+                        .and_then(|id| sim.super_weapons.get(&americans)?.get(&id))
+                        .is_some_and(|instance| instance.is_active)
+                })
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        };
+        let kept = [
+            "ChronoWarpSpecial",
+            "ParaDropSpecial",
+            "AmericanParaDropSpecial",
+            "SpyPlaneSpecial",
+            "PsychicRevealSpecial",
+        ];
+
+        sim.session.game_options.super_weapons = false;
+        refresh_super_weapons_for_owner(&mut sim, &rules, americans);
+        assert_eq!(granted(&sim), kept);
+
+        sim.session.game_options.super_weapons = true;
+        refresh_super_weapons_for_owner(&mut sim, &rules, americans);
+        assert_eq!(granted(&sim), rules.super_weapon_order);
     }
 }

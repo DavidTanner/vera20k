@@ -405,9 +405,7 @@ pub fn place_production_with_overlays(
         ge.install_building_up(BuildingUp::placed_by_player(control, now), now);
     }
     // Refresh superweapon grants — newly placed building may provide a SW.
-    if sim.session.game_options.super_weapons {
-        crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
-    }
+    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
 
     let released = held.release_after_placement(sim, rules);
     if released {
