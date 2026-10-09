@@ -128,8 +128,8 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
         .any(|o| o.enabled)
 }
 
-/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, publishes
-/// building readiness, and issues mobile PLACE6A8EB8 without releasing its head.
+/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, announces a
+/// completed building, and issues mobile PLACE6A8EB8 without releasing its head.
 /// The next frame's input prefix visits Strip before Logic/Factory and appends
 /// PLACE after already accepted OutList events, for that frame's
 /// Event4C710B -> House4FB0E0 tail. Native controls observe completion267/484
@@ -751,8 +751,8 @@ pub fn ready_buildings_for_owner(
     [ProductionCategory::Building, ProductionCategory::Defense]
         .into_iter()
         .filter_map(|category| {
-            let view = sim.production.factories.view(owner_id, category)?;
-            let type_id = view.object.filter(|_| view.ready)?.type_id;
+            let factory = sim.production.factories.view(owner_id, category)?;
+            let type_id = factory.complete_object()?.type_id;
             let type_str = sim.interner.resolve(type_id);
             let obj = rules.object(type_str)?;
             Some(ReadyBuildingView {

@@ -443,7 +443,6 @@ fn busy_factory_exit_without_an_alternate_refunds_player_product_and_promotes_qu
         .factories
         .view(owner, ProductionCategory::Vehicle)
         .unwrap();
-    assert!(!factory.ready);
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let successor = factory.object.unwrap().entity_id.unwrap();
@@ -903,7 +902,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
                 .production
                 .factories
                 .view(owner, ProductionCategory::Infantry)
-                .is_some_and(|factory| factory.ready);
+                .is_some_and(|factory| factory.complete_object().is_some());
             completed
         })
         .expect("the paid native step ladder completes");
@@ -2028,7 +2027,7 @@ fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
         .view(americans_id, ProductionCategory::Vehicle)
         .unwrap();
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
@@ -2226,8 +2225,7 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
 }
 
 /// Canceling a finished building abandons the factory's object, refunding the cost
-/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6), and
-/// drops the ready entry with it.
+/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6).
 #[test]
 fn cancel_by_type_removes_ready_building_and_refunds() {
     use super::cancel_by_type_for_owner;

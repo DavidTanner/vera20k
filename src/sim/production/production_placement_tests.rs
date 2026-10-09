@@ -559,7 +559,7 @@ fn stock_power_contract_rules() -> RuleSet {
 }
 
 #[test]
-fn completed_building_moves_into_ready_placement_pool() {
+fn a_completed_building_waits_in_its_factory_for_placement() {
     let mut sim = placement_sim();
     let rules = build_catalog_rules();
 
@@ -570,8 +570,8 @@ fn completed_building_moves_into_ready_placement_pool() {
         .economy
         .set_credits_for_test(50_000);
     let built_before = sim.houses[&americans].stats.built();
-    // P5d: arm the Building build directly in the registry (queue-of-record), then force it
-    // to the completed-held state so Strip publication moves it into the ready-placement pool.
+    // Arm the Building build in the registry and complete it; the Strip's
+    // publish then announces the held building once.
     super::tests::arm_build_via(
         &mut sim,
         &rules,
@@ -592,7 +592,7 @@ fn completed_building_moves_into_ready_placement_pool() {
         .factories
         .view(americans, ProductionCategory::Building)
         .expect("completed building remains held by its Factory");
-    assert!(held.ready);
+    assert!(held.complete_object().is_some());
     assert!(held.object.and_then(|object| object.entity_id).is_some());
     assert_eq!(
         ready_buildings_for_owner(&sim, &rules, "Americans")
@@ -621,6 +621,133 @@ fn completed_building_moves_into_ready_placement_pool() {
     );
     assert_eq!(sim.sound_events.iter().filter(|event| matches!(event, crate::sim::world::SimSoundEvent::BuildingComplete { owner } if *owner == americans)).count(), 1);
     assert_eq!(sim.scenario_rng.logical_state(), rng);
+}
+
+/// Place_Production admits only what `FactoryClass::IsComplete @ 0x004CA130`
+/// answers for (`0x004FB17D`): a building still in production is refused, at
+/// the PLACE and in its preview, and stays held. Once complete it places,
+/// whether or not the Strip has published the completion.
+#[test]
+fn an_unfinished_building_is_refused_until_its_factory_completes() {
+    let mut sim = placement_sim();
+    let rules = placement_radius_rules();
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
+    let americans = sim.interner.intern("Americans");
+    super::house_for_test(&mut sim, "Americans");
+    arm_build_via(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        ProductionCategory::Building,
+        1,
+    );
+    let held = super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building);
+    let place = |sim: &mut Simulation| {
+        place_production_with_overlays(
+            sim,
+            &rules,
+            "Americans",
+            ProductionPlacement::Building {
+                type_id: "GAPOWR",
+                cell: (12, 10),
+            },
+            None,
+        )
+    };
+
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
+    assert_eq!(preview.reason, Some(BuildingPlacementError::NotReady));
+    assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
+    assert!(!place(&mut sim));
+    assert_eq!(
+        super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building),
+        held
+    );
+    assert!(sim.substrate.entities.get(held).unwrap().lifecycle.in_limbo);
+
+    assert!(
+        sim.production
+            .factories
+            .test_arm_ready(americans, ProductionCategory::Building)
+    );
+    assert!(
+        sim.production
+            .factories
+            .view(americans, ProductionCategory::Building)
+            .and_then(|factory| factory.object)
+            .is_some_and(|object| !object.completion_accounted),
+        "complete, not yet published"
+    );
+    assert!(place(&mut sim));
+    let placed = sim.substrate.entities.get(held).unwrap();
+    assert_eq!((placed.position.rx, placed.position.ry), (12, 10));
+    assert!(!placed.lifecycle.in_limbo);
+}
+
+/// `Main_Tick` steps the factories (`LogicClass::PerTickUpdate` at
+/// `0x0055DC9E`, which runs each `FactoryClass::AI`) before it executes the
+/// frame's events (`Process_Command_Queues_For_Frame` at `0x0055DE40`), and
+/// Place_Production asks only IsComplete: a PLACE executing in the frame its
+/// building completes places it, before the Strip publishes the completion in
+/// the next frame's prefix.
+#[test]
+fn a_place_executing_in_the_completion_frame_is_admitted() {
+    let mut sim = placement_sim();
+    let rules = placement_radius_rules();
+    let grid = PathGrid::new(64, 64);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
+    let americans = sim.interner.intern("Americans");
+    let gapowr = sim.interner.intern("GAPOWR");
+    super::house_for_test(&mut sim, "Americans");
+    arm_build_via(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        ProductionCategory::Building,
+        1,
+    );
+    let held = super::lifecycle_tests::held_id(&sim, americans, ProductionCategory::Building);
+    // The last step, paid off, is due in the next frame.
+    let frame = sim.session.binary_frame as i32;
+    let factory = sim
+        .production
+        .factories
+        .test_factory_mut(americans, ProductionCategory::Building)
+        .expect("armed Buildings factory");
+    factory.progress = super::PRODUCTION_STEPS - 1;
+    factory.balance = 0;
+    factory.step_rate_frames = 1;
+    factory.step_timer = crate::sim::timer::CdTimer::started(frame, 0);
+    assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
+
+    let place = CommandEnvelope::new(
+        americans,
+        sim.session.tick + 1,
+        Command::PlaceReadyBuilding {
+            type_id: gapowr,
+            rx: 12,
+            ry: 10,
+        },
+    );
+    let tick = sim.advance_tick(&[place], Some(&rules), Some(&grid), None, 67);
+
+    assert_eq!(tick.executed_commands, 1);
+    assert!(tick.spawned_entities);
+    let placed = sim.substrate.entities.get(held).unwrap();
+    assert_eq!((placed.position.rx, placed.position.ry), (12, 10));
+    assert!(!placed.lifecycle.in_limbo);
+    assert!(ready_buildings_for_owner(&sim, &rules, "Americans").is_empty());
 }
 
 #[test]
@@ -1820,7 +1947,6 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
             view.suspended,
             view.object.cloned(),
             view.queue.clone(),
-            view.ready,
         )
     };
     let held_id = factory_before
@@ -1889,7 +2015,6 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
             view.suspended,
             view.object.cloned(),
             view.queue.clone(),
-            view.ready,
         )
     };
     assert_eq!(
@@ -2603,8 +2728,22 @@ fn base_normal_false_structures_do_not_extend_build_area() {
     let rules = placement_radius_rules();
 
     spawn_structure(&mut sim, &rules, 1, "Americans", "GAGAP", 10, 10);
+    // PLACE needs this house's yard; keep it far from the gap generator, so
+    // only GAGAP could cover (12,10).
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GACNST", 50, 50);
     ready_building(&mut sim, &rules, "Americans", "GAPOWR");
 
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
+    assert_eq!(preview.reason, Some(BuildingPlacementError::OutOfBuildArea));
     assert!(!place_production_with_overlays(
         &mut sim,
         &rules,
@@ -2615,6 +2754,19 @@ fn base_normal_false_structures_do_not_extend_build_area() {
         },
         None
     ));
+    assert!(
+        place_production_with_overlays(
+            &mut sim,
+            &rules,
+            "Americans",
+            ProductionPlacement::Building {
+                type_id: "GAPOWR",
+                cell: (52, 50)
+            },
+            None
+        ),
+        "the yard's own area admits the same building"
+    );
 }
 
 #[test]
@@ -2944,6 +3096,17 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
     );
     sim.resolved_terrain = Some(resolved);
 
+    let preview = placement_preview_for_owner_with_overlays(
+        &sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        12,
+        10,
+        None,
+    )
+    .expect("preview should exist");
+    assert_eq!(preview.reason, Some(BuildingPlacementError::BlockedTerrain));
     assert!(!place_production_with_overlays(
         &mut sim,
         &rules,
@@ -2954,6 +3117,19 @@ fn place_ready_building_rejects_destroyed_bridge_over_blocked_ground() {
         },
         None
     ));
+    assert!(
+        place_production_with_overlays(
+            &mut sim,
+            &rules,
+            "Americans",
+            ProductionPlacement::Building {
+                type_id: "GAPOWR",
+                cell: (12, 12)
+            },
+            None
+        ),
+        "clear ground beside the destroyed deck admits the same building"
+    );
 }
 
 #[test]

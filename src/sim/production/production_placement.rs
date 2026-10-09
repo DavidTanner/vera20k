@@ -164,15 +164,12 @@ pub fn place_production_with_overlays(
             let Some(owner_id) = sim.interner.get(owner) else {
                 return false;
             };
-            let Some(factory) = sim
+            let Some(object) = sim
                 .production
                 .factories
                 .view(owner_id, category)
-                .filter(|factory| factory.ready)
+                .and_then(|factory| factory.complete_object())
             else {
-                return false;
-            };
-            let Some(object) = factory.object else {
                 return false;
             };
             let Some(entity_id) = object.entity_id else {

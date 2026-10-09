@@ -364,7 +364,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         .entity_id
         .expect("enqueue constructs the held GAPOWR identity");
     assert!(sim.production.factories.test_arm_ready(owner_id, category));
-    // The factory owns completion accounting and its ready projection.
+    // The Strip's publish accounts the completion once.
     crate::sim::production::publish_production_changes(&mut sim, &rules);
     let completed = sim
         .production

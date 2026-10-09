@@ -562,8 +562,16 @@ pub struct FactoryView<'a> {
     pub suspended: bool,
     pub object: Option<&'a PendingObject>,
     pub queue: &'a VecDeque<QueueEntry>,
-    /// `true` when the active object has reached `PRODUCTION_STEPS`.
-    pub ready: bool,
+}
+
+impl<'a> FactoryView<'a> {
+    /// `FactoryClass::IsComplete @ 0x004CA130`: the held object once it has
+    /// reached the last stage (`0x36`). Its special-item arm (`+0x68`) is
+    /// dormant: FactoryClass's own writers store only -1 there (`0x004C990D`,
+    /// `0x004CA058`, `0x004CA1F0`).
+    pub fn complete_object(&self) -> Option<&'a PendingObject> {
+        self.object.filter(|_| self.progress >= PRODUCTION_STEPS)
+    }
 }
 
 /// Who holds a factory. gamemd keeps every FactoryClass in one vector,
@@ -642,7 +650,6 @@ impl FactoryRegistry {
             suspended: f.suspended,
             object: f.object.as_ref(),
             queue: &f.queue,
-            ready: f.progress >= PRODUCTION_STEPS,
         })
     }
 

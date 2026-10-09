@@ -503,7 +503,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
         .factories
         .view(owner, ProductionCategory::Infantry)
         .unwrap();
-    assert!(factory.ready);
+    assert!(factory.complete_object().is_some());
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     let object = sim.substrate.entities.get(held).unwrap();
@@ -622,7 +622,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
         .factories
         .view(owner, ProductionCategory::Aircraft)
         .unwrap();
-    assert!(factory.ready);
+    assert!(factory.complete_object().is_some());
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     assert!(sim.substrate.entities.get(held).unwrap().lifecycle.in_limbo);
@@ -642,8 +642,8 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
 /// kill `BuildingClass::Detach_All(1) @ 0x0044EBF0` abandons its own factory
 /// and, for a Construction Yard, every production no other factory can build,
 /// finished or not (AbandonProduction `0x004C9FF0` refunds what was paid and
-/// deletes the object). With the only Construction Yard gone, the ready
-/// building is refunded, deleted and untracked, and leaves the ready list.
+/// deletes the object). With the only Construction Yard gone, the completed
+/// building is refunded, deleted and untracked.
 #[test]
 fn a_ready_building_goes_with_the_last_construction_yard() {
     let (mut sim, rules, owner) = world(0xfac7_0019);
@@ -884,7 +884,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
             .in_limbo
     );
     let completed = sim.production.factories.view(owner, category).unwrap();
-    assert!(completed.ready);
+    assert!(completed.complete_object().is_some());
     assert_eq!(completed.queue.len(), 1);
     let credits = sim.houses[&owner].economy.credits();
     let spent = sim.houses[&owner].economy.spent_credits();
@@ -914,7 +914,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let successor = factory.object.unwrap().entity_id.unwrap();
     assert!(successor > refused);
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let new_ids: Vec<_> = sim
         .substrate
         .entities

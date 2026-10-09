@@ -1,9 +1,9 @@
 //! Complete mutations of factory-held Techno identity and its accounting.
 //!
 //! The registry owns queue/charge kernels. This world-facing owner completes
-//! their constructor, disposal, ready projection and successor work before an
-//! operation returns. Native StartProduction/AbandonProduction/StartNextQueued:
-//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0; see FACTORY_CREDIT_SYSTEM_GHIDRA_REPORT.md.
+//! their constructor, disposal and successor work before an operation returns.
+//! Native StartProduction/AbandonProduction/StartNextQueued:
+//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0.
 //! Delivery selection and placement keep their existing phase positions and
 //! call settlement only after their successful world effects have committed.
 
@@ -445,6 +445,13 @@ impl ReadyFactoryObject {
 /// `owner`'s completed `type_id` waiting in its `category` factory: the
 /// factory `FactoryClass::IsComplete @ 0x004CA130` answers (its object at the
 /// last stage), holding an object of that type.
+///
+/// RESIDUAL: `HouseClass::Place_Production @ 0x004FB0E0` uses the event's type
+/// only to choose the factory and places whatever object that factory holds
+/// (`0x004FB18C`); VERA refuses a PLACE whose type is not the held object's.
+/// Trigger: a building PLACE naming another type of the same factory, which
+/// the sidebar never sends. Effect: native places the held building, VERA
+/// refuses the event.
 pub(super) fn ready_object(
     sim: &Simulation,
     owner: InternedId,
@@ -454,9 +461,8 @@ pub(super) fn ready_object(
     let object = sim
         .production
         .factories
-        .view(owner, category)
-        .filter(|view| view.ready)?
-        .object?;
+        .view(owner, category)?
+        .complete_object()?;
     if object.type_id != type_id {
         return None;
     }
@@ -485,19 +491,25 @@ pub(crate) fn complete_held_building_for_test(
         .object_type(type_id, rules)
         .expect("completed-building fixture type");
     let (category, cost) = (production_category_for_object(object), object.cost.max(0));
+    let enqueue_order = sim.production.next_enqueue_order;
     assert!(
         sim.production
             .factories
-            .test_enqueue_kernel(owner, category, type_id, 0, cost),
+            .test_enqueue_kernel(owner, category, type_id, enqueue_order, cost),
         "the fixture arms one fresh factory head"
     );
+    sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
     let held = start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
         .expect("the fixture constructs its object at StartProduction");
     assert!(sim.production.factories.test_arm_ready(owner, category));
+    super::production_queue::publish_production_changes(sim, rules);
     assert!(
         sim.production
             .factories
-            .account_completed_object_once(owner, category)
+            .view(owner, category)
+            .and_then(|factory| factory.complete_object())
+            .is_some_and(|object| object.completion_accounted),
+        "the Strip publishes the completed building"
     );
     held
 }
