@@ -122,6 +122,9 @@ pub(super) fn dispatch_sim_sound_events(
             | SimSoundEvent::ObjectSoundReleased { owner } => {
                 GameSoundEvent::AnimationReleased { anim_id: owner }
             }
+            SimSoundEvent::ObjectSoundDetached { owner } => {
+                GameSoundEvent::AnimationDetached { anim_id: owner }
+            }
             SimSoundEvent::AircraftPhase { sound_id, world } => GameSoundEvent::AircraftPhase {
                 sound_id: sim.interner.resolve(sound_id).to_string(),
                 source: Some(anim_world_sound_source(world)),

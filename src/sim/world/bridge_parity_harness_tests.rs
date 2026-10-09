@@ -321,7 +321,11 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // Snapshot307: the session's LocalSize copy leaves the hash. A control binary
 // (main with a hash that skips only that tuple) gives this value in the same
 // test, with every tripwire above green. Control removed.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x29F5_E786_FA1B_8F86;
+// Snapshot318 hashes MoveSound's signed i32 countdown instead of u8. The
+// fixture's vectors are empty, but qualifying Foot visits retain countdown3
+// while inactive (4DAA87; foot_move_sound.json empty_qualifies). No sound is
+// selected and no Main draw is paid. This remains a Rust regression pin.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x5610_C044_743D_56BA;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

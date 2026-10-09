@@ -960,14 +960,10 @@ pub struct GameEntity {
     pub dying: bool,
     /// Retained Infantry lifetime policy; sprite animation stores progress only.
     pub(crate) infantry_terminal: Option<crate::sim::world::InfantryTerminal>,
-    /// FootClass movement-sound handle state. Native starts the configured
-    /// MoveSound on the object's own post-locomotor AI tail and keeps it alive
-    /// through brief moving-now dropouts with a three-visit grace countdown.
+    /// Foot+53C/+540 latch and countdown. The shared Foot sound owner alone
+    /// writes these; the process-local audio handle is not simulation state.
     #[serde(default)]
-    pub move_sound_active: bool,
-    /// Remaining stopped AI visits before an active MoveSound is released.
-    #[serde(default)]
-    pub move_sound_countdown: u8,
+    pub(crate) move_sound: crate::sim::world::MoveSoundState,
     /// `FootClass+0x425`, the crash latch: set by `FootClass::Crash @
     /// 0x004DEBB0` (`0x004DEC7F`) and by a Magnetron dropping an airborne
     /// object (`0x0070FF25`); cleared by the constructor (`0x006F2FF9`) and a
@@ -1736,8 +1732,7 @@ impl GameEntity {
             immune_to_radiation: false,
             dying: false,
             infantry_terminal: None,
-            move_sound_active: false,
-            move_sound_countdown: 0,
+            move_sound: crate::sim::world::MoveSoundState::default(),
             crashing: false,
             crashing_seen: false,
             sinking: crate::sim::world::SinkingState::default(),

@@ -86,6 +86,9 @@ pub enum GameSoundEvent {
     /// `SoundEvent::Release @ 0x00406060` on one owner's handle: its loop
     /// stops repeating and plays out; one-shots continue unchanged.
     AnimationReleased { anim_id: u64 },
+    /// FootLimbo405FD0 stops repetition even for counted loops, then detaches
+    /// the owner's handle while the current audio finishes.
+    AnimationDetached { anim_id: u64 },
     /// A weapon fired — play the weapon's Report= sound.
     WeaponFired {
         /// sound.ini ID from the weapon's Report= field.
@@ -388,7 +391,7 @@ impl GameSoundEvent {
             | Self::VoiceFeedback { sound_id, .. }
             | Self::SuperWeaponActivated { sound_id, .. } => sound_id,
             Self::AnimationStopped { stop_sound_id, .. } => stop_sound_id.as_deref().unwrap_or(""),
-            Self::AnimationReleased { .. } => "",
+            Self::AnimationReleased { .. } | Self::AnimationDetached { .. } => "",
             // The event name, not a sample: the sample is a per-side column
             // the `VoxClass` consumer resolves.
             Self::Eva { event, .. } | Self::EvaRemove { event } => event,

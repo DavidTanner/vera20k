@@ -1030,11 +1030,6 @@ fn advance_one_simulation_frame(
                 // Attached anims are simulation objects; the store detaches
                 // them itself.
                 LifecycleOutput::DetachAttachedAnims { .. } => {}
-                LifecycleOutput::StopVoc { stable_id } => {
-                    if let Some(sfx) = state.audio.sfx_player.as_mut() {
-                        sfx.stop_animation_sound(stable_id);
-                    }
-                }
                 LifecycleOutput::DisplayRemove { .. } => {
                     refresh_atlases_after_tick = true;
                 }

@@ -750,6 +750,20 @@ impl SoundArbiter {
         self.clear_loop_handle(owner);
     }
 
+    /// FootLimbo's handle405FD0: unlike Release406060, every valid event
+    /// stops repetition, including a counted loop. Native brackets a live
+    /// channel while setting flags|0x60; device servicing stays with SfxPlayer.
+    /// The current playout remains alive, and the handle no longer names it.
+    pub fn detach_owner(&mut self, owner: u64) {
+        if let Some(id) = self.validate_loop_handle(owner)
+            && let Some(event) = self.event_mut(id)
+            && event.flags & event_flags::NO_REPLAY == 0
+        {
+            event.flags |= event_flags::NO_REPLAY | event_flags::RELEASED;
+        }
+        self.clear_loop_handle(owner);
+    }
+
     /// `SoundEvent::Release @ 0x00406060`'s event half: a live looping event
     /// whose entry has no `Loop=` count and is not already released stops
     /// repeating (`flags |= 0x60`) and plays out its current pass.
@@ -834,6 +848,18 @@ impl SoundArbiter {
         }
         self.release_channel(id);
         self.kill(id);
+    }
+
+    /// Load's SoundSystem404E70 kills and reaps every global event, while
+    /// the outgoing objects' destruction and loaded constructors discard
+    /// their handles. Keep catalog entries, serial allocation and service
+    /// epochs; neither operation constructs another process audio system.
+    pub fn clear_for_world_replacement(&mut self) {
+        for id in std::mem::take(&mut self.order) {
+            self.stop(id);
+            self.reap(id);
+        }
+        self.handles.clear();
     }
 
     fn release_channel(&mut self, id: EventId) {
@@ -1088,7 +1114,6 @@ impl SoundArbiter {
     /// `PRIORITY_ROWS` ceiling here is VERA-internal, gamemd equivalent
     /// UNCHECKED; it is unreachable on stock data, where `Priority=` tops out
     /// at `CRITICAL(4)`.
-    #[cfg(test)]
     fn find_lowest_priority(&mut self, priority: i32) -> Option<u32> {
         for row in 0..priority.clamp(0, PRIORITY_ROWS as i32) as usize {
             for bucket in 0..VOLUME_BUCKETS {
@@ -1381,7 +1406,7 @@ impl SoundArbiter {
             // spill costs one row, so the highest slot a stock cue can reach
             // is row 5, bucket 0. Trigger: an effective priority of 6 or more,
             // or a negative one. Player effect if it ever fired: the entry is
-            // simply not rankable, so `preempt_for_sample_memory` cannot pick
+            // simply not rankable, so `preempt_for_playout` cannot pick
             // it. Frequency: never on stock `soundmd.ini`. Downstream risk:
             // none — nothing else reads the bucket array.
             let Ok(slot) = usize::try_from(slot) else {
@@ -1403,40 +1428,16 @@ impl SoundArbiter {
         self.many_sounds.tick(now_ms);
     }
 
-    /// The entry-level preemption layer:
-    /// `DSoundChannel::FindLowestPriority @ 0x00404E20` plus the caller loop
-    /// at `0x004045FA..0x0040466F`, which stops **every** `SoundEvent` of the
-    /// losing entry (`SoundEvent::Stop @ 0x004052F0` + `ReturnToPool @
-    /// 0x00404DD0`) and retries.
+    /// PreparePlayout failure retry4045E4..40466B: select a strictly lower
+    /// ranked entry, stop/reap all of its events, then retry. NO_REPLAY set by
+    /// Limbo405FD0 before first playback is a production trigger; freeing
+    /// sample memory cannot make that flag pass PreparePlayout404716.
     ///
-    /// **Its native trigger is sample-memory starvation, not channel
-    /// starvation.** The start pass reaches it only when
-    /// `SoundEvent::PreparePlayout @ 0x00404700` returns 0. That function has
-    /// three `return 0` paths: a zero loaded-sample count (`+0xA8`, i.e.
-    /// `SoundEvent::LoadSamples @ 0x004048B0` got nothing back from
-    /// `SampleTracker::LoadSample`), `flags & 0x20` (NO_REPLAY), and
-    /// `+0x1E0 < 1` after the attack/decay reservation. **On stock data only
-    /// the first is reachable** — all 33 `Control=attack`/`decay` entries in
-    /// `soundmd.ini` carry at least three `Sounds=`, so the reservation
-    /// cannot empty the list — and it means the streaming pool
-    /// (`FUN_004019E0(idx, 0x100000, 200, 0x2000)` at `0x00403F29`: 127
-    /// blocks of 8 KB inside a 1 MB budget) is full. Stopping lower-priority
-    /// entries frees those blocks.
-    ///
-    /// RESIDUAL (UNCHECKED trigger) — VERA decodes each cue into an owned
-    /// `Vec<f32>` with no fixed budget, so nothing here can starve and this
-    /// layer has no production caller. Trigger in gamemd: more than 1 MB of
-    /// distinct sample data live at once. Player effect of the gap: in the
-    /// rare native case where the stream pool fills, gamemd silences a whole
-    /// low-priority entry to admit a high-priority one, while VERA plays
-    /// both. Frequency: never on this decoder. Downstream risk: none — the
-    /// audible priority arbitration a player hears in a busy fight is the
-    /// *channel* layer ([`Self::find_available_channel`] /
-    /// [`Self::allocate_channel`]), which is live. Reproducing this layer
-    /// needs a fixed decoded-sample budget first; the mechanism is kept and
-    /// tested so that budget is the only thing missing.
-    #[cfg(test)]
-    pub fn preempt_for_sample_memory(&mut self, priority: i32) -> Vec<EventId> {
+    /// RESIDUAL: native's fixed 1 MB sample pool can also fail LoadSamples.
+    /// VERA owns decoded buffers without that budget, so memory-starvation
+    /// admission differs under high distinct-sample pressure. This shared
+    /// retry owner is live for the represented NO_REPLAY rejection.
+    fn preempt_for_playout(&mut self, priority: i32) -> Vec<EventId> {
         let mut stopped = Vec::new();
         let Some(victim_entry) = self.find_lowest_priority(priority) else {
             return stopped;
@@ -1444,10 +1445,10 @@ impl SoundArbiter {
         for other in self.order.clone() {
             if self
                 .event(other)
-                .is_some_and(|event| event.entry == victim_entry && !event.is_dead())
+                .is_some_and(|event| event.entry == victim_entry)
             {
-                self.release_channel(other);
-                self.kill(other);
+                self.stop(other);
+                self.reap(other);
                 stopped.push(other);
             }
         }
@@ -1458,17 +1459,34 @@ impl SoundArbiter {
     /// suspended runs `LoadSamples` -> `PreparePlayout` ->
     /// (preempt and retry) -> `StartPlayback`.
     ///
-    /// VERA's payload is decoded before [`Self::submit`], so `LoadSamples`
-    /// and `PreparePlayout` have already succeeded by the time an event
-    /// exists — only `StartPlayback` remains here. See
-    /// [`Self::preempt_for_sample_memory`] for the retry branch and why it
-    /// has no trigger on this decoder.
+    /// Decoding precedes submit in VERA, but the native NO_REPLAY gate must
+    /// be checked here: Limbo can detach an event while it is still queued.
     fn start_pass(&mut self, now_ms: u64, actions: &mut Vec<ArbiterAction>) {
         for id in self.order.clone() {
             let Some(event) = self.event(id) else {
                 continue;
             };
             if event.state != EventState::Ready || event.suspend_depth != 0 {
+                continue;
+            }
+            if event.flags & event_flags::NO_REPLAY != 0 {
+                //404716 rejects this event on every retry. Original control
+                // flow still evicts lower-ranked entries before final failure.
+                let priority = self.effective_priority(event);
+                loop {
+                    let victims = self.preempt_for_playout(priority);
+                    if victims.is_empty() {
+                        break;
+                    }
+                    actions.extend(
+                        victims
+                            .into_iter()
+                            .map(|event| ArbiterAction::Stop { event }),
+                    );
+                }
+                self.stop(id);
+                self.reap(id);
+                actions.push(ArbiterAction::Stop { event: id });
                 continue;
             }
             if event.channel.is_none() {
@@ -1534,6 +1552,10 @@ impl SoundArbiter {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "arbiter_move_sound_tests.rs"]
+mod move_sound_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1973,9 +1995,9 @@ mod tests {
         arbiter.update_tick(100);
 
         // Equal priority is never preempted here (`for p in 0..prio-1`).
-        assert!(arbiter.preempt_for_sample_memory(1).is_empty());
+        assert!(arbiter.preempt_for_playout(1).is_empty());
         // A priority-3 caller takes the whole `QUIET` entry, both instances.
-        let mut victims = arbiter.preempt_for_sample_memory(3);
+        let mut victims = arbiter.preempt_for_playout(3);
         victims.sort();
         assert_eq!(victims, vec![a, b]);
         assert!(arbiter.event(peer).is_some_and(|event| !event.is_dead()));
@@ -2138,12 +2160,12 @@ mod tests {
         );
 
         // Rows `[0, 3)` reach row 2, where only the quiet entry sits.
-        assert_eq!(arbiter.preempt_for_sample_memory(3), vec![quiet]);
+        assert_eq!(arbiter.preempt_for_playout(3), vec![quiet]);
         // Asked again, the same caller finds nothing: the loud entry is out
         // of its reach. Clamping the column to 9 would have put it in row 2
         // and surrendered it here.
-        assert!(arbiter.preempt_for_sample_memory(3).is_empty());
+        assert!(arbiter.preempt_for_playout(3).is_empty());
         // It takes a caller one tier higher to reach it.
-        assert_eq!(arbiter.preempt_for_sample_memory(4), vec![loud]);
+        assert_eq!(arbiter.preempt_for_playout(4), vec![loud]);
     }
 }

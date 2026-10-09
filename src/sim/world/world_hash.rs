@@ -1346,7 +1346,7 @@ impl Simulation {
             // position query: ordinary movement is promote-only while
             // teleport and Set_Clipped_LocalSize own exact demotions.
             entity.in_playfield.hash(hasher);
-            entity.move_sound_active.hash(hasher);
+            entity.move_sound.is_active().hash(hasher);
             entity.crashing.hash(hasher);
             entity.crashing_seen.hash(hasher);
             if !entity.sinking.is_default() {
@@ -1354,7 +1354,7 @@ impl Simulation {
                 entity.sinking.hash(hasher);
             }
             entity.is_mission_only().hash(hasher);
-            entity.move_sound_countdown.hash(hasher);
+            entity.move_sound.countdown().hash(hasher);
             entity.position.rx.hash(hasher);
             entity.position.ry.hash(hasher);
             entity.position.z.hash(hasher);
