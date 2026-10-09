@@ -18,8 +18,9 @@ use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// ShipLocomotion-owned destination, committed head, and target speed state.
 ///
-/// Ships share the ordinary TurnTrack/RawTrack curves and target fraction
-/// with Drive; tube and forced-track operations remain Drive-specific.
+/// Ships share the ordinary TurnTrack/RawTrack curves, target fraction and
+/// Force_Track (`0x006A0310`, Drive's twin) with Drive; tube operations
+/// remain Drive-specific.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ShipLocomotionRuntime {
     #[serde(default)]

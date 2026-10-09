@@ -27,24 +27,25 @@
 //! eater's ExitUnit and the placement anim's release.
 //!
 //! RESIDUALS:
-//! - A warped vehicle's Drive `Force_Track(-1, destination)` picks up a crate
-//!   on the destination cell at the launch (`CellClass::PickupCrate @
-//!   0x00481A00` from `0x004B0D1B`, with its draws); the shared track host's
-//!   crate receiver is unfinished (`crates::pickup`). Trigger: a crate on a
-//!   warped vehicle's destination cell. Effect: the crate stays until
-//!   something enters the cell, without the launch's crate draws.
-//! - A Ship Unit's `Force_Track(-1, destination)` (`0x006A0310`) is not
-//!   ported; only Drive's is. Trigger: a naval Unit in the source block.
-//!   Effect: its retained track state is not reset to the destination.
-//! - The Drive the warp hands back keeps `Force_Track`'s head and
-//!   destination, both in its own cell. Native Drive::Process runs
-//!   Process_Movement on it (`0x004B0A79`), whose path search there takes
-//!   the zero-cost-route arm, unexecuted (`movement::track_path`'s residual).
-//!   VERA runs Process_Movement only for a Drive with an order adapter or a
-//!   track (#689), so the Drive keeps both, stays moving and does not end
-//!   until a destination comes. Trigger: every Drive Unit the warp carries.
-//!   Effect: unestablished; native may turn the hull, or end a Chrono
-//!   Miner's Drive, before its next order.
+//! - A warped Unit's `Force_Track(-1, destination)`, Drive's or Ship's,
+//!   picks up a crate on the destination cell at the launch
+//!   (`CellClass::PickupCrate @ 0x00481A00` from `0x004B0D1B`/`0x006A03EB`,
+//!   with its draws); the shared track host's crate receiver is unfinished
+//!   (`crates::pickup`). Trigger: a crate on a warped vehicle's destination
+//!   cell. Effect: the crate stays until something enters the cell, without
+//!   the launch's crate draws.
+//! - The Drive or Ship the warp hands back keeps `Force_Track`'s head and
+//!   destination, both in its own cell. Native Process runs Process_Movement
+//!   on it (Drive `0x004B0A79`, Ship `0x006A0142`), whose Find_Path for that
+//!   cell refuses: AStar_pathfind_search returns 0 without searching when the
+//!   start cell and height are the goal's (`0x00429BF3..0x00429C0A`, read),
+//!   and the refusal clears the destination and head in the same call
+//!   (`tools/spatial_oracle/track_path_continuation`'s AStar-NULL rows). VERA
+//!   runs Process_Movement only for one with an order adapter or a track
+//!   (#689), so it keeps both and stays moving until an order clears them: a
+//!   missile spawner (V3, Dreadnought, Boomer) launches nothing (the spawn
+//!   manager's moving-owner refusal) and a Chrono Miner's Drive does not end.
+//!   Trigger: every Drive or Ship Unit the warp carries.
 //! - An off-map cell of either block reads the shared dummy cell's
 //!   coordinates natively; VERA reads the requested cell's.
 //! - The warp latch (`TechnoClass+0x27C`) has two more writers,
@@ -403,7 +404,7 @@ fn arm_chrono_warp(
     let mut destination = DriveCoord { x, y, z };
     if category == EntityCategory::Unit {
         sim.locomotor_mark_all_occupation_bits_up(id);
-        let _ = sim.force_drive_track(id, -1, destination);
+        let _ = sim.force_track(id, -1, destination);
         sim.object_raw_receiver_at(id, destination, false);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.foot_occupation_enabled = true;

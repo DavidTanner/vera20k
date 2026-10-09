@@ -63,6 +63,23 @@ pub(crate) fn world_with(
     size: u16,
     levels: &[((u16, u16), u8)],
 ) -> (RuleSet, Simulation, InternedId) {
+    world_with_cells(rules, size, |x, y| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            level: levels
+                .iter()
+                .find(|(at, _)| *at == (x, y))
+                .map_or(0, |&(_, level)| level),
+            ..test_terrain_cell(x, y)
+        }
+    })
+}
+
+/// [`world_with`] over the cells `cell` builds.
+fn world_with_cells(
+    rules: RuleSet,
+    size: u16,
+    cell: impl FnMut(u16, u16) -> crate::map::resolved_terrain::ResolvedTerrainCell,
+) -> (RuleSet, Simulation, InternedId) {
     let mut sim = Simulation::with_seed(17);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
@@ -76,17 +93,37 @@ pub(crate) fn world_with(
     sim.session.game_options.super_weapons = true;
     sim.session.map_width = size;
     sim.session.map_height = size;
-    sim.resolved_terrain = Some(test_grid(size, size, |x, y| {
-        crate::map::resolved_terrain::ResolvedTerrainCell {
-            level: levels
-                .iter()
-                .find(|(at, _)| *at == (x, y))
-                .map_or(0, |&(_, level)| level),
-            ..test_terrain_cell(x, y)
-        }
-    }));
+    sim.resolved_terrain = Some(test_grid(size, size, cell));
     crate::sim::arena_fixture::supply_native_map(&mut sim);
     (rules, sim, americans)
+}
+
+/// Retail rules and a flat 64x64 map of open water.
+fn retail_water_world() -> Option<(RuleSet, Simulation, InternedId)> {
+    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    let float = SpeedCostProfile {
+        float: Some(100),
+        ..SpeedCostProfile::default()
+    };
+    let water = LandType::Water.as_index();
+    Some(world_with_cells(retail_rules()?, 64, |x, y| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            land_type: water,
+            yr_cell_land_type: water,
+            base_land_type: water,
+            base_yr_cell_land_type: water,
+            terrain_class: TerrainClass::Water,
+            base_terrain_class: TerrainClass::Water,
+            speed_costs: float,
+            base_speed_costs: float,
+            is_water: true,
+            zone_type: 4,
+            ground_walk_blocked: true,
+            base_ground_walk_blocked: true,
+            base_build_blocked: true,
+            ..crate::map::resolved_terrain::test_flat_cell(x, y)
+        }
+    }))
 }
 
 fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, at: (u16, u16)) -> u64 {
@@ -441,6 +478,80 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
         (chain(&sim, miner), cell(&sim, miner)),
         (vec![Teleport], next)
     );
+}
+
+/// A destroyer under way when the warp arms has its Ship forced onto its
+/// landing (`ShipLocomotionClass::Force_Track @ 0x006A0310`, Drive's twin):
+/// no track (-1), its head and destination at the landing cell's deck
+/// coordinate. The warp's END hands that Ship back, and it never resumes the
+/// track it was on.
+#[test]
+fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
+    use LocomotorKind::{Ship, Teleport};
+    let Some((rules, mut sim, americans)) = retail_water_world() else {
+        return;
+    };
+    let ship = spawn(&mut sim, &rules, "DEST", "Americans", (20, 20));
+    let command = Command::Move {
+        entity_id: ship,
+        target_rx: 30,
+        target_ry: 20,
+        queue: false,
+    };
+    assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    step(&mut sim, &rules);
+    let track = |sim: &Simulation| {
+        let locomotor = sim.substrate.entities.get(ship)?.locomotor.as_ref()?;
+        let ship = locomotor.selected_ship_runtime()?.retained()?;
+        Some((ship.track().turn_index, ship.head_to(), ship.destination()))
+    };
+    // The destroyer turns in place before its first track.
+    for _ in 0..30 {
+        if track(&sim).is_some_and(|(turn, _, _)| turn != -1) {
+            break;
+        }
+        step(&mut sim, &rules);
+    }
+    let (turn, old_head, old_destination) = track(&sim).expect("a sailing destroyer's Ship");
+    assert!(
+        turn != -1 && old_head.is_some(),
+        "on a track when the warp arms"
+    );
+    let from = cell(&sim, ship);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    assert_eq!(chain(&sim, ship), [Teleport, Ship]);
+
+    let landing = (TARGET.0 + from.0 - SOURCE.0, TARGET.1 + from.1 - SOURCE.1);
+    let [x, y, z] = super::deck_coords(&sim, landing);
+    let at_landing = Some(DriveCoord { x, y, z });
+    let mut ended = false;
+    for frame in 0..200 {
+        step(&mut sim, &rules);
+        let warping = sim
+            .substrate
+            .entities
+            .get(ship)
+            .unwrap()
+            .chrono_warp()
+            .is_some();
+        if !ended && !warping {
+            ended = true;
+            assert_eq!(chain(&sim, ship), [Ship]);
+            assert_eq!(track(&sim), Some((-1, at_landing, at_landing)));
+        }
+        // What follows the warp is the post-warp residual's; the old track
+        // never comes back.
+        if ended {
+            let (_, head, destination) = track(&sim).unwrap_or_default();
+            assert!(
+                head != old_head && destination != old_destination,
+                "frame {frame}: back on its old track"
+            );
+        }
+    }
+    assert!(ended);
 }
 
 /// A Chrono Miner on its own Teleport warps on a tank's frames. Arming

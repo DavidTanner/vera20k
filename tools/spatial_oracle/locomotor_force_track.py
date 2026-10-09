@@ -1,4 +1,5 @@
-"""Original Drive Force_Track and the bunker caller's separate speed write.
+"""Original Drive Force_Track, its Ship twin, and the bunker caller's separate
+speed write.
 
 Full 4B0C40 calls execute the real map lookup, no-overlay Crate pickup return,
 Apply_Track_Occupation_Mode, transform and Unit raw-mark leaves. Separate rows
@@ -25,12 +26,22 @@ SP = STACK_BASE + STACK_SIZE - 0x1000
 MAP, TABLE, DUMMY = 0x87F7E8, 0xC00000, 0xABDC50
 UNIT_VTABLE = 0x7F5C70
 FORCE, APPLY, RAW_PUT, SPEED_SET = 0x4B0C40, 0x4B0AD0, 0x7441B0, 0x4D3710
+# ShipLocomotionClass: constructor, Force_Track, Apply_Track_Occupation_Mode,
+# its null coordinate, and the Force stages that match Drive's.
+SHIP_CONSTRUCTOR, SHIP_FORCE, SHIP_APPLY, SHIP_NULL = 0x69EC50, 0x6A0310, 0x6A01A0, 0xB077F8
+SHIP_STAGES = {
+    0x6A032D: 'selector_published_before_null_guard',
+    0x6A03E4: 'head_published_before_map_query',
+    SHIP_APPLY: 'apply_occupation_entry',
+    0x6A040F: 'occupation_return_before_destination',
+}
 HEAD = [10 * 256 + 96, 10 * 256 + 160, 731]
 OLD_HEAD, OLD_DESTINATION = [2304, 2560, -347], [2176, 2176, 417]
 
 
 class OriginalForceTrack:
     def __init__(self, row):
+        self.ship = row.get('family') == 'ship'
         self.uc = u = Uc(UC_ARCH_X86, UC_MODE_32)
         load_image(u)
         u.mem_map(STACK_BASE, STACK_SIZE)
@@ -43,10 +54,10 @@ class OriginalForceTrack:
         u.mem_write(SP, dwords(RET_MAGIC))
         u.reg_write(UC_X86_REG_ESP, SP)
         u.reg_write(UC_X86_REG_ECX, LOCO)
-        run_checked(u, 0x4AF540, RET_MAGIC, count=150,
+        run_checked(u, SHIP_CONSTRUCTOR if self.ship else 0x4AF540, RET_MAGIC, count=150,
                     required_addresses=(0x55A6C0,))
         assert u.reg_read(UC_X86_REG_ESP) == SP + 4
-        assert self.unsigned(self.unsigned(LOCO + 4) + 0x70) == FORCE
+        assert self.unsigned(self.unsigned(LOCO + 4) + 0x70) == (SHIP_FORCE if self.ship else FORCE)
         assert self.unsigned(UNIT_VTABLE + 0xF0) == RAW_PUT
         assert self.unsigned(UNIT_VTABLE + 0x1D0) == 0x5F5F30
         assert self.unsigned(UNIT_VTABLE + 0x544) == SPEED_SET
@@ -69,6 +80,7 @@ class OriginalForceTrack:
         u.mem_write(LOCO + 0x63, bytes((int(row.get('old_valid', True)),)))
         # The null coordinate and height constants are supplied runtime data.
         u.mem_write(0x8A0790, dwords(0, 0, 0))
+        u.mem_write(SHIP_NULL, dwords(0, 0, 0))
         for address, value in ((0x89E7C0, 104), (0xB1D0AC, 416)):
             u.mem_write(address, dwords(value))
         u.mem_write(TABLE, bytes(0x100000))
@@ -118,7 +130,7 @@ class OriginalForceTrack:
         )
 
     def observe(self, u, address, _size, _data):
-        stages = {
+        stages = SHIP_STAGES if self.ship else {
             0x4B0C5D: 'selector_published_before_null_guard',
             0x4B0D14: 'head_published_before_map_query',
             APPLY: 'apply_occupation_entry',
@@ -133,13 +145,14 @@ class OriginalForceTrack:
             self.events.append(dict(stage='unit_raw_put', coord=self.ints(self.unsigned(sp + 4), 3)))
         if address == 0x481A00:
             self.events.append(dict(stage='crate_dispatch_no_overlay'))
-        if address == 0x4B0D20:
+        if address == (0x6A03F0 if self.ship else 0x4B0D20):
             self.events.append(dict(stage='post_crate_return', result_al=u.reg_read(UC_X86_REG_EAX) & 255,
                                     state=self.state()))
 
     def observe_write(self, u, _access, address, size, value, _data):
         if LOCO <= address < LOCO + 0x80:
-            self.writes.append(dict(owner='drive', offset=address - LOCO, size=size,
+            self.writes.append(dict(owner='ship' if self.ship else 'drive',
+                                    offset=address - LOCO, size=size,
                                     value=value, instruction=f'{u.reg_read(UC_X86_REG_EIP):08x}'))
         elif FOOT <= address < FOOT + 0x800:
             self.writes.append(dict(owner='foot', offset=address - FOOT, size=size,
@@ -183,6 +196,10 @@ class OriginalForceTrack:
                 self.before_owner = bytes(u.mem_read(FOOT, 0x800))
                 run_checked(u, 0x4B0D20, RET_MAGIC, count=10000,
                             required_addresses=(0x4B0D20,))
+            elif self.ship:
+                assert callback is None
+                run_checked(u, SHIP_FORCE, RET_MAGIC, count=10000,
+                            required_addresses=(0x6A0323, 0x6A0326, 0x6A032D))
             else:
                 run_checked(u, FORCE, RET_MAGIC, count=10000,
                             required_addresses=(0x4B0C53, 0x4B0C56, 0x4B0C5D))
@@ -304,15 +321,38 @@ def generate():
         row = dict(kind='process_speed_prefix', turn=turn, accelerates=True,
                    passive=True, target_fraction=1.0, applied=0.25)
         speed.append(OriginalForceTrack(row).process_speed_prefix(row))
+    # The Ship twin: the warp's selector -1 and a sample of TurnTrack
+    # selectors (Ship has no special 64..71), both reversed values, the null
+    # coordinate, the owner gates and both raw planes.
+    ship = []
+    for turn in (-1, 0, 1, 18, 63):
+        for reverse in (False, True):
+            row = dict(family='ship', kind='admitted', turn=turn, reversed=reverse)
+            ship.append(OriginalForceTrack(row).finish(row))
+    for old_head in (OLD_HEAD, [0, 0, 0]):
+        row = dict(family='ship', kind='null_coordinate', turn=-1, head=[0, 0, 0],
+                   old_head=old_head, reversed=True, residual=-23)
+        ship.append(OriginalForceTrack(row).finish(row))
+    for alive in (False, True):
+        for limbo in (False, True):
+            row = dict(family='ship', kind='owner_gate', turn=-1, head=HEAD, alive=alive,
+                       limbo=limbo, residual=0, old_head=[0, 0, 0], old_valid=False)
+            ship.append(OriginalForceTrack(row).finish(row))
+    for bridge in (False, True):
+        row = dict(family='ship', kind='occupation_plane', turn=-1, head=HEAD,
+                   bridge=bridge, occupation_enabled=True, applied=0.75)
+        ship.append(OriginalForceTrack(row).finish(row))
     return dict(force_track=direct, supplied_post_crate_continuations=continuations,
-                bunker_call_tail=bunker, process_speed_prefix=speed)
+                bunker_call_tail=bunker, process_speed_prefix=speed,
+                ship_force_track=ship)
 
 
 def metadata():
     return provenance(
-        scope='Original Force_Track no-overlay calls and supplied post-crate continuations, bunker separate speed write, and Drive Process applied-fraction prefix before current-speed getter',
+        scope='Original Drive Force_Track no-overlay calls and supplied post-crate continuations, Ship Force_Track no-overlay calls, bunker separate speed write, and Drive Process applied-fraction prefix before current-speed getter',
         assumptions=[
             'Original Drive/base constructor and unchanged Unit/Drive vtables; supplied disjoint owner/class memory, owner alive/limbo/occupation flags and finite speed fractions',
+            'Ship rows construct the original ShipLocomotionClass (0x69EC50) and call its own Force_Track 0x6A0310 and Apply_Track_Occupation_Mode 0x6A01A0 from slot +0x70: selectors -1, 0, 1, 18 and 63 with both reversed values, the null coordinate, the owner gates and both raw planes; Ship NullCoord 0xB077F8 is supplied XYZ0',
             'All72 Drive selectors and both retained reversed values; null-coordinate cases include arbitrary signed selectors, retained null/non-null heads and negative residual',
             'Map uses supplied32x32 allocated flat cells at level2, no overlays, raw ground0x400/deck0x800, optional structural bridge flag; remaining fixed-stride slots are null and shared dummy has overlay-1',
             'NullCoord XYZ0, ground-level104, Unit raw bridge offset416 and ambient x87 control0E7F are supplied runtime state, not full startup/map/type construction',
@@ -327,6 +367,8 @@ def metadata():
             'Only separately labeled post-crate continuation rows replace AL and declared owner/head state at the stopped4B0D20 boundary; retained CPU frame/locals and subsequent native instructions execute unchanged',
         ],
         entry_points=dict(force_track=FORCE, drive_constructor=0x4AF540,
+                          ship_force_track=SHIP_FORCE, ship_constructor=SHIP_CONSTRUCTOR,
+                          ship_apply_occupation=SHIP_APPLY, ship_transform=0x6A3DB0,
                           common_constructor=0x55A6C0, map_query=0x565730,
                           crate_dispatch=0x481A00, apply_occupation=APPLY,
                           transform=0x4B4780, unit_raw_put=RAW_PUT,
