@@ -751,6 +751,20 @@ impl Simulation {
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
                 // destination4C75ED, including the Infantry class effects.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
+                // `0x004C75FE..0x004C7624`: a `BalloonHover=` type takes both
+                // again. Its setter's arm (`0x00741983`) kept the NavCom while
+                // the Target stood; without the Target this one clears it.
+                let balloon = rules.is_some_and(|rules| {
+                    self.substrate
+                        .entities
+                        .get(*entity_id)
+                        .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                        .is_some_and(|object| object.balloon_hover)
+                });
+                if balloon {
+                    self.assign_null_destination(*entity_id, rules, overlay_registry);
+                    let _ = self.assign_target_represented(*entity_id, None, rules);
+                }
                 // `0x004C762A..0x004C7634`: a spawner's manager drops its
                 // targets, so a queued launch is cancelled and an attacking
                 // wing is recalled at the next pass.

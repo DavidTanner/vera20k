@@ -1198,14 +1198,11 @@ impl Simulation {
             if turn_suppressed.contains(&id) {
                 continue;
             }
-            // The native mission owns ordinary Unit Cell approach. InRange
-            // does not clear its paid head or retained destination; FireAt
-            // can run while Drive continues toward the chosen firing cell.
-            if self.owns_unit_cell_approach(id, rules)
-                && self.substrate.entities.get(id).is_some_and(|entity| {
-                    entity.mission.current().known() == Some(MissionType::Attack)
-                })
-            {
+            // The native mission owns the approaches VERA ports. InRange does
+            // not clear its paid head or retained destination; FireAt can run
+            // while the locomotor continues toward the chosen cell or the
+            // Target.
+            if self.mission_owns_approach(id, rules) {
                 continue;
             }
             let Some(entity) = self.substrate.entities.get(id) else {
@@ -1424,8 +1421,28 @@ impl Simulation {
                     // turns to fire only once stopped (`0x00736FE1`), so its
                     // first shot comes an unmeasured number of frames off
                     // native. Every in-range stop of a pursuing vehicle.
+                    // A cruising Jumpjet takes no such stop: Jumpjet calls
+                    // Per_Cell_Process only from its descent (`0x0054C8F0`),
+                    // and Foot's approach (`0x004D5690`) instead sends it to a
+                    // cell in range, where it arrives. For it this halt stands
+                    // in for that arrival, which never reaches the setter's
+                    // BalloonHover arm (`0x00741983`); through the arm, a
+                    // Floating Disc on its laser would keep flying at its
+                    // target and switch to Attack.
                     if e.category == EntityCategory::Unit && movement::range_stop_admits(e) {
-                        self.set_unit_null_destination(entity_id, Some(rules), None);
+                        let jumpjet = e.locomotor.as_ref().is_some_and(|loco| {
+                            loco.active_kind()
+                                == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+                        });
+                        if jumpjet {
+                            self.unit_null_destination_past_balloon_arm(
+                                entity_id,
+                                Some(rules),
+                                None,
+                            );
+                        } else {
+                            self.set_unit_null_destination(entity_id, Some(rules), None);
+                        }
                     }
                 }
                 PursuitAction::DropTargetAndMovement { entity_id } => {

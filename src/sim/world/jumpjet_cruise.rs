@@ -1197,6 +1197,277 @@ mod tests {
         assert_ne!(cell_of(&scenario, tank), landing);
     }
 
+    /// A human player's Kirov on retail Dustbowl, ordered to attack a
+    /// computer's Tesla Reactor ten cells away, flies to the reactor's centre
+    /// and bombs it on the way. Its bomb (BlimpBombP, `Vertical=`) makes
+    /// Approach_Target's BalloonHover arm (`0x00741599`) take the reactor as
+    /// the destination; Jumpjet Move_To (`0x0054B43D..0x0054B44B`) then sets
+    /// the NavCom to the cell under its centre. Before the arm the Kirov
+    /// stopped some 550 leptons short, at weapon range. A production witness,
+    /// not a native comparison.
+    #[test]
+    #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+    fn retail_dustbowl_kirov_flies_over_a_reactor_and_bombs_it() {
+        use super::super::jumpjet_infantry_tests::{retail_dustbowl_rocketeer, retail_frame};
+        use crate::sim::command::{Command, CommandEnvelope};
+
+        let (mut scenario, _, x, y) = retail_dustbowl_rocketeer();
+        let (kirov, reactor) = {
+            let crate::sim::runtime::SimRuntime {
+                simulation: sim,
+                resources,
+            } = &mut scenario.runtime;
+            let kirov = sim
+                .spawn_object_with_overlay_registry(
+                    "ZEP",
+                    "Americans",
+                    x + 2,
+                    y,
+                    64,
+                    &resources.rules,
+                    &resources.overlay_registry,
+                )
+                .expect("Kirov spawns");
+            let reactor = sim
+                .spawn_object_with_overlay_registry(
+                    "NAPOWR",
+                    "Russians",
+                    x + 12,
+                    y - 1,
+                    0,
+                    &resources.rules,
+                    &resources.overlay_registry,
+                )
+                .expect("reactor spawns");
+            sim.resolve_type_handles(&resources.rules);
+            (kirov, reactor)
+        };
+        let sim = &scenario.runtime.simulation;
+        let center = |sim: &crate::sim::world::Simulation, id: u64| {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            crate::sim::movement::ground_pose::object_get_coords(
+                entity,
+                sim.resolved_terrain.as_ref(),
+            )
+        };
+        let goal = center(sim, reactor);
+        let goal_cell = crate::sim::components::NavTargetRef::cell(
+            (goal.x / 256) as u16,
+            (goal.y / 256) as u16,
+        );
+        let mut orders = vec![CommandEnvelope::new(
+            sim.interner.get("Americans").expect("house"),
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: kirov,
+                target_id: reactor,
+            },
+        )];
+        let mut closest = i32::MAX;
+        let mut destroyed_at = None;
+        let mut bombs = std::collections::BTreeMap::new();
+        for frame in 0..900u32 {
+            retail_frame(&mut scenario, std::mem::take(&mut orders));
+            let sim = &scenario.runtime.simulation;
+            let entity = sim.substrate.entities.get(kirov).expect("Kirov lives");
+            if frame == 1 {
+                assert_eq!(entity.navigation.nav_com, Some(goal_cell));
+            }
+            let at = center(sim, kirov);
+            let off = ((at.x - goal.x) as f64).hypot((at.y - goal.y) as f64) as i32;
+            if destroyed_at.is_none() {
+                closest = closest.min(off);
+            }
+            if destroyed_at.is_none() && !sim.substrate.entities.contains(reactor) {
+                destroyed_at = Some((frame, off));
+            }
+            for (&id, bomb) in sim.projectiles.iter() {
+                if bomb.source_id == kirov {
+                    let here = [bomb.position.x, bomb.position.y];
+                    bombs.entry(id).or_insert_with(Vec::new).push(here);
+                }
+            }
+        }
+        let (frame, off) = destroyed_at.expect("the reactor dies");
+        assert!(off < 256, "frame {frame}: {off} leptons from the centre");
+        assert!(closest < 256, "{closest}");
+        assert!(!bombs.is_empty());
+        // Each bomb falls straight down from where it was dropped.
+        for track in bombs.values() {
+            assert!(track.iter().all(|at| *at == track[0]), "{track:?}");
+        }
+    }
+
+    /// A computer's Kirov on Hunt on retail Dustbowl flies at what its scan
+    /// picks: Mission_Hunt approaches what the scan holds (`0x004D54DD`), and
+    /// the BalloonHover arm makes the target the destination, so the Kirov
+    /// closes past its bomb's range instead of stopping there. It stays on
+    /// Hunt; the pursuit pass's in-range stop, which this replaces for a
+    /// balloon, would have switched it to Attack through the NULL
+    /// destination's arm. A production witness, not a native comparison.
+    #[test]
+    #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+    fn retail_dustbowl_hunting_kirov_flies_at_its_target_and_stays_on_hunt() {
+        use super::super::jumpjet_infantry_tests::{retail_dustbowl_rocketeer, retail_frame};
+        use crate::sim::mission::{MissionId, MissionType};
+
+        let (mut scenario, _, x, y) = retail_dustbowl_rocketeer();
+        let kirov = {
+            let crate::sim::runtime::SimRuntime {
+                simulation: sim,
+                resources,
+            } = &mut scenario.runtime;
+            let kirov = sim
+                .spawn_object_with_overlay_registry(
+                    "ZEP",
+                    "Russians",
+                    x + 12,
+                    y,
+                    64,
+                    &resources.rules,
+                    &resources.overlay_registry,
+                )
+                .expect("Kirov spawns");
+            sim.resolve_type_handles(&resources.rules);
+            let now = sim.session.binary_frame;
+            sim.mission_assign_exact(kirov, MissionId::from_known(MissionType::Hunt), now)
+                .unwrap();
+            kirov
+        };
+        let center = |sim: &crate::sim::world::Simulation, id: u64| {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            crate::sim::movement::ground_pose::object_get_coords(
+                entity,
+                sim.resolved_terrain.as_ref(),
+            )
+        };
+        // Each target whose cell the Kirov takes as its NavCom, and how close
+        // it comes to that target while holding it.
+        let mut approached = std::collections::BTreeMap::new();
+        for frame in 0..900u32 {
+            retail_frame(&mut scenario, Vec::new());
+            let sim = &scenario.runtime.simulation;
+            let entity = sim.substrate.entities.get(kirov).expect("Kirov lives");
+            assert_eq!(
+                entity.mission.current(),
+                MissionId::from_known(MissionType::Hunt),
+                "frame {frame}"
+            );
+            let Some(crate::sim::combat::TargetKind::Entity(target)) =
+                entity.attack_target.as_ref().map(|attack| attack.target)
+            else {
+                continue;
+            };
+            let goal = center(sim, target);
+            let goal_cell = crate::sim::components::NavTargetRef::cell(
+                (goal.x / 256) as u16,
+                (goal.y / 256) as u16,
+            );
+            if entity.navigation.nav_com == Some(goal_cell) {
+                approached.entry(target).or_insert(i32::MAX);
+            }
+            if let Some(closest) = approached.get_mut(&target) {
+                let at = center(sim, kirov);
+                let off = ((at.x - goal.x) as f64).hypot((at.y - goal.y) as f64) as i32;
+                *closest = (*closest).min(off);
+            }
+        }
+        // BlimpBomb's range is 1.5 cells (384 leptons); the pursuit pass
+        // stopped a balloon there.
+        assert!(
+            approached.values().any(|&closest| closest < 256),
+            "{approached:?}"
+        );
+    }
+
+    /// A player's Floating Disc ordered onto a Rhino tank on retail Dustbowl
+    /// picks its laser (`DiskLaser`, `Range=7`, not `Vertical=`), so the
+    /// BalloonHover arm hands Approach on to Foot's (`0x004D5690`), which
+    /// stops it within the laser's reach instead of over the tank. It stays
+    /// on Attack and burns the tank from there. A production witness, not a
+    /// native comparison.
+    #[test]
+    #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
+    fn retail_dustbowl_floating_disc_lasers_a_tank_from_range() {
+        use super::super::jumpjet_infantry_tests::{retail_dustbowl_rocketeer, retail_frame};
+        use crate::sim::command::{Command, CommandEnvelope};
+        use crate::sim::mission::{MissionId, MissionType};
+
+        let (mut scenario, _, x, y) = retail_dustbowl_rocketeer();
+        let (disc, tank) = {
+            let crate::sim::runtime::SimRuntime {
+                simulation: sim,
+                resources,
+            } = &mut scenario.runtime;
+            let disc = sim
+                .spawn_object_with_overlay_registry(
+                    "DISK",
+                    "Americans",
+                    x + 2,
+                    y,
+                    64,
+                    &resources.rules,
+                    &resources.overlay_registry,
+                )
+                .expect("Floating Disc spawns");
+            let tank = sim
+                .spawn_object_with_overlay_registry(
+                    "HTNK",
+                    "Russians",
+                    x + 12,
+                    y,
+                    0,
+                    &resources.rules,
+                    &resources.overlay_registry,
+                )
+                .expect("tank spawns");
+            sim.resolve_type_handles(&resources.rules);
+            (disc, tank)
+        };
+        let center = |sim: &crate::sim::world::Simulation, id: u64| {
+            let entity = sim.substrate.entities.get(id).unwrap();
+            crate::sim::movement::ground_pose::object_get_coords(
+                entity,
+                sim.resolved_terrain.as_ref(),
+            )
+        };
+        let sim = &scenario.runtime.simulation;
+        let strength = sim.substrate.entities.get(tank).unwrap().health.current;
+        let mut orders = vec![CommandEnvelope::new(
+            sim.interner.get("Americans").expect("house"),
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: disc,
+                target_id: tank,
+            },
+        )];
+        let mut closest = i32::MAX;
+        let mut damaged = false;
+        for frame in 0..600u32 {
+            retail_frame(&mut scenario, std::mem::take(&mut orders));
+            let sim = &scenario.runtime.simulation;
+            let Some(target) = sim.substrate.entities.get(tank) else {
+                damaged = true;
+                break;
+            };
+            damaged |= target.health.current < strength;
+            let entity = sim.substrate.entities.get(disc).expect("Disc lives");
+            if frame > 0 {
+                assert_eq!(
+                    entity.mission.current(),
+                    MissionId::from_known(MissionType::Attack),
+                    "frame {frame}"
+                );
+            }
+            let (at, goal) = (center(sim, disc), center(sim, tank));
+            closest = closest.min(((at.x - goal.x) as f64).hypot((at.y - goal.y) as f64) as i32);
+        }
+        assert!(damaged, "the laser reaches the tank");
+        // The laser reaches 7 cells (1792 leptons); over the tank would be
+        // under a cell.
+        assert!((1024..=1792).contains(&closest), "{closest}");
+    }
+
     /// `g_HeightFactor`, read from the native startup chain, is the multiplier
     /// the cell top height applies to a building's art `Height=`.
     #[test]
