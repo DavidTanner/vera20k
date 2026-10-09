@@ -38,6 +38,12 @@ pub(crate) fn begin_drive_for_teleporter(entity: &mut GameEntity, binary_frame: 
         .is_some_and(|locomotor| locomotor.begin_piggyback(LocomotorKind::Drive, binary_frame))
 }
 
+/// The callers that QueryInterface the active locomotor for IPiggyback and
+/// END it when its `Is_Ok_To_End` allows, whatever its class: Foot
+/// Enter_Idle_Mode (`0x004D831A..0x004D8376`), the Foot setter's NavQueue arm
+/// (`0x004D9309..0x004D937C`) and the Unit setter's pad arm
+/// (`0x0074250E..0x0074258A`, which asks `Is_Piggybacking` first; the gates
+/// below include the stash).
 pub(crate) fn try_end_piggyback(entity: &mut GameEntity) -> bool {
     piggyback_end_admitted(entity) && end_admitted_piggyback(entity)
 }
@@ -66,21 +72,11 @@ fn teleport_end_admitted(entity: &GameEntity) -> bool {
     }) && !entity.foot_locomotor_swap_active
 }
 
-/// Drive IsOKToEnd4AF970 at Foot EnterIdle4D833D, before NavQueue.
-/// Native tests IsMoving, stash, Drive+65 and Foot+6AD only. Animation phase
-/// and unrelated deploy/teleport adapters cannot add admission gates here.
-/// This same class gate applies at other entity-level END callers. A missing
-/// lazily allocated Drive payload has its constructor's true permission.
+/// `DriveLocomotionClass::Is_Ok_To_End @ 0x004AF970` tests IsMoving, the
+/// stash, Drive `+0x65` and Foot `+0x6AD` only; animation phase and unrelated
+/// deploy/teleport adapters add no gate. A missing lazily allocated Drive
+/// payload has its constructor's true permission.
 ///
-/// Residual: native asks any active IPiggyback (`0x004D831A..0x004D8376`),
-/// so an endable Teleport (a Chrono Warp's after state 7) also ends here;
-/// VERA leaves it to the Foot AI tail of the same frame. Trigger: an idle
-/// entry in the frame a warp ends. Effect: a NavQueue setter in between sees
-/// the Teleport instead of the object it suspended.
-pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
-    drive_end_admitted(entity) && end_admitted_piggyback(entity)
-}
-
 /// IsMoving here is the Drive's own Is_Moving (`0x004AFB80`, its destination
 /// +34 and its head, not the owner's order): the Drive holds +34 until it
 /// arrives, so a Chrono Miner's Drive does not end mid-route. It is not

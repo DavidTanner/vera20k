@@ -243,12 +243,13 @@ impl Simulation {
         }
         let victim = victim.expect("CanInfect admitted a victim");
         // 0x0062AAD9..0x0062AB24: the OWNER's locomotor Force_Track(-1, victim
-        // XYZ). Drive resets its track (and returns with the owner in limbo);
-        // Walk binds the base no-op 0x0055AC10.
+        // XYZ). Drive and Ship reset their track (and return with the owner in
+        // limbo); Walk binds the base no-op 0x0055AC10. Retail's one Ship
+        // parasite, SQD, takes the grapple arm above instead.
         let victim_coord = ground_pose::position_world_coord(
             &self.substrate.entities.get(victim).unwrap().position,
         );
-        self.force_drive_track(owner, -1, victim_coord);
+        self.force_track(owner, -1, victim_coord);
         self.substrate
             .entities
             .get_mut(victim)

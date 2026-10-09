@@ -20,7 +20,6 @@
 
 use crate::rules::ini_parser::IniSection;
 use crate::rules::ini_value::{PERCENT_SCALE, crt_atoi, parse_leading_f64};
-use crate::util::fixed_math::{SimFixed, sim_from_f32};
 use crate::util::native_x87::X87Chop53;
 
 /// A warhead definition parsed from a rules.ini section.
@@ -38,12 +37,11 @@ pub struct WarheadType {
     /// 8=concrete, 9=special_1, 10=special_2. Defaults to `[1.0; 11]` (100%)
     /// when `Verses=` is absent.
     pub verses_f64: [f64; 11],
-    /// Splash damage radius in cells (SIM_ZERO = direct hit only).
-    /// Native `CellSpread=` is a **float** at `WarheadTypeClass+0x124`
-    /// (ReadDouble `0x005283d0` called at `0x0075d3e6`, `FSTP float ptr` at
-    /// `0x0075d3eb`, key string `0x00847ea0`).
-    pub cell_spread: SimFixed,
-    /// Native `CellSpread` float widened to f64 for ApplyWarheadDamage.
+    /// Splash radius in cells (0 = direct hit only). Native `CellSpread=` is a
+    /// **float** at `WarheadTypeClass+0x124` (ReadDouble `0x005283d0` called at
+    /// `0x0075d3e6`, `FSTP float ptr` at `0x0075d3eb`, key string
+    /// `0x00847ea0`), widened exactly to f64. Its splash scan reads are in
+    /// `sim::combat::cell_spread`.
     pub cell_spread_f64: f64,
     /// Damage fraction at maximum spread distance. Native `PercentAtMax=` is
     /// a **float** at `WarheadTypeClass+0x12C` (ReadDouble at `0x0075d424`,
@@ -321,9 +319,7 @@ impl WarheadType {
             .map_or([1.0; 11], |tokens| verses_from_tokens(&tokens));
 
         // Float fields (`FSTP dword` at `0x0075D3E6`, `0x0075D424`, `0x0075D477`).
-        let cell_spread_native = section.read_float("CellSpread", 0.0);
-        let cell_spread: SimFixed = sim_from_f32(cell_spread_native);
-        let cell_spread_f64 = f64::from(cell_spread_native);
+        let cell_spread_f64 = f64::from(section.read_float("CellSpread", 0.0));
         let percent_at_max_native = section.read_float("PercentAtMax", 1.0);
         let percent_at_max_f64 = f64::from(percent_at_max_native);
         let delay_kill_at_max_f64 = f64::from(section.read_float("DelayKillAtMax", 1.0));
@@ -362,7 +358,6 @@ impl WarheadType {
         Self {
             id: id.to_string(),
             verses_f64,
-            cell_spread,
             cell_spread_f64,
             percent_at_max_f64,
             causes_delay_kill: section.read_bool("CausesDelayKill", false),
@@ -497,7 +492,7 @@ mod tests {
         let wh: WarheadType = WarheadType::from_ini_section("AP", section);
 
         assert_eq!(wh.id, "AP");
-        assert_eq!(wh.cell_spread, sim_from_f32(0.5));
+        assert_eq!(wh.cell_spread_f64, 0.5);
         assert_eq!(wh.percent_at_max_f64, f64::from(0.25f32));
         assert!(wh.wall);
         assert!((wh.verses_f64[0] - 1.00).abs() < 1e-9); // none: 100%
@@ -536,7 +531,7 @@ mod tests {
         let wh: WarheadType = WarheadType::from_ini_section("Empty", section);
 
         assert_eq!(wh.verses_f64, [1.0; 11]);
-        assert_eq!(wh.cell_spread, sim_from_f32(0.0));
+        assert_eq!(wh.cell_spread_f64, 0.0);
         assert_eq!(wh.percent_at_max_f64, 1.0);
         assert!(!wh.causes_delay_kill);
         assert_eq!(wh.delay_kill_frames, 5);

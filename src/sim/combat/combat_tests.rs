@@ -8776,31 +8776,33 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
 }
 
-/// SpawnShrapnel's object branch aims at the hostile object's GetCoords
-/// (vt+0x48 at `0x0046A614`): for a building its foundation center
-/// (`0x00447AC0`), not its north-west cell.
+/// SpawnShrapnel lessens a negative ShrapnelCount by the cells from the
+/// bullet to its firer's GetCoords (`[bullet+0xB0]`, vt+0x48 at
+/// `0x0046A370`): for a building firer its foundation centre (`0x00447AC0`),
+/// not its north-west cell, and never the target.
 #[test]
-fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
+fn projectile_shrapnel_count_measures_to_the_firers_get_coords() {
     let ini = IniFile::from_str(
-        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-5\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-8\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     );
     let art = IniFile::from_str("[HQ]\nFoundation=3x3\n");
     let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("shrapnel rules");
     let mut entities = EntityStore::new();
-    let mut source = make_entity_owned(1, "MTNK", 5, 5, 100, "Soviet");
+    // The firer's GetCoords (the 3x3 foundation centre, `0x00447AC0`) is
+    // 1280 leptons from the impact, 5 cells; its NW cell's centre is 1557, 6.
+    let mut source = make_entity_owned(1, "HQ", 2, 4, 100, "Soviet");
+    source.category = EntityCategory::Structure;
+    // Construction stamps the type's `Foundation=3x3`.
+    source.foundation = "3x3".to_string();
     source.lifecycle.cell_marked = true;
     entities.insert(source);
-    // The HQ's NW cell is one cell from the impact; its GetCoords (the 3x3
-    // foundation centre, `0x00447AC0`) is (512, 256) leptons away: 572 -> 2.
-    let mut target = make_entity_owned(2, "HQ", 6, 5, 100, "Americans");
-    target.category = EntityCategory::Structure;
-    // Construction stamps the type's `Foundation=3x3`.
-    target.foundation = "3x3".to_string();
+    // The target is one cell from the impact.
+    let mut target = make_entity_owned(2, "MTNK", 9, 5, 100, "Americans");
     target.lifecycle.cell_marked = true;
     entities.insert(target);
     let mut occupancy = OccupancyGrid::rebuild(&entities);
     let mut interner = test_interner();
-    let impact = crate::sim::projectile::ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
+    let impact = crate::sim::projectile::ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0);
     let detonation = crate::sim::projectile::ProjectileDetonation {
         projectile_id: 7,
         source_id: 1,
@@ -8845,8 +8847,7 @@ fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
         None,
     );
 
-    // `0x0046A370`: -ShrapnelCount minus the distance in cells to the
-    // Target's GetCoords, 5 - 2 (the raw NW Location would give 5 - 1).
+    // 8 - 5; the firer's NW cell would give 8 - 6 and the target 8 - 1.
     assert_eq!(result.projectile_spawns.len(), 3);
 }
 

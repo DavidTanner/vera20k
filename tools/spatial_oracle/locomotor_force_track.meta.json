@@ -7,9 +7,10 @@
     1,
     33621247
   ],
-  "scope": "Original Force_Track no-overlay calls and supplied post-crate continuations, bunker separate speed write, and Drive Process applied-fraction prefix before current-speed getter",
+  "scope": "Original Drive Force_Track no-overlay calls and supplied post-crate continuations, Ship Force_Track no-overlay calls, bunker separate speed write, and Drive Process applied-fraction prefix before current-speed getter",
   "assumptions": [
     "Original Drive/base constructor and unchanged Unit/Drive vtables; supplied disjoint owner/class memory, owner alive/limbo/occupation flags and finite speed fractions",
+    "Ship rows construct the original ShipLocomotionClass (0x69EC50) and call its own Force_Track 0x6A0310 and Apply_Track_Occupation_Mode 0x6A01A0 from slot +0x70: selectors -1, 0, 1, 18 and 63 with both reversed values, the null coordinate, the owner gates and both raw planes; Ship NullCoord 0xB077F8 is supplied XYZ0",
     "All72 Drive selectors and both retained reversed values; null-coordinate cases include arbitrary signed selectors, retained null/non-null heads and negative residual",
     "Map uses supplied32x32 allocated flat cells at level2, no overlays, raw ground0x400/deck0x800, optional structural bridge flag; remaining fixed-stride slots are null and shared dummy has overlay-1",
     "NullCoord XYZ0, ground-level104, Unit raw bridge offset416 and ambient x87 control0E7F are supplied runtime state, not full startup/map/type construction",
@@ -26,6 +27,10 @@
   "entry_points": {
     "force_track": "0x004B0C40",
     "drive_constructor": "0x004AF540",
+    "ship_force_track": "0x006A0310",
+    "ship_constructor": "0x0069EC50",
+    "ship_apply_occupation": "0x006A01A0",
+    "ship_transform": "0x006A3DB0",
     "common_constructor": "0x0055A6C0",
     "map_query": "0x00565730",
     "crate_dispatch": "0x00481A00",
@@ -40,5 +45,5 @@
     "process_prefix": "0x004B0F20",
     "before_current_speed_call": "0x004B1274"
   },
-  "payload_sha256": "132a9502db4786f625f97856517f4e34d8bb2ed944041551014d477fc6306978"
+  "payload_sha256": "55a4353b91f2d006e4c363150a233caf92333fdb83c7e9bae5a7b23f3261106b"
 }

@@ -438,11 +438,12 @@ fn mission_factory_unload(
                         loco.kind == crate::rules::locomotor_type::LocomotorKind::Drive
                     });
                 if drive {
-                    sim.force_drive_track(product, 0x42, track);
+                    sim.force_track(product, 0x42, track);
                 } else {
                     //44DF1C's normal non-Drive cell setter is represented.
-                    //Hover/Teleport44DFAD require original piggyback swap and
-                    //lifetime cleanup, a separate retained locomotor mechanism.
+                    //Teleport (and the dormant TS Tunnel) take 44DFAD's
+                    //piggyback swap and lifetime cleanup, a separate retained
+                    //locomotor mechanism.
                     let cell = (
                         ((location.x / 256) as i16).wrapping_add(4) as u16,
                         ((location.y / 256) as i16).wrapping_add(1) as u16,
