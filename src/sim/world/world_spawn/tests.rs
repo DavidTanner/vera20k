@@ -487,8 +487,9 @@ fn building_contact_constructor_matches_original_slots_before_hello() {
             1
         );
         check(authored.substrate.entities.values().next().unwrap());
-        // Required airfield consumer: reservation publishes HELLO against
-        // the already-constructed slots, rather than sizing them on demand.
+        // Required airfield consumer: an aircraft's HELLO takes the
+        // already-constructed slots in order, rather than sizing them on
+        // demand.
         let base_id = authored
             .substrate
             .entities
@@ -503,8 +504,15 @@ fn building_contact_constructor_matches_original_slots_before_hello() {
                 .unwrap();
             let rng = authored.scenario_rng.logical_state();
             assert_eq!(
-                authored.reserve_airfield_pad(base_id, aircraft, pads),
-                Some(pad)
+                crate::sim::radio::transmit(
+                    &mut authored,
+                    aircraft,
+                    base_id,
+                    crate::sim::radio::RadioMessage::Hello,
+                    crate::sim::radio::RadioPayload::default(),
+                    Some(&rules),
+                ),
+                crate::sim::radio::RadioResponse::Roger
             );
             let base = authored.substrate.entities.get(base_id).unwrap();
             assert_eq!(base.radio_contacts.capacity(), pads as usize);
@@ -1515,13 +1523,6 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                     assert_eq!((cargo.capacity, cargo.size_limit), (3, 2));
                 }
                 "PLANE" => {
-                    assert_eq!(entity.aircraft_mission.is_some(), route != 0);
-                    if route != 0 {
-                        assert!(matches!(
-                            entity.aircraft_mission,
-                            Some(crate::sim::aircraft::AircraftMission::Idle)
-                        ));
-                    }
                     assert_eq!(
                         entity
                             .aircraft_ammo

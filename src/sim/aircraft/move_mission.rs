@@ -1,8 +1,7 @@
 //! `AircraftClass::Mission_Move @ 0x004166E0`, the handler of every aircraft
 //! on the Move mission: a Fly aircraft its player or its spawn manager sent,
-//! and a missile its launcher just fired. Mission+0xBC is
-//! `AircraftMission::Move`'s `sub_state`, which Commence zeroes
-//! (`aircraft::commence_handler_state`).
+//! and a missile its launcher just fired. Its state is Mission+0xBC, which
+//! Commence zeroes.
 //!
 //! - State 0 (`0x004166FB`): with no NavCom (`+0x5A4`) the aircraft enters
 //!   idle mode (`vt+0x484(0, 1)`); otherwise its destination becomes

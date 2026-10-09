@@ -58,10 +58,6 @@
 //!   (`0x00719304..0x00719325`) stay dormant. Trigger: a map's chrono
 //!   reinforcements. Effect: they don't arrive (VERA has no reinforcement
 //!   action); porting them needs these branches.
-//! - A landed Aircraft's TimerCheck idle-mode entry does nothing:
-//!   `queue_foot_enter_idle_mode` has no Aircraft arm (its residual).
-//!   Trigger: a landed Aircraft in the source block. Effect: it keeps its
-//!   mission after the warp.
 //! - PostWarpValidation's hover arm (`0x00718864..0x007188AF`): a Hover type
 //!   with `PoweredUnit=` (TechnoType `+0x410`) whose house has no matching
 //!   powering building (`HouseClass @ 0x0050E1B0`) loses its hover; VERA
@@ -312,7 +308,7 @@ impl Simulation {
         {
             self.shorten_passive_scan_timer(id);
             if !crate::sim::world::passive_target_acquire(self, id, rules, ctx) {
-                crate::sim::world::queue_foot_enter_idle_mode(self, id, rules);
+                crate::sim::world::enter_idle_mode(self, id, rules, None);
             }
         }
         if let Some(warp) = self.chrono_warp_mut(id)

@@ -214,7 +214,7 @@ impl Simulation {
             && !state.has_phase_callback()
             && air_movement::current_fly_height(entity, self.resolved_terrain.as_ref()) > 0
         {
-            self.fly_horizontal_step(id, destination, true, rules);
+            self.fly_horizontal_step(id, destination, true, rules, registry);
         }
         if self
             .substrate
@@ -303,13 +303,10 @@ impl Simulation {
         {
             return;
         }
-        if crate::sim::mission::authority::queue_entity_mission_deferred(
+        crate::sim::mission::authority::queue_entity_mission_deferred(
             entity,
             MissionId::from_known(MissionType::Move),
-        ) && entity.category == EntityCategory::Aircraft
-        {
-            crate::sim::aircraft::queue_move_state(entity);
-        }
+        );
     }
 
     /// UpdateFlightMotion past its Is_Moving gate (`0x004CDA16..0x004CE4A2`),
@@ -409,7 +406,7 @@ impl Simulation {
                 .approach(distance, object.slowdown_distance, object.pitch_angle);
         }
         if self.fly_landing_trigger(id) {
-            self.begin_fly_landing(id, rules);
+            self.begin_fly_landing(id, rules, registry);
         }
         if let Some(entity) = self.substrate.entities.get_mut(id)
             && entity.health.current > 0
@@ -598,6 +595,7 @@ impl Simulation {
         coord: DriveCoord,
         may_slow: bool,
         rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
     ) -> i32 {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -787,7 +785,7 @@ impl Simulation {
             }
         }
         if land {
-            self.begin_fly_landing(id, rules);
+            self.begin_fly_landing(id, rules, registry);
         }
         distance
     }

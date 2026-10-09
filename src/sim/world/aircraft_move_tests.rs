@@ -374,7 +374,6 @@ fn mission_move_matches_original_states() {
 #[ignore = "requires the configured retail install and stock Hills.mmx"]
 fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
     use crate::headless_scenario::SIM_TICK_MS;
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::command::{Command, CommandEnvelope};
     let retail = std::env::var("RA2_DIR")
         .map(std::path::PathBuf::from)
@@ -426,9 +425,12 @@ fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
         if navs.last().is_none_or(|&(_, last)| last != nav) {
             navs.push((frame, nav));
         }
-        let Some(AircraftMission::Move { sub_state }) = entity.aircraft_mission else {
-            panic!("the Harrier stays on Move: {moves:?}");
-        };
+        assert_eq!(
+            entity.mission.current(),
+            MissionId::from_known(MissionType::Move),
+            "the Harrier stays on Move: {moves:?}"
+        );
+        let sub_state = crate::sim::aircraft::handler_state(entity);
         if moves.last().is_none_or(|&(_, last, _)| last != sub_state) {
             moves.push((frame, sub_state, (entity.position.rx, entity.position.ry)));
         }
@@ -497,28 +499,21 @@ fn queue(sim: &mut Simulation, mission: MissionType) {
 /// starts Mission_Move at state 0 (Commence zeroes Mission+0xBC).
 #[test]
 fn a_move_queued_during_a_release_waits_for_mission_attack() {
-    use crate::sim::aircraft::AircraftMission;
     let (mut sim, rules) = fixture(&json!({}));
     set_current(&mut sim, MissionType::Attack);
     let plane = sim.substrate.entities.get_mut(OWNER).unwrap();
-    plane.aircraft_mission = Some(AircraftMission::Attack { sub_state: 5 });
+    plane
+        .mission
+        .set_current_for_test(MissionId::from_known(MissionType::Attack), 5);
     plane.mission_leaf.set_aircraft_action_latch(true);
 
     queue(&mut sim, MissionType::Move);
-    crate::sim::aircraft::queue_move_state(sim.substrate.entities.get_mut(OWNER).unwrap());
     sim.mission_host_promote(OWNER, 1, &rules);
     let plane = sim.substrate.entities.get(OWNER).unwrap();
     assert_eq!(
-        plane.mission.current(),
-        MissionId::from_known(MissionType::Attack)
-    );
-    assert!(
-        matches!(
-            plane.aircraft_mission,
-            Some(AircraftMission::Attack { sub_state: 5 })
-        ),
-        "Mission_Attack runs on until Commence: {:?}",
-        plane.aircraft_mission
+        crate::sim::aircraft::attack_state(plane),
+        Some(5),
+        "Mission_Attack runs on until Commence"
     );
 
     // Mission_Attack's state 1 entry clears the latch (`0x00418031`).
@@ -532,42 +527,24 @@ fn a_move_queued_during_a_release_waits_for_mission_attack() {
         plane.mission.current(),
         MissionId::from_known(MissionType::Move)
     );
-    assert!(
-        matches!(
-            plane.aircraft_mission,
-            Some(AircraftMission::Move { sub_state: 0 })
-        ),
-        "{:?}",
-        plane.aircraft_mission
-    );
+    assert_eq!(plane.mission.handler_state(), 0);
 }
 
 /// An Attack commenced over Mission_Move starts Mission_Attack at state 0.
 #[test]
 fn an_attack_commenced_over_mission_move_starts_at_state_zero() {
-    use crate::sim::aircraft::AircraftMission;
     let (mut sim, rules) = fixture(&json!({}));
     set_current(&mut sim, MissionType::Move);
     sim.substrate
         .entities
         .get_mut(OWNER)
         .unwrap()
-        .aircraft_mission = Some(AircraftMission::Move { sub_state: 4 });
+        .mission
+        .set_current_for_test(MissionId::from_known(MissionType::Move), 4);
     queue(&mut sim, MissionType::Attack);
     sim.mission_host_promote(OWNER, 1, &rules);
     let plane = sim.substrate.entities.get(OWNER).unwrap();
-    assert_eq!(
-        plane.mission.current(),
-        MissionId::from_known(MissionType::Attack)
-    );
-    assert!(
-        matches!(
-            plane.aircraft_mission,
-            Some(AircraftMission::Attack { sub_state: 0 })
-        ),
-        "{:?}",
-        plane.aircraft_mission
-    );
+    assert_eq!(crate::sim::aircraft::attack_state(plane), Some(0));
 }
 
 /// The Move slot `0x004166C0` sends a `Carryall=` type to `0x00416D50`; no
@@ -585,14 +562,13 @@ fn retail_aircraft_types_are_not_carryalls() {
 }
 
 /// Mission_Move's state 0 without a NavCom enters idle mode (`0x004176F0`,
-/// `aircraft::idle_entry`). On the ground the original's landed arm drops
-/// the destination and the Target and commences Guard (an unarmed aircraft
-/// of a house that is not human, outside a team), which a Fly aircraft holds
-/// as VERA's Guard state. In flight VERA's tree stands in: Guard is VERA's
-/// state alone, nothing is queued, and the Target stays.
+/// `aircraft::idle_entry`) and commences what it picks. On the ground the
+/// landed arm drops the destination and the Target and picks Guard (an
+/// unarmed aircraft outside a team); in flight the airborne arm sends an
+/// aircraft without a weapon to its nearest airfield on Move, keeping its
+/// Target.
 #[test]
 fn mission_move_idle_mode_on_the_ground_and_in_flight() {
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::combat::AttackTarget;
     for (z, landed) in [(0, true), (1500, false)] {
         let (mut sim, rules) = fixture(&json!({}));
@@ -605,10 +581,13 @@ fn mission_move_idle_mode_on_the_ground_and_in_flight() {
             ),
         );
         plane.position.exact_z_leptons = Some(z);
-        plane.aircraft_mission = Some(AircraftMission::Move { sub_state: 0 });
+        plane
+            .mission
+            .set_current_for_test(MissionId::from_known(MissionType::Move), 0);
         plane.attack_target = Some(AttackTarget::for_cell(70, 70));
+        let airfield = sim.aircraft_nearest_friendly_airfield_cell(OWNER, &rules);
 
-        crate::sim::aircraft::dispatch_aircraft_mission(&mut sim, &rules, OWNER, None);
+        crate::sim::aircraft::dispatch_mission(&mut sim, OWNER, &rules, Default::default());
         let plane = sim.substrate.entities.get(OWNER).unwrap();
         let expected = if landed {
             MissionType::Guard
@@ -621,12 +600,12 @@ fn mission_move_idle_mode_on_the_ground_and_in_flight() {
             "z {z}"
         );
         assert_eq!(plane.mission.queued(), MissionId::NONE, "z {z}");
-        assert!(
-            matches!(plane.aircraft_mission, Some(AircraftMission::Guard)),
-            "z {z}: {:?}",
-            plane.aircraft_mission
-        );
+        assert_eq!(plane.mission.handler_state(), 0, "z {z}");
         assert_eq!(plane.attack_target.is_none(), landed, "z {z}: the Target");
-        assert_eq!(plane.navigation.nav_com, None, "z {z}");
+        assert_eq!(
+            plane.navigation.nav_com,
+            (!landed).then_some(airfield),
+            "z {z}"
+        );
     }
 }

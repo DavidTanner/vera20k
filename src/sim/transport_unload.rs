@@ -26,7 +26,7 @@ use crate::sim::find_nearby_cell::{
 };
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
-use crate::sim::mission::{DockTeardown, MissionId, MissionType};
+use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::passenger::{
@@ -577,7 +577,7 @@ fn eject_head_passenger(
             }
             // Unit73DBDB queues the passenger's Move directly, before
             // class destination73DC06; it does not execute a player event.
-            sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
+            sim.queue_order_mission(pax_id, MissionType::Move);
             issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
 
             if let Some(sound) = leave_sound {
@@ -706,7 +706,7 @@ fn aircraft_landed(
 }
 
 /// The Aircraft Unload slot `0x004151E0`, for a `Passengers > 0` aircraft;
-/// returns its frames ([`crate::sim::aircraft::dispatch_native_mission`]
+/// returns its frames ([`crate::sim::aircraft::dispatch_mission`]
 /// gates it on the mission timer and restarts the timer). Dormant in retail: read
 /// through `RuleSet::from_ini`, no `[AircraftTypes]` entry has `Passengers=`.
 /// The Nighthawk `[SHAD]` is a Jumpjet `[VehicleTypes]` entry and unloads
@@ -809,7 +809,7 @@ pub(crate) fn mission_unload(
         }
         AIR_STATE_EJECT => {
             if cargo_count(entity) == 0 {
-                crate::sim::aircraft::enter_idle_mode_now(sim, rules, id, overlay_registry);
+                crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, overlay_registry);
             } else {
                 let ejected = eject_from_aircraft(sim, rules, overlay_registry, id);
                 let hold_empty = sim
@@ -823,7 +823,7 @@ pub(crate) fn mission_unload(
                 // and the mission leaves through the same empty-hold exit, so
                 // this dispatch's epilogue draw is the last one.
                 if hold_empty || !ejected {
-                    crate::sim::aircraft::enter_idle_mode_now(sim, rules, id, overlay_registry);
+                    crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, overlay_registry);
                 }
             }
             unload_epilogue(sim, rules, id)
@@ -959,7 +959,7 @@ fn eject_from_aircraft(
             }
             // Aircraft415C05 queues Move directly before destination415C21,
             // followed by its radio callbacks. No Event Archive clear.
-            sim.queue_mission_with_teardown(pax_id, MissionType::Move, DockTeardown::None);
+            sim.queue_order_mission(pax_id, MissionType::Move);
             if let Some(dest) = scan_cell {
                 issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
             }

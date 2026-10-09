@@ -281,7 +281,6 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
 }
 
 pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::docking::aircraft_dock::AircraftAmmo;
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionLeafState};
     use crate::sim::movement::locomotor::LocomotorState;
@@ -324,7 +323,6 @@ pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
             dispatch_timer: MissionDispatchTimer::at_frame(100),
         });
     entity.mission_leaf = MissionLeafState::aircraft_raw_for_test(1, 1, false);
-    entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 1 });
     entity.attack_target = (!input["null_target"].as_bool().unwrap_or(false))
         .then(|| crate::sim::combat::AttackTarget::new(2));
     let mut ammo = AircraftAmmo::new(2);
@@ -378,9 +376,7 @@ pub(super) fn assert_reengagement(sim: &mut Simulation, row: &Value) {
         None => Value::Null,
         other => panic!("unexpected NavCom: {other:?}"),
     };
-    let crate::sim::aircraft::AircraftMission::Attack { sub_state } =
-        entity.aircraft_mission.as_ref().unwrap()
-    else {
+    let Some(sub_state) = crate::sim::aircraft::attack_state(entity) else {
         panic!("Attack must remain active");
     };
     let fly = entity.locomotor.as_ref().unwrap().fly_runtime().unwrap();

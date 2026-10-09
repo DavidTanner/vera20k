@@ -893,36 +893,6 @@ fn add_cell_offset(base_rx: u16, base_ry: u16, ox: i16, oy: i16) -> Option<(u16,
     Some((rx as u16, ry as u16))
 }
 
-/// The foundation centre of `airfield`, a live `Helipad=` or `UnitReload=`
-/// building out of limbo, while it has a free dock slot.
-pub(super) fn free_helipad_cell(
-    sim: &Simulation,
-    rules: &RuleSet,
-    airfield: u64,
-) -> Option<(u16, u16)> {
-    let entity = sim.substrate.entities.get(airfield)?;
-    if entity.category != crate::map::entities::EntityCategory::Structure
-        || entity.health.current == 0
-        || entity.dying
-        || entity.lifecycle.in_limbo
-    {
-        return None;
-    }
-    let obj = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    if !obj.helipad && !obj.unit_reload {
-        return None;
-    }
-    if !sim
-        .production
-        .airfield_docks
-        .has_free_slot(airfield, obj.dock_contact_capacity())
-    {
-        return None;
-    }
-    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
-    Some((u16::try_from(x / 256).ok()?, u16::try_from(y / 256).ok()?))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

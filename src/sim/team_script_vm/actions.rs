@@ -882,7 +882,7 @@ impl Simulation {
                     });
                     if !still_moving && entity.attack_target.is_none() {
                         self.team_member_set_destination(member, None, rules, registry);
-                        self.team_member_enter_idle_mode(member, rules);
+                        crate::sim::world::enter_idle_mode(self, member, rules, None);
                     }
                 }
             } else {

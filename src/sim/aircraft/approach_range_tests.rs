@@ -3,7 +3,6 @@ use crate::map::entities::EntityCategory;
 use crate::rules::foundation::FOUNDATION_TABLE;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::AircraftMission;
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
@@ -55,7 +54,10 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
     source.category = EntityCategory::Aircraft;
     source.set_veterancy_rank((case["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     source.aircraft_ammo = Some(AircraftAmmo::new(2));
-    source.aircraft_mission = Some(AircraftMission::Attack { sub_state: 3 });
+    source.mission.set_current_for_test(
+        crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+        3,
+    );
     source.locomotor = Some(LocomotorState::from_object_type(
         rules.object("ORCA").unwrap(),
         0,
@@ -107,7 +109,7 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
 fn assert_native_in_range_result(sim: &Simulation, row: &Value) {
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert!(row["in_range"].as_bool().unwrap());
-    let Some(AircraftMission::Attack { sub_state, .. }) = aircraft.aircraft_mission else {
+    let Some(sub_state) = crate::sim::aircraft::attack_state(aircraft) else {
         panic!("unexpected mission for {row}");
     };
     assert_eq!(sub_state, 4, "{row}");

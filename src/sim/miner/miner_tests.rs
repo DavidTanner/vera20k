@@ -2172,10 +2172,9 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
             }
         }
 
-        sim.queue_megamission_with_teardown(
+        sim.queue_megamission(
             miner_id,
             crate::sim::mission::MissionType::Move,
-            crate::sim::mission::DockTeardown::AircraftOnly,
             Some(&rules),
         );
 
@@ -2213,10 +2212,9 @@ fn megamission_mid_unload_abandons_the_unload_and_commences_the_order() {
         "the order arrives with cargo still aboard"
     );
 
-    sim.queue_megamission_with_teardown(
+    sim.queue_megamission(
         miner_id,
         crate::sim::mission::MissionType::Move,
-        crate::sim::mission::DockTeardown::AircraftOnly,
         Some(&rules),
     );
     assert!(!crate::sim::miner::miner_dock::has_contact(
@@ -3501,7 +3499,7 @@ fn player_move_arrival_returns_a_war_miner_to_harvest_on_ore() {
     place_ore(&mut sim, 20, 20, 5);
     install_land_types_for_placed_ore(&mut sim);
     // Mid-harvest cursor, then the player Move takes over (Command::Move's
-    // `queue_megamission_with_teardown(Move)` promoted).
+    // `queue_megamission(Move)` promoted).
     let now = sim.session.binary_frame;
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), now)
         .expect("assign Harvest");

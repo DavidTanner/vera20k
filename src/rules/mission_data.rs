@@ -341,9 +341,9 @@ pub struct MissionControlEntry {
     ///
     /// The Infantry and Unit Scatter receivers read it unless their first
     /// flag forces the call (`movement::scatter::mission_permits_scatter`);
-    /// the Aircraft receiver reads it too but is not dispatched (residual in
-    /// `movement::scatter`). `Scatter=no` covers Sleep, Sticky, Attack,
-    /// Capture, **Harvest**, Unload, Construction and Selling in stock rules.
+    /// the Aircraft receiver reads it whatever the flags. `Scatter=no`
+    /// covers Sleep, Sticky, Attack, Capture, **Harvest**, Unload,
+    /// Construction and Selling in stock rules.
     pub scatter: bool,
 }
 

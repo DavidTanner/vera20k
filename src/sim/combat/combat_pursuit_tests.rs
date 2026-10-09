@@ -4,7 +4,6 @@
 
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::AircraftMission;
 use crate::sim::combat::AttackTarget;
 use crate::sim::components::Health;
 use crate::sim::docking::aircraft_dock::AircraftAmmo;
@@ -145,8 +144,12 @@ fn aircraft_attack_target_skipped_by_pursuit() {
     // Aircraft has its own attack-mission state machine; pursuit must not
     // touch its movement.
     let mut orca = make_unit(1, "ORCA", "Americans", 0, 0, 150);
+    orca.category = crate::map::entities::EntityCategory::Aircraft;
     orca.attack_target = Some(AttackTarget::new(2));
-    orca.aircraft_mission = Some(AircraftMission::Attack { sub_state: 3 });
+    orca.mission.set_current_for_test(
+        crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+        3,
+    );
     orca.aircraft_ammo = Some(AircraftAmmo::new(2));
     let rhino = make_unit(2, "HTNK", "Soviet", 30, 0, 400);
     let mut sim = make_sim(vec![orca, rhino]);

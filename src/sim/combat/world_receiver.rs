@@ -3951,8 +3951,8 @@ pub(super) fn emit_admitted_fire(
             .substrate
             .entities
             .get(snap.stable_id)
-            .and_then(|entity| entity.aircraft_mission.as_ref())
-            .is_some_and(|mission| mission.is_attacking())
+            .and_then(crate::sim::aircraft::attack_state)
+            .is_some()
     {
         out.ammo_deduct.push(snap.stable_id);
     }
@@ -4695,11 +4695,7 @@ pub(crate) fn tick_combat(
         // for it; the visit opens with its own prefix.
         let requested = fire_requests.aircraft.contains(&id);
         let blocked = !requested
-            && (fire_blocked.contains(&id)
-                || entity
-                    .aircraft_mission
-                    .as_ref()
-                    .is_some_and(|mission| mission.is_attacking()));
+            && (fire_blocked.contains(&id) || crate::sim::aircraft::attack_state(entity).is_some());
         // A building shoots only the FireAt its own visit asked for this
         // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
         // (`techno_ai::building_missions`).

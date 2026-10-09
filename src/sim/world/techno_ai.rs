@@ -14,6 +14,7 @@
 //! Dispatch is `match category` only — no trait object / dyn / vtable
 //! (invariant #2).
 
+mod aircraft_guard;
 mod building_missile;
 mod building_missions;
 mod building_retaliation;
@@ -21,9 +22,9 @@ pub(crate) use building_missions::queue_and_commence;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::dispatch_foot_mission;
+pub(crate) use mission_handlers::enter_idle_mode;
 pub(crate) use mission_handlers::foot_enter_idle_mode_selection;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
-pub(crate) use mission_handlers::queue_foot_enter_idle_mode;
 pub(crate) use target_scan::passive_target_acquire;
 pub(crate) use target_scan::team_leader_greatest_threat;
 
@@ -759,16 +760,13 @@ fn techno_ai_shell(
         // (`0x0041504A`/`0x00415058`). Keep the counter here; the sole promotion
         // is `object_ai_post_movement_promote_one`.
         //
-        // RESIDUAL — no passive block on this arm. Aircraft reach the common
-        // Techno AI body in the original through the same foot-leaf call the
-        // Unit and Infantry leaves use, so the block is shared with them there;
-        // whether it does anything for a YR aircraft in practice is UNCHECKED.
-        // It is omitted here because VERA's aircraft mission machine owns firing
-        // and return-to-base, and the idle/parked/docked aircraft states all read
-        // as Guard — so wiring this in would install targets on helipad-parked
-        // aircraft outside the system that decides when they may shoot. Doing it
-        // properly means choosing which aircraft states may acquire and routing
-        // the pick through that machine, which is its own slice.
+        // RESIDUAL — no passive block on this arm (#1111). Aircraft reach the
+        // common Techno AI body in the original through the same foot-leaf
+        // call the Unit and Infantry leaves use, so the block is shared with
+        // them there; whether it acquires anything for a YR aircraft is
+        // UNCHECKED. Trigger: a guarding aircraft with an enemy in range.
+        // Effect: it takes no Target by itself, so Mission_Guard's Target arm
+        // queues no Attack.
         EntityCategory::Aircraft => {
             if let Some(rules) = rules
                 && !techno_common_steps(sim, id, rules, ctx.overlay_registry)
@@ -777,23 +775,13 @@ fn techno_ai_shell(
             }
             drop_unsensed_cloaked_target_step(sim, id);
             mission_counter_step(sim, id);
-            // The aircraft mission handlers absorbed so far: Retreat, Unload,
-            // the paradrop plane's two and the Spy Plane's two, behind
-            // MissionClass::AI's timer gate.
+            // MissionClass::AI, inside this slot and before Fly Process
+            // (FootClass::AI4DA530).
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
+                && crate::sim::aircraft::dispatch_mission(sim, id, rules, ctx)
             {
-                crate::sim::aircraft::dispatch_native_mission(sim, id, rules, ctx.overlay_registry);
-                // The remaining aircraft missions dispatch here too, inside
-                // this slot and before Fly Process (FootClass::AI4DA530).
-                if crate::sim::aircraft::dispatch_aircraft_mission(
-                    sim,
-                    rules,
-                    id,
-                    ctx.overlay_registry,
-                ) {
-                    sim.fire_requests.aircraft.insert(id);
-                }
+                sim.fire_requests.aircraft.insert(id);
             }
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
@@ -1735,7 +1723,6 @@ mod tests {
     use crate::map::tube_facts::TubeId;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::combat::{AttackTarget, TargetKind};
     use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
     use crate::sim::game_entity::{BunkerLink, GameEntity};
@@ -4897,7 +4884,7 @@ mod tests {
         entity: &GameEntity,
         gates: HostTraceGates,
     ) -> Result<(), HostTraceError> {
-        if entity.category == EntityCategory::Aircraft || entity.aircraft_mission.is_some() {
+        if entity.category == EntityCategory::Aircraft {
             return Err(HostTraceError::AircraftPath);
         }
         if entity.category != EntityCategory::Unit {
@@ -6041,7 +6028,7 @@ mod tests {
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
-            .aircraft_mission = Some(AircraftMission::Guard);
+            .category = EntityCategory::Aircraft;
         assert_ordinary_drive_host_error(
             &aircraft,
             &control,

@@ -295,6 +295,38 @@ impl crate::sim::house_state::HouseState {
 }
 
 impl Simulation {
+    /// `HouseClass::Which_Zone @ 0x004FFB20` answering -1 for `owner`: `coord`
+    /// is the empty coordinate (`0x00A8EFF8`, all zero) or lies more than four
+    /// base radii (`+0x5498`) from the base cell's GetCoords (`0x00486840` on
+    /// [`HouseState::base_origin`]; an empty base is the empty coordinate), by
+    /// `CoordStruct::Distance3D @ 0x0041C380`. Its other answers (0 within one
+    /// radius, 1..4 by direction from the base) are not ported: no caller
+    /// reads them.
+    ///
+    /// [`HouseState::base_origin`]: crate::sim::house_state::HouseState::base_origin
+    pub(crate) fn house_outside_zones(&self, owner: InternedId, coord: [i32; 3]) -> bool {
+        if coord == [0, 0, 0] {
+            return true;
+        }
+        let Some(house) = self.houses.get(&owner) else {
+            return true;
+        };
+        let origin = house.base_origin();
+        let base = if origin == (0, 0) {
+            [0, 0, 0]
+        } else {
+            let cell = crate::sim::projectile::cell_ground_coord(
+                self.resolved_terrain.as_ref(),
+                origin.0,
+                origin.1,
+            );
+            [cell.x, cell.y, cell.z]
+        };
+        let distance = crate::util::native_x87::distance_3d_leptons(base, coord);
+        let radius = house.base_radius();
+        distance > radius && radius.wrapping_shl(2) < distance
+    }
+
     /// Ordinary Unit/Infantry arm of House500200 (Find_Passable_Cell_Near_Unit),
     /// used by Foot Mission_Rescue. Their original virtual+2D4/+2D8/+2DC bodies
     /// (41BF00/10/20) return zero, selecting House501AC0 variant0 without the

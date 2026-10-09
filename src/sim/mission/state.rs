@@ -238,6 +238,13 @@ pub(crate) struct MissionTestFixture {
 
 #[cfg(test)]
 impl MissionCom {
+    /// A handler mid-mission: `current` holding Mission+0xBC `handler_state`,
+    /// the other fields kept.
+    pub(crate) fn set_current_for_test(&mut self, current: MissionId, handler_state: u32) {
+        self.current = current;
+        self.handler_state = handler_state;
+    }
+
     pub(crate) fn apply_test_fixture(&mut self, fixture: MissionTestFixture) {
         self.current = fixture.current;
         self.suspended = fixture.suspended;

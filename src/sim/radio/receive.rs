@@ -168,11 +168,25 @@ fn building_receive(
             }) else {
                 return RadioResponse::None;
             };
-            //43CD2B reads Helipad+16A9/UnitRepair+16AB, not Hospital.
-            //Their separate numeric proximity/service arm remains outside
-            //the ordinary GAPILE and WeaponsFactory release routes.
-            if object.helipad || object.unit_repair {
-                return RadioResponse::None;
+            // 0x0043CD2B reads UnitRepair (+0x16A9) and Bunker (+0x16AB): a
+            // sender under 0x180 leptons from the dock (both GetCoords,
+            // `(dx²+dz²)+dy²` through Sqrt_Approx and ftol) stays linked and
+            // is answered ROGER (`0x0043CD4D..0x0043CDC8`).
+            if (object.unit_repair || object.bunker)
+                && sender
+                    .and_then(|from| sim.substrate.entities.get(from))
+                    .zip(sim.substrate.entities.get(building))
+                    .is_some_and(|(from, dock)| {
+                        let terrain = sim.resolved_terrain.as_ref();
+                        let a = crate::sim::movement::ground_pose::object_get_coords(dock, terrain);
+                        let b = crate::sim::movement::ground_pose::object_get_coords(from, terrain);
+                        crate::util::native_x87::distance_3d_leptons(
+                            [a.x, a.z, a.y],
+                            [b.x, b.z, b.y],
+                        ) < 0x180
+                    })
+            {
+                return RadioResponse::Roger;
             }
             //43CDDD delegates before re-reading the live type at43CDE2.
             let _ = techno_receive(sim, building, sender, msg, payload, rules);
@@ -182,7 +196,7 @@ fn building_receive(
                     .get(building)
                     .and_then(|entity| sim.object_type(entity.type_ref(), rules))
                     .is_some_and(|object| {
-                        object.weapons_factory || object.helipad || object.unit_repair
+                        object.weapons_factory || object.unit_repair || object.bunker
                     })
             }) {
                 RadioResponse::Queued //43CE18 returns literal0x17.
@@ -280,6 +294,14 @@ fn building_can_load(
             _ => RadioResponse::Roger,
         };
     }
+    // 0x0043C620: a Helipad takes an Aircraft and nothing else.
+    if building_type.helipad {
+        return if unit.category == EntityCategory::Aircraft {
+            RadioResponse::Roger
+        } else {
+            RadioResponse::Negatory
+        };
+    }
     if unit.category == EntityCategory::Unit
         && (building_type.dock_unload && unit_type.harvester
             || building_type.weeder && unit_type.weeder)
@@ -319,8 +341,10 @@ fn foot_is_occupied(sim: &Simulation, foot: u64, sender: Option<u64>) -> RadioRe
 /// free sender back and ask it whether it is still moving (0x13). A
 /// `DockUnload=`/`Weeder=` dock then sends it to the pad (MOVE_HERE 0x12)
 /// and, once it answers that it is already there, tethers it (0x18) and has
-/// it turn and report ready (0x16); any other building stops after 0x13.
-/// The answer is ROGER unless the dock is offline.
+/// it turn and report ready (0x16). A `Helipad=` sends it to itself (MOVE_HERE
+/// with the dock as the parameter, `0x0043CA47`) and, answered ALREADY_THERE,
+/// sends TETHER to its own first contact (`0x0043CA5C`). Any other building
+/// stops after 0x13. The answer is ROGER unless the dock is offline.
 fn building_docking(
     sim: &mut Simulation,
     building_id: u64,
@@ -345,8 +369,8 @@ fn building_docking(
     // UnitRepair43C814..849 asks the existing contact whether its
     // signed Health/Strength is full before any HELLO or movement probe.
     let unit_repair = object.unit_repair;
-    if object.bunker || object.helipad {
-        // These docking mechanisms retain their existing adapters.
+    if object.bunker {
+        // This docking mechanism retains its existing adapter.
         return RadioResponse::None;
     }
     if unit_repair
@@ -371,6 +395,7 @@ fn building_docking(
         .object_type(building.type_ref(), rules)
         .expect("docking retains type");
     let pad_dock = object.dock_unload || object.weeder;
+    let helipad = object.helipad;
     let (rx, ry) = (building.position.rx, building.position.ry);
     // 0x0043C8A4..0x0043C8CC: a sender that is not a contact is HELLOed back
     // when a slot is free or already its own.
@@ -440,9 +465,29 @@ fn building_docking(
     if moving != RadioResponse::Roger && !force {
         return RadioResponse::Roger;
     }
-    // 0x0043CA13..0x0043CA37: only a DockUnload/Weeder dock walks the sender
-    // onto its pad.
+    // 0x0043CA13..0x0043CA62: a DockUnload/Weeder dock walks the sender
+    // onto its pad; a Helipad calls it to itself.
     if !pad_dock {
+        if helipad
+            && transmit(
+                sim,
+                building_id,
+                from,
+                RadioMessage::MoveToCell,
+                RadioPayload {
+                    target: Some(NavTargetRef::Building { id: building_id }),
+                    ..RadioPayload::default()
+                },
+                Some(rules),
+            ) == RadioResponse::AlreadyThere
+        {
+            crate::sim::radio::transmit_to_contact(
+                sim,
+                building_id,
+                RadioMessage::Tether,
+                Some(rules),
+            );
+        }
         return RadioResponse::Roger;
     }
     // 0x0043CA71..0x0043CAB8: the pad is Get_Cell() + (3, 1), CellStruct
@@ -454,7 +499,7 @@ fn building_docking(
         from,
         RadioMessage::MoveToCell,
         RadioPayload {
-            cell: Some(pad),
+            target: Some(NavTargetRef::cell(pad.0, pad.1)),
             ..RadioPayload::default()
         },
         Some(rules),
@@ -514,9 +559,11 @@ fn building_dock_now(
     if object.unit_absorb || object.infantry_absorb {
         return RadioResponse::Roger;
     }
-    // 0x0043C732..0x0043C785: the repair docks and Bunker queue their own
-    // mission; VERA's depot and bunker flows own those links.
-    if object.unit_repair {
+    // 0x0043C732..0x0043C785: the repair and reload docks and Bunker queue
+    // their own mission; VERA's depot and bunker flows own those links.
+    // RESIDUAL: Hospital= and Armory= share this arm natively; neither has a
+    // represented DOCK_NOW sender.
+    if object.unit_repair || object.unit_reload {
         // Building43C7B5..C7DC: service request and the occupant's Sleep
         // queue. The Building mission owns the admitted pad contact.
         let now = sim.session.binary_frame;
@@ -696,9 +743,17 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
     sim.mission_host_promote(unit, now, rules);
 }
 
-/// `AircraftClass::Receive_Radio @ 0x004190B0`: its own arms for 8, 0xE,
-/// 0xF, 0x12, 0x13, 0x15, 0x17, 0x1D, 0x1F and 0x21 are not represented; the
-/// rest (TETHER/UNTETHER included, table `0x0041957C`) take the Foot path.
+/// `AircraftClass::Receive_Radio @ 0x004190B0`. An aircraft on Retreat or a
+/// paradrop or Spy Plane mission without an Airstrike (`+0x294`) answers
+/// every message 0 (`0x004190B6..0x004190E3`). Its own arms (table
+/// `0x0041957C`) are the reload dock's queries (0x1D, 0x1F), MOVE_HERE (0x12),
+/// NEED_TO_MOVE (0x13) and RUN_AWAY (0x17); the rest take the Foot path.
+///
+/// RESIDUAL: the transport arms (8 for a `Carryall=` type, 0xE, 0xF and 0x15
+/// for a type with `Passengers=`, `0x004194C5`, `0x00419397`, `0x0041946B`,
+/// `0x00419300`) and 0x21 (`0x0041918C`) are not represented: no retail Fly
+/// aircraft takes passengers over the radio or is a Carryall
+/// (`retail_fly_aircraft_take_no_radio_passengers`), and nothing sends 0x21.
 fn aircraft_receive(
     sim: &mut Simulation,
     aircraft: u64,
@@ -707,17 +762,172 @@ fn aircraft_receive(
     payload: RadioPayload,
     rules: Option<&RuleSet>,
 ) -> RadioResponse {
+    let Some(entity) = sim.substrate.entities.get(aircraft) else {
+        return RadioResponse::None;
+    };
+    let airstrike = entity
+        .mission_leaf
+        .as_aircraft()
+        .is_some_and(|leaf| leaf.airstrike_manager_present());
+    if !airstrike
+        && matches!(
+            entity.mission.current().known(),
+            Some(
+                MissionType::Retreat
+                    | MissionType::ParadropApproach
+                    | MissionType::ParadropOverfly
+                    | MissionType::SpyplaneApproach
+                    | MissionType::SpyplaneOverfly
+            )
+        )
+    {
+        return RadioResponse::None;
+    }
+    let ammo = entity
+        .aircraft_ammo
+        .as_ref()
+        .map_or(-1, |ammo| ammo.current);
+    let type_ammo = rules
+        .and_then(|rules| sim.object_type(entity.type_ref(), rules))
+        .map_or(-1, |object| object.ammo);
+    let target = entity.attack_target.is_some();
     match msg {
+        // 0x00419109: half its type's Ammo or more and a Target, it does not
+        // need the round; otherwise Techno takes it (`0x006F4C9C`).
+        RadioMessage::Reload if ammo >= type_ammo / 2 && target => RadioResponse::Roger,
+        // 0x00419153: ready to leave the dock with no Target and full Ammo.
+        RadioMessage::QueryReloaded => {
+            if !target && ammo == type_ammo {
+                RadioResponse::Roger
+            } else {
+                RadioResponse::Negatory
+            }
+        }
+        RadioMessage::MoveToCell => aircraft_move_here(sim, aircraft, sender, payload, rules),
+        RadioMessage::NeedToMove => {
+            // 0x00419274: Foot first, its answer dropped.
+            let _ = foot_receive(sim, aircraft, sender, msg, payload, rules);
+            aircraft_need_to_move(sim, aircraft, rules)
+        }
+        RadioMessage::RunAway => {
+            // 0x004191AF: Queue(Move), off to the nearest friendly airfield,
+            // OVER_OUT to the first contact, then the Foot arm.
+            if let Some(rules) = rules {
+                let _ = sim.mission_queue_exact(
+                    aircraft,
+                    MissionId::from_known(MissionType::Move),
+                    0,
+                    sim.session.binary_frame,
+                    &EntityReadyInputProvider,
+                );
+                let airfield = sim.aircraft_nearest_friendly_airfield_cell(aircraft, rules);
+                sim.assign_aircraft_destination(aircraft, Some(airfield), rules);
+            }
+            crate::sim::radio::transmit_to_contact(sim, aircraft, RadioMessage::Break, rules);
+            foot_receive(sim, aircraft, sender, msg, payload, rules)
+        }
         RadioMessage::RequestClearance
         | RadioMessage::CanDock
         | RadioMessage::CanEnter
-        | RadioMessage::MoveToCell
-        | RadioMessage::NeedToMove
-        | RadioMessage::DockNow
-        | RadioMessage::RunAway
-        | RadioMessage::HelipadReserveAck
-        | RadioMessage::LinkPassenger => RadioResponse::None,
+        | RadioMessage::DockNow => RadioResponse::None,
         _ => foot_receive(sim, aircraft, sender, msg, payload, rules),
+    }
+}
+
+/// MOVE_HERE, Aircraft case 0x12 (`0x004191F2`): the Foot arm first, its
+/// answer dropped; then a dock parameter that does not answer this aircraft's
+/// CAN_LOAD ROGER is refused (NEGATORY), one that does queues Enter, and any
+/// other parameter queues Move; the class setter takes the parameter and the
+/// mission commences (`vt+0x1EC`); ROGER.
+fn aircraft_move_here(
+    sim: &mut Simulation,
+    aircraft: u64,
+    sender: Option<u64>,
+    payload: RadioPayload,
+    rules: Option<&RuleSet>,
+) -> RadioResponse {
+    let _ = foot_receive(
+        sim,
+        aircraft,
+        sender,
+        RadioMessage::MoveToCell,
+        payload,
+        rules,
+    );
+    let Some(rules) = rules else {
+        return RadioResponse::None;
+    };
+    let dock = payload.target.and_then(|target| match target {
+        NavTargetRef::Entity { id }
+        | NavTargetRef::Object { id }
+        | NavTargetRef::Building { id } => sim
+            .substrate
+            .entities
+            .get(id)
+            .filter(|entity| entity.category == EntityCategory::Structure)
+            .map(|_| id),
+        NavTargetRef::Cell { .. } => None,
+    });
+    let mission = match dock {
+        Some(dock) => {
+            if transmit(
+                sim,
+                aircraft,
+                dock,
+                RadioMessage::CanEnter,
+                RadioPayload::default(),
+                Some(rules),
+            ) != RadioResponse::Roger
+            {
+                return RadioResponse::Negatory;
+            }
+            MissionType::Enter
+        }
+        None => MissionType::Move,
+    };
+    let now = sim.session.binary_frame;
+    let _ = sim.mission_queue_exact(
+        aircraft,
+        MissionId::from_known(mission),
+        0,
+        now,
+        &EntityReadyInputProvider,
+    );
+    sim.assign_aircraft_destination(aircraft, payload.target, rules);
+    let _ = sim.mission_commence_exact(aircraft, now);
+    RadioResponse::Roger
+}
+
+/// NEED_TO_MOVE, Aircraft case 0x13 after the Foot arm (`0x00419286`): a
+/// Fly that is not moving (`Is_Moving`), or one with no NavCom, answers
+/// ROGER; one moving toward a NavCom answers NEGATORY unless it is
+/// AirportBound and that NavCom is the cell it is in.
+fn aircraft_need_to_move(
+    sim: &Simulation,
+    aircraft: u64,
+    rules: Option<&RuleSet>,
+) -> RadioResponse {
+    let Some(entity) = sim.substrate.entities.get(aircraft) else {
+        return RadioResponse::None;
+    };
+    if !crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false) {
+        return RadioResponse::Roger;
+    }
+    let Some(nav_com) = entity.navigation.nav_com else {
+        return RadioResponse::Roger;
+    };
+    let airport_bound = rules
+        .and_then(|rules| sim.object_type(entity.type_ref(), rules))
+        .is_some_and(|object| object.airport_bound);
+    let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+    let own_cell = (location.x / 256, location.y / 256);
+    match nav_com {
+        NavTargetRef::Cell { rx, ry }
+            if airport_bound && (i32::from(rx), i32::from(ry)) == own_cell =>
+        {
+            RadioResponse::Roger
+        }
+        _ => RadioResponse::Negatory,
     }
 }
 
@@ -758,10 +968,11 @@ fn foot_receive(
     }
 }
 
-/// MOVE_HERE, Foot case 0x12 (`0x004D9139`): already in the payload cell →
-/// ALREADY_THERE. Otherwise a unit on Guard with nothing queued queues Move,
-/// a queued Enter commences when ready, the class setter takes the cell and
-/// the mission timer restarts; ROGER.
+/// MOVE_HERE, Foot case 0x12 (`0x004D9139`): a receiver whose cell is the
+/// cell of the parameter's GetCoords (`vt+0x48`) answers ALREADY_THERE.
+/// Otherwise a unit on Guard with nothing queued queues Move, a queued Enter
+/// commences when ready, the class setter takes the parameter and the mission
+/// timer restarts; ROGER.
 fn foot_move_here(
     sim: &mut Simulation,
     foot: u64,
@@ -771,12 +982,29 @@ fn foot_move_here(
     let Some(entity) = sim.substrate.entities.get(foot) else {
         return RadioResponse::None;
     };
-    if payload.cell == Some((entity.position.rx, entity.position.ry)) {
+    // 0x004D913D..0x004D9189: both cells are coordinate / 256, truncated
+    // toward zero; the receiver's is its Location's (`vt+0x1B8`).
+    let terrain = sim.resolved_terrain.as_ref();
+    let target_cell = payload.target.and_then(|target| match target {
+        NavTargetRef::Cell { rx, ry } => Some((i32::from(rx), i32::from(ry))),
+        NavTargetRef::Entity { id }
+        | NavTargetRef::Object { id }
+        | NavTargetRef::Building { id } => {
+            let coords = crate::sim::movement::ground_pose::object_get_coords(
+                sim.substrate.entities.get(id)?,
+                terrain,
+            );
+            Some((coords.x / 256, coords.y / 256))
+        }
+    });
+    let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
+    if target_cell == Some((location.x / 256, location.y / 256)) {
         return RadioResponse::AlreadyThere;
     }
     let Some(rules) = rules else {
         return RadioResponse::None;
     };
+    let aircraft = entity.category == EntityCategory::Aircraft;
     let now = sim.session.binary_frame;
     // 0x004D919A..0x004D91BA.
     if entity.mission.effective() == MissionId::from_known(MissionType::Guard)
@@ -800,16 +1028,12 @@ fn foot_move_here(
         sim.mission_host_promote(foot, now, rules);
     }
     // 0x004D91E1..0x004D91EB: the class setter vt+0x480(*P, 1).
-    match payload.cell {
-        Some(cell) => {
-            sim.set_unit_destination(
-                foot,
-                crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
-                rules,
-                true,
-            );
+    match (payload.target, aircraft) {
+        (target, true) => sim.assign_aircraft_destination(foot, target, rules),
+        (Some(target), false) => {
+            sim.set_unit_destination(foot, target, rules, true);
         }
-        None => {
+        (None, false) => {
             sim.assign_null_destination(foot, Some(rules), None);
         }
     }
@@ -982,13 +1206,42 @@ fn techno_receive(
             }
         }
         RadioMessage::RepairTick => techno_repair_tick(sim, techno, rules),
-        // 0x1A, 0x1B, 0x1E and 0x1F have no represented sender.
+        RadioMessage::Reload => techno_reload(sim, techno, rules),
+        // 0x1A, 0x1B and 0x1E have no represented sender; neither has 0x1D
+        // to anything but an aircraft, which answers it itself.
         RadioMessage::SecondaryLockSet
         | RadioMessage::SecondaryLockClear
         | RadioMessage::DeploySetNav
-        | RadioMessage::LinkPassenger => RadioResponse::None,
+        | RadioMessage::QueryReloaded => RadioResponse::None,
         _ => radio_receive(sim, techno, sender, msg),
     }
+}
+
+/// RELOAD, Techno case 0x1F (`0x006F4C9C`): Ammo at the type's `Ammo=`
+/// answers NEGATORY; otherwise one round more and ROGER.
+fn techno_reload(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>) -> RadioResponse {
+    let Some(type_ammo) = rules.and_then(|rules| {
+        sim.substrate
+            .entities
+            .get(techno)
+            .and_then(|entity| sim.object_type(entity.type_ref(), rules))
+            .map(|object| object.ammo)
+    }) else {
+        return RadioResponse::None;
+    };
+    let Some(ammo) = sim
+        .substrate
+        .entities
+        .get_mut(techno)
+        .and_then(|entity| entity.aircraft_ammo.as_mut())
+    else {
+        return RadioResponse::None;
+    };
+    if ammo.current == type_ammo {
+        return RadioResponse::Negatory;
+    }
+    ammo.current = ammo.current.wrapping_add(1);
+    RadioResponse::Roger
 }
 
 /// REPAIR_TICK1C, Techno6F4CD7..6F4E3B. The type's shared repair-cost

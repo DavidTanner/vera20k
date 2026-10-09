@@ -1107,12 +1107,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.substrate
             .entities
             .values()
-            .all(|e| e.building_storage == Default::default()
-                && e.aircraft_ammo.is_none()
-                && e.aircraft_mission.is_none()),
+            .all(|e| e.building_storage == Default::default() && e.aircraft_ammo.is_none()),
         "the fixture contains no storage or aircraft state"
     );
-    assert!(rep.production.airfield_docks.is_empty());
 
     // Tank 4 first fires at frame 281; tank 6 retaliates at 283. Stop clears
     // tank 4's target at 299 and Move is issued at 319. A later hit overrides

@@ -164,14 +164,6 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     let mut ammo = AircraftAmmo::new(1);
     ammo.current = int(input, "ammo", 1) as i32;
     entity.aircraft_ammo = Some(ammo);
-    // The legacy mission state, which Begin_Landing's refusal sets idle in
-    // place of Enter_Idle_Mode (`begin_fly_landing`'s RESIDUAL), and which
-    // owns the current mission an Attack row's Stop_Moving reads.
-    entity.aircraft_mission = Some(if int(input, "mission", 2) == 1 {
-        crate::sim::aircraft::AircraftMission::Attack { sub_state: 0 }
-    } else {
-        crate::sim::aircraft::AircraftMission::Move { sub_state: 2 }
-    });
     if input["target"].is_array() {
         entity.attack_target = Some(AttackTarget {
             target: TargetKind::Entity(TARGET),
@@ -392,8 +384,14 @@ fn stop_fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     (sim, rules)
 }
 
-/// Where a frame differs from native, for the failure message.
-fn frame_mismatch(sim: &Simulation, frame: u32, expected: &serde_json::Value) -> Option<String> {
+/// Where a frame differs from native, for the failure message. `idle_calls`
+/// counts the frame's Enter_Idle_Mode calls, which both sides record.
+fn frame_mismatch(
+    sim: &Simulation,
+    frame: u32,
+    expected: &serde_json::Value,
+    idle_calls: u32,
+) -> Option<String> {
     let entity = sim.substrate.entities.get(AIRCRAFT)?;
     let fly = entity.locomotor.as_ref()?.fly_runtime()?;
     let xyz = ground_pose::object_location(entity, sim.resolved_terrain.as_ref());
@@ -435,16 +433,14 @@ fn frame_mismatch(sim: &Simulation, frame: u32, expected: &serde_json::Value) ->
         }
     }
     // Begin_Landing's refusal calls Enter_Idle_Mode(0, 1), which the oracle
-    // records; VERA's stand-in sets its legacy mission idle.
+    // records.
     let refused = expected["calls"]
         .as_array()?
         .iter()
-        .any(|call| call[0] == "enter_idle_mode");
-    let idle = matches!(
-        entity.aircraft_mission,
-        Some(crate::sim::aircraft::AircraftMission::Idle)
-    );
-    (refused != idle).then(|| format!("Enter_Idle_Mode: {idle} vs native {refused}"))
+        .filter(|call| call[0] == "enter_idle_mode")
+        .count();
+    (refused != idle_calls as usize)
+        .then(|| format!("Enter_Idle_Mode calls: {idle_calls} vs native {refused}"))
 }
 
 /// Every frame of every row of `fly_process.json` through the production
@@ -471,8 +467,10 @@ fn fly_process_matches_native_frames() {
         for (n, expected) in frames.iter().enumerate() {
             let frame = start + n as u32;
             sim.session.binary_frame = frame;
-            sim.tick_air_movement_with_cell_lists_one(AIRCRAFT, Some(&rules), None);
-            if let Some(mismatch) = frame_mismatch(&sim, frame, expected) {
+            let ((), idle_calls) = crate::sim::aircraft::record_idle_calls_for_test(|| {
+                sim.tick_air_movement_with_cell_lists_one(AIRCRAFT, Some(&rules), None);
+            });
+            if let Some(mismatch) = frame_mismatch(&sim, frame, expected, idle_calls) {
                 failures.push(format!("{name} frame {n}: {mismatch}"));
                 failed = true;
                 break;

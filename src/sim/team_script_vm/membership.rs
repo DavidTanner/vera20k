@@ -37,9 +37,8 @@
 //! - The team's Risk (`+0x4C`, the members' `ThreatPosed=` sum) is not kept:
 //!   no ported reader.
 //! - `Remove_Member`'s callers in unported owners do not remove: an aircraft
-//!   idling or hunting without ammo (`0x00417896`, `0x004178D3`,
-//!   `0x00414A9F`; VERA's aircraft idle tree is its own,
-//!   `aircraft::idle_mode`), the Magnetron's lift (`0x00710349`), a
+//!   hunting without ammo (`AircraftClass::Mission_Hunt`, `0x00414A9F`;
+//!   no aircraft Hunt is dispatched), the Magnetron's lift (`0x00710349`), a
 //!   building's occupant release with Hunt (`0x0045812B`), and script
 //!   actions 8 and 60-64 and the team change and merge (`0x006EF392`,
 //!   `0x006EF416`, `0x006E9E24..0x006E9F38`, `0x006E96FD`, `0x006ECFF8`).
@@ -47,9 +46,9 @@
 //!   `0x0070F890` (`0x0070F8C7`) are not ported: neither function has a call
 //!   or a pointer anywhere in the executable (`tools.native_inspect calls`
 //!   and `find-bytes`).
-//!   Trigger: a computer aircraft team's member runs out of ammo (the only
-//!   one of these a skirmish reaches today). Effect: the aircraft stays in
-//!   its team and counts against its TaskForce.
+//!   Trigger: a computer aircraft team's member hunting without ammo.
+//!   Effect: the aircraft stays in its team and counts against its
+//!   TaskForce.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
@@ -321,7 +320,7 @@ impl Simulation {
             && !no_idle
             && let Some(rules) = rules
         {
-            self.team_member_enter_idle_mode(entity_id, rules);
+            crate::sim::world::enter_idle_mode(self, entity_id, rules, None);
         }
         if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
             if !other_initiated && let Some(head) = team.members.first_mut() {
@@ -331,6 +330,19 @@ impl Simulation {
             team.just_altered = true;
             team.altered = true;
         }
+    }
+
+    /// `TeamClass::Has_Entered_Map @ 0x006EC370`: no member of team `team_id`
+    /// is outside the playfield (`+0x3D5`); an empty team answers true.
+    pub(crate) fn team_has_entered_map(&self, team_id: u64) -> bool {
+        self.team_script_vm.team(team_id).is_none_or(|team| {
+            team.members().all(|member| {
+                self.substrate
+                    .entities
+                    .get(member)
+                    .is_some_and(|entity| entity.in_playfield)
+            })
+        })
     }
 
     /// Remove `entity_id` from whatever team it is in; the object side's

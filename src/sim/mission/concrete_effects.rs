@@ -484,10 +484,7 @@ pub(crate) fn represented_assign_target_admitted(
     let requested = if requested.is_some()
         && entity.category == crate::map::entities::EntityCategory::Aircraft
         && entity.spawn_owner_id.is_some()
-        && matches!(
-            entity.aircraft_mission,
-            Some(crate::sim::aircraft::AircraftMission::Attack { sub_state: 5..=9 })
-        )
+        && matches!(crate::sim::aircraft::attack_state(entity), Some(5..=9))
         && let Some(ammo) = entity.aircraft_ammo.as_mut()
         && ammo.current != 0
     {

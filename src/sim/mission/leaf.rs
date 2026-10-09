@@ -288,7 +288,8 @@ impl MissionLeafState {
         self.expect_infantry_mut().water_state = raw;
     }
 
-    #[cfg(test)]
+    /// Aircraft `+0x6D4`, Ready_To_Commence's answer (`0x0041B5E0`):
+    /// Mission_Guard and Mission_Enter write it.
     pub(crate) fn set_aircraft_transition_ready(&mut self, raw: u8) {
         self.expect_aircraft_mut().transition_ready_latch = raw;
     }

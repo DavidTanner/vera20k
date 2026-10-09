@@ -1,25 +1,39 @@
-//! Production dock cycle through the live frame: an AirportBound aircraft
-//! returns, publishes its airfield radio contact, lands through Fly
-//! BeginLanding4CFA70/Process_Landing4CE840, reloads, and stays parked on its
-//! pad in radio contact, as Mission_Guard (`0x0041A5C0`) keeps a landed
-//! aircraft without a Target.
+//! The airfield loop through the live frame: a spent AirportBound aircraft
+//! on Mission_Guard (`0x0041A5C0`, a human house's) or Mission_AreaGuard
+//! (`0x0041A940`, a computer house's) hunts its dock and commences
+//! Mission_Enter (`0x00419C80`), which lands it on the pad its radio contact
+//! names; the airfield's Mission_Repair (`0x0044C836`) reloads it and
+//! releases it to Guard on the pad, still in radio contact. A Target sends
+//! it off its pad again (Mission_Guard's Target arm, `0x0041A822`).
 
-use super::AircraftMission;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
-use crate::sim::movement::locomotor::AirMovePhase;
+use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::movement::air_movement;
 use crate::sim::world::Simulation;
 
-const RULES: &str = "[General]\nFlightLevel=1500\n\
-[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=GAAIRC\n\
+const RULES: &str = "[General]\nFlightLevel=1500\nReloadRate=.3\n\
+[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=VICTIM\n[AircraftTypes]\n0=ORCA\n\
+[BuildingTypes]\n0=GAAIRC\n\
 [ORCA]\nStrength=150\nSpeed=14\nAmmo=1\nLandable=yes\nAirportBound=yes\nFighter=yes\n\
-Dock=GAAIRC\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
-[GAAIRC]\nStrength=1000\nFoundation=2x2\nHelipad=yes\nUnitReload=yes\nNumberOfDocks=4\n";
+Primary=TestGun\nDock=GAAIRC\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
+[GAAIRC]\nStrength=1000\nFoundation=2x2\nHelipad=yes\nUnitReload=yes\nNumberOfDocks=4\n\
+[TestGun]\nDamage=10\nRange=6\nROF=60\nProjectile=TestShot\nWarhead=TestWH\n\
+[TestShot]\nROT=0\n[TestWH]\nVerses=100%\n\
+[VICTIM]\nStrength=1000\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+[E1]\nStrength=100\n";
 
-#[derive(Default)]
+fn mission(sim: &Simulation, id: u64) -> Option<MissionType> {
+    sim.substrate.entities.get(id)?.mission.current().known()
+}
+
+/// What a frame shows of the loop.
+#[derive(Debug, Default)]
 struct Milestones {
-    landed_with_contact: bool,
+    entered: bool,
+    linked: bool,
+    landed_linked: bool,
     reloaded: bool,
-    parked_frames: u32,
+    guarding_frames: u32,
 }
 
 fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) -> Milestones {
@@ -27,108 +41,88 @@ fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) ->
     for _ in 0..4000 {
         let _ = sim.advance_tick(&[], Some(rules), None, None, 33);
         let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
-        let phase = crate::sim::movement::air_movement::fly_mission_phase(
-            entity,
-            sim.resolved_terrain.as_ref(),
-        );
-        let docking_state = match entity.aircraft_mission {
-            Some(AircraftMission::Docking { sub_state, .. }) => Some(sub_state),
-            _ => None,
-        };
-        if phase == Some(AirMovePhase::Landed) && docking_state == Some(2) {
-            seen.landed_with_contact |= entity.radio_contacts.contains(airfield)
-                && sim
-                    .substrate
-                    .entities
-                    .get(airfield)
-                    .is_some_and(|af| af.radio_contacts.contains(orca));
-        }
-        if entity
+        let linked = entity.radio_contacts.contains(airfield)
+            && sim
+                .substrate
+                .entities
+                .get(airfield)
+                .is_some_and(|af| af.radio_contacts.contains(orca));
+        let height = air_movement::current_fly_height(entity, sim.resolved_terrain.as_ref());
+        seen.entered |= mission(sim, orca) == Some(MissionType::Enter);
+        seen.linked |= linked;
+        seen.landed_linked |= linked && height == 0;
+        let full = entity
             .aircraft_ammo
             .as_ref()
-            .is_some_and(|a| a.current == a.max)
-            && seen.landed_with_contact
-        {
-            seen.reloaded = true;
-        }
+            .is_some_and(|ammo| ammo.current == ammo.max);
+        seen.reloaded |= seen.landed_linked && full;
         if seen.reloaded
-            && matches!(
-                entity.aircraft_mission,
-                Some(AircraftMission::DockedIdle { .. })
-            )
-            && phase == Some(AirMovePhase::Landed)
-            && entity.radio_contacts.contains(airfield)
+            && mission(sim, orca) == Some(MissionType::Guard)
+            && height == 0
+            && linked
+            && !air_movement::fly_moving(entity)
         {
-            seen.parked_frames += 1;
-        }
-        if seen.parked_frames == 300 {
-            break;
+            seen.guarding_frames += 1;
+            if seen.guarding_frames == 300 {
+                break;
+            }
         }
     }
     seen
 }
 
-#[test]
-fn airport_bound_aircraft_docks_reloads_and_parks_through_world_owners() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
+/// An Orca of a human or a computer house, landed and out of Ammo.
+fn spent_orca(rules: &RuleSet, human: bool) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, human, 0, 10),
+    );
     let airfield = sim
-        .spawn_object_at_height("GAAIRC", "Americans", 10, 10, 0, 0, &rules)
+        .spawn_object_at_height("GAAIRC", "Americans", 10, 10, 0, 0, rules)
         .expect("airfield");
     let orca = sim
-        .spawn_object_at_height("ORCA", "Americans", 24, 12, 0, 0, &rules)
+        .spawn_object_at_height("ORCA", "Americans", 24, 12, 0, 0, rules)
         .expect("aircraft");
-    // A spent strike craft: Guard with no ammo returns to its airfield.
+    // Unlimbo's idle mode commenced its pick on the ground: Area Guard for
+    // a computer house's armed aircraft, else Guard (`0x00417787`).
+    let pick = if human {
+        MissionType::Guard
+    } else {
+        MissionType::AreaGuard
+    };
+    assert_eq!(mission(&sim, orca), Some(pick));
     let entity = sim.substrate.entities.get_mut(orca).unwrap();
     entity.aircraft_ammo.as_mut().unwrap().current = 0;
-    entity.aircraft_mission = Some(AircraftMission::Guard);
-
-    let seen = run_cycle(&mut sim, &rules, orca, airfield);
-    assert!(
-        seen.landed_with_contact,
-        "AirportBound landing needs the airfield's two-sided radio contact"
-    );
-    assert!(seen.reloaded, "a landed aircraft reloads on its pad");
-    assert_eq!(
-        seen.parked_frames, 300,
-        "a reloaded aircraft without orders stays on its pad in contact"
-    );
+    (sim, orca, airfield)
 }
 
-/// Mission_Guard's Target arm (`0x0041A822`): a parked aircraft with its
-/// Ammo back that holds a Target (a computer aircraft keeps it through
-/// Mission_Attack's state 10) leaves its pad to attack it.
 #[test]
-fn parked_aircraft_with_a_target_leaves_its_pad_to_attack() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
-        "{}[TestGun]\nDamage=10\nRange=6\nROF=60\nProjectile=TestShot\nWarhead=TestWH\n\
-         [TestShot]\nROT=0\n[TestWH]\nVerses=100%\n[VICTIM]\nStrength=1000\n\
-         Locomotor={{4A582741-9839-11D1-B709-00A024DDAFD1}}\n",
-        RULES
-            .replace("Fighter=yes\n", "Fighter=yes\nPrimary=TestGun\n")
-            .replace("[VehicleTypes]\n", "[VehicleTypes]\n0=VICTIM\n")
-    )))
-    .expect("rules");
-    assert!(
-        rules
-            .object("ORCA")
-            .is_some_and(|orca| orca.primary().is_some())
-    );
-    let mut sim = Simulation::new();
-    let airfield = sim
-        .spawn_object_at_height("GAAIRC", "Americans", 10, 10, 0, 0, &rules)
-        .expect("airfield");
-    let orca = sim
-        .spawn_object_at_height("ORCA", "Americans", 24, 12, 0, 0, &rules)
-        .expect("aircraft");
+fn a_spent_aircraft_enters_its_dock_reloads_and_guards_on_the_pad() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
+    for human in [true, false] {
+        let (mut sim, orca, airfield) = spent_orca(&rules, human);
+        let seen = run_cycle(&mut sim, &rules, orca, airfield);
+        assert!(seen.entered, "it Enters its dock (human {human}): {seen:?}");
+        assert!(seen.landed_linked, "it lands in radio contact: {seen:?}");
+        assert!(seen.reloaded, "the airfield reloads it: {seen:?}");
+        assert_eq!(
+            seen.guarding_frames, 300,
+            "reloaded, it guards on its pad in contact (human {human}): {seen:?}"
+        );
+    }
+}
+
+#[test]
+fn a_guarding_aircraft_with_a_target_leaves_its_pad_to_attack() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
+    let (mut sim, orca, airfield) = spent_orca(&rules, true);
     let victim = sim
         .spawn_object("VICTIM", "Russians", 40, 30, 0, &rules)
         .expect("target");
-    let entity = sim.substrate.entities.get_mut(orca).unwrap();
-    entity.aircraft_ammo.as_mut().unwrap().current = 0;
-    entity.aircraft_mission = Some(AircraftMission::Guard);
     let seen = run_cycle(&mut sim, &rules, orca, airfield);
-    assert_eq!(seen.parked_frames, 300, "the aircraft reloads and parks");
+    assert_eq!(seen.guarding_frames, 300, "the aircraft reloads and guards");
 
     sim.substrate.entities.get_mut(orca).unwrap().attack_target =
         Some(crate::sim::combat::AttackTarget::new(victim));
@@ -136,66 +130,12 @@ fn parked_aircraft_with_a_target_leaves_its_pad_to_attack() {
     for _ in 0..600 {
         let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
         let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
-        if matches!(
-            entity.aircraft_mission,
-            Some(AircraftMission::Attack { .. })
-        ) && !entity.radio_contacts.contains(airfield)
-            && crate::sim::movement::air_movement::fly_moving(entity)
+        if entity.mission.current() == MissionId::from_known(MissionType::Attack)
+            && air_movement::fly_moving(entity)
         {
             relaunched = true;
             break;
         }
     }
-    assert!(
-        relaunched,
-        "a parked aircraft holding a Target leaves its pad on Attack"
-    );
-}
-
-/// The legacy ammo state machine (`docking::aircraft_dock::
-/// tick_aircraft_docks`, aircraft without an `AircraftMission`, such as
-/// map-placed ones) brings a spent aircraft home and, fully reloaded, hands
-/// it over parked on its pad: Fly climbs only toward a destination.
-#[test]
-fn legacy_dock_cycle_parks_the_reloaded_aircraft() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
-    let mut sim = Simulation::new();
-    let airfield = sim
-        .spawn_object_at_height("GAAIRC", "Americans", 10, 10, 0, 0, &rules)
-        .expect("airfield");
-    let orca = sim
-        .spawn_object_at_height("ORCA", "Americans", 24, 12, 0, 0, &rules)
-        .expect("aircraft");
-    let entity = sim.substrate.entities.get_mut(orca).unwrap();
-    entity.aircraft_ammo.as_mut().unwrap().current = 0;
-    entity.aircraft_mission = None;
-
-    let mut parked_frames = 0;
-    for _ in 0..4000 {
-        let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
-        let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
-        let phase = crate::sim::movement::air_movement::fly_mission_phase(
-            entity,
-            sim.resolved_terrain.as_ref(),
-        );
-        if matches!(
-            entity.aircraft_mission,
-            Some(AircraftMission::DockedIdle { airfield_id }) if airfield_id == airfield
-        ) && entity
-            .aircraft_ammo
-            .as_ref()
-            .is_some_and(|a| a.current == a.max)
-            && phase == Some(AirMovePhase::Landed)
-            && entity.radio_contacts.contains(airfield)
-        {
-            parked_frames += 1;
-            if parked_frames == 300 {
-                break;
-            }
-        }
-    }
-    assert_eq!(
-        parked_frames, 300,
-        "a reloaded aircraft stays parked on its pad in contact"
-    );
+    assert!(relaunched, "a guarding aircraft holding a Target attacks");
 }
