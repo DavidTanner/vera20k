@@ -301,9 +301,10 @@ pub fn is_double_click(
 /// remain outside the sampled native comparison coverage.
 pub fn thumb_height(height: i32, range: usize) -> i32 {
     let track = f64::from(height - 2 - 44);
-    (track - ((range + 1) as f64).ln() * track * 0.2)
-        .trunc()
-        .max(14.0) as i32
+    crate::util::native_x87::X87Chop53::ftol_f64_low_masked(
+        track - ((range + 1) as f64).ln() * track * 0.2,
+    )
+    .max(14)
 }
 
 #[cfg(test)]

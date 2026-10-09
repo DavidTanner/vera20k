@@ -123,9 +123,7 @@ use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::vision::FogState;
 use crate::util::fixed_math::SimFixed;
-use crate::util::native_x87::{
-    MaskedX87Chop53 as ScoreX87, MaskedX87Value, NativeF64Bits, X87Chop53, sqrt_approx_f32,
-};
+use crate::util::native_x87::{MaskedX87Chop53 as ScoreX87, MaskedX87Value, NativeF64Bits};
 
 /// `Sqrt_Approx` operand base: leptons per cell.
 const LEPTONS_PER_CELL: i32 = 256;
@@ -416,15 +414,11 @@ pub(crate) fn calculate_threat_score(
         ThreatReference::Coords([x, y, z]) => ((x, y, z), false),
     };
     let candidate_coord = threat_coord(candidate, terrain);
-    let dx = X87Chop53::load_i32(scorer_coord.0.wrapping_sub(candidate_coord.0));
-    let dy = X87Chop53::load_i32(scorer_coord.1.wrapping_sub(candidate_coord.1));
-    let dz = X87Chop53::load_i32(scorer_coord.2.wrapping_sub(candidate_coord.2));
-    let distance_sq = X87Chop53::add(
-        X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy)),
-        X87Chop53::mul(dz, dz),
-    );
-    let distance_root = X87Chop53::load_f32(sqrt_approx_f32(distance_sq).ok()?).ok()?;
-    let distance_leptons = X87Chop53::ftol_i32_low_masked(distance_root);
+    let distance_leptons = crate::util::native_x87::sqrt_approx_length([
+        scorer_coord.0.wrapping_sub(candidate_coord.0),
+        scorer_coord.1.wrapping_sub(candidate_coord.1),
+        scorer_coord.2.wrapping_sub(candidate_coord.2),
+    ]);
     let distance = if null_coord {
         // `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at `0x0070D094`.
         crate::util::lepton::lepton_to_cell(distance_leptons)
