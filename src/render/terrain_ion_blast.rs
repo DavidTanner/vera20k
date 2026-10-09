@@ -5,22 +5,25 @@
 //! screen origin ([`IonBlastDraw`]). A blast's 512x256 frame is clipped to the
 //! tactical view less its bottom 7 rows (`0x0053D5B0..0x0053D5E5`,
 //! `XSurface::Prep_For_Blit @ 0x007BC040`). A pixel whose byte is positive and
-//! whose native Z lies above the row's threshold `low16(0x8000 - AdjustForZ(z)
-//! - y - 3)` (`0x0053D6A2..0x0053D6B9`, `0x0053D72F`; the ZBuffer's `+0x24` is
-//! the 0x8000 row seed) takes the destination pixel its byte's move names
-//! ([`displacement`]). Native edits in place, top row first. Every byte the
-//! generator writes moves a pixel up from a row below, which that blast has
-//! not written yet, so reading a snapshot taken before the blast gives the
-//! same pixels. A blast reads what the previous one left: one snapshot and
-//! one edit pass per blast.
+//! whose native Z lies above the row's threshold
+//! `low16(seed - AdjustForZ(z) - y - 3)` (`0x0053D6A2..0x0053D6B9`,
+//! `0x0053D72F`; the seed is the ZBuffer's `+0x24`, here
+//! `native_z::DEFAULT_Z`) takes the destination pixel its byte's move names
+//! ([`displacement`]). Native edits in
+//! place, top row first. Every byte the generator writes moves a pixel up from
+//! a row below, which that blast has not written yet, so reading a snapshot
+//! taken before the blast gives the same pixels. A blast reads what the
+//! previous one left: one snapshot and one edit pass per blast.
 //!
 //! The app generates the frames once, at start-up, as native does
 //! ([`TerrainDrawRenderer::generate_ion_blast_frames`]).
 //!
 //! Native exactness is zoom 1; other zooms expand the same logical pixels. A
-//! move past the target's last row reads its last row, where native reads the
-//! surface below the tactical view (at most 3 rows: the clip stops 7 rows
-//! short and a move reaches 10 rows).
+//! move from the clip's last rows reads up to 3 rows below the tactical view
+//! (the clip stops 7 rows short and a move reaches 10). Here those rows of the
+//! composition target still hold the black clear colour; native's Composite
+//! surface is screen-high, zero-filled by `Allocate_Surfaces @ 0x00533FD0`,
+//! and the tactical draws clip it out (read, not executed).
 //!
 //! Evidence: `tools/superweapon_oracle.py` section `ion_blast_draw` runs the
 //! original DrawAll on fixture surfaces;

@@ -30,7 +30,8 @@ src/sim/superweapon/psychic_reveal_tests.rs (psychic_launch) and
 src/app/presentation/super_timers.rs (tactical_timers, timer_lines) and
 src/render/ion_blast_ripple_tests.rs (ion_blast_ripple),
 src/sim/world/ion_blast_tests.rs (ion_blast_update) and
-src/app/presentation/ion_blasts_gpu_tests.rs (ion_blast_draw).
+src/app/presentation/ion_blasts_tests.rs and ion_blasts_gpu_tests.rs
+(ion_blast_draw).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):

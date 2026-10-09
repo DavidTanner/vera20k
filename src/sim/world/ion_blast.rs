@@ -33,9 +33,9 @@
 //!   is not ported. Only map trigger actions make an unflagged blast
 //!   (`TActionClass::Execute`'s call at `0x006DD9AB`, `TActionClass::
 //!   IonBlastAtWP @ 0x006E3380`), and VERA ports neither.
-//! - Native never clears the vector at a scenario start, so a blast alive when
-//!   a game ends draws on in the next one's first frames. VERA's blasts belong
-//!   to the match.
+//! - Native never clears the vector at a scenario start or a saved game's
+//!   load, so a blast alive then draws on in the next game's first frames.
+//!   VERA's blasts belong to the match and are not saved.
 
 use super::Simulation;
 

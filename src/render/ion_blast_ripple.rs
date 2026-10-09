@@ -71,7 +71,9 @@ impl RippleFrames {
             .collect();
         let mut bytes = vec![0xff; FRAME_COUNT * FRAME_WIDTH * FRAME_HEIGHT];
         for (n, frame) in bytes
-            .chunks_exact_mut(FRAME_WIDTH * FRAME_HEIGHT)
+            .as_chunks_mut::<{ FRAME_WIDTH * FRAME_HEIGHT }>()
+            .0
+            .iter_mut()
             .enumerate()
         {
             let advance = X87Chop53::mul(X87Chop53::load_i32(n as i32), step);

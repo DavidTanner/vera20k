@@ -7,8 +7,8 @@
 //! (`0x0053D5A3`). Its 512x256 frame is centred on that point
 //! (`0x0053D600..0x0053D623`) and clipped to the tactical view less its bottom
 //! 7 rows (`0x0053D5B0..0x0053D5E5`), and its rows' Z threshold starts from
-//! `0x8000 - AdjustForZ(z)` (`0x0053D69D..0x0053D6AE`). The renderer owns the
-//! pixels (`render::terrain_draw`'s IonBlast pass).
+//! the ZBuffer's row seed less `AdjustForZ(z)` (`0x0053D69D..0x0053D6AE`). The
+//! renderer owns the pixels (`render::terrain_draw`'s IonBlast pass).
 
 use crate::render::ion_blast_ripple::{FRAME_HEIGHT, FRAME_WIDTH};
 use crate::render::terrain_draw::IonBlastDraw;
@@ -18,6 +18,8 @@ const RIPPLE_DETAIL_LEVEL: u32 = 2;
 /// The rows the clip leaves off the tactical view's bottom (`0x0053D5D7`).
 const CLIP_BOTTOM_ROWS: i32 = 7;
 /// ZBuffer `+0x24`, the row seed the threshold starts from (`0x0053D6AA`).
+/// `ZBuffer::Pan @ 0x007BCB50` moves it with each vertical scroll; every
+/// blitter seeds from it, so VERA's fixed seed gives the same comparisons.
 const ROW_SEED: i32 = crate::render::native_z::DEFAULT_Z;
 
 /// DrawAll's draws for `blasts` (coordinate and frame, in vector order) seen
@@ -83,6 +85,10 @@ pub(super) fn draws(state: &crate::app::AppState) -> Vec<IonBlastDraw> {
             .detail_level,
     )
 }
+
+#[cfg(test)]
+#[path = "ion_blasts_tests.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "ion_blasts_gpu_tests.rs"]
