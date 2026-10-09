@@ -66,15 +66,13 @@ cargo run --release --bin vera20k
 VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警玩家群体与世界各地的玩家联系在一起，让大家可以一起对战。
 
 我们非常希望中国的开发者和玩家加入进来，和我们一起开发、一起游玩！
-欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 或社区自建的 QQ 群（群号 1097193563）找我们。
+欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 或 QQ 群（群号 1097193563）找我们。
 用中文写 issue 也完全没问题。
-
-我们还没有 QQ 群。如果你愿意为 VERA20k 建一个 QQ 群，请在 issue 或 Discord 上告诉我们，我们很乐意加入！
 
 ## 参与贡献
 
 欢迎帮忙。你可以编写代码、重构引擎、测试游戏、提出想法，或对照原版游玩，告诉我们哪些地方感觉不对。
-直接提交 PR 即可，剩下的交给我们；如果改动较大，请先在 issue、[Discord](https://discord.gg/kmjRUn5m5F) 或社区自建的 QQ 群（1097193563）里问一下。
+直接提交 PR 即可，剩下的交给我们；如果改动较大，请先在 issue、[Discord](https://discord.gg/kmjRUn5m5F) 或 QQ 群（1097193563）里问一下。
 
 游戏逻辑在 `src/sim/`，渲染在 `src/render/`，菜单和输入在 `src/app/` 和 `src/ui/`；
 你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
