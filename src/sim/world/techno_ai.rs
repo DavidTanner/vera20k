@@ -56,6 +56,20 @@ pub(crate) struct ObjectAiCtx<'a> {
 pub(super) struct ObjectAiOutcome {
     pub(super) visited: bool,
     pub(super) bridge_state_changed: bool,
+    ownership_changed: bool,
+}
+
+impl ObjectAiOutcome {
+    pub(super) fn visited() -> Self {
+        Self {
+            visited: true,
+            ..Default::default()
+        }
+    }
+
+    pub(super) fn ownership_changed(&self) -> bool {
+        self.ownership_changed
+    }
 }
 
 impl Simulation {
@@ -288,10 +302,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         ctx: ObjectAiCtx<'_>,
     ) -> ObjectAiOutcome {
-        let mut outcome = ObjectAiOutcome {
-            visited: true,
-            ..Default::default()
-        };
+        let mut outcome = ObjectAiOutcome::visited();
         if self.substrate.anims.contains_key(id) {
             if let Some(rules) = rules {
                 outcome.bridge_state_changed = self.visit_anim(id, rules, ctx.overlay_registry);
@@ -736,6 +747,23 @@ fn techno_ai_shell(
             // repair step.
             if let Some(rules) = rules {
                 building_missions::process_delayed_fire(sim, id, rules, ctx);
+                // Building4401A3..4401AF: allegiance belongs to this object's
+                // AI tail, before repair/power and factory work. Earlier
+                // native returns admit only a live, nonzero-health building.
+                if sim.substrate.entities.get(id).is_some_and(|entity| {
+                    entity.lifecycle.object_alive
+                        && entity.health.current != 0
+                        && !entity.is_warped_out()
+                        && !entity.is_warping_in()
+                }) {
+                    outcome.ownership_changed |=
+                        crate::sim::passenger::reconcile_civilian_garrison_owner_for_building(
+                            sim,
+                            rules,
+                            ctx.overlay_registry,
+                            id,
+                        );
+                }
                 crate::sim::production::update_repair_and_power(
                     sim,
                     rules,
