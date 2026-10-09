@@ -9,7 +9,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::util::direction_tables::CELL_DELTAS;
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
 #[cfg(test)]
 #[path = "foot_mission_oracle_tests.rs"]
@@ -1948,9 +1947,8 @@ const CADENCE_BAND_MAX_LEPTONS: i64 = 768;
 /// gamemd-derived: the identical block in `FootClass::Mission_Attack @
 /// 0x004D4F22`-`0x004D4F9B` and `FootClass::Mission_AreaGuard @
 /// 0x004D70D3`-`0x004D7148`. The two `FILD`s take the **integer lepton**
-/// component differences, the products and their sum are exact in f64, and the
-/// only inexact step is `Sqrt_Approx`, which is reproduced bit-for-bit by
-/// [`sqrt_approx_f32`].
+/// component differences; the length is
+/// [`sqrt_approx_length`](crate::util::native_x87::sqrt_approx_length).
 fn native_distance_is_in_cadence_band(
     from: &crate::sim::components::Position,
     to: &crate::sim::components::Position,
@@ -1965,21 +1963,9 @@ fn native_distance_is_in_cadence_band(
         // enough to overflow one cannot exist.
         return false;
     };
-    let dx = X87Chop53::load_i32(dx);
-    let dy = X87Chop53::load_i32(dy);
-    // `FADDP` adds dy*dy (ST0) into dx*dx (ST1); both products are exact, so
-    // the order is immaterial, but it is written the native way.
-    let sum = X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy));
-    let Ok(root) = sqrt_approx_f32(sum) else {
-        return false;
-    };
-    let Ok(loaded) = X87Chop53::load_f32(root) else {
-        return false;
-    };
-    let Ok(len) = X87Chop53::ftol_i64(loaded) else {
-        return false;
-    };
-    (CADENCE_BAND_MIN_LEPTONS..=CADENCE_BAND_MAX_LEPTONS).contains(&len)
+    // `FADDP` adds dy*dy (ST0) into dx*dx (ST1).
+    let len = crate::util::native_x87::sqrt_approx_length([dx, dy]);
+    (CADENCE_BAND_MIN_LEPTONS..=CADENCE_BAND_MAX_LEPTONS).contains(&i64::from(len))
 }
 
 /// The type half of the halved-cadence gate.

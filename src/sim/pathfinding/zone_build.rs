@@ -17,7 +17,6 @@ use crate::map::resolved_terrain::{ResolvedTerrainGrid, zone_class};
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::bridge_state::BridgeEndpointRecord;
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
 /// Shared persistent topology projected through all 13 MovementZone rows.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -715,12 +714,10 @@ pub(crate) fn find_high_bridge_record_index(
 ///583180/5835D0 subtract packed words before floating distance and retain
 /// only the signed low word of Math_ftol for comparison.
 pub(crate) fn native_packed_cell_distance(lhs: (u16, u16), rhs: (u16, u16)) -> i16 {
-    let dx = X87Chop53::load_i32(i32::from(lhs.0.wrapping_sub(rhs.0) as i16));
-    let dy = X87Chop53::load_i32(i32::from(lhs.1.wrapping_sub(rhs.1) as i16));
-    let squared = X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy));
-    let root = sqrt_approx_f32(squared).expect("packed distance is finite");
-    let value = X87Chop53::load_f32(root).expect("packed distance root is finite");
-    X87Chop53::ftol_i64(value).expect("packed distance fits integer") as i16
+    crate::util::native_x87::sqrt_approx_length([
+        i32::from(lhs.0.wrapping_sub(rhs.0) as i16),
+        i32::from(lhs.1.wrapping_sub(rhs.1) as i16),
+    ]) as i16
 }
 
 /// Build the exact per-cell bridge redirect used by bridge-aware zone lookup.

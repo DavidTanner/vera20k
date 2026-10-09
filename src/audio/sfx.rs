@@ -41,6 +41,7 @@ use crate::audio::vox::{VoxNode, VoxQueue, VoxRequest};
 use crate::rules::sound_ini::{
     EvaRegistry, EvaSide, EvaType, SoundEntry, SoundRegistry, VOLUME_SCALE, control, sound_type,
 };
+use crate::util::native_x87::X87Chop53;
 
 /// How many passes of a sustaining cue are kept queued on its rodio player:
 /// the one that is sounding plus one waiting behind it.
@@ -72,19 +73,6 @@ pub const PAN_SCALE: i32 = 0x4000;
 /// Audibility cutoff: volumes below the double at `0x007E8AE8` (0.05) are
 /// silent (`0x00750CBD..0x00750CCC`).
 const MIN_VOLUME_CUTOFF: f64 = 0.05;
-
-/// Truncating `Math::ftol @ 0x007C5F00` (control word `0x0E7F`: round toward
-/// zero, 53-bit precision), applied to a double intermediate.
-///
-/// RESIDUAL (UNCHECKED) — out-of-`i32` inputs differ: `FISTP` stores the x87
-/// indefinite `0x80000000` for both signs, while Rust's `as i32` saturates to
-/// `i32::MIN` *or* `i32::MAX`. Trigger: a client point more than 2^31 pixels
-/// from the view centre. Player effect: none — the largest YR map is under
-/// 2^16 pixels across, so only a hand-built [`SpatialListener`] reaches it.
-/// Frequency: never in play. Downstream risk: none.
-fn ftol(value: f64) -> i32 {
-    value.trunc() as i32
-}
 
 /// Native integer absolute value: `CDQ; XOR EAX,EDX; SUB EAX,EDX`
 /// (`0x00750BCF..0x00750BD2` and `0x00750BED..0x00750BF0`). The idiom **wraps**
@@ -139,8 +127,8 @@ impl SpatialListener {
     /// client point is integer, so the fractional VERA camera is truncated.
     pub fn client_point(&self, screen_x: f32, screen_y: f32) -> (i32, i32) {
         (
-            ftol(f64::from(screen_x) - f64::from(self.origin_x)),
-            ftol(f64::from(screen_y) - f64::from(self.origin_y)),
+            X87Chop53::ftol_f64_low_masked(f64::from(screen_x) - f64::from(self.origin_x)),
+            X87Chop53::ftol_f64_low_masked(f64::from(screen_y) - f64::from(self.origin_y)),
         )
     }
 
@@ -212,7 +200,8 @@ impl SpatialGain {
     /// Native linear volume `min(ftol(volume * 0x4000), 0x4000)`
     /// (`VocClass::PlayAt @ 0x007509E0`, `0x00750A55..0x00750A6F`).
     pub fn volume_linear(&self) -> i32 {
-        ftol(f64::from(self.volume) * f64::from(VOLUME_SCALE)).min(VOLUME_SCALE)
+        X87Chop53::ftol_f64_low_masked(f64::from(self.volume) * f64::from(VOLUME_SCALE))
+            .min(VOLUME_SCALE)
     }
 }
 
@@ -284,8 +273,12 @@ pub fn calc_volume_and_pan(
     }
 
     let offset_x: f32 = (f64::from(client_x) - f64::from(half_w)) as f32;
-    let mut dist_x: f32 = native_abs(ftol(f64::from(client_x) - f64::from(half_w))) as f32;
-    let mut dist_y: f32 = native_abs(ftol(f64::from(client_y) - f64::from(half_h))) as f32;
+    let mut dist_x: f32 = native_abs(X87Chop53::ftol_f64_low_masked(
+        f64::from(client_x) - f64::from(half_w),
+    )) as f32;
+    let mut dist_y: f32 = native_abs(X87Chop53::ftol_f64_low_masked(
+        f64::from(client_y) - f64::from(half_h),
+    )) as f32;
 
     if source.type_flags & sound_type::LOCAL == 0 {
         dist_x -= half_w;
@@ -318,7 +311,7 @@ pub fn calc_volume_and_pan(
     } else {
         offset_x
     };
-    let pan = ftol(
+    let pan = X87Chop53::ftol_f64_low_masked(
         f64::from(clamped) * f64::from(PAN_CENTRE) / f64::from(full_w) + f64::from(PAN_CENTRE),
     );
     Some(SpatialGain { volume, pan })
@@ -765,7 +758,9 @@ impl SfxOutputGain {
             SfxChannel::Sound => scales.sound_volume,
             SfxChannel::Voice => scales.voice_volume,
         };
-        let master_linear = ftol(f64::from(master.clamp(0.0, 1.0)) * f64::from(VOLUME_SCALE));
+        let master_linear = X87Chop53::ftol_f64_low_masked(
+            f64::from(master.clamp(0.0, 1.0)) * f64::from(VOLUME_SCALE),
+        );
         // The channel multiplies the event group (`ch+0x90`), the many-sounds
         // scaler (`ch+0x98`) and the user volume group (`ch+0x9C`) together
         // before `FUN_0040A6D0` converts to decibels.
@@ -2321,7 +2316,10 @@ mod tests {
         // Anywhere on screen is still full volume; pan follows the offset.
         let edge = gain(1023, 599, screen).unwrap();
         assert_eq!(edge.volume, 1.0);
-        assert_eq!(edge.pan, ftol(511.0 * 8192.0 / 1024.0 + 8192.0));
+        assert_eq!(
+            edge.pan,
+            X87Chop53::ftol_f64_low_masked(511.0 * 8192.0 / 1024.0 + 8192.0)
+        );
         // 300 px right of the view edge: half volume, pan 8192 + 812 * 8.
         assert_eq!(
             gain(1324, 300, screen),
@@ -2380,11 +2378,17 @@ mod tests {
         // clientX - 511.5 = 0.5 -> ftol 0 -> full volume; pan keeps the 0.5.
         let g = calc_volume_and_pan(512, 300, 1023.0, LISTENER_H, src, false).unwrap();
         assert_eq!(g.volume, 1.0);
-        assert_eq!(g.pan, ftol(0.5 * 8192.0 / 1023.0 + 8192.0));
+        assert_eq!(
+            g.pan,
+            X87Chop53::ftol_f64_low_masked(0.5 * 8192.0 / 1023.0 + 8192.0)
+        );
         // clientX - 511.5 = -0.5 -> ftol 0 as well (truncation toward zero).
         let g = calc_volume_and_pan(511, 300, 1023.0, LISTENER_H, src, false).unwrap();
         assert_eq!(g.volume, 1.0);
-        assert_eq!(g.pan, ftol(-0.5 * 8192.0 / 1023.0 + 8192.0));
+        assert_eq!(
+            g.pan,
+            X87Chop53::ftol_f64_low_masked(-0.5 * 8192.0 / 1023.0 + 8192.0)
+        );
     }
 
     fn zoom_listener(zoom: f32) -> SpatialListener {
@@ -2519,7 +2523,7 @@ mod tests {
         };
         assert_eq!(
             odd.volume_linear(),
-            ftol(f64::from(400.0f32 / 600.0) * 16384.0)
+            X87Chop53::ftol_f64_low_masked(f64::from(400.0f32 / 600.0) * 16384.0)
         );
     }
 
@@ -2742,7 +2746,7 @@ mod tests {
         let entry = registered_entry("NavalUnitEmerge", &registry)
             .expect("the retail Voc/event identity resolves to its registered entry");
         assert_eq!(entry.sounds, vec!["vnavupa"]);
-        assert_eq!(entry.volume_linear, 9011); // ftol(0.55f * 16384)
+        assert_eq!(entry.volume_linear, 9011); // X87Chop53::ftol_f64_low_masked(0.55f * 16384)
         for invalid in ["", "MissingCloakEvent", "vnavupa"] {
             assert!(
                 registered_entry(invalid, &registry).is_none(),

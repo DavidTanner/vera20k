@@ -14,7 +14,7 @@ use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 /// Native per-house AI difficulty index stored by `HouseClass`.
 ///
@@ -1180,14 +1180,10 @@ pub fn resolve_wall_owner(
 
 /// Cell-space distance through the native Sqrt_Approx/Math::ftol pipeline.
 fn native_edge_distance(anchor: (u16, u16), reference: (i32, i32)) -> i32 {
-    let dx = X87Chop53::load_i32(i32::from(anchor.0 as i16).wrapping_sub(reference.0));
-    let dy = X87Chop53::load_i32(i32::from(anchor.1 as i16).wrapping_sub(reference.1));
-    let squared = X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy));
-    let root_bits =
-        sqrt_approx_f32(squared).expect("playfield edge distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("playfield edge distance fits a signed integer") as i32
+    crate::util::native_x87::sqrt_approx_length([
+        i32::from(anchor.0 as i16).wrapping_sub(reference.0),
+        i32::from(anchor.1 as i16).wrapping_sub(reference.1),
+    ])
 }
 
 /// HouseClass-style playfield edge selection for a committed anchor cell.
