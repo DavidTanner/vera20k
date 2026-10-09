@@ -4,7 +4,7 @@
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
     credits_for_owner, dispatch_production_changes_for_tests, enqueue_by_type,
-    queue_view_for_owner, suspend_production,
+    queue_view_for_owner, ready_buildings_for_owner, suspend_production,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
@@ -2259,21 +2259,20 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
+    assert_eq!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
 
     let before_credits = credits_for_owner(&sim, "Americans");
 
     let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN", false);
     assert!(cancelled, "should cancel ready building");
 
-    // Ready queue should be empty now.
-    let ready_count = sim
-        .production
-        .ready_by_owner
-        .get(&americans_id)
-        .map(|q| q.len())
-        .unwrap_or(0);
-    assert_eq!(ready_count, 0, "ready queue should be empty after cancel");
+    assert!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").is_empty(),
+        "no building waits for placement after the cancel"
+    );
     assert!(
         sim.production
             .factories

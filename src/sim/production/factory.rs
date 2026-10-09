@@ -526,13 +526,8 @@ pub enum CancelOutcome {
     QueuedRemoved,
     /// The active object was abandoned; the lifecycle owner credits its
     /// refund and destroys it (`FactoryClass::AbandonProduction @ 0x004C9FF0`
-    /// deletes the object stored at `Factory+0x58`). `finished` marks an
-    /// object that had completed: a finished building also waits in
-    /// `ready_by_owner`.
-    AbandonedActive {
-        object: AbandonedObject,
-        finished: bool,
-    },
+    /// deletes the object stored at `Factory+0x58`).
+    AbandonedActive(AbandonedObject),
 }
 
 /// Outcome of a `FactoryRegistry::enqueue`.
@@ -556,9 +551,6 @@ pub(crate) struct RevalidationLifecycle {
     /// destruction.
     pub(crate) abandoned: Vec<(InternedId, AbandonedObject)>,
     pub(crate) promoted: Vec<(InternedId, ProductionCategory, InternedId)>,
-    /// `(owner, type)` of each abandoned object that had finished: a finished
-    /// building also waits in `ready_by_owner`.
-    pub(crate) abandoned_finished: Vec<(InternedId, InternedId)>,
 }
 
 /// Borrow-only read view of one factory, for the lifecycle and delivery code and
@@ -1176,7 +1168,6 @@ impl FactoryRegistry {
         let mut lifecycle = RevalidationLifecycle {
             abandoned: Vec::new(),
             promoted: Vec::new(),
-            abandoned_finished: Vec::new(),
         };
         for action in plan {
             let Some(f) = self
@@ -1192,13 +1183,6 @@ impl FactoryRegistry {
                 }
             }
             if action.abandon_active {
-                if f.progress >= PRODUCTION_STEPS
-                    && let Some(object) = f.object.as_ref()
-                {
-                    lifecycle
-                        .abandoned_finished
-                        .push((action.owner, object.type_id));
-                }
                 if let Some(abandoned) = f.abandon_production() {
                     lifecycle.abandoned.push((action.owner, abandoned));
                 }
@@ -1365,11 +1349,10 @@ impl FactoryRegistry {
                 return CancelOutcome::QueuedRemoved;
             }
         }
-        if f.object.as_ref().is_some_and(|o| o.type_id == type_id) {
-            let finished = f.progress >= PRODUCTION_STEPS;
-            if let Some(object) = f.abandon_production() {
-                return CancelOutcome::AbandonedActive { object, finished };
-            }
+        if f.object.as_ref().is_some_and(|o| o.type_id == type_id)
+            && let Some(object) = f.abandon_production()
+        {
+            return CancelOutcome::AbandonedActive(object);
         }
         if removed {
             CancelOutcome::QueuedRemoved
@@ -2255,14 +2238,11 @@ mod tests {
         let outcome = reg.cancel_one(owner, ProductionCategory::Vehicle, a, false);
         assert_eq!(
             outcome,
-            CancelOutcome::AbandonedActive {
-                object: AbandonedObject {
-                    type_id: a,
-                    balance: 300,
-                    entity_id: None,
-                },
-                finished: false,
-            }
+            CancelOutcome::AbandonedActive(AbandonedObject {
+                type_id: a,
+                balance: 300,
+                entity_id: None,
+            })
         );
         let view = reg.view(owner, ProductionCategory::Vehicle).unwrap();
         assert!(view.object.is_none(), "active object abandoned");
@@ -2298,14 +2278,11 @@ mod tests {
         let outcome = reg.cancel_one(owner, ProductionCategory::Vehicle, a, false);
         assert_eq!(
             outcome,
-            CancelOutcome::AbandonedActive {
-                object: AbandonedObject {
-                    type_id: a,
-                    balance: 0,
-                    entity_id: None,
-                },
-                finished: true,
-            },
+            CancelOutcome::AbandonedActive(AbandonedObject {
+                type_id: a,
+                balance: 0,
+                entity_id: None,
+            }),
             "nothing is owed, so the refund is the whole Cost_Of"
         );
         let view = reg.view(owner, ProductionCategory::Vehicle).unwrap();
@@ -2345,14 +2322,11 @@ mod tests {
         let mut reg = reg_with(owner, ProductionCategory::Infantry, factory(a));
         assert_eq!(
             reg.cancel_one(owner, ProductionCategory::Infantry, a, true),
-            CancelOutcome::AbandonedActive {
-                object: AbandonedObject {
-                    type_id: a,
-                    balance: 150,
-                    entity_id: None,
-                },
-                finished: false,
-            }
+            CancelOutcome::AbandonedActive(AbandonedObject {
+                type_id: a,
+                balance: 150,
+                entity_id: None,
+            })
         );
         assert_eq!(queued(&reg), vec![b], "every queued copy is gone");
         assert!(

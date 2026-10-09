@@ -337,7 +337,10 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
+    assert_eq!(
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
     let mut expected = sim.scenario_rng.clone();
     let credits = sim.houses[&owner].economy.credits();
     // A PRODUCE of the type waiting finished takes Begin_Production's resume
@@ -367,10 +370,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 1000);
     assert_eq!(counts(&sim, owner), (before.0 + 1, before.1));
     assert!(
-        sim.production
-            .ready_by_owner
-            .get(&owner)
-            .is_none_or(|ready| ready.is_empty())
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").is_empty()
     );
     let successor = held_id(&sim, owner, ProductionCategory::Building);
     assert!(successor > parent);
@@ -655,7 +655,10 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
+    assert_eq!(
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
     let tracked = sim.houses[&owner].tracking.buildings();
     let credits = sim.houses[&owner].economy.credits();
 
@@ -669,10 +672,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 800);
     assert!(
-        sim.production
-            .ready_by_owner
-            .get(&owner)
-            .is_none_or(|ready| ready.is_empty())
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").is_empty()
     );
     assert!(
         sim.production

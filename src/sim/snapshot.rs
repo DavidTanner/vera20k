@@ -901,7 +901,9 @@ use crate::sim::world::Simulation;
 // 313 -> 314: HouseTracking saves the house's factory counters
 // (+0x5378..+0x5388) and each building its factory counter. Prior records
 // lack them.
-const SNAPSHOT_VERSION: u32 = 314;
+// 314 -> 315: ProductionState drops ready_by_owner; a completed building
+// waiting for placement is its factory's held object. Prior records carry it.
+const SNAPSHOT_VERSION: u32 = 315;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3934,7 +3936,8 @@ mod tests {
         // 311 -> 312: the house's AirportDocks.
         // 312 -> 313: the house's one score.
         // 313 -> 314: the house's factory counters.
-        assert_eq!(super::SNAPSHOT_VERSION, 314);
+        // 314 -> 315: no ready-building list beside the factories.
+        assert_eq!(super::SNAPSHOT_VERSION, 315);
     }
 
     #[test]
