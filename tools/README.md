@@ -41,7 +41,6 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Run one bounded child with retained diagnostics | `tools.child_process.run_child` (shared by capture wrappers) |
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |
 | Synchronize authoritative skill sources | `python tools/skill_sync.py --write`, then `--check` |
-| Check that a change does not raise the number of `src/sim` struct fields any simulation module can write (CI runs it on every PR) | `python tools/sim_field_ratchet.py --base origin/main` |
 
 ## Cargo ownership and labeled builds
 
