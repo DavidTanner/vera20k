@@ -4,11 +4,13 @@
 //!
 //! Replaces the 2D `lepton_distance_sq_raw` + `is_within_range_leptons` pair
 //! at the four targeting/cursor sites. Implements 3D distance, IsLowFlying
-//! ground-snap, AirRange bonus, the open-topped passenger's bonus,
-//! arcing-weapon 2D fallthrough, foundation bonus, the InRange bridge gate (0x006F75FB), the verified boundary
-//! semantics (<= max inclusive, < min strict, -512 lep sentinel), and the two
-//! caller-side source substitutions — `CellRangefinding=` and the high-flying
-//! attacker's target-Z swap — that let a Kirov reach the ground below it.
+//! ground-snap, AirRange bonus, the open-topped passenger's bonus, the
+//! elevation bonus for a shot fired downhill (`0x006F6F60`, `0x006F70E0`), the
+//! arcing arm's 2-D distance, foundation bonus, the InRange bridge gate
+//! (0x006F75FB), the verified boundary semantics (<= max inclusive, < min
+//! strict, -512 lep sentinel), and the two caller-side source substitutions —
+//! `CellRangefinding=` and the high-flying attacker's target-Z swap — that let
+//! a Kirov reach the ground below it.
 //!
 //! Ranges are compared in LEPTONS throughout: `CCINIClass::ReadRange`
 //! 0x00474620 scales `Range=` by 256 before truncating, so the fraction on 60
@@ -19,12 +21,14 @@
 //! wall or a cliff on the line refuses the shot outright. That is why this
 //! module takes `LineOfFireInputs` alongside the terrain grid.
 //!
-//! Stages 2-N add the remaining range-VALUE chain (Garrison / Bunker /
-//! Veteran). Stage Arcing adds the full Branch B slope-arc check.
+//! Still missing from the range value: the garrison (`IsOccupied`,
+//! `0x006F727E`) and bunker (`0x006F72A2`) arms. Still missing from the arcing
+//! arm: its slope solver (`0x0048AB90`, `0x0048ABC0`) and bridge ceiling
+//! (`0x006F74D7..0x006F7504`).
 //!
-//! Depends on: rules (ObjectType, Weapon, ProjectileType), map (terrain
-//! height + bridge), sim/combat/line_of_fire, util/lepton (constants),
-//! util/fixed_math (isqrt_i64).
+//! Depends on: rules (ObjectType, Weapon, ProjectileType, ElevationModel), map
+//! (terrain height + bridge), sim/combat/line_of_fire, sim/map/bridge_topology
+//! (effective cell height), util/lepton (constants), util/native_x87.
 //! Does NOT depend on render/ui/audio/net.
 
 use crate::map::cell_index::NativeCellIdentity;
@@ -40,9 +44,14 @@ use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::air_movement::{is_high_flying_in_query, is_low_flying_in_query};
-use crate::sim::movement::ground_pose::object_world_z_leptons;
-use crate::util::fixed_math::{SimFixed, isqrt_i64};
-use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS};
+use crate::sim::movement::ground_pose::{object_center_xy, object_world_z_leptons};
+use crate::util::fixed_math::SimFixed;
+use crate::util::lepton::{
+    BRIDGE_DECK_HEIGHT_LEPTONS, LEPTONS_PER_LEVEL, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS,
+};
+use crate::util::native_x87::{
+    NativeF64Bits, X87Chop53, X87Ordering, sqrt_approx_f32, sqrt_approx_length,
+};
 
 /// `AirRangeBonus=` reaches `TechnoTypeClass+0x68C` through
 /// `CCINIClass::ReadRange` 0x00474620 (the call at 0x007147A9), so the native
@@ -59,14 +68,14 @@ fn cells_fixed_to_leptons(cells: SimFixed) -> i64 {
     (i64::from(cells.to_bits()) * 256) >> 16
 }
 
-/// Range before target-coordinate resolution, 6F7261..6F7308. The target's
+/// Range before target-coordinate resolution, 6F7261..6F72E1. The target's
 /// +54 query and AirRange bonus precede +48/+50, even when MinimumRange later
-/// rejects the shot. Foundation size belongs to the later non-arcing arm.
-/// Height-fire remains a documented stub. The caller adds the open-topped
-/// passenger bonus here for both abstract and retained Cell targets.
+/// rejects the shot. Foundation size belongs to the later non-arcing arm. The
+/// caller adds the open-topped passenger bonus here for both abstract and
+/// retained Cell targets, and then the elevation bonus.
 ///
-/// Stages 2-N add: Garrison REPLACES, Bunker, Veteran. Each is a
-/// branch added to this function — call sites stay unchanged.
+/// Not ported: the garrison arm, which replaces the range (`0x006F727E`), and
+/// the bunker arm (`0x006F72A2`).
 fn initial_range_leptons(
     attacker: &GameEntity,
     target: &TargetKind,
@@ -91,21 +100,6 @@ fn initial_range_leptons(
         }
     }
 
-    // Height-fire bonus (gated by weapon.projectile.subject_to_elevation).
-    // Stage 1 stub: always returns 0. The full bonus only fires when both
-    // attacker AND target are low-flying aircraft AND the projectile sets
-    // SubjectToElevation=yes — rare in standard play. Stage 2+ implements
-    // the formula.
-    let subject_to_elevation = weapon
-        .projectile
-        .as_deref()
-        .and_then(|name| rules.projectile(name))
-        .map(|p| p.subject_to_elevation)
-        .unwrap_or(false);
-    if subject_to_elevation {
-        range_lep += height_fire_bonus_leptons(attacker, target, entities, rules);
-    }
-
     range_lep
 }
 
@@ -122,14 +116,107 @@ fn open_topped_range_bonus_leptons(attacker: &GameEntity, rules: &RuleSet) -> i6
     }
 }
 
-/// Stage 1 stub — returns 0.
-fn height_fire_bonus_leptons(
-    _attacker: &GameEntity,
-    _target: &TargetKind,
-    _entities: &EntityStore,
-    _rules: &RuleSet,
+/// Which of InRange's two elevation bonuses to compute.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ElevationArm {
+    /// `0x006F6F60`, called at `0x006F72FF` for both arms but kept only by the
+    /// direct one, which measures in 3-D: the bonus and the drop's height
+    /// make a hypotenuse.
+    Direct,
+    /// `0x006F70E0`, called at `0x006F746B` on the arcing arm, which measures
+    /// in 2-D: the bonus alone.
+    Arcing,
+}
+
+/// The range InRange adds for a `SubjectToElevation=` projectile
+/// (`BulletType+0x297`) fired down at a lower target, in leptons.
+///
+/// 0 unless the firer and the target both answer vt+0x50: an object on the
+/// map below two levels of height (`0x005F6B60`; Aircraft `0x0041B980`), a
+/// Cell outside the WaterSet window (`0x004867E0`). The cells under both GetCoords points (vt+0x48, a
+/// signed /256 into `MapClass::operator[] @ 0x005657A0`, firer first) give the
+/// drop in `CellClass::GetEffectiveHeight @ 0x00487D50` levels, at least 0.
+/// Each whole `[ElevationModel] ElevationIncrement=` of drop adds
+/// `ElevationIncrementBonus=` cells, at most `ElevationBonusCap=`, chopped to
+/// whole cells by ftol and shifted to leptons. The arcing arm returns that; the
+/// direct arm the Sqrt_Approx length of it and the drop at 104 leptons a level
+/// (`[0x00B0EB34]`), squared and summed in signed 32 bits.
+///
+/// Native execution: `tools/spatial_oracle/walk_cell_range.py` (its elevation
+/// rows), through `TechnoClass::InRange`.
+fn elevation_bonus_leptons(
+    attacker: &GameEntity,
+    target: RangeTarget<'_>,
+    arm: ElevationArm,
+    rules: &RuleSet,
+    interner: &StringInterner,
+    entities: &EntityStore,
+    cells: &NativeCellQuery<'_>,
 ) -> i64 {
-    0
+    if !is_low_flying_in_query(attacker, cells, Some((rules, interner))) {
+        return 0;
+    }
+    let target_xy = match target {
+        RangeTarget::Abstract(TargetKind::Entity(id)) => {
+            let Some(entity) = entities.get(*id) else {
+                return 0;
+            };
+            if !is_low_flying_in_query(entity, cells, Some((rules, interner))) {
+                return 0;
+            }
+            object_center_xy(entity)
+        }
+        RangeTarget::Cell(cell) => {
+            if cells.terrain().native_cell_is_water_set_tile(cell) {
+                return 0;
+            }
+            crate::sim::cell_kernel::native_cell_own_xy(cell, cells)
+        }
+        // Unreached: `RangeTarget::from_target` gives every Cell its identity.
+        RangeTarget::Abstract(TargetKind::Cell(..)) => return 0,
+    };
+    let height = |[x, y]: [i32; 2]| {
+        let cell = cells.lookup(((x / 256) as i16, (y / 256) as i16));
+        crate::sim::map::bridge_topology::CellBridgeView::from_query(cells, cell).effective_height()
+    };
+    let firer_height = height(object_center_xy(attacker));
+    let drop = firer_height.wrapping_sub(height(target_xy)).max(0);
+
+    let model = &rules.elevation_model;
+    // `IDIV` at `0x006F705A`/`0x006F71D6` faults on the constructor's
+    // ElevationIncrement=0; see the residual in `rules::ruleset::ElevationModel`.
+    let Some(steps) = drop.checked_div(model.increment) else {
+        return 0;
+    };
+    let load = |bits: NativeF64Bits| X87Chop53::load_f64(bits).ok();
+    let (Some(increment_bonus), Some(cap)) = (load(model.increment_bonus), load(model.bonus_cap))
+    else {
+        // A non-finite key is outside the emulated x87 domain.
+        return 0;
+    };
+    let scaled = X87Chop53::mul(X87Chop53::load_i32(steps), increment_bonus);
+    // FCOMPP against the cap: the scaled bonus survives only when it is below.
+    let capped = if X87Chop53::compare(scaled, cap) == X87Ordering::Less {
+        scaled
+    } else {
+        cap
+    };
+    let bonus = X87Chop53::ftol_i32_low_masked(capped).wrapping_shl(8);
+    let leptons = match arm {
+        ElevationArm::Arcing => bonus,
+        ElevationArm::Direct => {
+            let rise = (LEPTONS_PER_LEVEL as i32).wrapping_mul(drop);
+            let sum = bonus
+                .wrapping_mul(bonus)
+                .wrapping_add(rise.wrapping_mul(rise));
+            let root = sqrt_approx_f32(X87Chop53::load_i32(sum))
+                .expect("a finite int32 has a finite root");
+            X87Chop53::ftol_i32_low_masked(
+                X87Chop53::load_f32(root).expect("Sqrt_Approx returns a finite value"),
+            )
+        }
+    };
+    i64::from(leptons)
 }
 
 /// The `MinimumRange` arm of `TechnoClass::InRange` on its own.
@@ -174,7 +261,7 @@ pub(crate) fn inside_minimum_range(
 }
 
 /// Full 3D range check. Returns true if `attacker` (firing from `src`) can
-/// hit `target` with `weapon`, accounting for all Stage 1 gates.
+/// hit `target` with `weapon`, through every ported gate.
 ///
 /// `src` is caller-supplied as `(attacker_x_lep, attacker_y_lep,
 /// object_world_z_leptons(attacker, Some(terrain)))`.
@@ -305,6 +392,22 @@ fn compute_range_target(
         RangeTarget::Cell(_) => weapon_range_lep,
     } + open_topped_range_bonus_leptons(attacker, rules);
 
+    let projectile = weapon
+        .projectile
+        .as_deref()
+        .and_then(|name| rules.projectile(name));
+    let subject_to_elevation = projectile.is_some_and(|p| p.subject_to_elevation);
+    let elevation_bonus = |arm| {
+        if subject_to_elevation {
+            elevation_bonus_leptons(attacker, target, arm, rules, interner, entities, cells)
+        } else {
+            0
+        }
+    };
+    // `0x006F72E3..0x006F7306`: the direct bonus is computed here for both
+    // arms, before the target's coordinates, so its cell lookups come first.
+    let direct_range_lep = initial_range_lep + elevation_bonus(ElevationArm::Direct);
+
     let coords = match target {
         RangeTarget::Abstract(target) => {
             resolve_target_coords_3d(target, entities, rules, interner, cells)
@@ -320,15 +423,25 @@ fn compute_range_target(
         return false;
     }
 
-    // Arcing-weapon 2D fallthrough — preserves V3/Prism/etc. current behavior.
-    let arcing = weapon
-        .projectile
-        .as_deref()
-        .and_then(|name| rules.projectile(name))
-        .map(|p| p.arcing)
-        .unwrap_or(false);
-    if arcing {
-        if !compute_in_range_arcing_2d(src, (tx, ty), initial_range_lep) {
+    // The arcing arm, `0x006F7404..0x006F7519`: every cannon tank's shot
+    // (`Cannon`, `Ballistic`, `FlakTProj`, `GrandCannonBall`, `Lobbed`,
+    // `Lobbed2` and `DogShard` are the stock arcing projectiles). It measures
+    // the 2-D distance through Sqrt_Approx and ftol, and against the range
+    // without the direct bonus or a building's foundation (`EBX = EDI` at
+    // `0x006F7457`), plus the arcing bonus.
+    // RESIDUAL: the slope solver (`0x0048AB90`, `0x0048ABC0`, with the
+    // projectile's gravity) and the bridge ceiling that follow are not ported,
+    // so a shot they refuse passes here. The ceiling (`0x006F74D7..0x006F7504`)
+    // refuses a target in a bridge cell (flag `0x100`, read at the TARGET's
+    // cell) three or more levels above the source: every cannon tank firing up
+    // at a bridge deck.
+    if projectile.is_some_and(|p| p.arcing) {
+        let distance = sqrt_approx_length([
+            (tx as i32).wrapping_sub(src.0 as i32),
+            (ty as i32).wrapping_sub(src.1 as i32),
+        ]);
+        let range = initial_range_lep + elevation_bonus(ElevationArm::Arcing);
+        if i64::from(distance) > range {
             return false;
         }
         // The arcing arm is NOT exempt from the line-of-fire walk: 0x006F7519
@@ -348,7 +461,7 @@ fn compute_range_target(
         );
     }
 
-    let mut max_range_lep = initial_range_lep;
+    let mut max_range_lep = direct_range_lep;
     // Building foundation size is queried only after the non-arcing split,
     // 6F7525..6F7554, after target coordinates and MinimumRange.
     if let RangeTarget::Abstract(TargetKind::Entity(id)) = target
@@ -417,53 +530,6 @@ fn line_of_fire_clear(
         los,
     )
     .is_none()
-}
-
-/// Stage 1 arcing-weapon path: 2-D distance against the base weapon range.
-/// Stage Arcing replaces this with the full slope-arc check.
-///
-/// **Who is actually on this path.** Not the siege units this comment used to
-/// name: `V3Launcher`, `DredLauncher` and `CruiseLauncher` all fire
-/// `InvisibleHigh`, which carries no `Arcing=` key at all. The stock arcing
-/// projectiles are `Cannon`, `Ballistic`, `FlakTProj`, `GrandCannonBall`,
-/// `Lobbed`, `Lobbed2` and `DogShard`, whose weapons are every cannon tank in
-/// the game — `105mm` (MTNK Grizzly), `120mm` (HTNK Rhino), `120mmx` (APOC),
-/// `ATGUN` (LTNK Lasher), `SABOT`/`SABOTE` (TNKD Tank Destroyer), `Robogun`
-/// (ROBO), `STALGREN` (STLN), `20mmRapidE` (elite HARV/SMIN) — plus
-/// `FlakTrackGun` (HTK/HYD), `155mm` (DEST/CDEST Destroyer), `HowitzerGun`
-/// (HOWI) and `GrandCannonWeapon` (GTGCAN). Ordinary tank fire runs through
-/// this stub, and it is the path that delivers the `Range=5.75` reach the
-/// lepton scaling recovers for the Rhino and the Apocalypse.
-///
-/// Missing here, therefore, on everyday shots: the slope-clearance solver
-/// (0x0048AB90 / 0x0048ABC0) and the bridge height ceiling (0x006F74D7).
-/// The bonus terms are NOT missing — native's arcing arm does not apply the
-/// foundation bonus either (it is computed at 0x006F751E, inside the
-/// non-arcing arm), and the one term it does keep, `AirRangeBonus`
-/// (`EBX = EDI` at 0x006F7457), cannot reach a stock arcing shot. `[FV]` is
-/// the only `AirRangeBonus=` unit, and one of its weapons IS arcing —
-/// `Weapon4=CRFlakGuyGun` fires `FlakTProj`, which carries `Arcing=true`. The
-/// bonus still never applies, on a stronger fact than "no arcing user":
-/// native adds it only against a high-flying target, and `[FlakTProj] AA=no`
-/// refuses one outright. So the stub drops a term that is unreachable rather
-/// than one that is unused.
-///
-/// The MinimumRange test that used to live here has moved to the caller: the
-/// native runs it once, in 3-D, before the `MOV CL,[EDX+0x29B]` arcing split
-/// at 0x006F73F6. That move is LIVE on stock data, not a formality —
-/// `GrandCannonWeapon` (`MinimumRange=3`), `HowitzerGun` (2) and `RPGTower`
-/// (2) are all arcing, so the Grand Cannon's three-cell dead zone is now
-/// measured in 3-D as 0x006F737F does.
-fn compute_in_range_arcing_2d(
-    src: (i64, i64, i64),
-    target_xy: (i64, i64),
-    weapon_range_lep: i64,
-) -> bool {
-    let (sx, sy, _sz) = src;
-    let dx = sx - target_xy.0;
-    let dy = sy - target_xy.1;
-    let dist_sq: i64 = dx * dx + dy * dy;
-    isqrt_i64(dist_sq) <= weapon_range_lep
 }
 
 /// Resolve target coords for the 3D path. Applies LowFlying ground-snap on
@@ -900,17 +966,39 @@ mod tests {
             "tools/spatial_oracle/walk_cell_range.json",
         ))
         .unwrap();
-        let mut rules = rules_with_weapon(
-            "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing=no\nSubjectToWalls=no\nSubjectToCliffs=no",
-            "",
-            "",
+        // The projectile's Arcing= and SubjectToElevation= combinations.
+        let mut variants = [(false, false), (false, true), (true, false), (true, true)].map(
+            |(arcing, elevation)| {
+                let flag = |on: bool| if on { "yes" } else { "no" };
+                rules_with_weapon(
+                    &format!(
+                        "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing={}\n\
+                         SubjectToElevation={}\nSubjectToWalls=no\nSubjectToCliffs=no",
+                        flag(arcing),
+                        flag(elevation)
+                    ),
+                    "",
+                    "",
+                )
+            },
         );
         let interner = test_interner();
         let entities = EntityStore::new();
         for (index, row) in rows.as_array().unwrap().iter().enumerate() {
             let input = &row["input"];
+            let rules = &mut variants[usize::from(input["arcing"] == true) * 2
+                + usize::from(input["subject_to_elevation"] == true)];
             rules.garrison_rules.open_topped_range_bonus =
                 input["open_topped_bonus"].as_i64().unwrap_or(2) as i32;
+            rules.elevation_model = input.get("elevation").map_or_else(
+                crate::rules::ruleset::ElevationModel::default,
+                |model| crate::rules::ruleset::ElevationModel {
+                    increment: model[0].as_i64().unwrap() as i32,
+                    increment_bonus: NativeF64Bits::from_bits(model[1].as_f64().unwrap().to_bits()),
+                    bonus_cap: NativeF64Bits::from_bits(model[2].as_f64().unwrap().to_bits()),
+                },
+            );
+            let rules = &*rules;
             let mut terrain = flat_terrain(32, 32);
             terrain
                 .set_projectile_water_set_base(input["water_base"].as_i64().unwrap_or(314) as i32);
@@ -963,6 +1051,82 @@ mod tests {
             weapon.range_leptons = input["range"].as_i64().unwrap_or(768) as i32;
             weapon.minimum_range_leptons = input["minimum"].as_i64().unwrap_or(0) as i32;
             weapon.cell_rangefinding = input["cell_rangefinding"].as_bool().unwrap_or(false);
+            let native_source = row["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|event| event[0] == "range")
+                .unwrap();
+            // Each bonus InRange computed (`0x006F6F60`, `0x006F70E0`), from
+            // the target lookup's Dummy state: no elevation row's source
+            // lookups (CellRangefinding) restamp it first.
+            let assert_bonuses =
+                |target: RangeTarget<'_>, objects: &EntityStore, cells: &NativeCellQuery<'_>| {
+                    for bonus in row["bonuses"].as_array().into_iter().flatten() {
+                        let arm = match bonus[0].as_str().unwrap() {
+                            "direct" => ElevationArm::Direct,
+                            _ => ElevationArm::Arcing,
+                        };
+                        assert_eq!(
+                            elevation_bonus_leptons(
+                                &actor, target, arm, rules, &interner, objects, cells
+                            ),
+                            bonus[1].as_i64().unwrap(),
+                            "row {index}: {} bonus",
+                            bonus[0]
+                        );
+                    }
+                };
+            if let Some(object) = input.get("target_object") {
+                // CanFireAt `0x006F77B0` against an Infantry object.
+                let at = |axis: usize| object["location"][axis].as_i64().unwrap() as i32;
+                let mut target = GameEntity::test_default(
+                    2,
+                    "TGT",
+                    "Test",
+                    (at(0) / 256) as u16,
+                    (at(1) / 256) as u16,
+                );
+                target.category = EntityCategory::Infantry;
+                target.position.sub_x = SimFixed::from_num(at(0) % 256);
+                target.position.sub_y = SimFixed::from_num(at(1) % 256);
+                target.position.exact_z_leptons = Some(at(2));
+                target.lifecycle.cell_marked = object["marked"].as_bool().unwrap_or(true);
+                let mut objects = EntityStore::new();
+                objects.insert(target);
+                let target = TargetKind::Entity(2);
+                let cells = NativeCellQuery::canonical(&terrain);
+                let source = fire_source_coords_in_query(
+                    &actor,
+                    &target,
+                    &weapon,
+                    &objects,
+                    &cells,
+                    (rules, &interner),
+                )
+                .unwrap();
+                assert_eq!(
+                    serde_json::json!([source.0, source.1, source.2]),
+                    native_source[1],
+                    "row {index}: source"
+                );
+                let actual = compute_in_range_in_query(
+                    &actor,
+                    source,
+                    &target,
+                    &weapon,
+                    rules,
+                    &interner,
+                    &objects,
+                    &cells,
+                    &LineOfFireInputs::terrain_only(),
+                );
+                assert_eq!(Some(actual), row["result"].as_bool(), "row {index}: object");
+                let dummy = cells.dummy().snapshot().coord;
+                assert_eq!(serde_json::json!([dummy.0, dummy.1]), row["dummy_coord"]);
+                assert_bonuses(RangeTarget::Abstract(&target), &objects, &cells);
+                continue;
+            }
             let target = input
                 .get("target")
                 .cloned()
@@ -980,15 +1144,9 @@ mod tests {
                 &weapon,
                 &entities,
                 &cells,
-                (&rules, &interner),
+                (rules, &interner),
             )
             .unwrap();
-            let native_source = row["events"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|event| event[0] == "range")
-                .unwrap();
             assert_eq!(
                 serde_json::json!([source.0, source.1, source.2]),
                 native_source[1],
@@ -1010,7 +1168,7 @@ mod tests {
                 &actor,
                 identity,
                 &weapon,
-                &rules,
+                rules,
                 &interner,
                 &entities,
                 &terrain,
@@ -1042,7 +1200,7 @@ mod tests {
                     &weapon,
                     &entities,
                     &cells,
-                    (&rules, &interner),
+                    (rules, &interner),
                 )
                 .unwrap();
                 let actual = compute_in_range_in_query(
@@ -1050,7 +1208,7 @@ mod tests {
                     source,
                     &target,
                     &weapon,
-                    &rules,
+                    rules,
                     &interner,
                     &entities,
                     &cells,
@@ -1071,6 +1229,13 @@ mod tests {
                     assert_eq!(terrain.dummy_cell_requested_coord(), (99, 98));
                 }
             }
+            terrain.stamp_dummy_cell_requested_coord(99, 98);
+            let identity = terrain.native_cell_identity(coord);
+            assert_bonuses(
+                RangeTarget::Cell(identity),
+                &entities,
+                &NativeCellQuery::canonical(&terrain),
+            );
         }
     }
 
@@ -2174,43 +2339,6 @@ mod tests {
             &with(&[((10, 10), BRIDGE_FLAG_STRUCTURAL)])
         ));
     }
-
-    // RESIDUAL — gamemd address 0x006F7220, the arcing branch of
-    // `TechnoClass::InRange`.
-    //
-    // Branch selector: `0x006F73F6 MOV CL,[EDX+0x29B]` with `EDX` = the
-    // projectile at `WeaponType+0xA0`. `BulletTypeClass::ReadINI` 0x0046BFC4
-    // fills +0x29B from the INI key `Arcing=` (key string at 0x0081B130). It
-    // is NOT `WeaponType+0xB8`, which is read at 0x006F737F and gates only the
-    // MinimumRange test.
-    //
-    // Clause, at 0x006F74D7–0x006F7504: the arc/slope test at 0x0048ABC0 must
-    // pass in every case, and when it does, the shot is additionally refused
-    // unless the TARGET's cell has flag 0x100 clear, or
-    // `target.Z - source.Z < 3 * g_nTechnoInRangeLevelHeightLeptons`. A bridge
-    // cell under the target therefore TIGHTENS the check with an extra height
-    // ceiling; it does not relax it. Note this reads the target's cell, the
-    // opposite of the gate at 0x006F75FB in the same function, which reads the
-    // source's.
-    //
-    // Trigger: an arcing weapon firing at something standing on a bridge
-    // deck. The arcing population is every cannon tank — `Cannon`,
-    // `Ballistic`, `FlakTProj`, `GrandCannonBall`, `Lobbed`, `Lobbed2` and
-    // `DogShard` — NOT the V3/Dreadnought/Cruise launchers, which fire
-    // `InvisibleHigh` and carry no `Arcing=` key. See
-    // `compute_in_range_arcing_2d` for the full weapon list.
-    //
-    // Effect: `compute_in_range_arcing_2d` is a documented 2D fallthrough stub
-    // with neither the slope test nor this ceiling, so VERA allows arcing
-    // shots at deck targets that gamemd refuses.
-    //
-    // Frequency: every arcing shot at a unit on a bridge — i.e. Grizzly,
-    // Rhino, Apocalypse, Lasher, Tank Destroyer, Flak Track and Destroyer
-    // fire, not a siege-unit footnote. Bounded by the fact that the whole arc
-    // check is stubbed, so this clause is downstream of a larger unported
-    // mechanism and cannot be fixed on its own.
-    // Residual (formerly an ignored placeholder test): gamemd 0x006F74D7 adds a height ceiling for arcing shots at bridge-cell targets; VERA's arcing path is a 2D stub.
-    // Unimplemented: InRange 0x006F74D7 arcing bridge height ceiling.
 
     /// `InRange`'s final `return`, 0x006F7642: `CALL 0x004CC310` and
     /// `TEST EAX,EAX; SETZ AL`. A `SubjectToCliffs` projectile with a

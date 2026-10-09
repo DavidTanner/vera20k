@@ -112,6 +112,19 @@ pub(crate) fn native_cell_own_coords(
     cell: NativeCellIdentity,
     cells: &NativeCellQuery<'_>,
 ) -> Option<(i64, i64, i64)> {
+    let [x, y] = native_cell_own_xy(cell, cells);
+    let (level, slope) = cells.ground_fields(cell);
+    let z = ground_height_leptons(level, slope, x, y).ok()?;
+    Some((i64::from(x), i64::from(y), i64::from(z)))
+}
+
+/// The XY of [`native_cell_own_coords`]: the centre of the cell's current
+/// packed coordinate, which a Dummy holds from its last stamp. It needs no
+/// supported slope.
+pub(crate) fn native_cell_own_xy(
+    cell: NativeCellIdentity,
+    cells: &NativeCellQuery<'_>,
+) -> [i32; 2] {
     let (x, y) = cells.coord(cell);
     let point = cell_center(
         CellCoordinate {
@@ -120,9 +133,7 @@ pub(crate) fn native_cell_own_coords(
         },
         0,
     );
-    let (level, slope) = cells.ground_fields(cell);
-    let z = ground_height_leptons(level, slope, point.x, point.y).ok()?;
-    Some((i64::from(point.x), i64::from(point.y), i64::from(z)))
+    [point.x, point.y]
 }
 
 /// Native invalid-cell coordinates are process-global sentinels. At the Rust map

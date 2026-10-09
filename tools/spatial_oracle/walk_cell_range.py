@@ -1,5 +1,10 @@
 """Original Coord->Cell range wrapper and Cell range geometry/query order.
 
+Rows with `target_object` range an Infantry object through CanFireAt 0x6F77B0
+instead. Rows with `subject_to_elevation` add InRange's elevation bonus
+(0x6F6F60 on both arms, 0x6F70E0 on the arcing arm). Rows that supply
+`elevation` or `arcing` also record `bonuses`, each bonus InRange computed.
+
 The weapon slot and object fields are supplied. No range verdict, Cell getter,
 map lookup, distance calculation or line-of-fire callable is substituted.
 """
@@ -10,7 +15,8 @@ from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC
 from tools.native_oracle import load_image, run_checked, STACK_BASE, STACK_SIZE, SCRATCH, RET_MAGIC, finish_vectors, provenance
 from tools.spatial_oracle.map_queries import dwords, packed
 
-ACTOR, TYPE, HOUSE, VT, WEAPON, SLOT, PROJECTILE, CELLS, COORD, RULES = [SCRATCH + i * 0x2000 for i in range(10)]
+ACTOR, TYPE, HOUSE, VT, WEAPON, SLOT, PROJECTILE, CELLS, COORD, RULES, TARGET = [
+    SCRATCH + i * 0x2000 for i in range(11)]
 MAP, TABLE, DUMMY = 0x87F7E8, 0xC00000, 0xABDC50
 
 
@@ -40,6 +46,13 @@ def query(row):
     u.mem_write(ACTOR + 0x82, bytes([int(row.get('open_topped', False))]))
     u.mem_write(0x8871E0, dwords(RULES))
     u.mem_write(RULES + 0xF5C, dwords(row.get('open_topped_bonus', 2)))
+    # [ElevationModel] Rules+0x1838/+0x1840/+0x1848, the constructor's 0/1.0/0.0
+    # unless supplied, and BulletType+0x297 SubjectToElevation / +0x29B Arcing.
+    increment, increment_bonus, cap = row.get('elevation', [0, 1.0, 0.0])
+    u.mem_write(RULES + 0x1838, dwords(increment))
+    u.mem_write(RULES + 0x1840, struct.pack('<dd', increment_bonus, cap))
+    u.mem_write(PROJECTILE + 0x297, bytes([int(row.get('subject_to_elevation', False))]))
+    u.mem_write(PROJECTILE + 0x29B, bytes([int(row.get('arcing', False))]))
     u.mem_write(WEAPON + 0xA0, dwords(PROJECTILE))
     u.mem_write(WEAPON + 0xB4, dwords(row.get('range', 768)))
     u.mem_write(WEAPON + 0xB8, dwords(row.get('minimum', 0)))
@@ -50,6 +63,7 @@ def query(row):
     u.mem_write(0xAC13C8, dwords(104))
     u.mem_write(0xAC13BC, dwords(416))
     u.mem_write(0xB0EB24, dwords(416))
+    u.mem_write(0xB0EB34, dwords(104))
     u.mem_write(0xAA0738, dwords(row.get('water_base', 314)))
     table = bytearray(0x100000)
     def put_cell(p, c):
@@ -66,12 +80,25 @@ def query(row):
         struct.pack_into('<I', table, (y * 512 + x) * 4, p)
     put_cell(DUMMY, {'coord': [99, 98], 'tile': 65535, **row.get('dummy', {})})
     u.mem_write(TABLE, bytes(table))
+    target_object = row.get('target_object')
+    if target_object is not None:
+        u.mem_write(TARGET, dwords(VT))
+        u.mem_write(TARGET + 0x6C0, dwords(TYPE))
+        u.mem_write(TARGET + 0x21C, dwords(HOUSE))
+        u.mem_write(TARGET + 0x9C, dwords(*target_object['location']))
+        u.mem_write(TARGET + 0x74, bytes([int(target_object.get('marked', True))]))
+        u.mem_write(TARGET + 0x8C, bytes([int(target_object.get('on_bridge', False))]))
     u.mem_write(MAP + 0x13C, dwords(TABLE, 0x40000))
     events = []
     geometry = None
+    bonuses = []
     def observe(_u, address, _size, _data):
         nonlocal geometry
         sp = u.reg_read(UC_X86_REG_ESP)
+        # Returns of the direct (0x6F72FF) and arcing (0x6F746B) bonus calls.
+        if address in (0x6F7304, 0x6F7470):
+            bonus = struct.unpack('<i', dwords(u.reg_read(UC_X86_REG_EAX)))[0]
+            bonuses.append(['direct' if address == 0x6F7304 else 'arcing', bonus])
         if address == read32(VT + 0x3F8):
             events.append(['weapon', read32(sp + 4)])
             ret(4, SLOT)
@@ -94,12 +121,16 @@ def query(row):
             events.append(['line', xyz(u.reg_read(UC_X86_REG_ECX)), xyz(u.reg_read(UC_X86_REG_EDX))])
     u.hook_add(UC_HOOK_CODE, observe)
     sp = STACK_BASE + STACK_SIZE - 0x1000
-    u.mem_write(sp, dwords(RET_MAGIC, COORD, 0))
+    entry, target = (0x6F77B0, TARGET) if target_object is not None else (0x6F7970, COORD)
+    u.mem_write(sp, dwords(RET_MAGIC, target, 0))
     u.reg_write(UC_X86_REG_ESP, sp)
     u.reg_write(UC_X86_REG_ECX, ACTOR)
-    run_checked(u, 0x6F7970, RET_MAGIC, count=100000, required_addresses=[0x6F7970, 0x6F77B0, 0x6F7220])
+    run_checked(u, entry, RET_MAGIC, count=100000, required_addresses=[entry, 0x6F77B0, 0x6F7220])
     assert u.reg_read(UC_X86_REG_ESP) == sp + 12
-    return {'input': row, 'result': bool(u.reg_read(UC_X86_REG_EAX) & 255), 'target_geometry': geometry, 'events': events, 'dummy_coord': cell_coord(DUMMY)}
+    out = {'input': row, 'result': bool(u.reg_read(UC_X86_REG_EAX) & 255), 'target_geometry': geometry, 'events': events, 'dummy_coord': cell_coord(DUMMY)}
+    if 'elevation' in row or row.get('arcing'):
+        out.update(bonuses=bonuses)
+    return out
 
 
 def generate():
@@ -139,12 +170,47 @@ def generate():
         rows.append({'cells': [{'coord': [10, 10]}, {'coord': [11, 10], 'tile': tile, 'flags': 256, 'level': 1}], 'range': 500})
     for base, tile in [(-1, 0), (-1, 13), (2147483640, 2147483640)]:
         rows.append({'water_base': base, 'cells': [{'coord': [10, 10]}, {'coord': [11, 10], 'tile': tile, 'flags': 256}], 'range': 400})
+    # InRange's elevation bonus: the actor at cell (10,10) on `level` shoots at
+    # cell (13,10). Each case runs at the range where the distance equals the
+    # range plus the bonus, and one lepton short of it.
+    retail = [4, 2.0, 2.0]
+    def elevated(level, target_level=0, source_flags=0, target_tile=0):
+        return {'source': [2624, 2624, level * 104], 'target': [3550, 2780, 0], 'marked': True,
+                'elevation': retail, 'subject_to_elevation': True,
+                'cells': [{'coord': [10, 10], 'level': level, 'flags': source_flags},
+                          {'coord': [13, 10], 'level': target_level, 'tile': target_tile}]}
+    infantry = {'source': [2624, 2624, 416], 'marked': True, 'elevation': retail, 'subject_to_elevation': True,
+                'cells': [{'coord': [10, 10], 'level': 4}, {'coord': [13, 10]}]}
+    for edge, case in [
+        (273, elevated(4)),
+        (932, {**elevated(4), 'subject_to_elevation': False}),
+        (578, elevated(3)),
+        (202, elevated(8)),
+        (932, elevated(0, target_level=4)),
+        (932, {**elevated(4), 'marked': False}),
+        (49, {**elevated(7), 'elevation': [3, 1.5, 4.0]}),
+        (234, {**elevated(6), 'elevation': [2, 0.7, 10.0]}),
+        (273, {**elevated(4), 'elevation': [-4, 2.0, 2.0]}),
+        (175, elevated(0, source_flags=0x80)),
+        (932, elevated(4, target_tile=314)),
+        (234, {**elevated(4), 'cells': [{'coord': [10, 10], 'level': 4}], 'dummy': {'level': -2}}),
+        # Truncation toward zero takes the Dummy's centre (-128) into cell 0.
+        (256, {'target': [-257, 2780, 0], 'source': [128, 2688, 312], 'marked': True, 'elevation': retail,
+               'subject_to_elevation': True, 'cells': [{'coord': [0, 10], 'level': 3}], 'dummy': {'level': 1}}),
+        (322, {**elevated(4), 'arcing': True}),
+        (1346, {**elevated(4), 'arcing': True, 'elevation': [-4, 2.0, 2.0]}),
+        # Sqrt_Approx gives 254 for a 255-lepton 2-D distance.
+        (254, {'source': [2689, 2688, 0], 'marked': True, 'arcing': True}),
+        (273, {**infantry, 'target_object': {'location': [3456, 2688, 0]}}),
+        (932, {**infantry, 'target_object': {'location': [3456, 2688, 0], 'marked': False}}),
+    ]:
+        rows += [{**case, 'range': edge}, {**case, 'range': edge - 1}]
     return [query(row) for row in rows]
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Original6F7970->6F77B0->6F7220 normal non-arcing Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; explicit supplied object/weapon/map fields.',
-        entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310},
-        assumptions=['Supplied original Infantry table7EB058 and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile has all flags false, including non-arcing and no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants, x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
+        scope='Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm) and the arcing arm\'s 2-D distance; explicit supplied object/weapon/map fields.',
+        entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'elevation_direct': 0x6F6F60, 'elevation_arcing': 0x6F70E0, 'cell_height': 0x487D50, 'map_cell_packed': 0x5657A0, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310},
+        assumptions=['Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows\' SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor\'s 0/1.0/0.0 otherwise.', 'Rules+0x16B8 Gravity is 0, so on the arcing arm Ballistic_Launch_Speed48AB90 is 0 and Can_Reach48ABC0 admits every row: its refusals and the bridge ceiling are not exercised.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
         substitutions=['GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. No other callable substitution.']))
