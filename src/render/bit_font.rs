@@ -34,8 +34,9 @@ pub const MISSING_GLYPH_CODEPOINT: u16 = 0xB0;
 pub const DARKEN_ALPHA: u8 = 175;
 /// Default fallback space width when FNT lacks a glyph at 0x20 (defensive).
 const DEFAULT_SPACE_WIDTH: u32 = 4;
-/// Codepoint range packed into the atlas (ASCII + Latin-1 + Latin Extended-A).
-const PACKED_CODEPOINT_RANGE: std::ops::Range<u16> = 0x20..0x0180;
+/// Codepoint range packed into the atlas (ASCII + Latin-1 + CJK/fullwidth).
+/// End-exclusive at u16::MAX, which is reserved for the missing-glyph sentinel.
+const PACKED_CODEPOINT_RANGE: std::ops::Range<u16> = 0x20..0xFFFF;
 
 /// UV + pixel-width record for a single glyph in the atlas.
 #[derive(Clone, Copy, Debug)]
@@ -558,7 +559,7 @@ impl BitFont {
 
         let row_h = fnt.bitmap_rows;
         let pad = 1u32;
-        let max_atlas_w = 512u32;
+        let max_atlas_w = 4096u32;
 
         struct Placement {
             x: u32,
