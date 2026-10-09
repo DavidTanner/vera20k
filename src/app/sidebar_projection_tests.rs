@@ -46,7 +46,6 @@ fn view(
     options: &[BuildOption],
     projection: &SidebarProjectionState,
     tab: SidebarTab,
-    scroll: usize,
     height: f32,
 ) -> SidebarView {
     build_sidebar_view_with_spec(
@@ -63,7 +62,6 @@ fn view(
         &[],
         None,
         &[],
-        scroll,
         Some(&sim.interner),
         &[],
         &SidebarGadgetState::new(),
@@ -72,7 +70,6 @@ fn view(
         None,
         None,
         [None; 2],
-        [0; 4],
         projection.cameo_strips(),
     )
 }
@@ -162,6 +159,60 @@ fn native_history_world() -> (Simulation, RuleSet, InternedId, CsfFile, Value) {
 }
 
 #[test]
+fn original_post_removal_scroll_reaches_view_and_hit_test() {
+    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/sidebar_oracle/cameo_order.json",
+    ))
+    .unwrap();
+    let native = &corpus["recalculate_scroll"];
+    let case = native["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "twenty_six_slots_row1_remove19")
+        .unwrap();
+    let context = serde_json::json!({"current_side": 0, "types": native["types"]});
+    let (sim, rules, owner, csf) = native_context_world(&context);
+    let options: Vec<_> = all_build_options_for_owner(&sim, &rules, "Americans")
+        .into_iter()
+        .filter(|item| {
+            case["initial_order"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name.as_str().unwrap() == sim.interner.resolve(item.type_id))
+        })
+        .collect();
+    let mut candidates = cameo_candidates(&sim, &rules, Some(&csf), owner, &options, &[], &[]);
+    let mut projection = SidebarProjectionState::default();
+    projection.reconcile_cameos(owner, &candidates, 3);
+    projection.set_scroll_row(SidebarTab::Vehicle, 1);
+    for candidate in &mut candidates {
+        let CameoId::Object(id) = candidate.id else {
+            unreachable!()
+        };
+        candidate.available = !case["remove_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|name| name.as_str().unwrap() == sim.interner.resolve(id));
+    }
+    projection.reconcile_cameos(owner, &candidates, 3);
+    let view = view(&sim, &options, &projection, SidebarTab::Vehicle, 430.);
+    assert_eq!(view.layout.side2_tile_count, 3);
+    assert_eq!(
+        view.scroll_rows,
+        case["top_row_after"].as_u64().unwrap() as usize
+    );
+    let expected_first = case["order"][view.scroll_rows * 2].as_str().unwrap();
+    assert_eq!(view.items[0].type_id, expected_first);
+    assert!(matches!(
+        hit_test_item(&view.items[0], false, false),
+        SidebarAction::CameoPress { type_id, .. } if type_id == expected_first
+    ));
+}
+
+#[test]
 fn production_projection_uses_rule_side_category_flags_and_csf_utf16_inputs() {
     let corpus: Value = serde_json::from_str(crate::test_fixture::text(
         "tools/sidebar_oracle/cameo_order.json",
@@ -232,19 +283,21 @@ fn native_order_reaches_localized_views_scrolling_and_click_identity() {
     let candidates = cameo_candidates(&sim, &rules, Some(&csf), owner, &options, &[], &[]);
     let mut projection = SidebarProjectionState::default();
     assert!(
-        !projection.reconcile_cameos(owner, &candidates),
+        !projection.reconcile_cameos(owner, &candidates, 3),
         "scenario seeding is silent"
     );
     assert!(
-        !projection.reconcile_cameos(owner, &candidates),
+        !projection.reconcile_cameos(owner, &candidates, 3),
         "retained identities are not insertions"
     );
 
     for tab in SidebarTab::all() {
         let expected = expected[tab.tab_index()].as_array().unwrap();
-        let first = view(&sim, &options, &projection, tab, 0, 360.0);
+        projection.set_scroll_row(tab, 0);
+        let first = view(&sim, &options, &projection, tab, 360.0);
         for scroll in 0..=first.max_scroll_rows {
-            let view = view(&sim, &options, &projection, tab, scroll, 360.0);
+            projection.set_scroll_row(tab, scroll);
+            let view = view(&sim, &options, &projection, tab, 360.0);
             let names: Vec<_> = view
                 .items
                 .iter()
@@ -282,7 +335,8 @@ fn native_order_reaches_localized_views_scrolling_and_click_identity() {
             }
         }
     }
-    let scrolled = view(&sim, &options, &projection, SidebarTab::Vehicle, 1, 360.0);
+    projection.set_scroll_row(SidebarTab::Vehicle, 1);
+    let scrolled = view(&sim, &options, &projection, SidebarTab::Vehicle, 360.0);
     assert_eq!(
         scrolled.scroll_rows, 1,
         "fixture must exercise an actual second page"
@@ -302,20 +356,20 @@ fn only_an_accepted_new_object_in_the_same_house_announces_construction_options(
         .unwrap()
         .available = false;
     let mut projection = SidebarProjectionState::default();
-    assert!(!projection.reconcile_cameos(owner, &initial));
-    assert!(projection.reconcile_cameos(owner, &candidates));
-    assert!(!projection.reconcile_cameos(owner, &candidates));
+    assert!(!projection.reconcile_cameos(owner, &initial, 3));
+    assert!(projection.reconcile_cameos(owner, &candidates, 3));
+    assert!(!projection.reconcile_cameos(owner, &candidates, 3));
     assert!(
-        !projection.reconcile_cameos(owner, &initial),
+        !projection.reconcile_cameos(owner, &initial, 3),
         "removal is silent"
     );
     assert!(
-        projection.reconcile_cameos(owner, &candidates),
+        projection.reconcile_cameos(owner, &candidates, 3),
         "a later accepted reinsertion announces again"
     );
     let other = sim.interner.get("TESTBUILD").unwrap();
     assert!(
-        !projection.reconcile_cameos(other, &candidates),
+        !projection.reconcile_cameos(other, &candidates, 3),
         "local-house replacement seeds silently"
     );
 }
@@ -344,7 +398,7 @@ fn retail_rules_admission_and_csf_names_keep_the_same_identity_in_every_view() {
     });
     let candidates = cameo_candidates(&sim, &rules, csf.as_ref(), owner, &options, &[], &[]);
     let mut projection = SidebarProjectionState::default();
-    assert!(!projection.reconcile_cameos(owner, &candidates));
+    assert!(!projection.reconcile_cameos(owner, &candidates, 3));
     let visible: HashSet<_> = options
         .iter()
         .filter(|item| item.visible_in_sidebar())
@@ -360,7 +414,7 @@ fn retail_rules_admission_and_csf_names_keep_the_same_identity_in_every_view() {
     );
     let mut observed = HashSet::new();
     for tab in SidebarTab::all() {
-        let view = view(&sim, &options, &projection, tab, 0, 2400.0);
+        let view = view(&sim, &options, &projection, tab, 2400.0);
         for item in &view.items {
             let id = sim.interner.get(&item.type_id).unwrap();
             assert!(

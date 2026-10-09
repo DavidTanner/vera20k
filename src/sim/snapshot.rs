@@ -911,8 +911,9 @@ use crate::sim::world::Simulation;
 // ProductionState drops the AirfieldDocks pad reservations. Prior records
 // cannot resume.
 // 316 -> 317: the neutral presentation supplement preserves the local owner's
-// four retained sidebar entry lists. Re-sorting after load loses insertion
-// history when live comparison inputs changed; prior records lack that order.
+// four retained sidebar entry lists and scroll rows. Re-sorting after load
+// loses insertion history when live comparison inputs changed; prior records
+// lack that order and viewport state.
 const SNAPSHOT_VERSION: u32 = 317;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
@@ -926,7 +927,7 @@ pub(crate) enum SavedCameoId {
     SuperWeapon(InternedId),
 }
 
-/// Only identity/order survives save/load; comparison keys are projections of
+/// Identity/order and per-strip scroll rows survive save/load; comparison keys are projections of
 /// the restored simulation, canonical rules and current process string table.
 /// Strip indices are building, defense, infantry and vehicle, respectively.
 ///
@@ -938,11 +939,20 @@ pub(crate) enum SavedCameoId {
 pub(crate) struct SavedSidebarOrder {
     owner: InternedId,
     strips: [Vec<SavedCameoId>; 4],
+    scroll_rows: [usize; 4],
 }
 
 impl SavedSidebarOrder {
-    pub(crate) fn new(owner: InternedId, strips: [Vec<SavedCameoId>; 4]) -> Self {
-        Self { owner, strips }
+    pub(crate) fn new(
+        owner: InternedId,
+        strips: [Vec<SavedCameoId>; 4],
+        scroll_rows: [usize; 4],
+    ) -> Self {
+        Self {
+            owner,
+            strips,
+            scroll_rows,
+        }
     }
 
     #[cfg(test)]
@@ -955,8 +965,8 @@ impl SavedSidebarOrder {
         &self.strips
     }
 
-    pub(crate) fn into_parts(self) -> (InternedId, [Vec<SavedCameoId>; 4]) {
-        (self.owner, self.strips)
+    pub(crate) fn into_parts(self) -> (InternedId, [Vec<SavedCameoId>; 4], [usize; 4]) {
+        (self.owner, self.strips, self.scroll_rows)
     }
 }
 

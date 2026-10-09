@@ -283,7 +283,7 @@ fn replay_history(context: &Value) {
             }
             "recalculate" => {
                 let tab = step["tab"].as_u64().unwrap() as usize;
-                strips.retain(|id| {
+                strips.retain(3, |id| {
                     let item = candidates.iter().find(|item| item.id == id).unwrap();
                     item.tab.tab_index() != tab || !unavailable.contains(&id)
                 });
@@ -328,7 +328,7 @@ fn reconciliation_adds_before_pruning_and_retries_on_the_next_recheck() {
         item.available = initial.contains(fixture.name(item.id));
     }
     let mut strips = CameoStrips::default();
-    assert!(strips.reconcile(&candidates));
+    assert!(strips.reconcile(&candidates, 3));
     fixture.assert_order(&strips, &context["initial_order"], "initial reconciliation");
 
     let steps = context["steps"].as_array().unwrap();
@@ -336,11 +336,11 @@ fn reconciliation_adds_before_pruning_and_retries_on_the_next_recheck() {
         item.available = fixture.name(item.id) != steps[0]["id"].as_str().unwrap();
     }
     assert!(
-        !strips.reconcile(&candidates),
+        !strips.reconcile(&candidates, 3),
         "full strip rejects the new item before removing the old one"
     );
     fixture.assert_order(&strips, &steps[2]["order"], "first reconciliation");
-    assert!(strips.reconcile(&candidates));
+    assert!(strips.reconcile(&candidates, 3));
     fixture.assert_order(&strips, &steps[3]["order"], "second reconciliation");
 }
 
@@ -374,5 +374,57 @@ fn original_super_recharge_input_keeps_reader_history_and_native_rounding() {
             case["recharge_frames"],
             "original retained RechargeTime reader: {case}",
         );
+    }
+}
+
+#[test]
+fn original_complete_recalculate_preserves_order_and_adjusts_each_strip_scroll() {
+    let corpus = corpus();
+    let native = &corpus["recalculate_scroll"];
+    let fixture = Fixture::new(&serde_json::json!({
+        "current_side": 0, "types": native["types"],
+    }));
+    let candidates = fixture.candidates();
+    let cases = native["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 430);
+    for case in cases {
+        let initial: Vec<_> = case["initial_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|name| {
+                candidates
+                    .iter()
+                    .find(|item| fixture.name(item.id) == name.as_str().unwrap())
+                    .unwrap()
+                    .clone()
+            })
+            .collect();
+        let mut strips = CameoStrips::from_retained(
+            [Vec::new(), Vec::new(), Vec::new(), initial],
+            [0, 0, 0, case["top_row_before"].as_u64().unwrap() as usize],
+        );
+        let removed: HashSet<_> = case["remove_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|name| name.as_str().unwrap())
+            .collect();
+        strips.retain(case["visible_slots"].as_u64().unwrap() as usize / 2, |id| {
+            !removed.contains(fixture.name(id))
+        });
+        assert_eq!(
+            strips.scroll_row(SidebarTab::Vehicle),
+            case["top_row_after"].as_u64().unwrap() as usize,
+            "{}",
+            case["id"]
+        );
+        let actual: Vec<_> = strips
+            .items(SidebarTab::Vehicle)
+            .iter()
+            .map(|item| fixture.name(item.id))
+            .collect();
+        assert_eq!(serde_json::json!(actual), case["order"], "{}", case["id"]);
+        assert_eq!(&strips.scroll_rows()[..3], &[0; 3]);
     }
 }

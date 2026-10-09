@@ -53,6 +53,8 @@ fn view(screen: [i32; 2], side: usize, count: usize, scroll: usize) -> SidebarVi
         .collect();
     let allied = side == 0;
     let gadget = gadget_flash::SidebarGadgetState::default();
+    let mut cameos = super::cameo_order::CameoStrips::layout_fixture(&options, &[], &[]);
+    cameos.set_scroll_row(SidebarTab::Building, scroll);
     build_sidebar_view_with_spec(
         spec(side),
         screen[0] as f32,
@@ -67,7 +69,6 @@ fn view(screen: [i32; 2], side: usize, count: usize, scroll: usize) -> SidebarVi
         &[],
         None,
         &[],
-        scroll,
         Some(&interner),
         &[],
         &gadget,
@@ -76,8 +77,7 @@ fn view(screen: [i32; 2], side: usize, count: usize, scroll: usize) -> SidebarVi
         Some(if allied { [46., 25.] } else { [46., 27.] }),
         Some(if allied { [46., 25.] } else { [46., 27.] }),
         [Some([72., 18.]); 2],
-        [0; 4],
-        &super::cameo_order::CameoStrips::layout_fixture(&options, &[], &[]),
+        &cameos,
     )
 }
 #[test]

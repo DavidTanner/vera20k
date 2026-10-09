@@ -239,7 +239,6 @@ mod tests {
             &[],
             None,
             &[],
-            0,
             None,
             &[],
             &SidebarGadgetState::new(),
@@ -248,7 +247,6 @@ mod tests {
             None,
             None,
             [None; 2],
-            [0; 4],
             &crate::ui::sidebar::cameo_order::CameoStrips::default(),
         );
         let font = digit_font();

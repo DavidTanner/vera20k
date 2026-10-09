@@ -7,6 +7,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::snapshot::{SavedCameoId, SavedSidebarOrder};
 use crate::ui::sidebar::SidebarTab;
 use crate::ui::sidebar::cameo_order::{Cameo, CameoKey};
+use std::fmt::Write;
 
 fn fixture() -> (Simulation, RuleSet, InternedId, [InternedId; 2]) {
     let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -16,9 +17,18 @@ fn fixture() -> (Simulation, RuleSet, InternedId, [InternedId; 2]) {
          [LATER]\nCost=200\nStrength=1000\nFoundation=1x1\nTechLevel=1\nOwner=Americans\n",
     ))
     .unwrap();
+    let (sim, owner) = simulation(&rules);
+    let types = [
+        sim.interner.get("FIRST").unwrap(),
+        sim.interner.get("LATER").unwrap(),
+    ];
+    (sim, rules, owner, types)
+}
+
+fn simulation(rules: &RuleSet) -> (Simulation, InternedId) {
     let mut sim = load_fixture_simulation(true);
-    sim.intern_rule_type_ids(&rules);
-    sim.resolve_type_handles(&rules);
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
     let owner = sim.interner.intern("Americans");
     sim.houses.insert(
         owner,
@@ -27,11 +37,82 @@ fn fixture() -> (Simulation, RuleSet, InternedId, [InternedId; 2]) {
     sim.session.house_order.push(owner);
     sim.session.current_house = Some(owner);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
-    let types = [
-        sim.interner.get("FIRST").unwrap(),
-        sim.interner.get("LATER").unwrap(),
-    ];
-    (sim, rules, owner, types)
+    (sim, owner)
+}
+
+const SAVED_SCROLL_ROWS: [usize; 4] = [1, 2, 3, 4];
+
+fn scrolling_fixture() -> (Simulation, RuleSet, InternedId, Vec<Cameo>) {
+    // Different odd counts exercise the last partial row on every strip.
+    // These are authored save inputs; native removal arithmetic is covered
+    // by the original-executable corpus at the shared strip owner.
+    let names: [Vec<String>; 4] = std::array::from_fn(|tab| {
+        (0..[3, 5, 7, 9][tab])
+            .map(|index| format!("SCROLL{tab}_{index}"))
+            .collect()
+    });
+    let mut ini =
+        String::from("[Countries]\n0=Americans\n[Sides]\nGDI=Americans\n[Americans]\nSide=GDI\n");
+    for (registry, tabs) in [
+        ("BuildingTypes", &[0, 1][..]),
+        ("InfantryTypes", &[2][..]),
+        ("VehicleTypes", &[3][..]),
+    ] {
+        writeln!(ini, "[{registry}]").unwrap();
+        for (index, name) in tabs.iter().flat_map(|&tab| &names[tab]).enumerate() {
+            writeln!(ini, "{index}={name}").unwrap();
+        }
+    }
+    for (tab, names) in names.iter().enumerate() {
+        for (index, name) in names.iter().enumerate() {
+            writeln!(
+                ini,
+                "[{name}]\nCost={}\nStrength=1000\nTechLevel=1\n\
+                 Owner=Americans\nAIBasePlanningSide=0\nUIName=NAME:{name}",
+                100 * (index + 1),
+            )
+            .unwrap();
+            if tab == SidebarTab::Defense.tab_index() {
+                writeln!(ini, "BuildCat=Combat").unwrap();
+            }
+        }
+    }
+    let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).unwrap();
+    let (sim, owner) = simulation(&rules);
+    let candidates = SidebarTab::all()
+        .into_iter()
+        .flat_map(|tab| {
+            names[tab.tab_index()]
+                .iter()
+                .map(|name| {
+                    let kind = rules.object(name).unwrap();
+                    Cameo {
+                        id: SavedCameoId::Object(sim.interner.get(name).unwrap()),
+                        tab,
+                        available: true,
+                        key: CameoKey::Techno {
+                            own_side: true,
+                            considered_aircraft: false,
+                            naval: false,
+                            tech_level: kind.tech_level,
+                            cost: sim.cost_of(owner, kind, &rules),
+                            name: kind.ui_name.clone().unwrap(),
+                        },
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    (sim, rules, owner, candidates)
+}
+
+fn scrolled_projection(owner: InternedId, candidates: &[Cameo]) -> SidebarProjectionState {
+    let mut projection = SidebarProjectionState::default();
+    assert!(!projection.reconcile_cameos(owner, candidates, 1));
+    for (tab, row) in SidebarTab::all().into_iter().zip(SAVED_SCROLL_ROWS) {
+        projection.set_scroll_row(tab, row);
+    }
+    projection
 }
 
 fn candidates(types: [InternedId; 2], first_cost: i32) -> Vec<Cameo> {
@@ -56,10 +137,10 @@ fn candidates(types: [InternedId; 2], first_cost: i32) -> Vec<Cameo> {
 
 fn retained_history(owner: InternedId, types: [InternedId; 2]) -> SidebarProjectionState {
     let mut projection = SidebarProjectionState::default();
-    assert!(!projection.reconcile_cameos(owner, &candidates(types, 100)));
+    assert!(!projection.reconcile_cameos(owner, &candidates(types, 100), 3));
     // The current keys would sort LATER first, but native Recalculate retains
     // survivors. This records history through the actual shared strip owner.
-    assert!(!projection.reconcile_cameos(owner, &candidates(types, 400)));
+    assert!(!projection.reconcile_cameos(owner, &candidates(types, 400), 3));
     assert_eq!(
         projection.saved_order().unwrap().strips()[0],
         types.map(SavedCameoId::Object)
@@ -136,7 +217,7 @@ fn sidebar_order_prepares_and_commits_unsorted_history_without_reinserting_survi
     let saved = retained_history(owner, types).saved_order().unwrap();
     let bytes = save(&sim, &rules, Some(&saved));
     let mut outgoing = SidebarProjectionState::default();
-    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400)));
+    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400), 3));
     let before = outgoing.saved_order().unwrap();
     assert_ne!(before, saved);
     let prepared = prepare(&bytes, &sim, &rules).unwrap();
@@ -157,7 +238,7 @@ fn sidebar_order_prepares_and_commits_unsorted_history_without_reinserting_survi
     let committed = prepared.commit_into(&mut runtime);
     outgoing.restore_order(committed.sidebar_order);
     assert_eq!(outgoing.saved_order(), Some(saved.clone()));
-    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400)));
+    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400), 3));
     assert_eq!(outgoing.saved_order(), Some(saved));
 
     // A headless save has no retained UI history: replacing with it resets
@@ -167,7 +248,89 @@ fn sidebar_order_prepares_and_commits_unsorted_history_without_reinserting_survi
     let committed = prepared.commit_into(&mut runtime);
     outgoing.restore_order(committed.sidebar_order);
     assert!(outgoing.saved_order().is_none());
-    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400)));
+    assert!(!outgoing.reconcile_cameos(owner, &candidates(types, 400), 3));
+}
+
+#[test]
+fn nonzero_rows_on_every_strip_roundtrip_prepare_commit_and_refresh() {
+    let (sim, rules, owner, candidates) = scrolling_fixture();
+    let saved = scrolled_projection(owner, &candidates)
+        .saved_order()
+        .unwrap();
+    assert_eq!(saved.clone().into_parts().2, SAVED_SCROLL_ROWS);
+    let hash = sim.state_hash();
+    let bytes = save(&sim, &rules, Some(&saved));
+    let loaded = GameSnapshot::load_validated(
+        &bytes,
+        LOAD_FIXTURE_MAP_HASH,
+        rules.simulation_config_hash(),
+        LOAD_FIXTURE_MAP_NAME,
+    )
+    .unwrap();
+    assert_eq!(loaded.sidebar_order(), Some(&saved));
+    assert_eq!(loaded.sim.state_hash(), hash);
+
+    let mut outgoing = SidebarProjectionState::default();
+    assert!(!outgoing.reconcile_cameos(owner, &candidates, 1));
+    let before = outgoing.saved_order();
+    assert_eq!(outgoing.cameo_strips().scroll_rows(), [0; 4]);
+    let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
+    runtime
+        .simulation
+        .houses
+        .get_mut(&owner)
+        .unwrap()
+        .economy
+        .add_credits(17);
+    let outgoing_hash = runtime.simulation.state_hash();
+    let outgoing_rng = runtime.simulation.rng_state();
+    let prepared = prepare(&bytes, &runtime.simulation, &rules).unwrap();
+    assert_eq!(
+        outgoing.saved_order(),
+        before,
+        "prepare cannot install presentation"
+    );
+    assert_eq!(runtime.simulation.state_hash(), outgoing_hash);
+    assert_eq!(runtime.simulation.rng_state(), outgoing_rng);
+    let strips = &prepared.sidebar_order.as_ref().unwrap().1;
+    assert_eq!(strips.scroll_rows(), SAVED_SCROLL_ROWS);
+    assert_eq!(strips.saved_identities(), *saved.strips());
+
+    let committed = prepared.commit_into(&mut runtime);
+    outgoing.restore_order(committed.sidebar_order);
+    assert_eq!(runtime.simulation.houses[&owner].economy.credits(), 50_000);
+    assert_eq!(outgoing.saved_order(), Some(saved.clone()));
+    assert!(!outgoing.reconcile_cameos(owner, &candidates, 1));
+    assert_eq!(outgoing.saved_order(), Some(saved));
+    for (tab, row) in SidebarTab::all().into_iter().zip(SAVED_SCROLL_ROWS) {
+        assert_eq!(outgoing.cameo_strips().scroll_row(tab), row);
+    }
+}
+
+#[test]
+fn out_of_range_saved_rows_preserve_outgoing_scroll_and_running_world() {
+    let (sim, rules, owner, candidates) = scrolling_fixture();
+    let outgoing = scrolled_projection(owner, &candidates);
+    let before = outgoing.saved_order();
+    let valid = before.clone().unwrap();
+    let hash = sim.state_hash();
+    let rng = sim.rng_state();
+    for tab in SidebarTab::all() {
+        for invalid_row in [SAVED_SCROLL_ROWS[tab.tab_index()] + 1, usize::MAX] {
+            let mut rows = SAVED_SCROLL_ROWS;
+            rows[tab.tab_index()] = invalid_row;
+            let invalid = SavedSidebarOrder::new(owner, valid.strips().clone(), rows);
+            let result = prepare(&save(&sim, &rules, Some(&invalid)), &sim, &rules);
+            let Err(PreparedLoadError::SidebarOrder(reason)) = result else {
+                panic!("out-of-range row {invalid_row} for {tab:?} must reject preparation");
+            };
+            assert!(reason.contains("invalid scroll row"), "{reason}");
+            assert_eq!(outgoing.saved_order(), before);
+            assert_eq!(outgoing.cameo_strips().scroll_rows(), SAVED_SCROLL_ROWS);
+            assert_eq!(sim.state_hash(), hash);
+            assert_eq!(sim.rng_state(), rng);
+        }
+    }
 }
 
 #[test]
@@ -190,12 +353,16 @@ fn invalid_sidebar_payload_preserves_outgoing_projection_and_running_world() {
     let mut over_capacity = std::array::from_fn(|_| Vec::new());
     over_capacity[0] = vec![SavedCameoId::Object(types[0]); 77];
     let invalid = [
-        SavedSidebarOrder::new(InternedId::from_index(u32::MAX), valid.strips().clone()),
-        SavedSidebarOrder::new(owner, duplicate),
-        SavedSidebarOrder::new(owner, wrong_strip),
-        SavedSidebarOrder::new(owner, unknown),
-        SavedSidebarOrder::new(owner, wrong_kind),
-        SavedSidebarOrder::new(owner, over_capacity),
+        SavedSidebarOrder::new(
+            InternedId::from_index(u32::MAX),
+            valid.strips().clone(),
+            [0; 4],
+        ),
+        SavedSidebarOrder::new(owner, duplicate, [0; 4]),
+        SavedSidebarOrder::new(owner, wrong_strip, [0; 4]),
+        SavedSidebarOrder::new(owner, unknown, [0; 4]),
+        SavedSidebarOrder::new(owner, wrong_kind, [0; 4]),
+        SavedSidebarOrder::new(owner, over_capacity, [0; 4]),
     ];
     for order in invalid {
         assert!(matches!(

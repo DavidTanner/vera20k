@@ -952,23 +952,16 @@ pub(crate) fn sidebar_wheel_scroll(state: &mut AppState, delta_lines: f32) {
     let Some(view) = current_sidebar_view(state).cloned() else {
         return;
     };
-    state.match_state.match_presentation.sidebar_scroll_rows = wheel_scrolled_row(
+    let row = wheel_scrolled_row(
         view.scroll_rows,
         view.max_scroll_rows,
         wheel_action(delta_lines),
     );
+    let presentation = &mut state.match_state.match_presentation;
+    presentation
+        .sidebar_projection
+        .set_scroll_row(presentation.active_sidebar_tab, row);
     crate::app::presentation::sidebar_render::refresh_sidebar_projection(state);
-}
-
-/// Index of a tab's parked scroll row. Exhaustive on purpose: a new tab must
-/// claim a slot rather than silently share one.
-pub(crate) fn tab_scroll_slot(tab: SidebarTab) -> usize {
-    match tab {
-        SidebarTab::Building => 0,
-        SidebarTab::Defense => 1,
-        SidebarTab::Infantry => 2,
-        SidebarTab::Vehicle => 3,
-    }
 }
 
 /// The local player's queue of record, in queue order (empty without a sim).
@@ -1096,22 +1089,8 @@ pub(crate) fn apply_sidebar_action(state: &mut AppState, action: SidebarAction) 
         SidebarAction::OpenPauseMenu => open_pause_menu(state),
         SidebarAction::OpenDiplomacy => open_diplomacy_menu(state),
         SidebarAction::SelectTab(tab) => {
-            // gamemd's scroll row is per build strip, so switching tabs must not
-            // carry the outgoing strip's position over — nor throw it away. Park
-            // the row we are leaving and restore the one we are entering.
-            if tab != state.match_state.match_presentation.active_sidebar_tab {
-                state
-                    .match_state
-                    .match_presentation
-                    .sidebar_scroll_rows_parked
-                    [tab_scroll_slot(state.match_state.match_presentation.active_sidebar_tab)] =
-                    state.match_state.match_presentation.sidebar_scroll_rows;
-                state.match_state.match_presentation.active_sidebar_tab = tab;
-                state.match_state.match_presentation.sidebar_scroll_rows = state
-                    .match_state
-                    .match_presentation
-                    .sidebar_scroll_rows_parked[tab_scroll_slot(tab)];
-            }
+            // Retained strips own their rows; changing tabs only selects a strip.
+            state.match_state.match_presentation.active_sidebar_tab = tab;
         }
         SidebarAction::CameoPress {
             type_id,

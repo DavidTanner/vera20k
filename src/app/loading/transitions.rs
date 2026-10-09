@@ -297,11 +297,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state.match_state.input.targeting_mode = None;
     state.match_state.input.building_placement_preview = None;
     state.match_state.match_presentation.active_sidebar_tab = SidebarTab::default_active_tab();
-    state.match_state.match_presentation.sidebar_scroll_rows = 0;
-    state
-        .match_state
-        .match_presentation
-        .sidebar_scroll_rows_parked = [0; 4];
     // Re-init the message surface per scenario (the native list is
     // re-initialized at scenario start): drops stale rows from the previous
     // game and any dangling pause span, so a pause→quit→new-map sequence

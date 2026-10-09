@@ -100,6 +100,13 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         spec.side3_height = atlas.side3.pixel_size[1];
     }
     state.match_state.match_presentation.sidebar_layout_spec = spec;
+    let visible_rows = sidebar::compute_layout_with_spec(
+        spec,
+        state.render_width() as f32,
+        state.render_height() as f32,
+        0,
+    )
+    .side2_tile_count;
     let owner_name: String =
         preferred_local_owner_name(state).unwrap_or_else(|| "Americans".to_string());
     let Some((
@@ -177,7 +184,7 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         .match_state
         .match_presentation
         .sidebar_projection
-        .reconcile_cameos(owner, &cameos)
+        .reconcile_cameos(owner, &cameos, visible_rows)
     {
         crate::app::input::dispatch::push_local_eva(
             state,
@@ -253,7 +260,6 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         &ready_buildings,
         armed_entry.as_ref(),
         &producer_focus,
-        state.match_state.match_presentation.sidebar_scroll_rows,
         state
             .match_state
             .sim_runtime
@@ -270,10 +276,6 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         state
             .match_state
             .match_presentation
-            .sidebar_scroll_rows_parked,
-        state
-            .match_state
-            .match_presentation
             .sidebar_projection
             .cameo_strips(),
     );
@@ -283,7 +285,14 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
             sidebar::SidebarAction::SelectTab(selected.tab),
         );
     }
-    state.match_state.match_presentation.sidebar_scroll_rows = view.scroll_rows;
+    state
+        .match_state
+        .match_presentation
+        .sidebar_projection
+        .set_scroll_row(
+            state.match_state.match_presentation.active_sidebar_tab,
+            view.scroll_rows,
+        );
     // Publish the same strip-derived state to input and Flash_AI. Native
     //6A6472 enables after Add;6A6820 disables after the last entry is removed.
     for tab in &view.tabs {

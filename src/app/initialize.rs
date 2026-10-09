@@ -524,8 +524,6 @@ impl App {
                     active_sidebar_tab: SidebarTab::default_active_tab(),
                     sidebar_layout_spec,
                     ui_scale,
-                    sidebar_scroll_rows: 0,
-                    sidebar_scroll_rows_parked: [0; 4],
                     tooltips: startup_tooltips,
                     tooltip_epoch: Instant::now(),
                     message_list: crate::ui::messages::MessageList::new(

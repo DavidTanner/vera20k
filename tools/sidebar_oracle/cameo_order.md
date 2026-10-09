@@ -80,8 +80,53 @@ the entry. A super survives only when its index is within the player's Supers
 vector and its `SuperClass +0x6D` granted byte is set. Removing a linked
 production factory or a type with a primary factory can enqueue abandonment
 events; those production paths are excluded from this corpus. The removal
-loop resets the vacated final record and its progress timer. Tab activation,
-scroll adjustment and redraw follow the loop and are also excluded here.
+loop resets the vacated final record and its progress timer. The original
+retained histories stop after this loop. Separate `recalculate_scroll`
+controls execute the complete function, including its scroll adjustment.
+
+## Scroll adjustment after pruning
+
+The original prologue `0x6AA624..0x6AA711` calculates the visible capacity,
+allocates a temporary array and copies complete records starting at
+`2 * TopRow`. Here `TopRow` is strip `+0x44`; count is `+0x54`, and records
+begin at `+0x58`, stride `0x34`. With signed division truncating toward zero:
+
+```text
+footer = Scenario +0x34B8 == 0 ? 26 : 18
+visible_slots = 2 * trunc0((body_height + body_y - sidebar_top - 7 - footer) / 50)
+```
+
+The geometry fields come from `0x886F9C`, `0x886F94` and `0xB0B4F8`.
+Each removed `(kind, typeIndex)` also clears its matching temporary record
+at `0x6AA931..0x6AA99D`. The original tail `0x6AABC9..0x6AAC76` changes
+the row only if an entry was removed. Let `i` be the first surviving slot
+in the old visible snapshot and `j` that same identity's index in the
+new strip:
+
+```text
+candidate = old_row - trunc0((i - j) / 2)
+maximum = trunc0((new_count - visible_slots) / 2)
+new_row = max(0, min(candidate, maximum))
+```
+
+No surviving snapshot identity, no match in the new strip, or an empty
+strip gives row zero. With no removal, the row remains unchanged. The
+native clamp uses truncating division, including odd counts; it does not
+use the ceiling used for the last scrollable row. The adjustment adds to
+the old row: with 20 entries, six visible slots and old row 1, removing
+entry 6 or 19 produces row 2. With 12 entries, ten slots and old row 1,
+removing the last entry produces row 0. These results are executed goldens,
+not corrections to the original behavior.
+
+The complete controls also observe the strip/full-redraw flags, original
+return value, visible snapshot before and after filtering, and temporary
+array cleanup. Original `0x69DCF0` constructs the tab gadgets, as the native
+static initializer `0x6A4CE0` does. This permits the empty-strip disable
+path to execute. `UpdateScrollButtons 0x6A6610` and `operator_delete
+0x7C8B3D` are observed sinks; button appearance and allocator internals are
+outside these controls. The allocator supplies zero-filled memory, including
+unused snapshot slots. All other strips are empty, so switching to another
+populated tab is not covered.
 
 ## Active caller chronology
 
@@ -142,13 +187,16 @@ A new scenario clears the records through `ClearScene 0x6851F0` (call at
 by original instructions; the executable corpus above does not emulate
 whole save streams.
 
-Rust keeps ordered identities in `ui::sidebar::cameo_order::CameoStrips`,
+Rust keeps ordered identities and each tab's scroll row in `ui::sidebar::cameo_order::CameoStrips`,
 retained by the existing app sidebar projection. Canonical rule types,
 `Simulation::cost_of`, `SuperWeaponType::recharge_time_frames` and the CSF
 owner supply comparison fields. View construction resolves those identities
 into presentation entries; rendering, tooltips, scrolling and hit testing
 consume that same view. Rules/House changes refresh fields without sorting
-survivors. The snapshot envelope stores only owner and ordered identities;
+survivors. Removal updates each retained row using the original snapshot-slot
+adjustment; switching tabs selects that row without copying it to a second
+active/parked owner. The snapshot envelope stores owner, ordered identities
+and scroll rows;
 load preparation validates them against the restored interner/rules and
 rebuilds derived fields before committing. A new scenario clears the owner.
 
@@ -182,12 +230,20 @@ removal/cancellation need their own native production integration evidence.
   would admit a new cameo a recheck earlier than the original sequence.
 - `recharge_reader`: original constructor field initialization and ten
   selected retained reader calls.
+- `recalculate_scroll`: complete original Recalculate calls over before,
+  within and after viewport removals, multiple removals, all visible entries
+  lost, all entries lost, odd/even counts, first/last scrollable rows and
+  two/four/six/ten-slot viewports. Nonzero origins, both nonzero scenario
+  sides, division boundaries and a zero-slot viewport are included.
+  Inputs name unavailable IDs; all capacities, snapshots, final orders and
+  row results come from original execution.
 
 The whole comparator, RTTI resolver, type cost virtuals, name comparison,
 insertion, strip constructor and clear execute unchanged. AddCameo stops
 after insertion (`0x6A6423`) or before its rejection epilogue (`0x6A65FF`).
-Recalculate starts at its entry and stops after the full filtering loop
-(`0x6AAAB3`). Its visible-copy allocator and availability queries are declared
-fixture boundaries, and EVA is an observed sink. Original instructions are
-never replaced. These are bounded ordering comparisons, not whole-sidebar
-or whole-engine parity.
+Recalculate starts at its entry. Retained/capacity histories stop after the
+full filtering loop (`0x6AAAB3`); `recalculate_scroll` executes through its
+return, including the original scroll arithmetic. Its visible-copy allocator
+and availability queries are declared fixture boundaries, and EVA is an
+observed sink. Original instructions are never replaced. These are bounded
+ordering/scroll comparisons, not whole-sidebar or whole-engine parity.

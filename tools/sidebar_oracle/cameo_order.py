@@ -2,8 +2,9 @@
 
 The comparator and insertion execute whole, with original RTTI, cost virtuals
 and wcscmp. AddCameo stops after insertion or at its rejection epilogue; its
-presentation tail is outside this fixture. Recalculate stops after its complete
-filter loop, before tab selection/scrolling. See cameo_order.md for boundaries.
+presentation tail is outside this fixture. Retained histories stop Recalculate
+after filtering; separate scroll controls execute it through its return.
+See cameo_order.md for boundaries.
 No Python implementation supplies an expected comparison or ordered list.
 """
 
@@ -62,6 +63,7 @@ class Sidebar:
         self.pointers = {}
         self.lookup = {}
         self.events = []
+        self.scroll_observation = None
         self.available = {}
         self.can_build = {}
         self.house = self.alloc(0x6000)
@@ -175,6 +177,16 @@ class Sidebar:
                 raise RuntimeError(f'unexpected visible-copy allocation {size}')
             u.mem_write(self.visible_copy, bytes(size))
             self.native_return(self.visible_copy, 0)
+        elif address == 0x6A6610:
+            self.events.append('UpdateScrollButtons')
+            self.native_return(0, 0)
+        elif address == 0x7C8B3D:
+            sp = u.reg_read(UC_X86_REG_ESP)
+            pointer = struct.unpack('<I', u.mem_read(sp + 4, 4))[0]
+            if pointer != self.visible_copy:
+                raise RuntimeError(f'unexpected Recalculate delete {pointer:#x}')
+            self.events.append('visible-copy-delete')
+            self.native_return(0, 0)
         elif address in self.factory_queries:
             ptr = u.reg_read(UC_X86_REG_ECX)
             self.events.append('supplied-FindFactory')
@@ -190,6 +202,16 @@ class Sidebar:
             self.events.append('wcscmp')
         elif address == COMPARE:
             self.events.append('CompareItems')
+        elif self.scroll_observation is not None and address in (0x6AA711, FILTER_DONE):
+            slots = read(u, self.visible_copy)[0]
+            visible = []
+            for index in range(slots):
+                type_index, kind = read(u, self.visible_copy + 4 + index * 0x34, 2)
+                visible.append(None if (kind, type_index) == (0, 0)
+                               else self.lookup[(kind, type_index)])
+            self.scroll_observation['visible_slots'] = slots
+            key = 'snapshot_before' if address == 0x6AA711 else 'snapshot_after'
+            self.scroll_observation[key] = visible
 
     def invoke(self, address, obj=0, args=(), *, ends=RET_MAGIC, context=None):
         u = self.u
@@ -234,13 +256,112 @@ class Sidebar:
         return dict(action='add', id=name, accepted=reached == ADD_ACCEPTED,
                     order=self.order(), eva_calls=self.events.count('EVA_NewConstructionOptions'))
 
-    def recalculate(self, tab):
+    def recalculate(self, tab, *, complete=False):
         self.events = []
-        self.invoke(RECALCULATE, STRIPS[tab], ends=(FILTER_DONE, RET_MAGIC),
-                    context={'case': 'recalculate-filter', 'tab': tab})
+        self.scroll_observation = {} if complete else None
+        self.invoke(RECALCULATE, STRIPS[tab],
+                    ends=RET_MAGIC if complete else (FILTER_DONE, RET_MAGIC),
+                    context={'case': 'recalculate-complete' if complete else 'recalculate-filter',
+                             'tab': tab})
         if 'CompareItems' in self.events or 'Cost_Of' in self.events or 'wcscmp' in self.events:
             raise RuntimeError('unexpected re-sort during native retained-entry filter')
+        if complete:
+            result = dict(self.scroll_observation, order=self.order()[tab],
+                          top_row_after=read(self.u, STRIPS[tab] + 0x44)[0],
+                          removed=bool(self.u.reg_read(UC_X86_REG_EAX) & 255),
+                          needs_full_redraw=bool(self.u.mem_read(SIDEBAR + 0x53A7, 1)[0]),
+                          strip_needs_redraw=bool(self.u.mem_read(STRIPS[tab] + 0x3C, 1)[0]),
+                          scroll_button_updates=self.events.count('UpdateScrollButtons'),
+                          visible_copy_frees=self.events.count('visible-copy-delete'))
+            self.scroll_observation = None
+            return result
         return dict(action='recalculate', tab=tab, order=self.order())
+
+
+def recalculate_scroll_controls():
+    """Whole native filter/snapshot/row-adjustment with observed UI/delete sinks.
+
+    All expected orders, snapshots, capacities and rows come from execution.
+    Python only selects supplied layouts, starting rows and removal inputs.
+    Each source strip is first populated through original AddCameo/InsertEntry.
+    """
+    catalog = [item(f'unit_{i:02}', cost=100 + i, ui_name=f'Unit {i:02}')
+               for i in range(25)]
+    m = Sidebar(catalog)
+    for tab in range(4):
+        m.invoke(0x69DCF0, 0xB07C48 + tab * 0x60,
+                 context={'case': 'tab-gadget-constructor', 'tab': tab})
+    # Original static initializer6A4CE0 uses these same four ctor calls. They
+    # allow the all-entries-gone path to execute actual Gadget disable dispatch.
+    layouts = [
+        ('two_slots', 1, dict(body_height=241, body_y=0, sidebar_top=158, scenario_side=0)),
+        ('four_slots', 2, dict(body_height=291, body_y=0, sidebar_top=158, scenario_side=0)),
+        ('six_slots', 3, dict(body_height=341, body_y=0, sidebar_top=158, scenario_side=0)),
+        ('ten_slots', 5, dict(body_height=441, body_y=0, sidebar_top=158, scenario_side=0)),
+    ]
+    specs = []
+    six_slots = layouts[2][2]
+    for label, removed in (
+        ('none', []), ('remove0', [0]), ('remove1', [1]), ('remove2', [2]),
+        ('remove3', [3]), ('remove6', [6]), ('remove7', [7]),
+        ('remove8', [8]), ('remove19', [19]), ('remove0_1', [0, 1]),
+        ('remove0_2', [0, 2]), ('remove2_3', [2, 3]),
+        ('visible_gone', list(range(2, 8))), ('prefix_gone', list(range(8))),
+        ('all_gone', list(range(20))),
+    ):
+        specs.append((f'twenty_six_slots_row1_{label}', 20, 1, six_slots, removed))
+    for count, layout in product((1, 2, 5, 6, 7, 8, 12, 19, 20, 21, 24, 25), layouts):
+        layout_name, rows, geometry = layout
+        # Only input selection: the last ordinary scroll row is admitted while
+        # (row + visible_rows) * 2 < count at6A8BFF..6A8C09, then row increments.
+        last_row = max(0, (count + 1) // 2 - rows)
+        for row in sorted({0, last_row}):
+            for label, removed in (
+                ('none', []), ('last', [count - 1]),
+                ('first_visible', [row * 2]),
+                ('visible_gone', list(range(row * 2, min(count, row * 2 + rows * 2)))),
+                ('all_gone', list(range(count))),
+            ):
+                specs.append((f'count{count}_{layout_name}_row{row}_{label}',
+                              count, row, geometry, removed))
+    # Nonzero sidebar origin and either non-Allied scenario side exercise the
+    # original eight-pixel footer difference without supplying its output.
+    for side in (1, 2):
+        geometry = dict(body_height=309, body_y=24, sidebar_top=158, scenario_side=side)
+        specs.append((f'nonzero_origin_side{side}_remove19', 20, 1, geometry, [19]))
+    # Exact division boundary and a zero-slot viewport use the original
+    # capacity arithmetic; the latter must take the no-survivor branch.
+    for height in (240, 340, 342):
+        geometry = dict(body_height=height, body_y=0, sidebar_top=158, scenario_side=0)
+        specs.append((f'capacity_boundary_height{height}', 20, 1, geometry, [19]))
+
+    source_strips = {}
+    cases = []
+    for label, count, row, geometry, removed in specs:
+        if count not in source_strips:
+            m.invoke(0x6A81B0, STRIPS[3], context={'case': 'scroll-source-clear'})
+            for name in list(m.catalog)[:count]:
+                if not m.add(name)['accepted']:
+                    raise RuntimeError(f'native scroll fixture failed to admit {name}')
+            source_strips[count] = bytes(m.u.mem_read(STRIPS[3], 0xF94))
+        # Restore a previously executed native source state for independent
+        # cases; do not synthesize or sort a candidate result in Python.
+        m.u.mem_write(STRIPS[3], source_strips[count])
+        put32(m.u, STRIPS[3] + 0x44, row)
+        put32(m.u, SIDEBAR + 0x539C, 3)
+        m.u.mem_write(SIDEBAR + 0x53A7, b'\0')
+        m.u.mem_write(STRIPS[3] + 0x3C, b'\0')
+        for key, address in (('body_height', 0x886F9C), ('body_y', 0x886F94),
+                             ('sidebar_top', 0xB0B4F8), ('scenario_side', m.scenario + 0x34B8)):
+            put32(m.u, address, geometry[key])
+        initial_order = m.order()[3]
+        remove_ids = [initial_order[index] for index in removed]
+        for name, pointer in m.pointers.items():
+            m.available[pointer] = name not in remove_ids
+        observed = m.recalculate(3, complete=True)
+        cases.append(dict(id=label, initial_order=initial_order, remove_ids=remove_ids,
+                          top_row_before=row, geometry=geometry, **observed))
+    return dict(types=list(m.catalog.values()), cases=cases)
 
 
 def comparison_catalog():
@@ -404,13 +525,15 @@ def recharge_reader():
 def generate():
     return dict(schema=1, comparisons=pair_controls(), histories=histories(),
                 cost_contexts=cost_contexts(), capacity_history=capacity_history(),
-                recharge_reader=recharge_reader())
+                recharge_reader=recharge_reader(),
+                recalculate_scroll=recalculate_scroll_controls())
 
 
 def metadata():
     return provenance(
         scope='Original whole Strip CompareItems/InsertEntry, AddCameo admission through insertion, '
-              'Recalculate retained filter/removal loop, and SuperWeaponType RechargeTime reader block. '
+              'Recalculate retained filter/removal and complete pruning-scroll controls, '
+              'and SuperWeaponType RechargeTime reader block. '
               'Synthetic initialized inputs; not a complete tech-tree, native scene, or whole-sidebar claim.',
         assumptions=[
             'Fresh PE mapping per case family. Actual RTTI_To_TypeArray, original type vtables, '
@@ -431,7 +554,14 @@ def metadata():
             'Recalculate starts at6AA600 and stops at6AAAB3 after the complete retained filter. '
             'Supers granted bits are supplied. Entries have no linked production factories and '
             'House primary-factory fields are zero; original500510 executes on removals. '
-            'No cancellation events, tab selection, scroll adjustment or rendering claim.',
+            'The original histories exclude cancellation events, tab selection and scroll adjustment.',
+            'The additive recalculate_scroll cases instead execute whole6AA600 to its RET. '
+            'Original AddCameo populates the source vehicle strip; cases restore those executed '
+            'bytes and supply TopRow, geometry and unavailable IDs. Actual prologue capacity, '
+            'visible record snapshots, snapshot erasure and6AABC9..6AAC76 row adjustment execute. '
+            'No Python algorithm supplies expected rows. Original69DCF0 initializes all four '
+            'tab gadgets so the all-entries-gone disable path runs. Other strips remain empty; '
+            'switching to another populated tab and linked-factory cancellation remain excluded.',
             'RechargeTime uses original constructor6CE5C0..6CE681 field initialization and '
             'reader6CED5C..6CED95 with original ReadDouble and ftol, supplied cached INI lookup, '
             'and original floating-scanner startup. Whole SuperWeaponType reader is excluded.',
@@ -441,9 +571,14 @@ def metadata():
             'Recalculate allocator7C8E17 supplies a zeroed visible-copy buffer. Type virtual+94 '
             'FindFactory and House4F7870 CanBuild return declared availability inputs. '
             'Admission producer bodies and complete House/Building lifecycle are not executed.',
+            'Complete pruning-scroll controls observe UpdateScrollButtons6A6610 and '
+            'operator_delete7C8B3D as no-op sinks with their actual caller-cleaned conventions. '
+            'Delete must receive the original supplied allocation. No button appearance or '
+            'allocator-internal claim; zero-filled unused snapshot slots are an explicit input.',
         ], entry_points={'compare': COMPARE, 'insert': INSERT, 'add': ADD,
                          'recalculate': RECALCULATE, 'strip_ctor': 0x6A80A0,
                          'strip_clear': 0x6A81B0, 'wcscmp': 0x7CA5D3,
+                         'prune_scroll_tail': 0x6AABC9, 'tab_gadget_ctor': 0x69DCF0,
                          'super_ctor_fields': 0x6CE5C0, 'recharge_reader': 0x6CED5C})
 
 

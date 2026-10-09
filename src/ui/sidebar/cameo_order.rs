@@ -125,16 +125,32 @@ impl CameoKey {
 /// projections supply the current members and comparison inputs; surviving
 /// entries keep their positions, even if costs or other keys change. Match
 /// replacement and local-house replacement discard this derived projection.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct CameoStrips {
     strips: [Vec<Cameo>; 4],
+    scroll_rows: [usize; 4],
 }
 
 impl CameoStrips {
     /// Restore validated identities in their saved order; never reinsert or sort.
     /// MouseClass Load 5BDF70 and NoInit 6A4F20 preserve these records.
-    pub(crate) fn from_retained(strips: [Vec<Cameo>; 4]) -> Self {
-        Self { strips }
+    pub(crate) fn from_retained(strips: [Vec<Cameo>; 4], scroll_rows: [usize; 4]) -> Self {
+        Self {
+            strips,
+            scroll_rows,
+        }
+    }
+
+    pub(crate) fn scroll_rows(&self) -> [usize; 4] {
+        self.scroll_rows
+    }
+
+    pub(crate) fn scroll_row(&self, tab: SidebarTab) -> usize {
+        self.scroll_rows[tab.tab_index()]
+    }
+
+    pub(crate) fn set_scroll_row(&mut self, tab: SidebarTab, row: usize) {
+        self.scroll_rows[tab.tab_index()] = row;
     }
 
     pub(crate) fn saved_identities(&self) -> [Vec<CameoId>; 4] {
@@ -173,17 +189,47 @@ impl CameoStrips {
         true
     }
 
-    /// Recalculate removes entries without re-sorting the survivors.
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(CameoId) -> bool) {
-        for strip in &mut self.strips {
-            strip.retain(|entry| keep(entry.id));
+    /// Recalculate6AA600 keeps surviving order and adjusts TopRow from its
+    /// old visible snapshot (6AABC9..6AAC76). The signed divisions truncate
+    /// toward zero, including the odd-count upper bound. This deliberately
+    /// preserves the native adjustment even when only a later item disappears.
+    /// Original-executed controls: tools/sidebar_oracle/cameo_order.json.
+    pub(crate) fn retain(&mut self, visible_rows: usize, mut keep: impl FnMut(CameoId) -> bool) {
+        let visible_slots = visible_rows * 2;
+        for (strip, row) in self.strips.iter_mut().zip(&mut self.scroll_rows) {
+            let old_count = strip.len();
+            let start = *row * 2;
+            let mut old_index = 0;
+            let mut new_index = 0;
+            let mut first_visible = None;
+            strip.retain(|entry| {
+                let retained = keep(entry.id);
+                if retained {
+                    if first_visible.is_none()
+                        && old_index >= start
+                        && old_index - start < visible_slots
+                    {
+                        first_visible = Some((old_index - start, new_index));
+                    }
+                    new_index += 1;
+                }
+                old_index += 1;
+                retained
+            });
+            if strip.len() != old_count {
+                *row = first_visible.map_or(0, |(snapshot_index, retained_index)| {
+                    let shifted = *row as i64 - (snapshot_index as i64 - retained_index as i64) / 2;
+                    let last = (strip.len() as i64 - visible_slots as i64) / 2;
+                    shifted.min(last).max(0) as usize
+                });
+            }
         }
     }
 
     /// House4F927C..4F92FD adds ordinary cameos before recalculating the
     /// strips, then grants Supers. Visibility still comes from the existing
     /// production admission owner; this projection does not invent CanBuild.
-    pub(crate) fn reconcile(&mut self, candidates: &[Cameo]) -> bool {
+    pub(crate) fn reconcile(&mut self, candidates: &[Cameo], visible_rows: usize) -> bool {
         self.refresh_keys(candidates);
         let mut inserted_build = false;
         for candidate in candidates
@@ -197,7 +243,7 @@ impl CameoStrips {
             .filter(|item| item.available)
             .map(|item| item.id)
             .collect();
-        self.retain(|id| available.contains(&id));
+        self.retain(visible_rows, |id| available.contains(&id));
         for candidate in candidates
             .iter()
             .filter(|item| item.available && matches!(item.id, CameoId::SuperWeapon(_)))

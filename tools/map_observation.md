@@ -294,6 +294,13 @@ loose map, copy the profile and set `launch.selected_map_file` to the absolute
 path of the tracked map; relative map names resolve under the retail root.
 Pass absolute profile/contract paths to the wrapper.
 
+The [removal profile](map_observation.sidebar-removal.example.json) uses the
+same unchanged base at 640 by 530 pixels. It scrolls the defense strip,
+issues the existing sale command for its Weather Control Device, and later
+clicks the wall cameo through the resulting view. The native removal row
+adjustment has separate executed controls in the sidebar oracle. This profile
+observes the removal's sidebar consumer, not native sale or grant timing.
+
 A v2 profile may opt in to `observe_sidebar_steps: [0, 1, 100]`. Each listed
 step records the local retained sidebar view: tabs, ordered visible type/name/
 cost/queue rows, scroll position and hit rectangles. At rendered steps, the

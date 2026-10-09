@@ -53,7 +53,12 @@ impl SidebarProjectionState {
     /// AddCameo 6A6406 speaks NewConstructionOptions for an accepted
     /// non-Super insertion outside initialization. The retained strip itself
     /// owns membership; there is no second set diff beside it.
-    pub(crate) fn reconcile_cameos(&mut self, owner: InternedId, current: &[Cameo]) -> bool {
+    pub(crate) fn reconcile_cameos(
+        &mut self,
+        owner: InternedId,
+        current: &[Cameo],
+        visible_rows: usize,
+    ) -> bool {
         let initialized = self
             .cameos
             .as_ref()
@@ -66,7 +71,7 @@ impl SidebarProjectionState {
             .as_mut()
             .expect("cameos initialized")
             .1
-            .reconcile(current);
+            .reconcile(current, visible_rows);
         initialized && inserted
     }
 
@@ -74,7 +79,11 @@ impl SidebarProjectionState {
     /// identities and order. Sort keys remain derived from rules/House/CSF.
     pub(crate) fn saved_order(&self) -> Option<crate::sim::snapshot::SavedSidebarOrder> {
         self.cameos.as_ref().map(|(owner, strips)| {
-            crate::sim::snapshot::SavedSidebarOrder::new(*owner, strips.saved_identities())
+            crate::sim::snapshot::SavedSidebarOrder::new(
+                *owner,
+                strips.saved_identities(),
+                strips.scroll_rows(),
+            )
         })
     }
 
@@ -88,6 +97,14 @@ impl SidebarProjectionState {
             .as_ref()
             .expect("reconcile cameos before building the view")
             .1
+    }
+
+    pub(crate) fn set_scroll_row(&mut self, tab: crate::ui::sidebar::SidebarTab, row: usize) {
+        self.cameos
+            .as_mut()
+            .expect("reconcile cameos before scrolling")
+            .1
+            .set_scroll_row(tab, row);
     }
 
     /// Return the owner's retained display value, seeding a newly observed
@@ -258,7 +275,7 @@ pub(crate) fn prepare_saved_order(
     let Some(saved) = saved else {
         return Ok(None);
     };
-    let (owner, saved_strips) = saved.into_parts();
+    let (owner, saved_strips, scroll_rows) = saved.into_parts();
     if sim.session.current_house != Some(owner) || !sim.houses.contains_key(&owner) {
         return Err("saved sidebar owner differs from the loaded current house".into());
     }
@@ -268,6 +285,11 @@ pub(crate) fn prepare_saved_order(
         if identities.len() > 76 {
             return Err(format!(
                 "saved sidebar strip {index} exceeds native admission capacity"
+            ));
+        }
+        if scroll_rows[index] > identities.len().div_ceil(2).saturating_sub(1) {
+            return Err(format!(
+                "saved sidebar strip {index} has an invalid scroll row"
             ));
         }
         for id in identities {
@@ -301,7 +323,10 @@ pub(crate) fn prepare_saved_order(
             strips[index].push(item);
         }
     }
-    Ok(Some((owner, CameoStrips::from_retained(strips))))
+    Ok(Some((
+        owner,
+        CameoStrips::from_retained(strips, scroll_rows),
+    )))
 }
 
 /// The `[AudioVisual] CreditTicks` cue for one changed step, or `None` when
@@ -390,23 +415,23 @@ mod tests {
         };
         let mut projection = SidebarProjectionState::default();
         // Sim A: the first projection seeds silently, growth speaks.
-        assert!(!projection.reconcile_cameos(owner, &[candidate(a)]));
-        assert!(!projection.reconcile_cameos(owner, &[candidate(a)]));
-        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)]));
-        assert!(!projection.reconcile_cameos(owner, &[candidate(a)]));
-        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)]));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
         // Sim B with a different pre-placed base: without the reset its
         // first refresh would read `b`-less/`a`-less strips as insertions.
         projection.reset_cameo_seed();
         assert!(
-            !projection.reconcile_cameos(owner, &[candidate(b)]),
+            !projection.reconcile_cameos(owner, &[candidate(b)], 3),
             "the first refresh after a sim install is the init window"
         );
-        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)]));
-        assert!(!projection.reconcile_cameos(InternedId::from_index(4), &[candidate(a)]));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
+        assert!(!projection.reconcile_cameos(InternedId::from_index(4), &[candidate(a)], 3));
         // Leaving the match still clears the seed.
         projection.replace_view(None);
-        assert!(!projection.reconcile_cameos(owner, &[candidate(a)]));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
     }
 
     #[test]
