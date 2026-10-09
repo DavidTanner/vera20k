@@ -3037,12 +3037,13 @@ mod tests {
         let rules = RuleSet::from_ini_with_fixed_art_for_test(
             &IniFile::from_str(
                 "[General]\nRepairPercent=15%\nRepairStep=8\nURepairRate=.016\n\
+                 [Countries]\n0=Americans\n\
                  [VehicleTypes]\n0=MTNK\n1=PENDING\n\
                  [MTNK]\nCost=700\nStrength=300\nTechLevel=1\n\
-                 [PENDING]\nCost=108\nStrength=100\nTechLevel=1\n\
+                 [PENDING]\nCost=108\nStrength=100\nTechLevel=1\nOwner=Americans\n\
                  [BuildingTypes]\n0=GADEPT\n1=FACTORY\n\
                  [GADEPT]\nStrength=1000\nUnitRepair=yes\nHasStupidGuardMode=no\n\
-                 [FACTORY]\nStrength=500\nFactory=UnitType\n",
+                 [FACTORY]\nStrength=500\nFactory=UnitType\nOwner=Americans\n",
             ),
             &IniFile::from_str("[GADEPT]\nFoundation=3x3\n"),
         )
@@ -3058,6 +3059,8 @@ mod tests {
             11,
             500,
         );
+        // The house's building list holds its factory (FindFactory scans it).
+        sim.append_house_base_building_for_test(501);
         link_for_service(&mut sim, 1);
         sim.mission_assign_exact(DEPOT, MissionId::from_known(MissionType::Repair), 0)
             .unwrap();

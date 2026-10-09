@@ -247,6 +247,10 @@ pub struct HouseTracking {
     /// The value totals of the house's forces on the map.
     #[serde(default)]
     force_values: ForceValues,
+    /// `HouseClass+0x2D4`, the docks of the house's `Helipad=` buildings
+    /// ([`HouseTracking::airport_docks`]).
+    #[serde(default)]
+    airport_docks: i32,
 }
 
 impl HouseTracking {
@@ -291,6 +295,30 @@ impl HouseTracking {
         building_types
             .into_iter()
             .any(|type_id| self.owned_count(EntityCategory::Structure, type_id) > 0)
+    }
+
+    /// `HouseClass+0x2D4`: how many `PadAircraft=` aircraft the house may
+    /// have on the map and in production (`HouseClass::CheckBuildLimit`,
+    /// `0x0050B5E1`). Its writers are a `Helipad=` building's first
+    /// Grand_Opening (`+= NumberOfDocks`, `0x004463C0..0x004463E0`), its
+    /// Limbo once it has opened (`-=`, clamped at zero,
+    /// `0x00445946..0x00445988`) and its ChangeOwner (`-=` on the old house,
+    /// unclamped, `0x00448B4C..0x00448B6A`; `+=` on the new one,
+    /// `0x00449229..0x00449245`), none of which test the house.
+    pub(crate) const fn airport_docks(&self) -> i32 {
+        self.airport_docks
+    }
+
+    /// Add `docks` to [`Self::airport_docks`]; negative for the old house at
+    /// a capture.
+    pub(crate) const fn add_airport_docks(&mut self, docks: i32) {
+        self.airport_docks = self.airport_docks.wrapping_add(docks);
+    }
+
+    /// BuildingClass::Limbo's share of [`Self::airport_docks`]: subtract
+    /// `docks`, then raise a negative count to zero.
+    pub(crate) fn limbo_airport_docks(&mut self, docks: i32) {
+        self.airport_docks = self.airport_docks.wrapping_sub(docks).max(0);
     }
 
     pub(crate) fn owned_count(&self, category: EntityCategory, type_id: InternedId) -> i32 {
@@ -502,6 +530,38 @@ impl HouseTracking {
             self.active_infantry(),
             self.active_aircraft(),
         )
+    }
+
+    /// Set one type's tracked count (`+0x5500..`).
+    pub(crate) fn set_owned_for_test(
+        &mut self,
+        category: EntityCategory,
+        type_id: InternedId,
+        count: i32,
+    ) {
+        let counts = match category {
+            EntityCategory::Unit => &mut self.unit_types,
+            EntityCategory::Structure => &mut self.building_types,
+            EntityCategory::Infantry => &mut self.infantry_types,
+            EntityCategory::Aircraft => &mut self.aircraft_types,
+        };
+        counts.insert(type_id, count);
+    }
+
+    /// Set one type's on-map count (`+0x5550..`).
+    pub(crate) fn set_active_for_test(
+        &mut self,
+        category: EntityCategory,
+        type_id: InternedId,
+        count: i32,
+    ) {
+        let counts = match category {
+            EntityCategory::Unit => &mut self.active_unit_types,
+            EntityCategory::Infantry => &mut self.active_infantry_types,
+            EntityCategory::Aircraft => &mut self.active_aircraft_types,
+            EntityCategory::Structure => &mut self.active_building_types,
+        };
+        counts.insert(type_id, count);
     }
 
     /// Set every counter the gate reads.

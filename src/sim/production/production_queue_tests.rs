@@ -1348,19 +1348,9 @@ fn a_house_builds_only_up_to_its_own_tech_level() {
     let americans = sim.interner.intern("Americans");
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     let e1 = sim.interner.intern("E1");
-    // An UnbuildableTechLevel option is hidden from the sidebar list.
+    // CanBuild refuses a type above the house's TechLevel: off the sidebar.
     for (house_tech_level, listed_enabled) in [(0, None), (1, Some(true))] {
-        sim.houses.insert(
-            americans,
-            crate::sim::house_state::HouseState::new(
-                americans,
-                0,
-                None,
-                true,
-                50_000,
-                house_tech_level,
-            ),
-        );
+        sim.houses.get_mut(&americans).unwrap().tech_level = house_tech_level;
         let options = build_options_for_owner(&sim, &rules, "Americans");
         assert_eq!(
             options
@@ -1795,8 +1785,11 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     );
 }
 
+/// Retail `[GAAIRC] ForbiddenHouses=Americans` and `[AMRADR]
+/// RequiredHouses=Americans`: CanBuild leaves the Americans one Airforce
+/// Command; the strip lists every type it admits.
 #[test]
-fn build_options_dedupe_house_specific_sidebar_clone() {
+fn forbidden_houses_leave_americans_one_airforce_command() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
         "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
@@ -1822,6 +1815,7 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
          Armor=wood\n\
          TechLevel=1\n\
          Owner=Americans,Alliance,British,French,Germans,Koreans\n\
+         ForbiddenHouses=Americans\n\
          Image=GAAIRC\n\
          BuildCat=Tech\n\
          [AMRADR]\n\
@@ -2234,11 +2228,6 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
     assert!(paused);
 
     // Run the actual frame owner, which now performs revalidation and charging.
-    sim.houses
-        .get_mut(&americans_id)
-        .unwrap()
-        .tracking
-        .set_buildings_for_test(2);
     for _ in 0..40 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
@@ -2384,6 +2373,54 @@ fn hold_world() -> (Simulation, RuleSet, InternedId) {
     (sim, rules, owner)
 }
 
+/// FindFactory's radio gate (`0x005F79C7..0x005F79FB`) is for AircraftType
+/// only (`CMP EAX,3`; `AircraftTypeClass::What_Am_I 0x0041CFB0`): an airfield
+/// whose contacts are all taken refuses an aircraft unless the caller skips
+/// the gate, while a War Factory holding the vehicle it just delivered still
+/// takes a vehicle PRODUCE.
+#[test]
+fn only_a_busy_airfield_refuses_its_type() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[Countries]\n0=Americans\n[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n\
+         [AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=GAWEAP\n1=GAAIRC\n\
+         [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
+         [ORCA]\nCost=1200\nStrength=150\nSpeed=14\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nOwner=Americans\nFactory=UnitType\n\
+         [GAAIRC]\nOwner=Americans\nFactory=AircraftType\n",
+    ))
+    .expect("radio gate rules");
+    let mut sim = Simulation::new();
+    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
+    spawn_structure(&mut sim, 2, "Americans", "GAAIRC", 20, 20);
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    for (building, contact) in [(1, 901), (2, 902)] {
+        let contacts = &mut sim
+            .substrate
+            .entities
+            .get_mut(building)
+            .unwrap()
+            .radio_contacts;
+        contacts.set_capacity(1);
+        contacts.insert(contact);
+    }
+    let owner = sim.interner.intern("Americans");
+    let factory = |sim: &Simulation, name: &str, skip_gate: bool| {
+        super::find_factory(
+            sim,
+            &rules,
+            owner,
+            rules.object(name).unwrap(),
+            skip_gate,
+            true,
+            true,
+        )
+    };
+    assert_eq!(factory(&sim, "MTNK", false), Some(1));
+    assert_eq!(factory(&sim, "ORCA", false), None);
+    assert_eq!(factory(&sim, "ORCA", true), Some(2));
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+}
+
 /// A PRODUCE resumes a held build even at its type's build limit: the held build
 /// counts toward the limit, and `CanBuild(type, 1, 1)` passes a type one of the
 /// house's factories holds (`0x004F8348`). The build start (`0x004C9EA0`)
@@ -2432,9 +2469,12 @@ fn a_held_build_at_its_build_limit_resumes_on_produce() {
         queue_view_for_owner(&sim, &rules, "Americans")[0].state,
         BuildQueueState::Building
     );
-    // Running, the build no longer passes the limit: gamemd's StartProduction
-    // refuses the append (0x004C9CEA), and VERA refuses it before that.
+    // Running, the build no longer passes the limit: StartProduction refuses
+    // the append (CheckBuildLimit, 0x004C9CEA) and scolds the house's player.
     assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "AMCV"));
+    assert!(sim.sound_events.iter().any(|event| {
+        matches!(event, SimSoundEvent::ProductionRefused { owner: refused } if *refused == owner)
+    }));
 }
 
 /// `[General] MaximumQueuedObjects=` caps the builds waiting behind the active

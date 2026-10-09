@@ -60,16 +60,19 @@ pub struct BuildingPlacementPreview {
     pub wall_autofill_cells: Vec<(u16, u16)>,
 }
 
-/// Why an item cannot currently be built.
+/// Why the player cannot build an item now
+/// (`production_tech::build_option_for_owner`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildDisabledReason {
-    UnbuildableTechLevel,
-    WrongOwner,
-    WrongHouse,
-    ForbiddenHouse,
-    RequiresStolenTech,
-    MissingPrerequisite(String),
+    /// No building of the house could build it (`FindFactory(1, 0, 0)`):
+    /// off the sidebar.
     NoFactory,
+    /// `HouseClass::CanBuild(type, 0, 1)` refuses it: off the sidebar.
+    CannotBuild,
+    /// On the sidebar, darkened: no online factory may build it now
+    /// (`FindFactory(1, 1, 1)`).
+    NoReadyFactory,
+    /// On the sidebar, darkened: at its build limit.
     AtBuildLimit,
 }
 
@@ -168,15 +171,14 @@ pub struct BuildOption {
 }
 
 impl BuildOption {
-    /// Whether the sidebar should show a cameo for this option.
-    ///
-    /// Tech-tree, faction, and factory failures hide the item entirely — the
-    /// player never sees a cameo they cannot act on. A reached build limit keeps
-    /// the cameo visible (greyed): the item is still part of the player's tech
-    /// tree, it just can't start right now. Money never greys a cameo: a build
-    /// the house cannot pay for starts and waits on hold.
+    /// Whether the sidebar shows a cameo for this option: the strip keeps it
+    /// (`production_tech::strip_keeps`), darkened or not. Money never darkens
+    /// a cameo: a build the house cannot pay for starts and waits on hold.
     pub fn visible_in_sidebar(&self) -> bool {
-        self.enabled || self.reason == Some(BuildDisabledReason::AtBuildLimit)
+        !matches!(
+            self.reason,
+            Some(BuildDisabledReason::NoFactory | BuildDisabledReason::CannotBuild)
+        )
     }
 }
 

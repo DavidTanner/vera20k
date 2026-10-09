@@ -1,0 +1,309 @@
+//! Replay of `tools/can_build_oracle.json`: the original CanBuild and
+//! CheckBuildLimit over synthetic houses, answered by [`can_build`] and
+//! [`check_build_limit`] on the same fixture written as rules and house
+//! state.
+
+use super::*;
+use crate::rules::ini_parser::IniFile;
+use crate::sim::production::{ProductionCategory, construct_active_factory_fixture};
+use serde_json::Value;
+
+fn rows(section: &str) -> Vec<Value> {
+    let data: Value =
+        serde_json::from_str(crate::test_fixture::text("tools/can_build_oracle.json")).unwrap();
+    data[section].as_array().unwrap().clone()
+}
+
+fn int(value: &Value) -> i32 {
+    i32::try_from(value.as_i64().unwrap()).unwrap()
+}
+
+fn names(value: &Value) -> Vec<&str> {
+    value.as_array().map_or_else(Vec::new, |items| {
+        items.iter().map(|v| v.as_str().unwrap()).collect()
+    })
+}
+
+fn category(class: &str) -> EntityCategory {
+    match class {
+        "unit" => EntityCategory::Unit,
+        "infantry" => EntityCategory::Infantry,
+        "aircraft" => EntityCategory::Aircraft,
+        "building" => EntityCategory::Structure,
+        other => panic!("class {other}"),
+    }
+}
+
+/// The row's rules: the oracle's types, the asked type `Q` of its class and
+/// the `[General]` lists.
+fn rules_for(row: &Value) -> RuleSet {
+    let class = row["class"].as_str().unwrap();
+    let spec = &row["type"];
+    let list = |section: &str, names: &[String], with_query: bool| {
+        let mut text = format!("[{section}]\n");
+        for (index, name) in names.iter().enumerate() {
+            text += &format!("{index}={name}\n");
+        }
+        if with_query {
+            text += &format!("{}=Q\n", names.len());
+        }
+        text
+    };
+    let numbered = |prefix: &str, count: usize| -> Vec<String> {
+        (0..count).map(|index| format!("{prefix}{index}")).collect()
+    };
+    let mut ini = String::from("[Countries]\n0=C0\n1=C1\n2=C2\n3=C3\n[General]\n");
+    for (list_name, key) in [
+        ("POWER", "PrerequisitePower"),
+        ("FACTORY", "PrerequisiteFactory"),
+        ("BARRACKS", "PrerequisiteBarracks"),
+        ("RADAR", "PrerequisiteRadar"),
+        ("TECH", "PrerequisiteTech"),
+        ("PROC", "PrerequisiteProc"),
+    ] {
+        let members = names(&row["groups"][list_name]);
+        if !members.is_empty() {
+            ini += &format!("{key}={}\n", members.join(","));
+        }
+    }
+    if let Some(alternate) = row["proc_alternate"].as_str() {
+        ini += &format!("PrerequisiteProcAlternate={alternate}\n");
+    }
+    let pads = names(&row["pads"]);
+    if !pads.is_empty() {
+        ini += &format!("PadAircraft={}\n", pads.join(","));
+    }
+    let super_weapon = &spec["super_weapon"];
+    if super_weapon["build_tech"].as_bool() == Some(true) {
+        ini += "[AI]\nBuildTech=Q\n";
+    }
+    ini += "[SuperWeaponTypes]\n0=SW0\n[SW0]\nType=MultiMissile\n";
+    if super_weapon["disableable"].as_bool() == Some(true) {
+        ini += "DisableableFromShell=yes\n";
+    }
+    ini += &list("InfantryTypes", &numbered("I", 2), class == "infantry");
+    ini += &list("VehicleTypes", &numbered("U", 3), class == "unit");
+    ini += &list("AircraftTypes", &numbered("A", 3), class == "aircraft");
+    ini += &list("BuildingTypes", &numbered("B", 8), class == "building");
+    ini += &format!("[Q]\nTechLevel={}\n", spec["tech"].as_i64().unwrap_or(1));
+    if let Some(limit) = spec["limit"].as_i64() {
+        ini += &format!("BuildLimit={limit}\n");
+    }
+    for (key, field) in [
+        ("Prerequisite", "prerequisite"),
+        ("PrerequisiteOverride", "override"),
+    ] {
+        let entries = names(&spec[field]);
+        if !entries.is_empty() {
+            ini += &format!("{key}={}\n", entries.join(","));
+        }
+    }
+    for (key, field) in [
+        ("RequiredHouses", "required"),
+        ("ForbiddenHouses", "forbidden"),
+    ] {
+        if let Some(countries) = spec[field].as_array() {
+            let countries: Vec<String> = countries
+                .iter()
+                .map(|country| format!("C{}", country.as_u64().unwrap()))
+                .collect();
+            ini += &format!("{key}={}\n", countries.join(","));
+        }
+    }
+    // VERA refuses any of the three alike (module residual).
+    let stolen = spec["stolen"].as_array();
+    for (slot, key) in [
+        "RequiresStolenThirdTech",
+        "RequiresStolenSovietTech",
+        "RequiresStolenAlliedTech",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if stolen.is_some_and(|bytes| bytes[slot].as_bool().unwrap()) {
+            ini += &format!("{key}=yes\n");
+        }
+    }
+    if !super_weapon.is_null() {
+        ini += "SuperWeapon=SW0\n";
+    }
+    if spec["naval"].as_bool() == Some(true) {
+        ini += "Naval=yes\n";
+    }
+    if spec["airport_bound"].as_bool() == Some(true) {
+        ini += "AirportBound=yes\n";
+    }
+    RuleSet::from_ini(&IniFile::from_str(&ini)).expect("oracle row rules")
+}
+
+/// The row's house `H0` (and `H1` owning the "other" factories), with its
+/// counters, docks and factories.
+fn sim_for(row: &Value, rules: &RuleSet) -> (Simulation, InternedId) {
+    let house = &row["house"];
+    let flag = |key: &str, default: bool| house[key].as_bool().unwrap_or(default);
+    let mut sim = Simulation::new();
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
+    sim.session.game_mode_nonzero = house["game_mode"].as_i64().unwrap_or(1) != 0;
+    sim.session.game_options.super_weapons = flag("super_weapons", true);
+    let owner = sim.interner.intern("H0");
+    let other = sim.interner.intern("H1");
+    let country = sim
+        .interner
+        .intern(&format!("C{}", house["country"].as_i64().unwrap_or(1)));
+    let human = flag("human", true);
+    let tech = house["tech"].as_i64().map_or(10, |tech| tech as i32);
+    let mut state = HouseState::new(owner, 0, Some(country), human, 0, tech);
+    state.player_control = flag("control", human);
+    sim.houses.insert(owner, state);
+    sim.houses
+        .insert(other, HouseState::new(other, 0, Some(country), true, 0, 10));
+    for factory in row["factories"].as_array().into_iter().flatten() {
+        let holder = if factory["house"].as_str() == Some("other") {
+            other
+        } else {
+            owner
+        };
+        let kind = match factory["kind"].as_str().unwrap() {
+            "vehicle" => ProductionCategory::Vehicle,
+            "ship" => ProductionCategory::Ship,
+            "infantry" => ProductionCategory::Infantry,
+            "aircraft" => ProductionCategory::Aircraft,
+            "building" => ProductionCategory::Building,
+            other => panic!("factory kind {other}"),
+        };
+        let object = sim
+            .interner
+            .get(factory["object"].as_str().unwrap())
+            .unwrap();
+        assert!(
+            sim.production
+                .factories
+                .test_enqueue_kernel(holder, kind, object, 0, 0)
+        );
+        construct_active_factory_fixture(&mut sim, rules, holder, kind, object)
+            .expect("the factory's object constructs");
+        for queued in names(&factory["queued"]) {
+            let queued = sim.interner.get(queued).unwrap();
+            sim.production
+                .factories
+                .test_enqueue_kernel(holder, kind, queued, 0, 0);
+        }
+    }
+    // The row's counters are the house's whole count, its factories'
+    // objects included.
+    let mut tracking = HouseTracking::default();
+    tracking.add_airport_docks(house["docks"].as_i64().map_or(0, |docks| docks as i32));
+    for (key, active) in [("owned", false), ("active", true)] {
+        for counter in row[key].as_array().into_iter().flatten() {
+            let type_id = sim.interner.get(counter[1].as_str().unwrap()).unwrap();
+            let category = category(counter[0].as_str().unwrap());
+            let count = int(&counter[2]);
+            if active {
+                tracking.set_active_for_test(category, type_id, count);
+            } else {
+                tracking.set_owned_for_test(category, type_id, count);
+            }
+        }
+    }
+    sim.houses.get_mut(&owner).unwrap().tracking = tracking;
+    (sim, owner)
+}
+
+fn query(row: &Value, rules: &RuleSet) -> ObjectType {
+    let class = match row["class"].as_str().unwrap() {
+        "unit" => ObjectCategory::Vehicle,
+        "infantry" => ObjectCategory::Infantry,
+        "aircraft" => ObjectCategory::Aircraft,
+        _ => ObjectCategory::Building,
+    };
+    rules.object_in_category(class, "Q").unwrap().clone()
+}
+
+#[test]
+fn can_build_matches_the_original() {
+    for row in rows("can_build") {
+        let rules = rules_for(&row);
+        let (sim, owner) = sim_for(&row, &rules);
+        let args = row["args"].as_array().unwrap();
+        let answer = can_build(
+            &sim,
+            &rules,
+            owner,
+            &query(&row, &rules),
+            args[0].as_bool().unwrap(),
+            args[1].as_bool().unwrap(),
+        );
+        let answer = match answer {
+            CanBuild::No => 0,
+            CanBuild::Yes => 1,
+            CanBuild::AtLimit => -1,
+        };
+        assert_eq!(answer, int(&row["answer"]), "{}", row["name"]);
+    }
+}
+
+#[test]
+fn check_build_limit_matches_the_original() {
+    for row in rows("check_build_limit") {
+        let rules = rules_for(&row);
+        let (sim, owner) = sim_for(&row, &rules);
+        let answer = check_build_limit(&sim, &rules, owner, &query(&row, &rules));
+        assert_eq!(i32::from(answer), int(&row["answer"]), "{}", row["name"]);
+    }
+}
+
+/// Retail `[General] PrerequisiteProcAlternate=SMIN` through the production
+/// rules layers: a Yuri player's Slave Miner meets YAWEAP's `PROC` without a
+/// refinery. And `PadAircraft=ORCA,BEAG`: the AirportBound Harrier is
+/// limited by its house's docks.
+#[test]
+fn retail_slave_miner_meets_proc_and_docks_limit_harriers() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let rules = &retail.rules;
+    assert_eq!(
+        rules.general.prerequisite_proc_alternate.as_deref(),
+        Some("SMIN")
+    );
+    let mut sim = Simulation::new();
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
+    sim.session.game_mode_nonzero = true;
+    let on_map = |sim: &mut Simulation, house, category, name: &str, count| {
+        let type_id = sim.interner.get(name).unwrap();
+        sim.houses
+            .get_mut(&house)
+            .unwrap()
+            .tracking
+            .set_active_for_test(category, type_id, count);
+    };
+
+    let yuri = sim.interner.intern("YuriCountry");
+    sim.houses
+        .insert(yuri, HouseState::new(yuri, 2, None, true, 0, 10));
+    on_map(&mut sim, yuri, EntityCategory::Structure, "YABRCK", 1);
+    on_map(&mut sim, yuri, EntityCategory::Structure, "YACNST", 1);
+    let yaweap = rules.object("YAWEAP").unwrap();
+    assert_eq!(
+        can_build(&sim, rules, yuri, yaweap, false, true),
+        CanBuild::No
+    );
+    on_map(&mut sim, yuri, EntityCategory::Unit, "SMIN", 1);
+    assert_eq!(
+        can_build(&sim, rules, yuri, yaweap, false, true),
+        CanBuild::Yes
+    );
+
+    let americans = sim.interner.intern("Americans");
+    let mut house = HouseState::new(americans, 0, None, true, 0, 10);
+    house.tracking.add_airport_docks(4);
+    sim.houses.insert(americans, house);
+    let orca = rules.object("ORCA").unwrap();
+    assert!(orca.airport_bound);
+    on_map(&mut sim, americans, EntityCategory::Aircraft, "ORCA", 3);
+    assert!(!check_build_limit(&sim, rules, americans, orca));
+    on_map(&mut sim, americans, EntityCategory::Aircraft, "BEAG", 1);
+    assert!(check_build_limit(&sim, rules, americans, orca));
+}

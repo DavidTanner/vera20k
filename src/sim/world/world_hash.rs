@@ -928,6 +928,11 @@ impl Simulation {
                 b"house-force-values-v1".hash(hasher);
                 forces.hash(hasher);
             }
+            let docks = house.tracking.airport_docks();
+            if docks != 0 {
+                b"house-airport-docks-v1".hash(hasher);
+                docks.hash(hasher);
+            }
             if house.strategy_timer != crate::sim::house_state::strategy_timer_at_construction() {
                 b"house-strategy-timer-v1".hash(hasher);
                 house.strategy_timer.hash(hasher);

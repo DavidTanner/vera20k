@@ -113,26 +113,19 @@ fn scenario() -> (Simulation, RuleSet) {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
 
-    let owners = [("Americans", 0u8, 10u16), ("Alliance", 1u8, 30u16)];
-    for (i, (owner, side, base_x)) in owners.iter().enumerate() {
+    // Both bases sit inside the delivery fixture map's In_Bounds diamond.
+    let owners = [("Americans", 0u8, 10u16, 10u16), ("Alliance", 1u8, 10, 20)];
+    for (i, (owner, side, base_x, base_y)) in owners.iter().enumerate() {
         let oid = sim.interner.intern(owner);
         sim.houses.insert(
             oid,
             HouseState::new(oid, *side, None, true, START_CREDITS, 10),
         );
         let sid = (i as u64) * 10 + 1;
-        spawn_structure(&mut sim, sid, owner, "GACNST", *base_x, 10);
-        spawn_structure(&mut sim, sid + 1, owner, "GAPILE", *base_x + 2, 10);
-        spawn_structure(&mut sim, sid + 2, owner, "GAWEAP", *base_x + 4, 10);
-        spawn_structure(&mut sim, sid + 3, owner, "GAAIRC", *base_x + 6, 10);
-        // `spawn_structure` is a raw test helper and intentionally bypasses
-        // construction's Add_Tracking.  Keep this replay fixture in a live match
-        // so late defeat handling cannot freeze its command ordinal.
-        sim.houses
-            .get_mut(&oid)
-            .expect("scenario house exists")
-            .tracking
-            .set_buildings_for_test(4);
+        spawn_structure(&mut sim, sid, owner, "GACNST", *base_x, *base_y);
+        spawn_structure(&mut sim, sid + 1, owner, "GAPILE", *base_x + 2, *base_y);
+        spawn_structure(&mut sim, sid + 2, owner, "GAWEAP", *base_x + 4, *base_y);
+        spawn_structure(&mut sim, sid + 3, owner, "GAAIRC", *base_x + 6, *base_y);
     }
     (sim, rules)
 }
@@ -308,11 +301,15 @@ fn derived_view_state_stays_building_on_underfunded_stall() {
     );
 }
 
+/// Units and infantry that left their factory onto the map.
 fn delivered_unit_count(sim: &Simulation) -> usize {
     sim.substrate
         .entities
         .values()
-        .filter(|e| matches!(e.category, EntityCategory::Unit | EntityCategory::Infantry))
+        .filter(|e| {
+            matches!(e.category, EntityCategory::Unit | EntityCategory::Infantry)
+                && !e.lifecycle.in_limbo
+        })
         .count()
 }
 
@@ -360,6 +357,8 @@ fn economy_conservation_over_replay() {
     const TICKS: u64 = 600;
 
     let (mut sim, rules) = scenario();
+    // The builds exit onto ground, so none is refunded for a failed delivery.
+    super::tests::install_infantry_delivery_fixture_map(&mut sim);
     let (am, al, _, _) = ids(&sim);
     let pending = refund_free_stream(&sim);
 
@@ -708,11 +707,6 @@ fn retail_builds_step_at_the_native_frames() {
                 .strength;
             entity.health.current = strength;
         }
-        sim.houses
-            .get_mut(&owner)
-            .unwrap()
-            .tracking
-            .set_buildings_for_test(5);
         let type_id = sim.interner.intern(unit);
 
         let factory_state = |sim: &Simulation| {

@@ -493,6 +493,15 @@ impl ProcessedRulesLayers {
             .as_deref()
     }
 
+    /// `[General] PrerequisiteProcAlternate=` (Rules `+0x400`), the stored ID
+    /// of its UnitType.
+    pub(crate) fn prerequisite_proc_alternate(&self) -> Option<&str> {
+        self.native_type_construction_trace
+            .registry_state()
+            .rules_prerequisite_proc_alternate
+            .as_deref()
+    }
+
     /// `[General]` gates, WallTower and power plants (Rules `+0x86C..+0x87C`,
     /// `+0x89C..+0x8A8`), stored IDs.
     pub(crate) fn building_types(&self) -> &GeneralBuildingTypes {
@@ -700,6 +709,7 @@ pub(crate) struct NativeRulesRegistryState {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
+    rules_prerequisite_proc_alternate: Option<String>,
     rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
@@ -716,6 +726,7 @@ impl Default for NativeRulesRegistryState {
             rules_line_trail_override: [0; 3],
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
+            rules_prerequisite_proc_alternate: None,
             rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
@@ -945,6 +956,7 @@ struct RulesPassProcessor {
     rules_line_trail_override: [u8; 3],
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
+    rules_prerequisite_proc_alternate: Option<String>,
     rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
@@ -969,6 +981,7 @@ impl Default for RulesPassProcessor {
                 .rules_line_trail_override,
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
+            rules_prerequisite_proc_alternate: None,
             rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
@@ -986,6 +999,7 @@ impl RulesPassProcessor {
             rules_line_trail_override: registry_state.rules_line_trail_override,
             rules_prism_support: registry_state.rules_prism_support,
             rules_prism_type: registry_state.rules_prism_type,
+            rules_prerequisite_proc_alternate: registry_state.rules_prerequisite_proc_alternate,
             rules_building_types: registry_state.rules_building_types,
             select_anim: registry_state.select_anim,
             ..Self::default()
@@ -1338,6 +1352,7 @@ impl RulesPassProcessor {
                     | "WeatherConBoltExplosion"
                     | "WeaponNullifyAnim"
                     | "PrismType"
+                    | "PrerequisiteProcAlternate"
                     | "GDIGateOne"
                     | "GDIGateTwo"
                     | "NodGateOne"
@@ -1353,7 +1368,9 @@ impl RulesPassProcessor {
                 // PrismType's reader (`0x0067BCE0`, called at `0x00671144`),
                 // the gate/WallTower reads (`0x0066F450..0x0066F583`) and the
                 // power plant reads (`0x0066F692..0x0066F781`) do the same
-                // through BuildingType's FindOrAllocate.
+                // through BuildingType's FindOrAllocate, and
+                // PrerequisiteProcAlternate (`0x0066F787..0x0066F7C9`) through
+                // UnitType's (`0x007480D0`).
                 let incoming = section.read_string(key, "", 0x80);
                 if !incoming.is_empty() {
                     let resolved = self
@@ -1368,6 +1385,10 @@ impl RulesPassProcessor {
                         "WeaponNullifyAnim" => self.select_anim.weapon_nullify_anim = resolved,
                         "PrismType" => {
                             self.rules_prism_type = Some(resolved).filter(|id| !id.is_empty());
+                        }
+                        "PrerequisiteProcAlternate" => {
+                            self.rules_prerequisite_proc_alternate =
+                                Some(resolved).filter(|id| !id.is_empty());
                         }
                         _ => {
                             let types = &mut self.rules_building_types;
@@ -2157,6 +2178,7 @@ impl RulesPassProcessor {
                     rules_line_trail_override: self.rules_line_trail_override,
                     rules_prism_support: self.rules_prism_support,
                     rules_prism_type: self.rules_prism_type,
+                    rules_prerequisite_proc_alternate: self.rules_prerequisite_proc_alternate,
                     rules_building_types: self.rules_building_types,
                     select_anim: self.select_anim,
                 },

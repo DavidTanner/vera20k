@@ -14,11 +14,11 @@ pub(super) fn manager_rules() -> RuleSet {
         "[Countries]\n0=Americans\n1=Russians\n[InfantryTypes]\n0=E1\n1=SLAV\n\
          [VehicleTypes]\n0=MTNK\n1=SMIN\n\
          [AircraftTypes]\n0=HORN\n1=ORCA\n\
-         [BuildingTypes]\n0=GAPILE\n1=GAWEAP\n2=GACNST\n3=YAREFN\n4=TECH\n5=GAAIRC\n6=GAPOWR\n\
+         [BuildingTypes]\n0=GAPILE\n1=GAWEAP\n2=GACNST\n3=YAREFN\n4=GATECH\n5=GAAIRC\n6=GAPOWR\n\
          [E1]\nName=GI\nCost=200\nStrength=100\nArmor=flak\nSpeed=4\nSight=5\nTechLevel=1\nOwner=Americans\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
          [SLAV]\nStrength=125\nSpeed=4\nStorage=4\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
          [MTNK]\nName=Tank\nCost=700\nStrength=300\nArmor=heavy\nSpeed=6\nSight=6\nTechLevel=1\nOwner=Americans\nSpawns=HORN\nSpawnsNumber=3\nSpawnRegenRate=600\nSpawnReloadRate=25\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
-         [SMIN]\nCost=900\nStrength=2000\nSpeed=3\nTechLevel=1\nOwner=Americans\nPrerequisite=TECH\nEnslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
+         [SMIN]\nCost=900\nStrength=2000\nSpeed=3\nTechLevel=1\nOwner=Americans\nPrerequisite=GATECH\nEnslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\
          [HORN]\nStrength=75\nSpeed=14\nAmmo=1\n\
          [ORCA]\nCost=1000\nStrength=200\nSpeed=8\nTechLevel=1\nOwner=Americans\n\
          [GAPILE]\nOwner=Americans\nFactory=InfantryType\n\
@@ -26,7 +26,7 @@ pub(super) fn manager_rules() -> RuleSet {
          [GACNST]\nOwner=Americans\nFactory=BuildingType\nConstructionYard=yes\n\
          [YAREFN]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\nOwner=Americans\nEnslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\n\
          [GAPOWR]\nCost=800\nStrength=500\nFoundation=1x1\nTechLevel=1\nOwner=Americans\n\
-         [TECH]\nStrength=500\n\
+         [GATECH]\nStrength=500\n\
          [GAAIRC]\nOwner=Americans\nFactory=AircraftType\nHelipad=yes\n",
     )).expect("factory manager fixture")
 }
@@ -44,13 +44,7 @@ fn world(seed: u64) -> (Simulation, RuleSet, InternedId) {
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAPILE", 14, 10);
     spawn_structure(&mut sim, 3, "Americans", "GACNST", 18, 10);
-    spawn_structure(&mut sim, 4, "Americans", "TECH", 22, 10);
-    // Raw structure fixture admission bypasses lifecycle accounting.
-    sim.houses
-        .get_mut(&owner)
-        .unwrap()
-        .tracking
-        .set_buildings_for_test(4);
+    spawn_structure(&mut sim, 4, "Americans", "GATECH", 22, 10);
     (sim, rules, owner)
 }
 
@@ -396,8 +390,10 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     );
 }
 
-/// The promoted build starts at the revalidation frame (StartNextQueued runs
-/// Begin_Production, whose build start arms the timer), so it first steps one rate later.
+/// A build whose prerequisite leaves the map is abandoned by its strip's
+/// ABANDON (`recalculate_strips`). The queued build it promotes starts at
+/// that frame (StartNextQueued runs Begin_Production, whose build start arms
+/// the timer), so it first steps one rate later.
 #[test]
 fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_later() {
     let (mut sim, rules, owner) = world(0xfac7_0012);
@@ -420,7 +416,9 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     };
     let before = sim.houses[&owner].economy.credits;
     let mut expected = sim.scenario_rng.clone();
-    // The producing factory remains; only the active type loses its prerequisite.
+    // The producing factory remains; only the active type loses its
+    // prerequisite, which its house stops counting on the map.
+    sim.update_house_presence(4, false);
     sim.substrate.entities.remove(4);
     let promotion_frame = sim.session.binary_frame;
     sim.advance_tick(&[], Some(&rules), None, None, 67);

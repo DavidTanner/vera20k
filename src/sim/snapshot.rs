@@ -894,7 +894,9 @@ use crate::sim::world::Simulation;
 // after construction or read. Prior records cannot resume.
 // 310 -> 311: AircraftDockPhase drops Launching; a reloaded aircraft parks
 // instead. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 311;
+// 311 -> 312: HouseTracking saves the house's AirportDocks (+0x2D4). Prior
+// records lack it.
+const SNAPSHOT_VERSION: u32 = 312;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3924,7 +3926,8 @@ mod tests {
         // 308 -> 309: the Factory special item.
         // 309 -> 310: the dead infantry scatter timer.
         // 310 -> 311: the legacy dock Launching phase.
-        assert_eq!(super::SNAPSHOT_VERSION, 311);
+        // 311 -> 312: the house's AirportDocks.
+        assert_eq!(super::SNAPSHOT_VERSION, 312);
     }
 
     #[test]

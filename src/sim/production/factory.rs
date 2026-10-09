@@ -114,7 +114,7 @@ pub struct Factory {
     /// which `HouseClass::Update_Factory_Queue @ 0x00509140` takes at
     /// `0x0050924D` when only offline factories could build the object and
     /// lifts at `0x00509283`) is not ported: see
-    /// `production_tech::revalidate_eligibility`.
+    /// `FactoryRegistry::plan_revalidation`.
     pub manual: bool,
     /// FIFO queue-of-record waiting behind the active object (Factory `+0x40`).
     pub queue: VecDeque<QueueEntry>,
@@ -543,9 +543,11 @@ pub(super) enum EnqueueOutcome {
     Started,
     /// The build joined the queue behind the active object.
     Queued,
-    /// The queue already holds `[General] MaximumQueuedObjects=` builds
-    /// (`FactoryClass::StartProduction 0x004C9CD8..0x004C9CDE`).
-    QueueFull,
+    /// The append was refused: the queue already holds `[General]
+    /// MaximumQueuedObjects=` builds (`FactoryClass::StartProduction
+    /// 0x004C9CD8..0x004C9CDE`), or the house is at the type's build limit
+    /// (`0x004C9CEA`).
+    AppendRefused,
 }
 
 /// Entity lifecycle work produced by prerequisite revalidation while the
@@ -558,14 +560,6 @@ pub(crate) struct RevalidationLifecycle {
     /// `(owner, type)` of each abandoned object that had finished: a finished
     /// building also waits in `ready_by_owner`.
     pub(crate) abandoned_finished: Vec<(InternedId, InternedId)>,
-}
-
-/// Whether a revalidated build may stay: the `FindFactory(1,0,1)` check of
-/// `HouseClass::Update_Factory_Queue @ 0x00509140`
-/// (`production_tech::revalidate_eligibility`).
-pub enum BuildEligibility {
-    Buildable,
-    PermanentlyBlocked,
 }
 
 /// Borrow-only read view of one factory, for the lifecycle and delivery code and
@@ -637,8 +631,15 @@ impl FactoryRegistry {
         enqueue_order: u64,
         cost: i32,
     ) -> bool {
-        self.enqueue(owner, category, type_id, enqueue_order, cost, i32::MAX)
-            == EnqueueOutcome::Started
+        self.enqueue(
+            owner,
+            category,
+            type_id,
+            enqueue_order,
+            cost,
+            i32::MAX,
+            false,
+        ) == EnqueueOutcome::Started
     }
 
     /// Read-only sidebar projection. Never mutates.
@@ -652,6 +653,24 @@ impl FactoryRegistry {
             queue: &f.queue,
             ready: f.progress >= PRODUCTION_STEPS,
         })
+    }
+
+    /// `FactoryClass::CountTotal @ 0x004CA670` on `owner`'s factory for
+    /// `category`: one for its object if that is `type_id`, finished or not,
+    /// and one per queued copy; zero without that factory.
+    pub(crate) fn count_total(
+        &self,
+        owner: InternedId,
+        category: ProductionCategory,
+        type_id: InternedId,
+    ) -> i32 {
+        self.factories
+            .get(&FactoryHolder::House(owner, category))
+            .map_or(0, |f| {
+                let object = f.object.as_ref().is_some_and(|o| o.type_id == type_id);
+                let queued = f.queue.iter().filter(|e| e.type_id == type_id).count();
+                i32::from(object).wrapping_add(queued as i32)
+            })
     }
 
     /// Number of registered factories (test/observation helper).
@@ -690,6 +709,25 @@ impl FactoryRegistry {
             .into_iter()
             .filter(|(holder, _)| matches!(holder, FactoryHolder::House(..)))
             .map(|(_, f)| f)
+    }
+
+    /// Each House factory's owner and category with its types: the object's,
+    /// then each queued one not yet listed, in construction order.
+    pub(super) fn house_build_types(
+        &self,
+    ) -> Vec<(InternedId, ProductionCategory, Vec<InternedId>)> {
+        self.house_factories_insertion_ordered()
+            .map(|f| {
+                let mut types: Vec<InternedId> = Vec::new();
+                let held = f.object.iter().map(|o| o.type_id);
+                for type_id in held.chain(f.queue.iter().map(|e| e.type_id)) {
+                    if !types.contains(&type_id) {
+                        types.push(type_id);
+                    }
+                }
+                (f.owner, f.category, types)
+            })
+            .collect()
     }
 
     pub(super) fn factory(&self, holder: FactoryHolder) -> Option<&Factory> {
@@ -838,7 +876,9 @@ impl FactoryRegistry {
     /// a resume. With no factory for `(owner, category)` or an idle one, arm
     /// the active build (object held, progress 0, balance seeded from `cost`).
     /// With an active object held, append a `QueueEntry` unless the queue
-    /// already holds `max_queued` builds (`0x004C9CD5..0x004C9CE4`).
+    /// already holds `max_queued` builds (`0x004C9CD5..0x004C9CE4`) or
+    /// `at_build_limit` (the caller's `HouseClass::CheckBuildLimit`,
+    /// `0x004C9CEA`, asked before the append).
     ///
     /// A freshly-armed build has no rate yet; the caller constructs its Techno
     /// and [`Factory::start_rate`] arms it. `cost` is resolved by the caller
@@ -851,12 +891,14 @@ impl FactoryRegistry {
         enqueue_order: u64,
         cost: i32,
         max_queued: i32,
+        at_build_limit: bool,
     ) -> EnqueueOutcome {
         let holder = FactoryHolder::House(owner, category);
         if let Some(f) = self.factories.get_mut(&holder) {
             if f.object.is_some() {
-                if i32::try_from(f.queue.len()).unwrap_or(i32::MAX) >= max_queued {
-                    return EnqueueOutcome::QueueFull;
+                if i32::try_from(f.queue.len()).unwrap_or(i32::MAX) >= max_queued || at_build_limit
+                {
+                    return EnqueueOutcome::AppendRefused;
                 }
                 f.queue.push_back(QueueEntry {
                     type_id,
@@ -1055,62 +1097,58 @@ impl FactoryRegistry {
         });
     }
 
-    /// P6 read/classify phase: re-validate every factory's active + queued builds and plan
-    /// the disposition (abandon active / drop queued) for those whose prerequisites or
-    /// producing factory were lost. READ-ONLY over `Simulation`; returns an owned plan so the
-    /// write phase can borrow `&mut houses` without aliasing. Walks `iter_insertion_ordered`
-    /// (construction order = `step_all` charge order = hash fold order) so the plan — and
-    /// the refund application order — is replay-stable.
+    /// `HouseClass::Update_Factory_Queue @ 0x00509140` over every House
+    /// factory, read-only: a queued build no building may build now,
+    /// `FindFactory(1,0,1)` (whose CanBuild asks only the build limit), is
+    /// dropped (`0x005091B0..0x005091EF`), and an active one, finished or
+    /// not, is abandoned for the next queued build (`0x0050921C`). Returns an
+    /// owned plan so the write phase can borrow `&mut houses` without
+    /// aliasing. Walks `iter_insertion_ordered` (construction order =
+    /// `step_all` charge order = hash fold order) so the plan, and the refund
+    /// order, is replay-stable.
+    ///
+    /// Residual: gamemd runs this only when a factory building of the kind
+    /// changes state (`0x00445DFA..0x00445E14`: it goes online or offline,
+    /// into or out of limbo, or is read from a map; `0x00449267`/
+    /// `0x00449284` at a capture); VERA runs it every frame. Trigger: the
+    /// house's last factory that could build the type starts its sale.
+    /// Effect: VERA abandons at the sale's start, gamemd once the building
+    /// leaves the map. Frequency: occasional.
+    ///
+    /// Residual: the pass also holds an active build that only offline
+    /// factories could build (`FindFactory(1,1,1)` fails: `Suspend(0)` at
+    /// `0x0050924D`, lifted at `0x00509283`). VERA has no such hold. Its only
+    /// offline factory is one in a temporal warp (`GameEntity::building_online`),
+    /// whose start runs no update (`0x004521C0`). GoOffline's callers are not
+    /// ported: the power toggle event (`0x004C6D9A`), a trigger action
+    /// (`0x006DDFB9`) and a map's powered-down building (`0x0044FD23`).
+    /// Trigger: a building event while every factory of the kind is offline.
+    /// Effect: VERA keeps building. Frequency: rare.
     pub(super) fn plan_revalidation(
         &self,
         sim: &crate::sim::world::Simulation,
         rules: &RuleSet,
     ) -> Vec<RevalAction> {
-        use crate::sim::production::production_tech::revalidate_eligibility;
         let mut plan: Vec<RevalAction> = Vec::new();
         for f in self.house_factories_insertion_ordered() {
-            let owner_name = sim.interner.resolve(f.owner).to_string();
-            let permanent = |type_id: InternedId| -> bool {
-                matches!(
-                    revalidate_eligibility(sim, rules, &owner_name, sim.interner.resolve(type_id)),
-                    BuildEligibility::PermanentlyBlocked
-                )
+            let lost = |type_id: InternedId| {
+                sim.object_type(type_id, rules).is_none_or(|object| {
+                    super::can_build::find_factory(sim, rules, f.owner, object, true, false, true)
+                        .is_none()
+                })
             };
-            // Abandon an IN-PROGRESS active object when it is permanently blocked. A user
-            // (manual) pause is NOT a guard here — gamemd abandons a paused build too on
-            // permanent block. A finished object held for delivery goes only with its
-            // factory: `BuildingClass::Detach_All(1) @ 0x0044EBF0`, run at a building's
-            // kill, abandons the building's own factory (`0x0044EC01..0x0044EC21`) and, for
-            // a Construction Yard, every factory whose object no other factory can build
-            // (`0x0044EC2B..0x0044EEC8`), finished or not. VERA has no per-building
-            // factory, so it abandons a finished object once no factory of its category
-            // remains (see `Simulation::object_destroy_callback`'s residual).
-            let abandon_active = f.object.as_ref().is_some_and(|o| {
-                if f.progress < PRODUCTION_STEPS {
-                    permanent(o.type_id)
-                } else {
-                    !crate::sim::production::production_tech::has_factory_for_owner(
-                        &sim.substrate.entities,
-                        rules,
-                        &owner_name,
-                        f.category,
-                        &sim.interner,
-                    )
-                }
-            });
-            // Queued tail: collect permanently-blocked indices to drop + the first survivor
-            // (the promote target after an abandon).
             let mut drop_queued: Vec<usize> = Vec::new();
             let mut first_surviving: Option<InternedId> = None;
             for (i, e) in f.queue.iter().enumerate() {
-                if permanent(e.type_id) {
+                if lost(e.type_id) {
                     drop_queued.push(i);
                 } else if first_surviving.is_none() {
                     first_surviving = Some(e.type_id);
                 }
             }
+            let abandon_active = f.object.as_ref().is_some_and(|o| lost(o.type_id));
             if !abandon_active && drop_queued.is_empty() {
-                continue; // nothing to dispose for this factory
+                continue;
             }
             let promote_cost = if abandon_active {
                 first_surviving
@@ -2380,20 +2418,20 @@ mod tests {
         let category = ProductionCategory::Infantry;
         let mut reg = FactoryRegistry::default();
         assert_eq!(
-            reg.enqueue(owner, category, a, 1, 100, 2),
+            reg.enqueue(owner, category, a, 1, 100, 2, false),
             EnqueueOutcome::Started
         );
         assert_eq!(
-            reg.enqueue(owner, category, a, 2, 100, 2),
+            reg.enqueue(owner, category, a, 2, 100, 2, false),
             EnqueueOutcome::Queued
         );
         assert_eq!(
-            reg.enqueue(owner, category, a, 3, 100, 2),
+            reg.enqueue(owner, category, a, 3, 100, 2, false),
             EnqueueOutcome::Queued
         );
         assert_eq!(
-            reg.enqueue(owner, category, a, 4, 100, 2),
-            EnqueueOutcome::QueueFull
+            reg.enqueue(owner, category, a, 4, 100, 2, false),
+            EnqueueOutcome::AppendRefused
         );
         assert_eq!(reg.view(owner, category).unwrap().queue.len(), 2);
     }
@@ -2513,15 +2551,15 @@ mod tests {
         let (vehicle, infantry) = (ProductionCategory::Vehicle, ProductionCategory::Infantry);
         let mut reg = FactoryRegistry::default();
         assert_eq!(
-            reg.enqueue(owner, vehicle, tank, 0, 700, 5),
+            reg.enqueue(owner, vehicle, tank, 0, 700, 5, false),
             EnqueueOutcome::Started
         );
         assert_eq!(
-            reg.enqueue(owner, infantry, soldier, 1, 200, 5),
+            reg.enqueue(owner, infantry, soldier, 1, 200, 5, false),
             EnqueueOutcome::Started
         );
         assert_eq!(
-            reg.enqueue(owner, vehicle, tank, 2, 700, 5),
+            reg.enqueue(owner, vehicle, tank, 2, 700, 5, false),
             EnqueueOutcome::Queued
         );
         assert_eq!(
