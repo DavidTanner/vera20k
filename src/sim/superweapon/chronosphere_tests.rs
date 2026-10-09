@@ -411,8 +411,10 @@ fn chain(sim: &Simulation, id: u64) -> Vec<LocomotorKind> {
 /// A Chrono Miner driving on the Drive its setter installed warps with the
 /// block: the warp's fresh Teleport suspends the Drive with the miner's
 /// Teleport inside it (`0x006CCB4A`; Begin_Piggyback tests only its own
-/// slot, `0x00719EA9`), and the warp's END hands the Drive back. Its next
-/// order drives it, and it ends back on its Teleport at the stop.
+/// slot, `0x00719EA9`), and the warp's END hands the Drive back. That
+/// Drive's refused own-cell search clears its destination, so the Foot AI
+/// tail ends it at the landing. Its next order drives it, and it ends back
+/// on its Teleport at the stop.
 #[test]
 fn retail_chrono_warp_carries_a_driving_chrono_miner() {
     use LocomotorKind::{Drive, Teleport};
@@ -448,10 +450,11 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
     for _ in 0..80 {
         step(&mut sim, &rules);
         let now = (chain(&sim, miner), cell(&sim, miner));
+        let done = !warping(&sim) && now.0 == [Teleport];
         if chains.last() != Some(&now) {
             chains.push(now);
         }
-        if !warping(&sim) {
+        if done {
             break;
         }
     }
@@ -461,6 +464,7 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
             (vec![Teleport, Drive, Teleport], from),
             (vec![Teleport, Drive, Teleport], landing),
             (vec![Drive, Teleport], landing),
+            (vec![Teleport], landing),
         ]
     );
     let entity = sim.substrate.entities.get(miner).unwrap();
@@ -483,8 +487,11 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
 /// A destroyer under way when the warp arms has its Ship forced onto its
 /// landing (`ShipLocomotionClass::Force_Track @ 0x006A0310`, Drive's twin):
 /// no track (-1), its head and destination at the landing cell's deck
-/// coordinate. The warp's END hands that Ship back, and it never resumes the
-/// track it was on.
+/// coordinate. The warp's END hands that Ship back. Its next Process runs
+/// Process_Movement (`0x006A0142`), whose Find_Path for the landing cell
+/// refuses (AStar returns no route for a goal in its start cell,
+/// `0x00429BF3..0x00429C0A`): the destination clears, the head stays, and
+/// the ship stays where it landed.
 #[test]
 fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
     use LocomotorKind::{Ship, Teleport};
@@ -514,7 +521,7 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
         }
         step(&mut sim, &rules);
     }
-    let (turn, old_head, old_destination) = track(&sim).expect("a sailing destroyer's Ship");
+    let (turn, old_head, _) = track(&sim).expect("a sailing destroyer's Ship");
     assert!(
         turn != -1 && old_head.is_some(),
         "on a track when the warp arms"
@@ -540,15 +547,13 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
             ended = true;
             assert_eq!(chain(&sim, ship), [Ship]);
             assert_eq!(track(&sim), Some((-1, at_landing, at_landing)));
+            continue;
         }
-        // What follows the warp is the post-warp residual's; the old track
-        // never comes back.
         if ended {
-            let (_, head, destination) = track(&sim).unwrap_or_default();
-            assert!(
-                head != old_head && destination != old_destination,
-                "frame {frame}: back on its old track"
-            );
+            assert_eq!(track(&sim), Some((-1, at_landing, None)), "frame {frame}");
+            let entity = sim.substrate.entities.get(ship).unwrap();
+            assert!(entity.movement_target.is_none(), "frame {frame}");
+            assert_eq!(cell(&sim, ship), landing, "frame {frame}");
         }
     }
     assert!(ended);

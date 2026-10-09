@@ -13,16 +13,23 @@
 //! Chronosphere's charge and restarts its recharge (`StopPreclickAnim`).
 //! Case 4 hands every Foot in the source's 3x3 block a Teleport locomotor
 //! for the warp (`movement::teleport_chrono`, the Teleport's Chronosphere
-//! states) and kills the Organic ones that cannot teleport.
+//! states) and kills the Organic ones that cannot teleport. A Drive or Ship
+//! Unit's own locomotor first takes `Force_Track(-1, destination)`; the warp
+//! hands it back with head and destination in its own cell, and its next
+//! Process asks Find_Path for that cell, which AStar refuses
+//! (`0x00429BF3..0x00429C0A`): the destination clears, the head stays and
+//! the Unit stays where it landed.
 //!
 //! Evidence: instruction reading (`0x006CC3B9..0x006CCD3E`, `0x006CB3A0`,
-//! `0x006CB830`, `0x004FAE50`).
+//! `0x006CB830`, `0x004FAE50`); the post-warp Process executed in
+//! `tools/spatial_oracle/track_path_continuation`'s post_warp rows.
 //!
 //! Scenario draws: case 4's C4 kills draw through their damage receivers and
 //! the destination setter may draw an Infantry sub-cell through its own;
 //! Fire_SW's computer-house alert (`fire.rs`) draws after both clicks. Timer
 //! writes: the Teleport's (`movement::teleport_chrono`), a Naval eater's
-//! 500-frame suppression and the Chronosphere's recharge (StopPreclickAnim).
+//! 500-frame suppression, the Chronosphere's recharge (StopPreclickAnim) and
+//! the post-warp refusal's PathDelay (Foot+640, `0x004D4016..0x004D4041`).
 //! Detach calls: the radio OVER_OUT to every contact, ClearBunker, the
 //! eater's ExitUnit and the placement anim's release.
 //!
@@ -34,18 +41,6 @@
 //!   (`crates::pickup`). Trigger: a crate on a warped vehicle's destination
 //!   cell. Effect: the crate stays until something enters the cell, without
 //!   the launch's crate draws.
-//! - The Drive or Ship the warp hands back keeps `Force_Track`'s head and
-//!   destination, both in its own cell. Native Process runs Process_Movement
-//!   on it (Drive `0x004B0A79`, Ship `0x006A0142`), whose Find_Path for that
-//!   cell refuses: AStar_pathfind_search returns 0 without searching when the
-//!   start cell and height are the goal's (`0x00429BF3..0x00429C0A`, read),
-//!   and the refusal clears the destination and head in the same call
-//!   (`tools/spatial_oracle/track_path_continuation`'s AStar-NULL rows). VERA
-//!   runs Process_Movement only for one with an order adapter or a track
-//!   (#689), so it keeps both and stays moving until an order clears them: a
-//!   missile spawner (V3, Dreadnought, Boomer) launches nothing (the spawn
-//!   manager's moving-owner refusal) and a Chrono Miner's Drive does not end.
-//!   Trigger: every Drive or Ship Unit the warp carries.
 //! - An off-map cell of either block reads the shared dummy cell's
 //!   coordinates natively; VERA reads the requested cell's.
 //! - The warp latch (`TechnoClass+0x27C`) has two more writers,

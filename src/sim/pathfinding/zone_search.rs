@@ -110,7 +110,8 @@ pub enum PathSearchFailure {
     MissingHierarchyCell,
     ///The reduced compatibility graph rejected without native raw evidence.
     CompatibilityZoneRejected,
-    ///The existing cell search ran and returned no route.
+    ///AStar returned no route: its cell search ran out, or never ran because
+    ///the start cell and height are the goal's (0x429BF3..0x429C0A).
     CellSearchExhausted,
 }
 

@@ -955,8 +955,17 @@ fn prepare_movement_visit(
     if entity.is_active() && entity.movement_target.is_none() && !walk_route {
         super::walk_step::finish_idle(entity);
     }
+    // Drive4B0500/Ship69FC10 likewise reach Process_Movement for a moving
+    // class (Is_Moving4AFB80/69F290) without a track or an order adapter:
+    // a Chrono Warp's Force_Track leaves +34 in the Unit's own cell.
+    let track_route = entity
+        .locomotor
+        .as_ref()
+        .and_then(|loco| super::track_process::TrackFamily::from_kind(loco.kind))
+        .is_some_and(|family| super::track_head::motion_state(entity, family).0);
     if entity.movement_target.is_none()
         && !walk_route
+        && !track_route
         && super::track_head::active_track_family(entity).is_none()
     {
         return None;

@@ -378,6 +378,11 @@ pub(crate) fn issue_move_command_with_destination(
                 // search only gates acceptance (a Jumpjet object order queued
                 // twice), and its cells were never read.
                 let append_start = movement.final_goal.unwrap_or((start_rx, start_ry));
+                // The setters record any destination unsearched; AStar has no
+                // route for a goal in its start cell (0x00429BF3..0x00429C0A).
+                if append_start == effective_target {
+                    return true;
+                }
                 let append_layer = current_layer;
                 let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
                 let Some((appended, _)) = find_move_path(
@@ -460,8 +465,16 @@ pub(crate) fn issue_move_command_with_destination(
     // destinations gamemd accepts. The recovered set is the same; only the
     // evaluation order differs.
     let mut effective_target = effective_target;
-    let mut found = search(effective_target);
-    if found.is_none()
+    // The setters record any destination unsearched; AStar has no route for a
+    // goal in its start cell (0x00429BF3..0x00429C0A), so it is admitted here.
+    let same_cell = effective_target == (start_rx, start_ry);
+    let mut found = if same_cell {
+        None
+    } else {
+        search(effective_target)
+    };
+    if !same_cell
+        && found.is_none()
         && let Some(st) = speed_type
     {
         match resolve_reachable_move_goal(
@@ -488,19 +501,23 @@ pub(crate) fn issue_move_command_with_destination(
             _ => {}
         }
     }
-    let Some((path, _)) = found else {
-        let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
-        log::warn!(
-            "No path from ({},{}) to ({},{}) [entity_blocks={}, start_walkable={}, goal_walkable={}]",
-            start_rx,
-            start_ry,
-            effective_target.0,
-            effective_target.1,
-            eb_count,
-            grid.is_walkable(start_rx, start_ry),
-            grid.is_walkable(effective_target.0, effective_target.1),
-        );
-        return false;
+    let path = match found {
+        Some((path, _)) => path,
+        None if same_cell => vec![effective_target],
+        None => {
+            let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
+            log::warn!(
+                "No path from ({},{}) to ({},{}) [entity_blocks={}, start_walkable={}, goal_walkable={}]",
+                start_rx,
+                start_ry,
+                effective_target.0,
+                effective_target.1,
+                eb_count,
+                grid.is_walkable(start_rx, start_ry),
+                grid.is_walkable(effective_target.0, effective_target.1),
+            );
+            return false;
+        }
     };
 
     // Log path with walkability check for each cell — helps diagnose paths
