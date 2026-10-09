@@ -368,11 +368,15 @@ fn mission_move_matches_original_states() {
 /// Mission_Move visit's Find_Attack_Cell moves the NavCom to a free cell
 /// beside the tank. AirportBound, every cell is free for it
 /// (`0x00419B98`), so Mission_Move runs 2 into 4 and, over that cell, waits
-/// in state 3 while its Fly holds there. The native comparison is the oracle
-/// replay above; this run claims no whole-flight comparison.
+/// in state 3 until its Fly stops. State 3 then enters idle mode
+/// (`0x004176F0`), which drops the NavCom and asks for a dock (vt+0x528).
+/// Its owner has no airfield, so the AirportBound Harrier crashes there
+/// (vt+0x3DC). The native comparisons are the Mission_Move replay above and
+/// the idle-mode replay (`aircraft::idle_entry`); this run claims no
+/// whole-flight comparison.
 #[test]
 #[ignore = "requires the configured retail install and stock Hills.mmx"]
-fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
+fn retail_harrier_sent_onto_a_tank_stops_beside_it_and_crashes_without_an_airfield() {
     use crate::headless_scenario::SIM_TICK_MS;
     use crate::sim::command::{Command, CommandEnvelope};
     let retail = std::env::var("RA2_DIR")
@@ -402,6 +406,7 @@ fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
     sim.resolve_type_handles(rules);
     let mut navs = Vec::new();
     let mut moves = Vec::new();
+    let mut crashed = None;
     for frame in 0..600 {
         let commands = if frame == 0 {
             vec![CommandEnvelope::new(
@@ -420,16 +425,22 @@ fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
         runtime
             .advance_frame_for_tooling(&commands, SIM_TICK_MS)
             .expect("advance production frame");
-        let entity = runtime.simulation.substrate.entities.get(harrier).unwrap();
+        let Some(entity) = runtime.simulation.substrate.entities.get(harrier) else {
+            break;
+        };
         let nav = entity.navigation.nav_com;
         if navs.last().is_none_or(|&(_, last)| last != nav) {
             navs.push((frame, nav));
         }
-        assert_eq!(
-            entity.mission.current(),
-            MissionId::from_known(MissionType::Move),
-            "the Harrier stays on Move: {moves:?}"
-        );
+        if entity.health.current == 0 {
+            crashed.get_or_insert((frame, (entity.position.rx, entity.position.ry)));
+            continue;
+        }
+        // The order queues Move; Ready_To_Commence starts it.
+        if entity.mission.current() != MissionId::from_known(MissionType::Move) {
+            assert!(moves.is_empty(), "the Harrier stays on Move: {moves:?}");
+            continue;
+        }
         let sub_state = crate::sim::aircraft::handler_state(entity);
         if moves.last().is_none_or(|&(_, last, _)| last != sub_state) {
             moves.push((frame, sub_state, (entity.position.rx, entity.position.ry)));
@@ -437,7 +448,7 @@ fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
     }
     println!(
         "Harrier from {start:?} onto MTNK {tank} at {target_cell:?}: NavComs {navs:?}, \
-         Mission_Move {moves:?}"
+         Mission_Move {moves:?}, crashed {crashed:?}"
     );
     assert_eq!(
         navs[0].1,
@@ -451,15 +462,17 @@ fn retail_harrier_sent_onto_a_tank_holds_beside_it() {
         beside != target_cell && rx.abs_diff(target_cell.0) <= 2 && ry.abs_diff(target_cell.1) <= 2,
         "a free cell beside the tank: {navs:?}"
     );
-    assert_eq!(navs.len(), 2, "the NavCom stays on that cell: {navs:?}");
+    assert_eq!(navs.len(), 3, "the NavCom stays on that cell: {navs:?}");
+    assert_eq!(navs[2].1, None, "until idle mode drops it");
     let states: Vec<u8> = moves.iter().map(|&(_, state, _)| state).collect();
     assert_eq!(states, [0, 1, 2, 4, 3], "{moves:?}");
     assert_eq!(moves[4].2, beside, "state 3 begins over that cell");
-    let entity = runtime.simulation.substrate.entities.get(harrier).unwrap();
-    assert_eq!(
-        (entity.position.rx, entity.position.ry),
-        beside,
-        "and the Harrier holds there"
+    let (crash_frame, crash_cell) = crashed.expect("the Harrier crashes once its Fly stops");
+    assert_eq!(crash_frame, navs[2].0, "as idle mode drops the NavCom");
+    assert_eq!(crash_cell, beside, "over that cell");
+    assert!(
+        runtime.simulation.substrate.entities.get(harrier).is_none(),
+        "and is gone after its fall"
     );
 }
 

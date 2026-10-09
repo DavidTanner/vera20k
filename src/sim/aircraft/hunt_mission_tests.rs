@@ -1,7 +1,7 @@
 //! Replays `tools/spatial_oracle/aircraft_hunt.json`: the original
 //! `0x00414A80`, one call per row, through [`hunt_visit`].
 
-use super::hunt_mission::*;
+use super::*;
 use crate::sim::mission::{MissionId, MissionType};
 use serde_json::{Value, json};
 

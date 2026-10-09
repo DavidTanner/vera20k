@@ -13,6 +13,7 @@ pub mod attack_mission;
 pub mod drop_payload;
 pub(crate) mod enter_mission;
 pub(crate) mod guard_mission;
+mod hunt_mission;
 mod idle_entry;
 pub(crate) use idle_entry::enter_idle_mode_for;
 #[cfg(test)]
@@ -28,9 +29,6 @@ pub(crate) mod spyplane_mission;
 
 #[cfg(test)]
 mod dock_cycle_tests;
-mod hunt_mission;
-#[cfg(test)]
-mod hunt_mission_tests;
 #[cfg(test)]
 mod release_tests;
 #[cfg(test)]

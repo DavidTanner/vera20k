@@ -27,7 +27,7 @@
 //!
 //! Evidence: tools/spatial_oracle/aircraft_hunt.py runs the original
 //! 0x00414A80 over Ammo (0, 1, 3, unlimited -1), team, Target, game mode
-//! and every scan answer; `hunt_mission_tests` replays every row through
+//! and every scan answer; its tests replay every row through
 //! [`hunt_visit`].
 
 use crate::map::entities::EntityCategory;
@@ -36,22 +36,26 @@ use crate::sim::combat::{ScanMission, TargetKind};
 use crate::sim::mission::MissionType;
 use crate::sim::world::{ObjectAiCtx, Simulation};
 
+#[cfg(test)]
+#[path = "hunt_mission_tests.rs"]
+mod tests;
+
 /// The harvester mask the multiplayer pass pushes (`0x00414B19`).
 const HARVESTER_MASK: u32 = 0x40;
 
 /// What a visit reads once, before it calls anything.
-pub(crate) struct HuntFacts {
+struct HuntFacts {
     /// Ammo `+0x2FC`.
-    pub(crate) ammo: i32,
+    ammo: i32,
     /// The team `+0x5D4` is set.
-    pub(crate) team: bool,
+    team: bool,
     /// The session's game mode (`0x00A8B238`) is nonzero.
-    pub(crate) game_mode: bool,
+    game_mode: bool,
 }
 
 /// What a Mission_Hunt visit does and reads live, each where the original
 /// does it.
-pub(crate) trait HuntHost {
+trait HuntHost {
     /// What Greatest_Threat answers.
     type Threat;
     /// The Target `+0x2B4` is set.
@@ -73,7 +77,7 @@ pub(crate) trait HuntHost {
 }
 
 /// One visit; returns its delay.
-pub(crate) fn hunt_visit<H: HuntHost>(facts: &HuntFacts, host: &mut H) -> i32 {
+fn hunt_visit<H: HuntHost>(facts: &HuntFacts, host: &mut H) -> i32 {
     if facts.ammo == 0 {
         if facts.team {
             host.leave_team();
