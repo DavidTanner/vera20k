@@ -639,7 +639,7 @@ pub fn projectile_random_shrapnel_cell(
 pub fn projectile_shrapnel_count(
     configured_count: i32,
     has_firer: bool,
-    distance_to_target_cells: i32,
+    distance_to_firer_cells: i32,
 ) -> u32 {
     if configured_count >= 0 {
         return configured_count as u32;
@@ -649,7 +649,7 @@ pub fn projectile_shrapnel_count(
     }
     configured_count
         .saturating_neg()
-        .saturating_sub(distance_to_target_cells)
+        .saturating_sub(distance_to_firer_cells)
         .max(0) as u32
 }
 

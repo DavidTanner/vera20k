@@ -2479,13 +2479,7 @@ fn postmortem_delay_duration(warhead: &WarheadType, distance_leptons: i32) -> i3
     ))
     .expect("DelayKillAtMax parser retains a finite native f32");
     let slope = X87Chop53::sub(X87Chop53::mul(at_max, base), base);
-    let spread = X87Chop53::load_f32(NativeF32Bits::from_bits(
-        (warhead.cell_spread_f64 as f32).to_bits(),
-    ))
-    .expect("CellSpread parser retains a finite native f32");
-    let spread_i32 =
-        X87Chop53::ftol_i64(spread).expect("finite CellSpread converts through native ftol") as i32;
-    let denominator = spread_i32.wrapping_shl(8);
+    let denominator = cell_spread::whole_cells(warhead.cell_spread_f64).wrapping_shl(8);
     let Ok(slope_per_lepton) = X87Chop53::div(slope, X87Chop53::load_i32(denominator)) else {
         // Masked x87 divide-by-zero/non-finite conversion yields the integer
         // indefinite qword; Math__ftol returns its low dword, which is zero.
@@ -2651,37 +2645,25 @@ fn emit_projectile_shrapnel(
         return;
     };
 
-    let target_position = match detonation.target {
-        // `0x0046A370`: the Target's GetCoords (vt+0x48).
-        ProjectileTarget::Entity(id) => entities.get(id).map(|entity| {
-            let coord = crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
-            ProjectileCoord::new(coord.x, coord.y, coord.z)
-        }),
-        ProjectileTarget::Cell { rx, ry } => {
-            Some(crate::sim::projectile::cell_target_coord(terrain, rx, ry))
-        }
-        ProjectileTarget::None => Some(ProjectileCoord::new(0, 0, 0)),
-        ProjectileTarget::DummyCell => Some(
-            terrain
-                .map(crate::map::resolved_terrain::ResolvedTerrainGrid::shared_cell_dummy)
-                .as_ref()
-                .map(crate::sim::projectile::dummy_cell_target_coord)
-                .unwrap_or(ProjectileCoord::new(0, 0, 0)),
-        ),
-    };
-    let distance_cells = target_position.map_or(0, |target| {
-        let dx = i64::from(target.x - detonation.impact.x);
-        let dy = i64::from(target.y - detonation.impact.y);
-        let dz = i64::from(target.z - detonation.impact.z);
-        (dx.saturating_mul(dx)
-            .saturating_add(dy.saturating_mul(dy))
-            .saturating_add(dz.saturating_mul(dz)))
-        .isqrt()
-        .saturating_div(256) as i32
+    // `0x0046A336..0x0046A3C2`: a negative ShrapnelCount is lessened by the
+    // whole cells from the bullet's Location to its firer's GetCoords
+    // (`[bullet+0xB0]`, vt+0x48 at `0x0046A370`), through `0x0041C380` and a
+    // signed /256; a bullet without a firer gets 3.
+    let firer = entities.get(detonation.source_id);
+    let distance_cells = firer.map_or(0, |firer| {
+        let coord = crate::sim::movement::ground_pose::object_get_coords(firer, terrain);
+        crate::util::native_x87::distance_3d_leptons(
+            [coord.x, coord.y, coord.z],
+            [
+                detonation.impact.x,
+                detonation.impact.y,
+                detonation.impact.z,
+            ],
+        ) / 256
     });
     let count = projectile_shrapnel_count(
         parent_projectile.shrapnel_count,
-        entities.get(detonation.source_id).is_some(),
+        firer.is_some(),
         distance_cells,
     );
     if count == 0 {
@@ -2690,9 +2672,7 @@ fn emit_projectile_shrapnel(
 
     let center_rx = detonation.impact.x / 256;
     let center_ry = detonation.impact.y / 256;
-    let source_owner = entities
-        .get(detonation.source_id)
-        .map(|source| source.owner());
+    let source_owner = firer.map(|source| source.owner());
     // Random CellClass selections must capture their target coordinate at the
     // lookup call point: every miss returns the same mutable process dummy, so
     // resolving a collected list afterward would give all missed children the
@@ -2700,11 +2680,11 @@ fn emit_projectile_shrapnel(
     // until child construction, preserving their existing behavior.
     let mut targets: Vec<(ProjectileTarget, Option<ProjectileCoord>)> =
         Vec::with_capacity(count as usize);
-    let scan_radius = child_weapon.range.to_num::<i32>().max(0);
-    for &(dx, dy) in self::cell_spread::splash_cells(SimFixed::from_num(scan_radius))
-        .iter()
-        .skip(1)
-    {
+    // `0x0046A436..0x0046A48B`: the child weapon's Range (`+0xB4`) divided by
+    // 256 toward zero names the last ring; rings 1 through it are walked,
+    // never the impact cell.
+    let rings = (child_weapon.range_leptons / 256).max(0) as usize;
+    for &(dx, dy) in self::cell_spread::sweep(rings).iter().skip(1) {
         if targets.len() == count as usize {
             break;
         }
