@@ -74,14 +74,15 @@ pub(crate) fn commit_prepared_load(
         .match_presentation
         .super_timer_blinks
         .clear();
-    // The restored world's strips are seeded silently on the first refresh
-    // below (`SidebarClass::AddCameo` init gate), not read as insertions
-    // against the outgoing timeline's cameos.
+    // MouseLoad5BDF70->no-init5BE9B0 preserves the saved entry lists rather
+    // than re-sorting the current types. Their keys are refreshed from live
+    // rules/CSF below without changing surviving order. A headless snapshot
+    // has no saved strip and keeps the existing silent first-seed behavior.
     state
         .match_state
         .match_presentation
         .sidebar_projection
-        .reset_cameo_seed();
+        .restore_order(committed.sidebar_order);
     crate::app::match_runtime::sim_tick::upsert_occupied_overlay_render_entries(
         state,
         committed.occupied_overlays,

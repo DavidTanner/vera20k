@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 
 /// Bump this when the snapshot binary format changes in a breaking way.
@@ -909,10 +910,55 @@ use crate::sim::world::Simulation;
 // (Mission+0xBC holds Mission_Move's and Mission_Attack's states), and
 // ProductionState drops the AirfieldDocks pad reservations. Prior records
 // cannot resume.
-const SNAPSHOT_VERSION: u32 = 316;
+// 316 -> 317: the neutral presentation supplement preserves the local owner's
+// four retained sidebar entry lists. Re-sorting after load loses insertion
+// history when live comparison inputs changed; prior records lack that order.
+const SNAPSHOT_VERSION: u32 = 317;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
+
+/// Neutral type identity shared by the retained sidebar and its save envelope.
+/// The kind matters: a SuperWeapon and an object never share a cameo entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) enum SavedCameoId {
+    Object(InternedId),
+    SuperWeapon(InternedId),
+}
+
+/// Only identity/order survives save/load; comparison keys are projections of
+/// the restored simulation, canonical rules and current process string table.
+/// Strip indices are building, defense, infantry and vehicle, respectively.
+///
+/// Mouse Save5BE6D0 writes the whole 0x556C object at5BE715..5BE71C, including
+/// four strips at +1544, stride F94. Load5BDF70 reads it at5BE089..5BE092;
+/// no-init5BE9B0->6A4F20 resets progress6AC7C0, preserving count/type/order.
+/// This neutral transport does not introduce a sim dependency on a UI owner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SavedSidebarOrder {
+    owner: InternedId,
+    strips: [Vec<SavedCameoId>; 4],
+}
+
+impl SavedSidebarOrder {
+    pub(crate) fn new(owner: InternedId, strips: [Vec<SavedCameoId>; 4]) -> Self {
+        Self { owner, strips }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn owner(&self) -> InternedId {
+        self.owner
+    }
+
+    #[cfg(test)]
+    pub(crate) fn strips(&self) -> &[Vec<SavedCameoId>; 4] {
+        &self.strips
+    }
+
+    pub(crate) fn into_parts(self) -> (InternedId, [Vec<SavedCameoId>; 4]) {
+        (self.owner, self.strips)
+    }
+}
 
 /// Binary snapshot envelope — wraps the full `Simulation` state plus
 /// compatibility hashes for the map and rules that were active at save time.
@@ -943,6 +989,9 @@ pub struct GameSnapshot {
     /// and no-init Foot4D3540 preserve this short (naval_lifetime_controls).
     /// Kept in the neutral envelope so sim never depends on a render owner.
     pub(crate) sinking_waterlines: Vec<(u64, i16)>,
+    /// Retained local sidebar order is presentation state, outside the lockstep
+    /// simulation hash. The app validates/hydrates it before committing a load.
+    sidebar_order: Option<SavedSidebarOrder>,
 }
 
 /// Lightweight header extracted from a save file without deserializing the
@@ -1161,6 +1210,7 @@ struct GameSnapshotRef<'a> {
     map_name: String,
     sim: &'a Simulation,
     sinking_waterlines: &'a [(u64, i16)],
+    sidebar_order: Option<&'a SavedSidebarOrder>,
 }
 
 impl GameSnapshot {
@@ -1171,7 +1221,7 @@ impl GameSnapshot {
         map_name: &str,
         description: &str,
         save_timestamp: u64,
-        sinking_waterlines: &[(u64, i16)],
+        presentation: (&[(u64, i16)], Option<&SavedSidebarOrder>),
     ) -> Vec<u8> {
         // Retail provenance: Save_Game_To_File @ 0x0067CEF0 supplies a distinct
         // outer file identity; Write_Savegame_Metadata_To_Storage @ 0x006812E0
@@ -1179,6 +1229,7 @@ impl GameSnapshot {
         // Description. The active list admits only an exact internal-version
         // match at 0x00559ED0..0x0055A04A. VERA keeps its Rust-native bincode
         // body while making the same load-bearing envelope identities explicit.
+        let (sinking_waterlines, sidebar_order) = presentation;
         let snapshot = GameSnapshotRef {
             product_magic: SNAPSHOT_PRODUCT_MAGIC,
             envelope_version: SNAPSHOT_ENVELOPE_VERSION,
@@ -1191,6 +1242,7 @@ impl GameSnapshot {
             map_name: map_name.to_string(),
             sim,
             sinking_waterlines,
+            sidebar_order,
         };
         bincode::serialize(&snapshot).expect("snapshot serialization should not fail")
     }
@@ -1208,25 +1260,27 @@ impl GameSnapshot {
         description: &str,
         save_timestamp: u64,
     ) -> Vec<u8> {
-        Self::save_validated_with_sinking_waterlines(
+        Self::save_validated_with_presentation(
             sim,
             map_hash,
             rules_hash,
             description,
             save_timestamp,
             &[],
+            None,
         )
     }
 
-    /// Save the app's retained waterlines alongside the simulation. A headless
+    /// Save the app's retained presentation alongside the simulation. A headless
     /// caller uses `save_validated`, whose presentation supplement is empty.
-    pub fn save_validated_with_sinking_waterlines(
+    pub(crate) fn save_validated_with_presentation(
         sim: &Simulation,
         map_hash: u64,
         rules_hash: u64,
         description: &str,
         save_timestamp: u64,
         sinking_waterlines: &[(u64, i16)],
+        sidebar_order: Option<&SavedSidebarOrder>,
     ) -> Vec<u8> {
         Self::serialize(
             sim,
@@ -1235,8 +1289,12 @@ impl GameSnapshot {
             &sim.session.map_name,
             description,
             save_timestamp,
-            sinking_waterlines,
+            (sinking_waterlines, sidebar_order),
         )
+    }
+
+    pub(crate) fn sidebar_order(&self) -> Option<&SavedSidebarOrder> {
+        self.sidebar_order.as_ref()
     }
 
     /// Test-only constructor for deliberately synthetic envelope metadata.
@@ -1255,7 +1313,7 @@ impl GameSnapshot {
             map_name,
             map_name,
             save_timestamp,
-            &[],
+            (&[], None),
         )
     }
 
@@ -3942,7 +4000,8 @@ mod tests {
         // 313 -> 314: the house's factory counters.
         // 314 -> 315: no ready-building list beside the factories.
         // 315 -> 316: the native airfield loop replaces the legacy dock FSM.
-        assert_eq!(super::SNAPSHOT_VERSION, 316);
+        // 316 -> 317: the local owner's retained sidebar insertion history.
+        assert_eq!(super::SNAPSHOT_VERSION, 317);
     }
 
     #[test]

@@ -103,9 +103,9 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
     let owner_name: String =
         preferred_local_owner_name(state).unwrap_or_else(|| "Americans".to_string());
     let Some((
-        mut build_options,
-        mut queue_items,
-        mut ready_buildings,
+        build_options,
+        queue_items,
+        ready_buildings,
         producer_focus,
         credits,
         power_produced,
@@ -138,7 +138,7 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         let (power_produced, power_drained) =
             production::power_balance_for_owner(sim, rules, &owner_name);
         Some((
-            production::build_options_for_owner(sim, rules, &owner_name),
+            production::all_build_options_for_owner(sim, rules, &owner_name),
             production::queue_view_for_owner(sim, rules, &owner_name),
             production::ready_buildings_for_owner(sim, rules, &owner_name),
             producer_focus,
@@ -157,21 +157,27 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         return;
     };
 
-    // `SidebarClass::AddCameo 0x006A63D6..0x006A6415`: a build cameo the
-    // strip did not hold (`visible_in_sidebar` is the strip entry set; the
-    // superweapon strip is the `RTTI == 0x1F` exclusion) speaks
-    // `EVA_NewConstructionOptions` once the scenario-init nesting counter
-    // is back to zero — the first projection of a match is that window.
-    let cameos: std::collections::BTreeSet<_> = build_options
-        .iter()
-        .filter(|opt| opt.visible_in_sidebar())
-        .map(|opt| opt.type_id)
-        .collect();
+    let sim = &state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .expect("sidebar runtime")
+        .simulation;
+    let owner = sim.interner.get(&owner_name).unwrap_or_default();
+    let cameos = crate::app::sidebar_projection::cameo_candidates(
+        sim,
+        state.rules().expect("sidebar rules"),
+        state.process_assets.csf.as_ref(),
+        owner,
+        &build_options,
+        &ready_buildings,
+        &sw_views,
+    );
     if state
         .match_state
         .match_presentation
         .sidebar_projection
-        .note_cameos(cameos)
+        .reconcile_cameos(owner, &cameos)
     {
         crate::app::input::dispatch::push_local_eva(
             state,
@@ -179,18 +185,6 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         );
     }
 
-    // Resolve CSF display names (e.g., "Name:MTNK" → "Grizzly Battle Tank").
-    if let Some(csf) = &state.process_assets.csf {
-        for opt in &mut build_options {
-            opt.display_name = resolve_csf_name(csf, &opt.display_name);
-        }
-        for item in &mut queue_items {
-            item.display_name = resolve_csf_name(csf, &item.display_name);
-        }
-        for ready in &mut ready_buildings {
-            ready.display_name = resolve_csf_name(csf, &ready.display_name);
-        }
-    }
     let display_credits = state
         .match_state
         .match_presentation
@@ -277,6 +271,11 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
             .match_state
             .match_presentation
             .sidebar_scroll_rows_parked,
+        state
+            .match_state
+            .match_presentation
+            .sidebar_projection
+            .cameo_strips(),
     );
     if let Some(selected) = view.tabs.iter().find(|tab| tab.active) {
         crate::app::input::dispatch::apply_sidebar_action(
@@ -676,18 +675,6 @@ pub(crate) fn sidebar_theme_for_owner_sources(
         2 => Some(crate::render::sidebar_chrome::SidebarTheme::Yuri),
         _ => None,
     }
-}
-
-// ---------------------------------------------------------------------------
-// CSF display name resolution
-// ---------------------------------------------------------------------------
-
-/// Resolve a display name through the CSF string table.
-///
-/// Rules `Name=` values are CSF keys (e.g., `"Name:MTNK"`). Retail emits its
-/// visible `MISSING:'<key>'` marker when the initialized table lacks a key.
-fn resolve_csf_name(csf: &crate::assets::csf_file::CsfFile, name: &str) -> String {
-    csf.text(name).into_owned()
 }
 
 // ---------------------------------------------------------------------------

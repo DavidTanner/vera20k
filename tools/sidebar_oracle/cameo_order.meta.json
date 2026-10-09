@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original whole Strip CompareItems/InsertEntry, AddCameo admission through insertion, Recalculate retained filter/removal loop, and SuperWeaponType RechargeTime reader block. Synthetic initialized inputs; not a complete tech-tree, native scene, or whole-sidebar claim.",
+  "assumptions": [
+    "Fresh PE mapping per case family. Actual RTTI_To_TypeArray, original type vtables, Cost_Of country/FactoryPlant arithmetic and UTF-16 wcscmp execute. Type/House inputs are supplied fields, not a claim of native constructor/INI initialization. FPCW0E7F.",
+    "All 33 by33 pair combinations include type-class flag gating, both flags set, same-side priority, signed TechLevel/cost/recharge, name case, supplementary UTF-16 and exact ties.",
+    "Four six-type cost contexts execute24 complete cost queries and144 comparisons with country/plant factors, all five cost slots and the BuildingType FreeUnit adjustment. PadAircraft contains an initialized nonmatching first Dock; SeparateAircraft is true.",
+    "Four strips are constructed by original6A80A0. AddCameo starts at6A6300 and stops at 6A6423 after original insertion or6A65FF before rejection return. Its remaining UI presentation tail is excluded. The three ordinary histories remain within75 slots.",
+    "A separate capacity history executes the native76th-entry overrun into mapped adjacent storage, then rejection at76, prune to75 and retry. It proves the admission gate and addition-before-removal consequence, not integrity of a native oversized Sidebar. Rust must keep memory safe; adjacent overwritten state is not a golden.",
+    "Recalculate starts at6AA600 and stops at6AAAB3 after the complete retained filter. Supers granted bits are supplied. Entries have no linked production factories and House primary-factory fields are zero; original500510 executes on removals. No cancellation events, tab selection, scroll adjustment or rendering claim.",
+    "RechargeTime uses original constructor6CE5C0..6CE681 field initialization and reader6CED5C..6CED95 with original ReadDouble and ftol, supplied cached INI lookup, and original floating-scanner startup. Whole SuperWeaponType reader is excluded."
+  ],
+  "substitutions": [
+    "EVA752700 is an observed no-op sink with its actual RET4 convention.",
+    "Recalculate allocator7C8E17 supplies a zeroed visible-copy buffer. Type virtual+94 FindFactory and House4F7870 CanBuild return declared availability inputs. Admission producer bodies and complete House/Building lifecycle are not executed."
+  ],
+  "entry_points": {
+    "compare": "0x006A8420",
+    "insert": "0x006A8710",
+    "add": "0x006A6300",
+    "recalculate": "0x006AA600",
+    "strip_ctor": "0x006A80A0",
+    "strip_clear": "0x006A81B0",
+    "wcscmp": "0x007CA5D3",
+    "super_ctor_fields": "0x006CE5C0",
+    "recharge_reader": "0x006CED5C"
+  },
+  "source_normalized_lf_sha256": {
+    "producer": "72cdd9a921d17528bd3548d1e278a1cceb71fe805759451635fa8be7ca9d8971",
+    "sidebar_machine": "3be14607c275ec465c6e6535e6dfa5af6f4db7b9eef2a022ce52e9434e5819d7",
+    "cost_owner": "11cc459dc355063e4a7d5207e14c2bdc079f2306bcbb57d2c2ee018973cb5ad8",
+    "ini_fixture": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "runner": "67a69b8e446a8134fbff1128c1fe15025350f329fc25585af29ea725746f2ceb"
+  },
+  "payload_sha256": "e7d1a40b3eee68fc81851c78ba2ffe9557630f39ba63dacbb4f7f30f9ffcc345"
+}

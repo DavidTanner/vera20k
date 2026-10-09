@@ -67,6 +67,7 @@ pub use self::production_tech::{
     building_base_foundation_cells, building_movement_blocking_cells, is_matching_factory,
     producer_candidates_for_owner_category,
 };
+pub(crate) use self::production_tech::all_build_options_for_owner;
 pub use self::production_types::*;
 
 // Re-exports for external consumers (files outside production/ that previously

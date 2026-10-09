@@ -83,9 +83,17 @@ pub(crate) fn on_mouse_move(state: &mut AppState) {
         // Native724200 resolves the current region/text at the mouse move,
         // including ordinary sidebar tips while the coordinate toggle is on.
         sync_in_game_regions(state);
-        state.match_state.match_presentation.tooltips.on_mouse_move_immediate(x, y, now);
+        state
+            .match_state
+            .match_presentation
+            .tooltips
+            .on_mouse_move_immediate(x, y, now);
     } else {
-        state.match_state.match_presentation.tooltips.on_mouse_move(x, y, now);
+        state
+            .match_state
+            .match_presentation
+            .tooltips
+            .on_mouse_move(x, y, now);
     }
 }
 
@@ -100,11 +108,16 @@ pub(crate) fn on_button_event(state: &mut AppState) {
 pub(crate) fn update(state: &mut AppState) -> u64 {
     let now = now_ms(state);
     if state.frontend.screen == GameScreen::InGame
-        && !state.match_state.paused() && state.frontend.keyboard_dialog.is_none()
+        && !state.match_state.paused()
+        && state.frontend.keyboard_dialog.is_none()
     {
         sync_in_game_regions(state);
     } else {
-        state.match_state.match_presentation.tooltips.sync_regions(&[]);
+        state
+            .match_state
+            .match_presentation
+            .tooltips
+            .sync_regions(&[]);
     }
     state.match_state.match_presentation.tooltips.poll(now);
     now
@@ -121,7 +134,8 @@ fn tip_rect(r: crate::ui::sidebar::Rect) -> TipRect {
 
 fn csf_text(state: &AppState, key: &str) -> String {
     state
-        .process_assets.csf
+        .process_assets
+        .csf
         .as_ref()
         .map(|csf| csf.text(key).into_owned())
         .unwrap_or_default()
@@ -168,7 +182,11 @@ fn cameo_tip_text(money_format: Option<&str>, name: &str, cost: Option<i32>) -> 
 /// from direct CSF keys, cameos through the money format.
 fn sync_in_game_regions(state: &mut AppState) {
     let Some(view) = current_sidebar_view(state).cloned() else {
-        state.match_state.match_presentation.tooltips.sync_regions(&[]);
+        state
+            .match_state
+            .match_presentation
+            .tooltips
+            .sync_regions(&[]);
         return;
     };
     let mut regions: Vec<TipRegion> = Vec::with_capacity(9 + view.items.len());
@@ -178,7 +196,9 @@ fn sync_in_game_regions(state: &mut AppState) {
     let (x, y, width, height) = crate::app::input::camera::tactical_viewport_px(state);
     let coordinate_text = if state.match_state.input.cursor_coordinates {
         let (rx, ry) = crate::app::match_runtime::sim_tick::screen_point_to_world_cell(
-            state, state.match_state.input.cursor_x, state.match_state.input.cursor_y,
+            state,
+            state.match_state.input.cursor_x,
+            state.match_state.input.cursor_y,
         );
         format!("({rx},{ry})")
     } else {
@@ -196,7 +216,8 @@ fn sync_in_game_regions(state: &mut AppState) {
         state.match_state.match_presentation.sidebar_layout_spec,
     );
     let power_text = state
-        .process_assets.csf
+        .process_assets
+        .csf
         .as_ref()
         .map(|csf| {
             format_csf(
@@ -252,27 +273,16 @@ fn sync_in_game_regions(state: &mut AppState) {
     }
     for (slot, item) in view.items.iter().enumerate() {
         let text = if item.is_superweapon {
-            // Superweapon slots return early in gamemd: the localized UIName
-            // verbatim, with no cost and no space-to-line-feed rewrite. The
-            // section name is the fallback only when rules or the string table
-            // are absent (assetless dev run).
-            item.super_weapon_section
-                .as_deref()
-                .and_then(|section| state.rules()?.super_weapon(section))
-                .and_then(|sw| sw.ui_name.as_deref())
-                .and_then(|key| state.process_assets.csf.as_ref().map(|csf| csf.text(key).into_owned()))
-                .unwrap_or_else(|| item.display_name.clone())
+            // The retained view carries the same native UIName used for
+            // ordering. Supers display it verbatim, without a cost suffix.
+            item.display_name.clone()
         } else {
-            let name = state.rules()
-                .and_then(|r| r.object(&item.type_id))
-                .and_then(|o| o.ui_name.as_deref())
-                .and_then(|key| state.process_assets.csf.as_ref().map(|csf| csf.text(key).into_owned()))
-                .unwrap_or_else(|| item.display_name.clone());
             let money_format = state
-                .process_assets.csf
+                .process_assets
+                .csf
                 .as_ref()
                 .map(|csf| csf.text(CAMEO_TIP_MONEY_FORMAT));
-            cameo_tip_text(money_format.as_deref(), &name, item.cost)
+            cameo_tip_text(money_format.as_deref(), &item.display_name, item.cost)
         };
         regions.push(TipRegion {
             id: CAMEO_TIP_ID_BASE + slot as u32,
@@ -280,7 +290,11 @@ fn sync_in_game_regions(state: &mut AppState) {
             text,
         });
     }
-    state.match_state.match_presentation.tooltips.sync_regions(&regions);
+    state
+        .match_state
+        .match_presentation
+        .tooltips
+        .sync_regions(&regions);
 }
 
 /// In-game tooltip draw: (fill instances on the darken texture, text
@@ -311,7 +325,10 @@ pub(crate) fn build_tooltip_instances(
         // both do. `tip.x/y` are cursor coordinates, already screen space, so
         // without this the popup is displaced by the whole camera offset and
         // leaves the screen as soon as the player scrolls.
-        [state.match_state.input.camera_x, state.match_state.input.camera_y],
+        [
+            state.match_state.input.camera_x,
+            state.match_state.input.camera_y,
+        ],
         state.renderer.bit_font.darken_texture().is_some(),
     )
 }

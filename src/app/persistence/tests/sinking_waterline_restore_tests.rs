@@ -21,13 +21,14 @@ fn sinking_waterline_envelope_preserves_native_short_without_changing_simulation
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let hash = sim.state_hash();
     let waterlines = [(7, native_saved_waterline()), (8, i16::MIN)];
-    let bytes = GameSnapshot::save_validated_with_sinking_waterlines(
+    let bytes = GameSnapshot::save_validated_with_presentation(
         &sim,
         1,
         2,
         "waterline",
         3,
         &waterlines,
+        None,
     );
     let loaded = GameSnapshot::load_validated(&bytes, 1, 2, LOAD_FIXTURE_MAP_NAME).unwrap();
     assert_eq!(loaded.sinking_waterlines, waterlines);
@@ -55,13 +56,14 @@ fn sinking_waterline_load_replaces_presentation_only_after_commit() {
     sim.substrate.entities.insert(entity);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let waterline = native_saved_waterline();
-    let bytes = GameSnapshot::save_validated_with_sinking_waterlines(
+    let bytes = GameSnapshot::save_validated_with_presentation(
         &sim,
         LOAD_FIXTURE_MAP_HASH,
         rules.simulation_config_hash(),
         "retained draw",
         1,
         &[(id, waterline), (u64::MAX, -7)],
+        None,
     );
     let terrain = load_fixture_terrain();
     let registry = OverlayTypeRegistry::empty();
