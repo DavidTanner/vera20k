@@ -607,6 +607,10 @@ pub struct GeneralRules {
     /// Mission_Attack forwards its charge instead of firing
     /// (`sim::world::techno_ai::building_missions`).
     pub prism_type: Option<String>,
+    /// `[General] PrerequisiteProcAlternate=` (Rules `+0x400`): the UnitType
+    /// whose on-map units also meet a `PROC` prerequisite
+    /// (`sim::production::can_build`).
+    pub prerequisite_proc_alternate: Option<String>,
     /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
     pub prism_support: PrismSupportRules,
     /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=`,
@@ -1703,7 +1707,8 @@ impl GeneralBuildingTypes {
 /// gates and WallTower `0x0066F450..0x0066F583`): ReadString128 into a local
 /// buffer; an empty value keeps the current pointer, anything else goes
 /// through BuildingType FindOrAllocate (`0x004653C0`), whose `<none>` and
-/// `none` answer null.
+/// `none` answer null. PrerequisiteProcAlternate reads a UnitType the same
+/// way (`0x007480D0`).
 fn read_building_identity(
     general: &IniSection,
     key: &str,
@@ -1839,6 +1844,7 @@ impl Default for GeneralRules {
             pad_aircraft_types: Vec::new(),
             separate_aircraft: false,
             prism_type: None,
+            prerequisite_proc_alternate: None,
             prism_support: PrismSupportRules::default(),
             building_types: GeneralBuildingTypes::default(),
             tiberium_grows: true,
@@ -2673,6 +2679,12 @@ impl GeneralRules {
             // `0x00671144` -> `0x0067BCE0`. The layered reader
             // (`native_processing`) replaces this projection.
             prism_type: read_building_identity(general, "PrismType", defaults.prism_type),
+            // `0x0066F787..0x0066F7C9`, replaced by the layered reader too.
+            prerequisite_proc_alternate: read_building_identity(
+                general,
+                "PrerequisiteProcAlternate",
+                defaults.prerequisite_proc_alternate,
+            ),
             prism_support: defaults.prism_support.read_pass(general),
             building_types: GeneralBuildingTypes {
                 gdi_gate_one: read_building_identity(general, "GDIGateOne", None),
@@ -3361,6 +3373,8 @@ impl RuleSet {
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
+        rules.general.prerequisite_proc_alternate =
+            processed.prerequisite_proc_alternate().map(str::to_owned);
         rules.general.building_types = processed.building_types().clone();
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
@@ -5465,16 +5479,11 @@ fn collect_weapon_refs(objects: &[ObjectType]) -> HashSet<String> {
     weapon_ids
 }
 
-/// Parse prerequisite alias groups from [General] PrerequisiteXxx keys.
-///
-/// RA2's rules.ini defines abstract prerequisite names (POWER, RADAR, etc.)
-/// that map to lists of concrete building IDs. For example:
-///   PrerequisitePower=GAPOWR,NAPOWR,NANRCT
-/// means any unit with `Prerequisite=POWER` is satisfied by owning any of those.
-///
-/// Also registers secondary aliases used in RA2 prerequisites:
-/// - FACTORY / WARFACTORY → same as PrerequisiteFactory list
-/// - BARRACKS / TENT → same as PrerequisiteBarracks list
+/// The `[General] Prerequisite*` lists, by the name a `Prerequisite=` entry
+/// gives them (`Prerequisite_INI_Parser @ 0x004770E0` reads `POWER`,
+/// `FACTORY`, `BARRACKS`, `RADAR`, `TECH` and `PROC` as these lists and no
+/// other name). For example `PrerequisitePower=GAPOWR,NAPOWR,NANRCT` lets an
+/// on-map building of any of them meet `Prerequisite=POWER`.
 fn parse_prerequisite_groups(ini: &IniFile) -> HashMap<String, Vec<String>> {
     let mut groups: HashMap<String, Vec<String>> = HashMap::new();
     let Some(general) = ini.section("General") else {
@@ -5499,14 +5508,6 @@ fn parse_prerequisite_groups(ini: &IniFile) -> HashMap<String, Vec<String>> {
                 groups.insert(alias.to_string(), ids);
             }
         }
-    }
-
-    // Register secondary aliases that RA2 prerequisites use interchangeably.
-    if let Some(factory_list) = groups.get("FACTORY").cloned() {
-        groups.insert("WARFACTORY".to_string(), factory_list);
-    }
-    if let Some(barracks_list) = groups.get("BARRACKS").cloned() {
-        groups.insert("TENT".to_string(), barracks_list);
     }
 
     groups

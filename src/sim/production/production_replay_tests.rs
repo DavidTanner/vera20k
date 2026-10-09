@@ -125,14 +125,6 @@ fn scenario() -> (Simulation, RuleSet) {
         spawn_structure(&mut sim, sid + 1, owner, "GAPILE", *base_x + 2, 10);
         spawn_structure(&mut sim, sid + 2, owner, "GAWEAP", *base_x + 4, 10);
         spawn_structure(&mut sim, sid + 3, owner, "GAAIRC", *base_x + 6, 10);
-        // `spawn_structure` is a raw test helper and intentionally bypasses
-        // construction's Add_Tracking.  Keep this replay fixture in a live match
-        // so late defeat handling cannot freeze its command ordinal.
-        sim.houses
-            .get_mut(&oid)
-            .expect("scenario house exists")
-            .tracking
-            .set_buildings_for_test(4);
     }
     (sim, rules)
 }
@@ -357,7 +349,9 @@ fn factory_flip_replay_is_bit_identical_across_runs_and_playback() {
 /// The per-step charge is the only mover of credits; nothing is created or lost.
 #[test]
 fn economy_conservation_over_replay() {
-    const TICKS: u64 = 600;
+    // The first builds finish at tick 164; with no map to exit onto, each is
+    // refunded (`refund_failed_delivery`).
+    const TICKS: u64 = 160;
 
     let (mut sim, rules) = scenario();
     let (am, al, _, _) = ids(&sim);
@@ -708,11 +702,6 @@ fn retail_builds_step_at_the_native_frames() {
                 .strength;
             entity.health.current = strength;
         }
-        sim.houses
-            .get_mut(&owner)
-            .unwrap()
-            .tracking
-            .set_buildings_for_test(5);
         let type_id = sim.interner.intern(unit);
 
         let factory_state = |sim: &Simulation| {

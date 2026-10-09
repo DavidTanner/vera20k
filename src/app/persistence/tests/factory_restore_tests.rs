@@ -4,12 +4,14 @@ use crate::sim::production::{Factory, PRODUCTION_STEPS, ProductionCategory};
 
 fn factory_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=SLAV\n1=E1\n\
+        "[Countries]\n0=Americans\n\
+         [InfantryTypes]\n0=SLAV\n1=E1\n\
          [VehicleTypes]\n0=MTNK\n[AircraftTypes]\n0=HORN\n\
          [BuildingTypes]\n0=PARENT\n1=OTHER\n2=DEFENSE\n\
-         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\n\
+         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\nOwner=Americans\n\
          Enslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\n\
          [OTHER]\nCost=500\nStrength=1000\nFoundation=1x1\nTechLevel=1\nFactory=BuildingType\n\
+         Owner=Americans\n\
          [DEFENSE]\nCost=500\nStrength=1000\nFoundation=1x1\nBuildCat=Combat\nTechLevel=1\n\
          [SLAV]\nStrength=125\nSpeed=4\nStorage=4\n\
          [E1]\nCost=200\nStrength=125\nSpeed=4\nTechLevel=1\n\

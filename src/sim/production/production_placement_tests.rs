@@ -437,6 +437,7 @@ fn ground_occupant_placement_rules() -> RuleSet {
          BaseNormal=yes\n\
          Factory=BuildingType\n\
          [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\n\
+         TechLevel=1\n\
          Strength=750\n\
          Armor=wood\n\
          Foundation=2x2\n\
@@ -459,7 +460,7 @@ fn ground_occupant_placement_rules() -> RuleSet {
 
 fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n\
+        "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
          [VehicleTypes]\n\
          [AircraftTypes]\n\
          [BuildingTypes]\n\
@@ -482,6 +483,7 @@ fn gsi_04_07_wall_placement_contract() -> (RuleSet, OverlayTypeRegistry) {
          Strength=100\n\
          [CYCL]\n\
          [GAWALL]\n\
+         Owner=Americans,Alliance,Russians,Soviet\n\
          Wall=yes\n\
          Armor=concrete\n\
          Strength=300\n\
@@ -563,12 +565,14 @@ fn stock_power_contract_rules() -> RuleSet {
          Power=0\n\
          Factory=BuildingType\n\
          [GAPOWR]\nOwner=Americans,Alliance,Russians,Soviet\n\
+         TechLevel=1\n\
          BuildCat=Power\n\
          Strength=750\n\
          Armor=wood\n\
          Adjacent=2\n\
          Power=200\n\
          [AMRADR]\nOwner=Americans,Alliance,Russians,Soviet\n\
+         TechLevel=1\n\
          BuildCat=Tech\n\
          Strength=600\n\
          Armor=steel\n\
@@ -1960,9 +1964,12 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
             .factories
             .test_enqueue_kernel(owner, category, type_id, 1, cost)
     );
-    assert!(matches!(
-        super::production_tech::revalidate_eligibility(&sim, &rules, "Americans", "GAWALL"),
-        super::factory::BuildEligibility::Buildable
+    // The queued wall survives the tick's per-frame queue check
+    // (`FactoryRegistry::plan_revalidation`) and its strip's recheck.
+    let wall = rules.object("GAWALL").unwrap();
+    assert!(super::can_build::find_factory(&sim, &rules, owner, wall, true, false, true).is_some());
+    assert!(super::production_tech::strip_keeps(
+        &sim, &rules, owner, wall
     ));
     let mut expected = sim.scenario_rng.clone();
     let successor_word = (expected.next_u32() & 0xffff) as u16;

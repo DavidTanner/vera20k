@@ -2,7 +2,7 @@
 //!
 //! This is a first playable loop implementation. Split into sub-modules:
 //! - `production_types`: shared types, constants, state containers
-//! - `can_build`: the computer's CanBuild and FindFactory
+//! - `can_build`: CanBuild, FindFactory and CheckBuildLimit, for every house
 //! - `factory`: queue and per-step charging kernels
 //! - `factory_lifecycle`: held-object birth, completion, cancellation and release
 //! - `factory_ai`: a computer house's production at its own factory buildings
@@ -11,7 +11,7 @@
 //! - `production_placement`: building placement
 //! - `production_repair`: building repair and the computer's low-credit sale
 //! - `production_sell`: building sale
-//! - `production_tech`: tech tree, build options, factory matching, spawn cells
+//! - `production_tech`: the player's build options, factory matching, spawn cells
 
 mod can_build;
 mod factory;
@@ -30,9 +30,9 @@ mod wall_placement;
 
 // Re-export everything so external code can still use `production::X`.
 pub use self::factory::{
-    BuildEligibility, CancelOutcome, Factory, FactoryHolder, FactoryRegistry, FactoryView,
-    PRODUCTION_STEPS, PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, StepOutcome,
-    TimeToBuildInputs, category_for_object, time_to_build,
+    CancelOutcome, Factory, FactoryHolder, FactoryRegistry, FactoryView, PRODUCTION_STEPS,
+    PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, StepOutcome, TimeToBuildInputs,
+    category_for_object, time_to_build,
 };
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
 pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, suspend_production};
@@ -63,7 +63,7 @@ pub(crate) use self::production_sell::{
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
 pub use self::production_tech::{
     building_base_foundation_cells, building_movement_blocking_cells, is_matching_factory,
-    producer_candidates_for_owner_category, structure_satisfies_prerequisite,
+    producer_candidates_for_owner_category,
 };
 pub use self::production_types::*;
 

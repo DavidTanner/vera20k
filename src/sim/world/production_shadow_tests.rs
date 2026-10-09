@@ -24,14 +24,15 @@ fn empty_rules() -> RuleSet {
 /// same-tick two-Begin ordering test.
 fn vehicle_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        // TechLevel=1 (not the unspecified -1 default) so the type passes Strict eligibility
-        // and P6 prereq-revalidation does NOT abandon it as UnbuildableTechLevel; GAWEAP
-        // (Factory=UnitType) is the producing factory the revalidation requires.
-        "[VehicleTypes]\n0=GRIZZLY\n[AircraftTypes]\n0=BEAG\n\
+        // TechLevel=1 (not the unspecified 255 default) so the strip keeps the type;
+        // GAWEAP (Factory=UnitType) is the factory FindFactory finds for it, matching
+        // its Owner=.
+        "[Countries]\n0=Americans\n\
+         [VehicleTypes]\n0=GRIZZLY\n[AircraftTypes]\n0=BEAG\n\
          [BuildingTypes]\n0=GAWEAP\n\
-         [GRIZZLY]\nCost=700\nStrength=300\nTechLevel=1\n\
-         [BEAG]\nCost=600\nStrength=200\nTechLevel=1\n\
-         [GAWEAP]\nStrength=1000\nFactory=UnitType\n",
+         [GRIZZLY]\nCost=700\nStrength=300\nTechLevel=1\nOwner=Americans\n\
+         [BEAG]\nCost=600\nStrength=200\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nStrength=1000\nFactory=UnitType\nOwner=Americans\n",
     ))
     .expect("vehicle rules parse")
 }
@@ -58,6 +59,7 @@ fn spawn_war_factory(sim: &mut Simulation, owner: InternedId) {
     e.finish_building_construction_for_test();
     e.building_actually_placed = true;
     sim.substrate.entities.insert(e);
+    sim.append_house_base_building_for_test(1);
     sim.add_entity_occupancy(1);
     sim.append_house_base_building_for_test(1);
     sim.substrate.next_stable_object_id = 2;

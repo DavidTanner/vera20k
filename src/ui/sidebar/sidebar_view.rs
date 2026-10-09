@@ -823,7 +823,7 @@ mod tests {
                 &mut interner,
                 "GAPOWR",
                 false,
-                Some(BuildDisabledReason::MissingPrerequisite("GACNST".into())),
+                Some(BuildDisabledReason::CannotBuild),
             ),
             option(
                 &mut interner,
@@ -835,7 +835,7 @@ mod tests {
                 &mut interner,
                 "GAAIRC",
                 false,
-                Some(BuildDisabledReason::WrongOwner),
+                Some(BuildDisabledReason::NoReadyFactory),
             ),
             option(
                 &mut interner,
@@ -864,12 +864,14 @@ mod tests {
             None,
         );
 
-        // Missing prereq / no factory / wrong faction are hidden entirely.
+        // A CanBuild refusal or no factory for the type hides it entirely.
         let shown: Vec<&str> = view.items.iter().map(|i| i.type_id.as_str()).collect();
-        assert_eq!(shown, ["GACNST", "GADEPT"]);
-        // Buildable item is enabled; a reached build limit is greyed.
+        assert_eq!(shown, ["GACNST", "GAAIRC", "GADEPT"]);
+        // Buildable item is enabled; an offline factory or a reached build
+        // limit greys it.
         assert!(view.items[0].enabled);
         assert!(!view.items[1].enabled);
+        assert!(!view.items[2].enabled);
     }
 
     #[test]
@@ -881,7 +883,7 @@ mod tests {
                 &mut interner,
                 "GAPOWR",
                 false,
-                Some(BuildDisabledReason::MissingPrerequisite("GACNST".into())),
+                Some(BuildDisabledReason::CannotBuild),
             ),
             option(
                 &mut interner,

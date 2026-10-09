@@ -1,21 +1,21 @@
-//! Tech tree, build options, factory matching, and spawn cell logic.
-//!
-//! Determines what a player can build based on owned structures, prerequisites,
-//! faction ownership, and available factories. Also handles spawn cell selection
-//! for newly produced units.
+//! The player's build options and production checks, asked of the one
+//! CanBuild owner ([`super::can_build`]), and factory matching and spawn
+//! cell logic.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::foundation::foundation_dimensions;
-use crate::rules::object_type::{BuildCategory, FactoryType, ObjectCategory};
+use crate::rules::object_type::{BuildCategory, FactoryType, ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 
+use super::can_build::{CanBuild, can_build, check_build_limit, find_factory};
 use super::production_types::*;
 
-/// Whether `owner` may build `type_id` now, and why not. No money check: a
-/// build starts without the funds and stalls its steps instead
-/// (`SelectClass::Action @ 0x006AAD00` and `HouseClass::Begin_Production
+/// What the player's sidebar shows for `type_id`, from [`sidebar_state`].
+/// No money check: a build starts without the funds and stalls its steps
+/// instead (`SelectClass::Action @ 0x006AAD00` and `HouseClass::Begin_Production
 /// @ 0x004FA350` test none).
 pub(super) fn build_option_for_owner(
     sim: &Simulation,
@@ -24,60 +24,10 @@ pub(super) fn build_option_for_owner(
     type_id: &str,
 ) -> Option<BuildOption> {
     let obj = rules.object(type_id)?;
-    let queue_category = production_category_for_object(obj);
-
-    // `HouseClass::CanBuild @ 0x004F7870` compares the type's TechLevel
-    // (`TechnoTypeClass+0x634`) with the house's (`HouseClass+0x1D4`).
-    let house_tech_level =
-        crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
-            .map(|house| house.tech_level);
-    let mut reason: Option<BuildDisabledReason> = None;
-    if obj.tech_level < 0 || house_tech_level.is_none_or(|level| obj.tech_level > level) {
-        reason = Some(BuildDisabledReason::UnbuildableTechLevel);
-    } else if !obj.owner.is_empty() && !owner_matches_any_build_identity(sim, owner, &obj.owner) {
-        reason = Some(BuildDisabledReason::WrongOwner);
-    } else if !obj.required_houses.is_empty()
-        && !owner_matches_any_build_identity(sim, owner, &obj.required_houses)
-    {
-        reason = Some(BuildDisabledReason::WrongHouse);
-    } else if !obj.forbidden_houses.is_empty()
-        && owner_matches_any_build_identity(sim, owner, &obj.forbidden_houses)
-    {
-        reason = Some(BuildDisabledReason::ForbiddenHouse);
-    } else if obj.requires_stolen_allied_tech
-        || obj.requires_stolen_soviet_tech
-        || obj.requires_stolen_third_tech
-    {
-        // Spy infiltration not yet implemented — always block stolen-tech units.
-        reason = Some(BuildDisabledReason::RequiresStolenTech);
-    } else {
-        // PrerequisiteOverride: if owner has ANY override building, skip normal prereqs.
-        let override_satisfied = !obj.prerequisite_override.is_empty()
-            && has_any_override_building(sim, owner, &obj.prerequisite_override);
-        if !override_satisfied {
-            if let Some(missing) = first_missing_prereq(sim, rules, owner, &obj.prerequisite) {
-                reason = Some(BuildDisabledReason::MissingPrerequisite(missing));
-            }
-        }
-    }
-    if reason.is_none()
-        && !has_factory_for_owner(
-            &sim.substrate.entities,
-            rules,
-            owner,
-            queue_category,
-            &sim.interner,
-        )
-    {
-        reason = Some(BuildDisabledReason::NoFactory);
-    }
-    // BuildLimit check: count owned entities + queued + ready-for-placement.
-    if reason.is_none()
-        && let Some(limit) = effective_build_limit(obj.build_limit)
-        && count_owned_and_queued(sim, owner, &obj.id) >= limit
-    {
-        reason = Some(BuildDisabledReason::AtBuildLimit);
-    }
+    let reason = match sim.interner.get(owner) {
+        Some(owner_id) => sidebar_state(sim, rules, owner_id, obj),
+        None => Some(BuildDisabledReason::NoFactory),
+    };
     let type_interned = sim.interner.get(type_id).unwrap_or_default();
     let cost = match sim.interner.get(owner) {
         Some(owner_id) => sim.cost_of(owner_id, obj, rules),
@@ -88,59 +38,61 @@ pub(super) fn build_option_for_owner(
         display_name: obj.name.clone().unwrap_or_else(|| obj.id.clone()),
         cost,
         object_category: obj.category,
-        queue_category,
+        queue_category: production_category_for_object(obj),
         enabled: reason.is_none(),
         reason,
     })
 }
 
-/// P6 revalidation classifier: re-check an active/queued build's eligibility AFTER enqueue,
-/// so a build whose prerequisites / producing factory were lost is disposed of. Reproduces
-/// gamemd's `FindFactory(1,0,1)` gate (the embedded `HouseClass::CanBuild` scan across the
-/// owner's candidate factory buildings): a tech-tree / owner / factory-presence failure ->
-/// `PermanentlyBlocked` (abandon); a build-limit "busy" is NOT a mid-build abandon ->
-/// `Buildable` (keep charging).
-///
-/// gamemd makes this check in three places. `HouseClass::Update_Factory_Queue @ 0x00509140`
-/// drops each queued build that fails it (`0x005091B0..0x005091EF`) and abandons a failing
-/// active one (`0x0050921C`); a factory building runs it for its own `Factory=` kind only
-/// (`0x00445DFA..0x00445E14`) when it goes offline or online, into or out of limbo, is read
-/// from a map, or at `0x00449267`/`0x00449284`. The local player's strip abandons a cameo
-/// whose type `CanBuild(type, 0, 1)` refuses, through ABANDON / ABANDON_ALL events
-/// (`StripClass::Recalculate @ 0x006AA600`, `0x006AA781`). A dying factory building abandons
-/// its own factory (`BuildingClass::Detach_All`, see `FactoryRegistry::plan_revalidation`).
-///
-/// Residual: VERA revalidates every house's builds every tick. Trigger: a build loses a
-/// prerequisite. Effect: a human player's abandon lands earlier than gamemd's events do; a
-/// computer house that loses it through a building other than a factory (a Battle Lab)
-/// keeps building in gamemd until a factory building of that kind changes state, and VERA
-/// abandons and refunds at once (instruction reading; the computer paths are untraced).
-/// Frequency: occasional.
-///
-/// Residual: the pass also holds an active build that only offline factories could build
-/// (`FindFactory(1,1,1)` fails: `Suspend(0)` at `0x0050924D`, lifted at `0x00509283`).
-/// VERA has no such hold. Its only offline factory is one in a temporal warp
-/// (`GameEntity::building_online`), whose start runs no update (`0x004521C0`). GoOffline's
-/// callers are not ported: the power toggle event (`0x004C6D9A`), a trigger action
-/// (`0x006DDFB9`) and a map's powered-down building (`0x0044FD23`). Trigger: a building
-/// event while every factory of the kind is offline. Effect: VERA keeps building.
-/// Frequency: rare.
-pub(in crate::sim) fn revalidate_eligibility(
+/// Whether the player's strip keeps a cameo of `obj` (`StripClass::Recalculate
+/// @ 0x006AA600`, `0x006AA74D..0x006AA78C`): a building of the house could
+/// build it (`FindFactory(1, 0, 0)`) and that building's house may
+/// (`HouseClass::CanBuild(type, 0, 1)` is not 0). `BuildingClass::
+/// UpdateConstructionOptions @ 0x004456D0` adds the cameos with the same
+/// CanBuild call.
+pub(super) fn strip_keeps(
     sim: &Simulation,
     rules: &RuleSet,
-    owner: &str,
-    type_id: &str,
-) -> super::factory::BuildEligibility {
-    use super::factory::BuildEligibility;
-    match build_option_for_owner(sim, rules, owner, type_id) {
-        None => BuildEligibility::PermanentlyBlocked,
-        // A build-limit "busy" is not an abandon in gamemd — keep building.
-        Some(opt) if matches!(opt.reason, None | Some(BuildDisabledReason::AtBuildLimit)) => {
-            BuildEligibility::Buildable
-        }
-        // Tech-tree / owner / factory loss -> CanBuild fails -> abandon.
-        Some(_) => BuildEligibility::PermanentlyBlocked,
+    owner: InternedId,
+    obj: &ObjectType,
+) -> bool {
+    find_factory(sim, rules, owner, obj, true, false, false).is_some()
+        && can_build(sim, rules, owner, obj, false, true) != CanBuild::No
+}
+
+/// Whether the sidebar lists `obj` for `owner` ([`strip_keeps`]), and, if it
+/// does, why its cameo is darkened: `StripClass::Draw @ 0x006A9540`
+/// (`0x006A97A8..0x006A97F9`) darkens it while no online factory may build
+/// it (`FindFactory(1, 1, 1)`), or while it is at its limit
+/// (`CanBuild(type, 0, 0)` answers -1, or [`check_build_limit`]).
+///
+/// Residual: the strip adds cameos only when the house's tech tree is
+/// rechecked (House `+0x1FC`, `HouseClass::Update @ 0x004F926C`), and
+/// `UpdateConstructionOptions` then asks only powered, discovered factories
+/// of the type's kind; VERA lists a type as soon as it qualifies. Trigger:
+/// a new option while every factory of its kind is unpowered. Effect: VERA
+/// shows the cameo before gamemd does. Rare.
+fn sidebar_state(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    obj: &ObjectType,
+) -> Option<BuildDisabledReason> {
+    if find_factory(sim, rules, owner, obj, true, false, false).is_none() {
+        return Some(BuildDisabledReason::NoFactory);
     }
+    if can_build(sim, rules, owner, obj, false, true) == CanBuild::No {
+        return Some(BuildDisabledReason::CannotBuild);
+    }
+    if find_factory(sim, rules, owner, obj, true, true, true).is_none() {
+        return Some(BuildDisabledReason::NoReadyFactory);
+    }
+    if can_build(sim, rules, owner, obj, false, false) == CanBuild::AtLimit
+        || check_build_limit(sim, rules, owner, obj)
+    {
+        return Some(BuildDisabledReason::AtBuildLimit);
+    }
+    None
 }
 
 /// Every rules type's build option for `owner`, by category.
@@ -174,147 +126,6 @@ pub(super) fn all_build_options_for_owner(
     out
 }
 
-pub(super) fn owner_matches_any_build_identity(
-    sim: &Simulation,
-    owner: &str,
-    candidates: &[String],
-) -> bool {
-    candidates
-        .iter()
-        .any(|candidate| owner_matches_build_identity(sim, owner, candidate))
-}
-
-pub(super) fn owner_matches_build_identity(sim: &Simulation, owner: &str, candidate: &str) -> bool {
-    if candidate.eq_ignore_ascii_case(owner) {
-        return true;
-    }
-    sim.interner
-        .get(owner)
-        .and_then(|owner_id| sim.houses.get(&owner_id))
-        .and_then(|house| house.country)
-        .is_some_and(|country| candidate.eq_ignore_ascii_case(sim.interner.resolve(country)))
-}
-
-/// Check if the owner has ANY completed structure from the PrerequisiteOverride list.
-fn has_any_override_building(sim: &Simulation, owner: &str, overrides: &[String]) -> bool {
-    sim.substrate.entities.values().any(|e| {
-        !e.dying
-            && !e.lifecycle.in_limbo
-            && sim.interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
-            && e.category == EntityCategory::Structure
-            && !e.building_up()
-            && overrides
-                .iter()
-                .any(|ov| ov.eq_ignore_ascii_case(sim.interner.resolve(e.type_ref())))
-    })
-}
-
-/// Interpret BuildLimit value. Returns None if no limit applies (the
-/// constructor's `0x7FFFFFFF`, or 0).
-fn effective_build_limit(build_limit: i32) -> Option<u32> {
-    if build_limit == 0 || build_limit == i32::MAX {
-        return None;
-    }
-    Some(build_limit.unsigned_abs())
-}
-
-/// Count owned entities + queued items + ready-for-placement of this type for an owner.
-fn count_owned_and_queued(sim: &Simulation, owner: &str, type_id: &str) -> u32 {
-    let owner_id = sim.interner.get(owner);
-    let type_interned = sim.interner.get(type_id);
-
-    let owned = match (owner_id, type_interned) {
-        (Some(oid), Some(tid)) => sim
-            .substrate
-            .entities
-            .values()
-            .filter(|e| !e.dying && e.owner() == oid && e.type_ref() == tid)
-            .count() as u32,
-        _ => 0,
-    };
-
-    // P5d: count from the registry queue-of-record — the active build (head) + the FIFO
-    // tail, across the owner's factories (was the per-`BuildQueueItem` `queues_by_owner` scan).
-    let queued = match (owner_id, type_interned) {
-        (Some(oid), Some(tid)) => sim
-            .production
-            .factories
-            .iter_insertion_ordered()
-            .iter()
-            .filter(|f| f.owner == oid)
-            .map(|f| {
-                // StartProduction materializes the active object into EntityStore,
-                // so `owned` above already counts it. Only a restored/malformed
-                // active head missing its swizzled identity needs the registry
-                // fallback; queued tails remain unconstructed and count here.
-                let active = f
-                    .object
-                    .as_ref()
-                    .map_or(0, |o| u32::from(o.type_id == tid && o.entity_id.is_none()));
-                let tail = f.queue.iter().filter(|e| e.type_id == tid).count() as u32;
-                active + tail
-            })
-            .sum(),
-        _ => 0,
-    };
-
-    let ready = owner_id
-        .and_then(|oid| sim.production.ready_by_owner.get(&oid))
-        .map(|ready| {
-            ready
-                .iter()
-                .filter(|&&tid| type_interned.map_or(false, |expected| tid == expected))
-                .count() as u32
-        })
-        .unwrap_or(0);
-
-    let materialized_ready = match (owner_id, type_interned) {
-        (Some(oid), Some(tid)) => {
-            sim.production
-                .factories
-                .iter_insertion_ordered()
-                .iter()
-                .filter(|factory| {
-                    factory.owner == oid
-                        && factory.progress >= super::factory::PRODUCTION_STEPS
-                        && factory.object.as_ref().is_some_and(|object| {
-                            object.type_id == tid && object.entity_id.is_some()
-                        })
-                })
-                .count() as u32
-        }
-        _ => 0,
-    };
-
-    owned + queued + ready.saturating_sub(materialized_ready)
-}
-
-fn first_missing_prereq(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    prereqs: &[String],
-) -> Option<String> {
-    for p in prereqs {
-        if p.is_empty() {
-            continue;
-        }
-        // Only structures satisfy prerequisites — units/infantry/aircraft don't count.
-        let ok = sim.substrate.entities.values().any(|e| {
-            !e.dying
-                && !e.lifecycle.in_limbo
-                && sim.interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
-                && e.category == EntityCategory::Structure
-                && !e.building_up()
-                && structure_satisfies_prerequisite(rules, sim.interner.resolve(e.type_ref()), p)
-        });
-        if !ok {
-            return Some(p.clone());
-        }
-    }
-    None
-}
-
 pub(super) fn production_category_for_object(
     obj: &crate::rules::object_type::ObjectType,
 ) -> ProductionCategory {
@@ -340,23 +151,6 @@ pub(super) fn supports_live_production(obj: &crate::rules::object_type::ObjectTy
             | ProductionCategory::Aircraft
             | ProductionCategory::Ship
     )
-}
-
-pub(super) fn has_factory_for_owner(
-    entities: &EntityStore,
-    rules: &RuleSet,
-    owner: &str,
-    category: ProductionCategory,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    entities.values().any(|e| {
-        !e.dying
-            && !e.lifecycle.in_limbo
-            && interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
-            && e.category == EntityCategory::Structure
-            && !e.building_up()
-            && is_production_factory(rules, interner.resolve(e.type_ref()), category)
-    })
 }
 
 /// Check if a structure is a production factory for the given category.
@@ -482,20 +276,6 @@ pub fn is_matching_factory(
             is_production_factory(rules, structure_id, ProductionCategory::Building)
         }
     }
-}
-
-pub fn structure_satisfies_prerequisite(rules: &RuleSet, structure_id: &str, prereq: &str) -> bool {
-    // Direct match: the structure ID is exactly the prerequisite.
-    if structure_id.eq_ignore_ascii_case(prereq) {
-        return true;
-    }
-    // Alias match: look up the prerequisite in [General] PrerequisiteXxx groups.
-    // e.g. prereq="POWER" → check if structure_id is in PrerequisitePower list.
-    if let Some(group) = rules.prerequisite_group(prereq) {
-        let sid_upper: String = structure_id.to_ascii_uppercase();
-        return group.iter().any(|id| *id == sid_upper);
-    }
-    false
 }
 
 /// Returns the base foundation cells for normal building occupancy.
