@@ -8,14 +8,9 @@
 //! - Part of the app layer — takes pure data in, returns actions out.
 //! - No direct AppState dependency in this module (mirrors ui/pause_menu.rs).
 
-use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
 use crate::app::diagnostics::debug_panel::debug_panel_frame;
-
-/// Number of frames to average for the FPS / frame-time readout.
-const FRAME_TIMER_WINDOW: usize = 60;
 
 /// Speed slider hard bounds. Lower bound prevents throttle-math stalls;
 /// upper bound is a sane dev maximum (already faster than gamemd allows).
@@ -78,56 +73,6 @@ pub(crate) enum DevOverlayAction {
     SaveAs,
     ReloadLastLoad,
     LoadSave(PathBuf),
-}
-
-/// Rolling FPS / frame-time tracker. Sampled once per `render_frame`.
-pub(crate) struct FrameTimer {
-    samples: VecDeque<Duration>,
-    last_tick: Option<Instant>,
-}
-
-impl FrameTimer {
-    pub(crate) fn new() -> Self {
-        Self {
-            samples: VecDeque::with_capacity(FRAME_TIMER_WINDOW),
-            last_tick: None,
-        }
-    }
-
-    /// Record one frame boundary. Call from the top of `render_frame`.
-    pub(crate) fn sample(&mut self, now: Instant) {
-        if let Some(prev) = self.last_tick {
-            let dt = now - prev;
-            if self.samples.len() == FRAME_TIMER_WINDOW {
-                self.samples.pop_front();
-            }
-            self.samples.push_back(dt);
-        }
-        self.last_tick = Some(now);
-    }
-
-    /// Mean frame time in milliseconds over the current window, or 0
-    /// if no samples have been recorded yet.
-    pub(crate) fn frame_ms_mean(&self) -> f32 {
-        if self.samples.is_empty() {
-            return 0.0;
-        }
-        let total_ns: u128 = self.samples.iter().map(|d| d.as_nanos()).sum();
-        let mean_ns: u128 = total_ns / self.samples.len() as u128;
-        (mean_ns as f64 / 1_000_000.0) as f32
-    }
-
-    /// FPS derived from the mean frame time, or 0 if no samples.
-    pub(crate) fn fps(&self) -> f32 {
-        let ms = self.frame_ms_mean();
-        if ms <= 0.0 { 0.0 } else { 1000.0 / ms }
-    }
-}
-
-impl Default for FrameTimer {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Draw the dev overlay. Returns the chosen action, if any.
@@ -314,47 +259,4 @@ pub(crate) fn draw_dev_overlay(
         });
 
     action
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn frame_timer_empty_returns_zero() {
-        let t = FrameTimer::new();
-        assert_eq!(t.frame_ms_mean(), 0.0);
-        assert_eq!(t.fps(), 0.0);
-    }
-
-    #[test]
-    fn frame_timer_single_sample_is_still_zero() {
-        // First sample establishes the baseline; no delta yet.
-        let mut t = FrameTimer::new();
-        t.sample(Instant::now());
-        assert_eq!(t.frame_ms_mean(), 0.0);
-    }
-
-    #[test]
-    fn frame_timer_two_samples_record_one_delta() {
-        let mut t = FrameTimer::new();
-        let t0 = Instant::now();
-        let t1 = t0 + Duration::from_millis(16);
-        t.sample(t0);
-        t.sample(t1);
-        let mean = t.frame_ms_mean();
-        assert!((mean - 16.0).abs() < 0.5, "expected ~16ms, got {mean}");
-        let fps = t.fps();
-        assert!((fps - 62.5).abs() < 5.0, "expected ~62.5 fps, got {fps}");
-    }
-
-    #[test]
-    fn frame_timer_window_caps_at_60() {
-        let mut t = FrameTimer::new();
-        let t0 = Instant::now();
-        for i in 0..200 {
-            t.sample(t0 + Duration::from_millis(16 * i));
-        }
-        assert_eq!(t.samples.len(), FRAME_TIMER_WINDOW);
-    }
 }

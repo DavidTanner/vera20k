@@ -35,7 +35,6 @@ impl App {
             SeedListGeometry::new(layout.list, 0, 0).visible_rows,
         );
         // The child replaces its hidden parent and owns all subsequent input.
-        state.match_state.match_presentation.show_save_load_panel = false;
         state.match_state.match_presentation.saved_game_browser = Some(browser);
         Self::enter_in_game_menu_state(state, InGameMenuState::SavedGame(mode));
     }

@@ -105,6 +105,7 @@ impl SidebarInstances {
             self.minimap.len(),
             self.viewport_rect.len(),
             self.radar_anim.len(),
+            self.text.len(),
         )
     }
 }

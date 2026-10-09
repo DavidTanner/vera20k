@@ -134,7 +134,6 @@ pub(crate) fn commit_prepared_load(
     state.platform.frame_pacer.reset_for_immediate_frame();
 
     // Close the save/load panel after loading.
-    state.match_state.match_presentation.show_save_load_panel = false;
 
     // Same-content restoration leaves match-owned startup admission untouched.
     state.persistence.last_loaded_save_path = Some(path.to_path_buf());

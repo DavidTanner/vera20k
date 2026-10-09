@@ -22,7 +22,7 @@ pub(crate) struct InGameKeyEdge<'a> {
 pub(crate) fn in_game_key_edge(
     state: &mut AppState,
     edge: InGameKeyEdge<'_>,
-    egui_consumed: bool,
+    dev_ui_consumed: bool,
     paused_at_event: bool,
 ) {
     let is_escape = matches!(edge.logical, Key::Named(NamedKey::Escape));
@@ -32,7 +32,7 @@ pub(crate) fn in_game_key_edge(
         edge.location,
         state.match_state.input.hotkey_modifiers,
     );
-    if is_escape || !egui_consumed {
+    if is_escape || !dev_ui_consumed {
         let consumed = crate::app::input::dispatch::handle_type_select_key_edge(
             state,
             resolution,
@@ -45,7 +45,7 @@ pub(crate) fn in_game_key_edge(
         }
     }
     // Paused capture changes no held-key state, even on the closing Escape.
-    if paused_at_event || egui_consumed {
+    if paused_at_event || dev_ui_consumed {
         return;
     }
     if edge.state.is_pressed() {

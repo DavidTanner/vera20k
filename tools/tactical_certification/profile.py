@@ -1,4 +1,4 @@
-"""Strict v2 tactical profile and shared environment-contract validation."""
+"""Strict v3 tactical profile and shared environment-contract validation."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from .core import (
 )
 
 
-PROFILE_SCHEMA = "vera20k.tactical-profile.v2"
+PROFILE_SCHEMA = "vera20k.tactical-profile.v3"
 CONTRACT_SCHEMA = "vera20k.tactical-capture-contract.v2"
 CHECKPOINT = "radar-online-v2"
 ABSOLUTE_TIMEOUT_MAX_SECONDS = 900
@@ -37,6 +37,19 @@ EVIDENCE_LIMITATIONS = (
     "parity certification NONE",
     "visible-window pacing input audio and wider-map coverage unverified",
 )
+
+# Exact retail bytes; no operating-system font participates in the tactical frame.
+BITMAP_FONT_INPUT: Mapping[str, Any] = {
+    "logical_name": "GAME.FNT",
+    "source_archive": "ra2.mix -> local.mix",
+    "archive_name": "ra2.mix",
+    "archive_byte_length": 281888480,
+    "archive_sha256": "896a8b64f9f1bb8ad5e0bc64fc0b8ea8c84112494761ea1a43478d10c5ef9914",
+    "entry_id": -1311409470,
+    "payload_byte_length": 1584195,
+    "payload_sha256": "ec8d6d85db3eedf5a862cc6ffb87bfad4c77279dd946bc2d30879ad9140c8d3f"
+}
+
 
 ENVIRONMENT_DENYLIST = (
     "RA2_QUICKPLAY",
@@ -312,10 +325,10 @@ def _validate_slot(
 def validate_profile_document(document: Mapping[str, Any]) -> None:
     require_exact_keys(document, _TOP_KEYS, "profile")
     if document["schema_version"] != PROFILE_SCHEMA:
-        raise ValidationError("unsupported profile schema; use tactical-profile.v2 for the native 1x sidebar; v1 is historical")
+        raise ValidationError("unsupported profile schema; use tactical-profile.v3 for retail GAME.FNT evidence; v1 and v2 are historical")
     _fixed(document["checkpoint"], CHECKPOINT, "checkpoint")
     profile_id = require_string(document["profile_id"], "profile_id")
-    if profile_id not in {"soviet-radar-online-v2", "yuri-radar-online-v2"}:
+    if profile_id not in {"soviet-radar-online-v3", "yuri-radar-online-v3"}:
         raise ValidationError(f"unsupported tactical profile_id {profile_id!r}")
 
     fixture = _exact_object(document["fixture"], _FIXTURE_KEYS, "fixture")
@@ -481,28 +494,21 @@ def validate_profile_document(document: Mapping[str, Any]) -> None:
         _fixed(ledger[key], expected, f"budgets.expected_ledger.{key}")
 
     pixel_inputs = _exact_object(
-        document["pixel_inputs"], ("font",), "pixel_inputs"
+        document["pixel_inputs"], ("bitmap_font",), "pixel_inputs"
     )
     font = _exact_object(
-        pixel_inputs["font"], ("path", "byte_length", "sha256"), "pixel_inputs.font"
+        pixel_inputs["bitmap_font"], tuple(BITMAP_FONT_INPUT), "pixel_inputs.bitmap_font"
     )
-    _fixed(
-        font["path"],
-        r"C:\Windows\Fonts\verdana.ttf",
-        "pixel_inputs.font.path",
-    )
-    _fixed(font["byte_length"], 243_304, "pixel_inputs.font.byte_length")
-    _fixed(
-        font["sha256"],
-        "6a8481fe107ee547893c018b13dba291c2020bec3de5da6525d9ac09f6bc2105",
-        "pixel_inputs.font.sha256",
-    )
+    for key, expected in BITMAP_FONT_INPUT.items():
+        _fixed(font[key], expected, f"pixel_inputs.bitmap_font.{key}")
+    require_sha256(font["archive_sha256"], "pixel_inputs.bitmap_font.archive_sha256")
+    require_sha256(font["payload_sha256"], "pixel_inputs.bitmap_font.payload_sha256")
     limitations = require_array(
         document["evidence_limitations"], "evidence_limitations"
     )
     if limitations != list(EVIDENCE_LIMITATIONS):
         raise ValidationError(
-            "evidence_limitations differ from the honest tactical v2 limits"
+            "evidence_limitations differ from the honest tactical v3 limits"
         )
 
 

@@ -589,7 +589,7 @@ pub(crate) fn main_menu_presented_is_poisoned(state: &AppState) -> bool {
 
 /// Which allow-listed shell dialog is currently showing, if any. Mirrors the
 /// main-menu render dispatch order (skirmish > single-player > bare menu); the
-/// egui fallback / skirmish-setup paths are not native shell dialogs and do not
+/// Utility-card / skirmish-setup paths are not native shell dialogs and do not
 /// slide. The candidate is gated on its dialog having a slide column. Returns
 /// the score dialog on the result screen and `None` off the shell screens.
 pub(crate) fn current_shell_slide_target(state: &AppState) -> Option<ShellSlideKind> {
@@ -872,7 +872,7 @@ pub(crate) fn render_shell_first_paint_slide(
 
     if !rendered {
         // Shell fell back (assets missing): abandon the slide so the normal
-        // dispatch can render the fallback path with its egui overlays.
+        // dispatch can render the asset-independent utility card.
         state.frontend.shell_first_paint_slide = None;
         return Ok(ShellFirstPaintRenderResult::NotRendered);
     }

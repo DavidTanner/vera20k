@@ -21,8 +21,17 @@ const LOOKUP_TABLE_BYTES: usize = 65536 * 2;
 /// Header size in bytes (magic + 6 fields).
 const HEADER_BYTES: usize = 4 + 6 * 4;
 
+/// Immutable identity of the exact bytes accepted by the FNT parser.
+/// Retained by the atlas owner so capture can prove which font it consumed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FntSourceIdentity {
+    pub(crate) byte_length: u64,
+    pub(crate) sha256: String,
+}
+
 /// Parsed bitmap font from a `.fnt` file.
 pub struct FntFile {
+    source_identity: Option<FntSourceIdentity>,
     /// Cell height for layout purposes (includes 1px line gap).
     pub cell_height: u32,
     /// Number of bitmap scanlines per glyph (cell_height - 1 typically).
@@ -139,12 +148,20 @@ impl FntFile {
         );
 
         Ok(Self {
+            source_identity: Some(FntSourceIdentity {
+                byte_length: data.len() as u64,
+                sha256: crate::util::sha256::sha256_hex(data),
+            }),
             cell_height,
             bitmap_rows,
             bytes_per_row,
             glyph_stride,
             glyphs,
         })
+    }
+
+    pub(crate) fn source_identity(&self) -> Option<&FntSourceIdentity> {
+        self.source_identity.as_ref()
     }
 
     /// Look up a glyph by Unicode codepoint.
@@ -244,6 +261,31 @@ mod tests {
     }
 
     #[test]
+    fn parsed_source_identity_is_retained_after_the_input_buffer_changes() {
+        let mut data = vec![0_u8; HEADER_BYTES + LOOKUP_TABLE_BYTES + 2];
+        for (index, word) in [FONT_MAGIC, 20, 1, 1, 2, 1, 2].into_iter().enumerate() {
+            data[index * 4..index * 4 + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        data[HEADER_BYTES + usize::from(b'A') * 2] = 1;
+        data[HEADER_BYTES + LOOKUP_TABLE_BYTES..].copy_from_slice(&[1, 0x80]);
+        let fnt = FntFile::from_bytes(&data).expect("synthetic FNT");
+        let source = fnt.source_identity().expect("parsed source identity");
+        assert_eq!(source.byte_length, 131_102);
+        // Python hashlib over this synthetic input, not a native parity golden.
+        assert_eq!(
+            source.sha256,
+            "f5bae7456e7253a70ae4b8fda31a298b47f371f9c5a40daaeb570ec4fd47d002"
+        );
+        *data.last_mut().unwrap() = 0;
+        let changed = FntFile::from_bytes(&data).expect("changed FNT");
+        assert_ne!(changed.source_identity(), fnt.source_identity());
+        assert_eq!(
+            source.sha256,
+            "f5bae7456e7253a70ae4b8fda31a298b47f371f9c5a40daaeb570ec4fd47d002"
+        );
+    }
+
+    #[test]
     fn decode_glyph_bitmap_basic() {
         // 2 pixels wide, 2 rows, 1 byte per row.
         // Row 0: 0b11000000 → pixels 0,1 set
@@ -262,6 +304,7 @@ mod tests {
     #[test]
     fn text_width_empty() {
         let fnt = FntFile {
+            source_identity: None,
             cell_height: 17,
             bitmap_rows: 16,
             bytes_per_row: 3,

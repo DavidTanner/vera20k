@@ -217,7 +217,7 @@ impl App {
 
     /// The score page `0x108` owns the result screen once its model is set
     /// and its art and the shell chrome exist; otherwise the result screen
-    /// keeps its egui form and egui keeps the input.
+    /// uses the asset-independent status card when retail score art is absent.
     pub(super) fn score_shell_active(state: &AppState) -> bool {
         matches!(state.frontend.screen, GameScreen::MissionResult { .. })
             && state.frontend.score_page.is_some()
@@ -447,34 +447,28 @@ impl App {
         state: &mut AppState,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
-        event_loop: &ActiveEventLoop,
     ) -> Result<()> {
         let error = state
             .frontend
             .main_menu_shell_error
-            .get_or_insert_with(|| "Required game-menu resources could not be loaded.".to_owned());
-        transitions::clear_screen(encoder, view);
-        state.renderer.egui.begin_frame(&state.platform.window);
-        let quit = main_menu::draw_shell_error(
-            &state.renderer.egui.ctx,
-            error,
-            state
-                .platform
-                .game_config
-                .as_ref()
-                .map(|config| config.paths.ra2_dir.as_path()),
-        );
-        state.renderer.egui.end_frame_and_render(
-            &state.renderer.gpu,
+            .get_or_insert_with(|| "Required game-menu resources could not be loaded.".to_owned())
+            .clone();
+        let asset_root = state
+            .platform
+            .game_config
+            .as_ref()
+            .map(|config| config.paths.ra2_dir.display().to_string())
+            .unwrap_or_else(|| "No game installation configured".to_owned());
+        crate::app::frontend::status_screen::render(
+            state,
             encoder,
             view,
-            &state.platform.window,
-            false,
+            "Unable to load the game menu",
+            &format!(
+                "{error}\n\nGame files: {asset_root}\n\nSet [paths] ra2_dir in config.toml to your Yuri's Revenge installation, then restart. Full details are in logs/ra2.log."
+            ),
+            crate::app::frontend::status_screen::Buttons::QUIT,
         );
-        if quit {
-            // A failed startup must not write default settings over the retail profile.
-            event_loop.exit();
-        }
         Ok(())
     }
 
@@ -498,6 +492,12 @@ impl App {
         crate::app::frontend::main_menu_shell_render::clear_ra2ts_movie_session(state);
         crate::app::frontend::shell_transition::invalidate_main_menu_dialog_instance(state);
         Self::ensure_skirmish_shell_chrome(state);
+        if state.frontend.skirmish_shell_chrome.is_none() {
+            state.frontend.main_menu_shell_error =
+                Some("Could not load the retail Options artwork.".to_owned());
+            state.platform.window.request_redraw();
+            return;
+        }
         use crate::app::persistence::options::launcher::launcher_dialog_from_profile;
         use crate::ui::main_menu_dialogs::options::LauncherOptionsLabels;
 
@@ -1179,7 +1179,7 @@ impl App {
         state.main_menu_dialog_open()
     }
 
-    /// Close the egui-only main-menu dialogs (options — never on the
+    /// Close retained main-menu child dialogs (options — never on the
     /// controller stack). The exit-confirm modal closes through
     /// close_exit_confirm_modal_from_controller (D-B3).
     pub(crate) fn close_main_menu_dialogs(state: &mut AppState) {
@@ -1210,22 +1210,6 @@ impl App {
         Self::close_exit_confirm_modal_from_controller(state);
         state.platform.window.request_redraw();
         true
-    }
-
-    /// Draw retained launcher Options overlays; quit confirmation is owned by the retail shell.
-    pub(super) fn draw_main_menu_dialogs(state: &mut AppState) {
-        use crate::ui::main_menu_dialogs as dialogs;
-        if let Some(mut dialog) = state.frontend.options_dialog.take() {
-            debug_assert_eq!(
-                dialog.launcher_audio_available(),
-                state.audio.launcher_audio_available
-            );
-            let output = dialogs::options::draw_launcher_options_dialog(
-                &state.renderer.egui.ctx,
-                &mut dialog,
-            );
-            Self::dispatch_launcher_options_output(state, dialog, output);
-        }
     }
 
     pub(super) fn invalidate_main_menu_movie_if_base_changed(state: &mut AppState) {

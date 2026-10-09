@@ -7,6 +7,7 @@
 
 use crate::render::batch::BatchRenderer;
 use crate::render::bit_font::BitFont;
+#[cfg(feature = "dev-ui")]
 use crate::render::egui_integration::EguiIntegration;
 use crate::render::gpu::GpuContext;
 
@@ -23,8 +24,11 @@ pub(crate) struct RendererState {
     pub(crate) shell_surface_presenter: crate::render::shell_surface_present::ShellSurfacePresenter,
     /// Optional Catmull-Rom bicubic upscale pass (render at lower res, upscale to window).
     pub(crate) upscale_pass: Option<crate::render::upscale_pass::UpscalePass>,
-    /// egui integration — input handling + GPU rendering.
-    pub(super) egui: EguiIntegration,
+    /// Optional diagnostic GUI; absent from the normal game build.
+    #[cfg(feature = "dev-ui")]
+    pub(super) debug_ui: EguiIntegration,
+    /// Immutable one-pixel fill shared by the asset-independent status cards.
+    pub(super) status_screen_fill: crate::render::batch::BatchTexture,
     /// GAME.FNT bitmap font (falls back to the built-in 5x7 face).
     pub(crate) bit_font: BitFont,
     pub(crate) vxl_slope_transition_cache:

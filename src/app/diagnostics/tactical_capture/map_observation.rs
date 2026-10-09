@@ -2362,13 +2362,12 @@ impl TacticalCaptureSession {
             .statistics()?;
         let ready = output.sidebar_view.is_some()
             && !state.match_state.paused()
-            && !state.match_state.match_presentation.show_save_load_panel
             && !state.main_menu_dialog_open()
             && !state.diag.debug_show_pathgrid
             && !state.diag.debug_unit_inspector
             && !state.diag.debug_show_cell_grid
             && !state.diag.debug_show_heightmap
-            && !state.match_state.match_presentation.show_hotkey_help
+            && !state.diagnostic_gui_visible()
             && self.focus_violations == 0
             && self.input_violations == 0;
         let static_default_cursor =
@@ -2596,7 +2595,7 @@ mod tests {
         profile.validate().unwrap();
         let radar: super::super::super::profile::TacticalCaptureProfile =
             serde_json::from_str(crate::test_fixture::text(
-                "tools/tactical_certification/profiles/soviet-radar-online-v2.json",
+                "tools/tactical_certification/profiles/soviet-radar-online-v3.json",
             ))
             .unwrap();
         assert_eq!(profile.launch, radar.launch_session());
