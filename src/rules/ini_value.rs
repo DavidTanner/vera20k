@@ -233,8 +233,9 @@ impl IniSection {
     /// `None` for an absent key, which keeps the current list.
     ///
     /// RESIDUAL: native adds only the tokens `VocClass::FindPtrByName`
-    /// (`0x00751520`) resolves (`0x005254AD`); VERA binds sounds later and
-    /// keeps every token. Trigger: a token naming a sound `soundmd.ini` lacks,
+    /// (`0x00751520`) resolves (`0x005254AD`). VoiceSelect uses the fixed
+    /// SoundRegistry binder; other current consumers keep every token.
+    /// Trigger: a token naming a sound `soundmd.ini` lacks,
     /// spaces included. Effect: a longer list, so a pick drawn over it (death
     /// sounds, Gattling and per-shot reports) can choose a different item.
     /// Frequency: never on retail data.

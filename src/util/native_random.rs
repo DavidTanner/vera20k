@@ -5,9 +5,9 @@
 //! map hands its cursor on to the live scenario
 //! (`rng_continuation::MapGenRngContinuation`).
 //!
-//! Only the state and the raw draw live here. Range reduction stays with each
-//! user: `sim::rng::SimRng`'s `RandomRanged` family and
-//! `map::rmg::RmgRng`'s chop-53 `uniform`.
+//! The state, raw draw and integer `RandomRanged` reduction live here, shared
+//! by the scenario and presentation streams. `map::rmg::RmgRng` keeps its
+//! distinct chop-53 `uniform` reduction.
 //!
 //! Native goldens: `tools/rmg_oracle/vectors/rng.json` (seeded state and raw
 //! draws, `map::rmg::rng` tests) and the `sim::rng` seed and draw fixtures.
@@ -65,4 +65,63 @@ pub(crate) fn draw(words: &mut [u32], lead: &mut usize, lagged: &mut usize) -> u
         *lagged = 0;
     }
     value
+}
+
+/// Signed `Random__RandomRanged @ 0x0065C7E0`: sort the bounds, then mask
+/// and reject raw draws. The closure leaves stream ownership and tracing
+/// with the caller; equal bounds never call it.
+pub(crate) fn ranged_i32(low: i32, high: i32, draw: impl FnMut() -> u32) -> i32 {
+    let (low, high) = if low <= high {
+        (low, high)
+    } else {
+        (high, low)
+    };
+    low.wrapping_add(ranged_offset(high.wrapping_sub(low) as u32, draw) as i32)
+}
+
+/// Unsigned-bound variant used by the scenario owner. Its ordinary spans
+/// share the exact reduction and draw count with the signed native helper.
+pub(crate) fn ranged_u32(low: u32, high: u32, draw: impl FnMut() -> u32) -> u32 {
+    let (low, high) = if low <= high {
+        (low, high)
+    } else {
+        (high, low)
+    };
+    low.wrapping_add(ranged_offset(high.wrapping_sub(low), draw))
+}
+
+fn ranged_offset(span: u32, mut draw: impl FnMut() -> u32) -> u32 {
+    if span == 0 {
+        return 0;
+    }
+    // Retain the existing scenario owner's finite guard for native spans
+    // whose mask construction cannot terminate. This is a custom-data
+    // residual, not a native return value; retail audio ranges stay below it.
+    if span >= 0x7FFF_FFFF {
+        return 0x8000_0000;
+    }
+    // One bit wider than the span's highest bit, including power-of-two
+    // spans: next_power_of_two()-1 would omit the inclusive upper endpoint.
+    let mask = u32::MAX >> span.leading_zeros();
+    loop {
+        let sample = draw() & mask;
+        if sample <= span {
+            return sample;
+        }
+    }
+}
+
+/// Logical Random2Class bytes in the original oracle's 0x3F4-byte layout.
+/// Shared only by regression observations; production state persistence stays
+/// with each existing owner.
+#[cfg(test)]
+pub(crate) fn state_hex(disabled: u8, lead: i32, lagged: i32, words: &[u32]) -> String {
+    let mut bytes = Vec::with_capacity(0x3f4);
+    bytes.extend_from_slice(&u32::from(disabled).to_le_bytes());
+    bytes.extend_from_slice(&lead.to_le_bytes());
+    bytes.extend_from_slice(&lagged.to_le_bytes());
+    for word in words {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

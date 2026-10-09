@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original N/M search, selection lifecycle and VoiceSelect RNG controls.\n\nInitialized actors/layers are fixture inputs, not a constructor or scenario-load\nclaim. Search and selection predicates execute unchanged. See the adjacent md.\n",
+  "assumptions": [
+    "Actors, types, owners, layers and selection storage are initialized fixture inputs, not original constructor/scenario-load proof. No retail E1/MTNK INI inputs or actual airborne/layer producer are claimed.",
+    "Real Unit/Infantry vtables and candidate/selection bodies execute; a Building vtable supplies the RTTI6 exclusion and dock occupier controls only. Tag is NULL, disguise byte1D8 is zero, planning propagationAC4CF4 is disabled and selected-control-group metadata is empty.",
+    "Unit6D8 is supplied -1 for the ordinary control branch. Object270 is virtual1D4 warp refusal; Foot6AD is the separate locomotor-swap control. These initialized bits do not prove their lifecycle writers.",
+    "Layer vectors are supplied at8A0360; original820030 direction table is read by both search bodies. Layer0/1 exclusion, nulls, absent/ineligible anchors and retained sequence outputs are native observations, not a Python expected scan.",
+    "Selection vectorA8ECB8 uses actual static-initializer4E7D40 vtable7E4F64 with supplied capacity64. Consecutive command calls retain the original immediate selection array; no Rust command-delay model is supplied.",
+    "Dock controls supply native map-table cells and occupiers; original5F6960/565730/47C520 execute. Building lifecycle, collision and aircraft motion are excluded.",
+    "Voice lists contain fixture-relative numeric sound IDs. Native sound lookup, original TechnoType INI readers, OS audio playback and device samples are excluded. Direct VoiceSelect disabled/other-owner controls establish receiver ordering, not reachability through the Select wrapper.",
+    "Main886B88, Scenario+218 and MapGenABE890 are initialized with original65C6D0 via sharedgen_rng_vectors.seeded_struct. Complete3F4-byte states bracket voice histories; actual raw draw outputs/continuation are independently replayed with the same original65C780 helper. Scenario and MapGen must remain byte-identical.",
+    "Cursor-mode controls execute original power/planning/repair/sell bodies. Planning's saved cursor pointer11BC is null, so its nonempty cursor restoration callback and active planning-group propagation are outside these controls.",
+    "Camera4AE290 executes through its singleton/empty reduction; final rendering and full camera bounds/projection are outside the declared6D6070 boundary. Original.text integrity is checked after each invocation."
+  ],
+  "substitutions": [
+    "Inherited KeyboardFixture allocator7C8E17 returns bounded scratch storage during original registration and the empty planning-slot allocation. Registration stops before533D20 INI file loading. No allocator failure/CRT exit registration claims.",
+    "Mouse cursor presentation5BDA80/5BDAA0, Tactical camera application6D6070 and redraw4F42F0 record calls then return."
+  ],
+  "entry_points": {
+    "next": "0x004AA2B0",
+    "previous": "0x004AA380",
+    "execute_next": "0x00536610",
+    "execute_previous": "0x00536A80",
+    "candidate": "0x006F32D0",
+    "dynamic_candidate": "0x006FC030",
+    "select": "0x006FBFA0",
+    "deselect": "0x005F44A0",
+    "voice_select": "0x00708EB0",
+    "queue_voice": "0x00708D90",
+    "rng_raw": "0x0065C780",
+    "rng_seed": "0x0065C6D0"
+  },
+  "command": "python -m tools.input_oracle.selection_navigation --check",
+  "payload_sha256": "35f9b8b180f0fe5f090b1ac09bcdd50c328949586e16b5ca12e346f953501239"
+}

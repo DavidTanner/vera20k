@@ -50,6 +50,7 @@ class MapObservationTests(unittest.TestCase):
         self.terrain_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
+        self.keyboard_bindings = []
         self.sidebar_frames = []
         self.tactical_extent = None
         self.change = lambda manifest: None
@@ -139,6 +140,8 @@ class MapObservationTests(unittest.TestCase):
                 'tactical_extent': self.tactical_extent or [width, height],
                 'receipts': deepcopy(self.gesture_receipts),
             }
+            if observation._observes_local_input(self.profile):
+                manifest['observations']['gesture_input']['keyboard_bindings'] = deepcopy(self.keyboard_bindings)
         if 'observe_sidebar_steps' in self.profile:
             manifest['observations']['sidebar'] = {
                 'policy': observation.SIDEBAR_POLICY, 'frames': deepcopy(self.sidebar_frames),
@@ -284,6 +287,172 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
     @staticmethod
+    def local_input_observation():
+        return {'camera_top_left': [100.0, -50.0], 'camera_zoom': 1.0,
+                'follow_target': None, 'repair_mode': False, 'sell_mode': False,
+                'targeting': None, 'selection_voice_enabled': True,
+                'selection_voice_requests': []}
+
+    def keyboard_profile(self):
+        # Synthetic wrapper receipts only: binding names, selection outcomes
+        # and voice requests here are not a native or gameplay comparator.
+        self.gesture_profile()
+        self.keyboard_bindings = [{'command': name, 'first_key': code}
+                                  for name, code in [('NextObject', 78), ('PreviousObject', 77),
+                                                     ('HealthNav', None)]]
+        for index, (request, receipt, key) in enumerate(zip(
+                self.profile['gestures'], self.gesture_receipts, ('N', 'N', 'M'))):
+            request['gesture'] = {'kind': 'key', 'key': key}
+            receipt['gesture'] = deepcopy(request['gesture'])
+            receipt['left_press_captured'] = False
+            receipt['band_box_before_release'] = False
+            receipt['keyboard'] = {'encoded_key': ord(key),
+                                   'binding_command': 'NextObject' if key == 'N' else 'PreviousObject',
+                                   'press_held': True, 'release_cleared': True}
+            for when in ('before', 'after'):
+                receipt[when]['local_input'] = self.local_input_observation()
+            receipt['after']['selected_ids'] = [7 + index]
+            receipt['after']['local_input']['selection_voice_requests'] = [
+                {'speaker_id': 7 + index, 'sound_id': 'SelectVoice'}]
+        for step in range(self.profile['ticks'] + 1):
+            row = self.input_frames.setdefault(step, self.input_observation())
+            row['local_input'] = self.local_input_observation()
+        self.profile_path.write_text(json.dumps(self.profile))
+
+    def test_literal_keys_preserve_same_step_order_loaded_binding_and_pending_voice_receipts(self):
+        self.keyboard_profile()
+        self.gesture_receipts[1]['before'] = deepcopy(self.gesture_receipts[0]['after'])
+        self.gesture_receipts[1]['after']['local_input'].update(
+            follow_target=8, camera_top_left=[150.0, -20.0])
+        self.gesture_receipts[2]['keyboard']['binding_command'] = None  # Unbound is observable.
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        transcript = report['capture']['observations']
+        self.assertEqual(transcript['gesture_input']['policy'], observation.KEYBOARD_GESTURE_POLICY)
+        self.assertEqual(transcript['gesture_input']['receipts'], self.gesture_receipts)
+        self.assertEqual(transcript['gesture_input']['keyboard_bindings'], self.keyboard_bindings)
+        self.assertEqual([row['issue_after_step'] for row in self.gesture_receipts], [0, 0, 2])
+        self.assertEqual(transcript['frames'][0]['input']['local_input'], self.local_input_observation())
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_key_profile_rejects_command_names_modifiers_nonliteral_keys_and_unknown_fields(self):
+        self.keyboard_profile()
+        valid = deepcopy(self.profile)
+        for key in ('a', 'Z', '0', '9', 'Escape'):
+            candidate = deepcopy(valid)
+            candidate['gestures'][0]['gesture']['key'] = key
+            observation._profile_extensions(candidate)
+        invalid = [{'kind': 'key', 'key': key}
+                   for key in (None, True, 78, '', 'NN', 'NextObject', 'Ctrl+N', 'é', ' ')]
+        invalid += [{'kind': 'key'}, {'kind': 'key', 'key': 'N', 'repeat': True},
+                    {'kind': 'key', 'key': 'N', 'modifiers': []}]
+        for index, gesture in enumerate(invalid):
+            with self.subTest(case=index), patch.object(observation, 'run_child') as child:
+                candidate = deepcopy(valid)
+                candidate['gestures'][0]['gesture'] = gesture
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+                self.assertFalse(self.output.exists())
+
+    def test_key_receipts_require_real_edges_binding_metadata_and_local_observations(self):
+        self.keyboard_profile()
+        changes = [lambda row: row.pop('keyboard'),
+                   lambda row: row.update(left_press_captured=True),
+                   lambda row: row['before'].pop('local_input'),
+                   lambda row: row['keyboard'].update(press_held=False),
+                   lambda row: row['keyboard'].update(release_cleared=False),
+                   lambda row: row['keyboard'].update(encoded_key=0),
+                   lambda row: row['keyboard'].update(encoded_key=1 << 16),
+                   lambda row: row['keyboard'].update(encoded_key=True),
+                   lambda row: row['keyboard'].update(binding_command=''),
+                   lambda row: row['keyboard'].update(binding_command=7),
+                   lambda row: row['keyboard'].update(extra=True)]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-key-{index}'
+                self.change = lambda manifest, f=change: f(
+                    manifest['observations']['gesture_input']['receipts'][0])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_keyboard_binding_table_rejects_missing_duplicate_or_malformed_metadata(self):
+        self.keyboard_profile()
+        changes = [lambda row: row.pop('keyboard_bindings'),
+                   lambda row: row['keyboard_bindings'].append(deepcopy(row['keyboard_bindings'][0])),
+                   lambda row: row['keyboard_bindings'][0].update(first_key=True),
+                   lambda row: row['keyboard_bindings'][0].update(first_key=0),
+                   lambda row: row['keyboard_bindings'][0].update(command=''),
+                   lambda row: row['keyboard_bindings'][0].update(extra=True),
+                   lambda row: row['receipts'][0]['keyboard'].update(binding_command='UnknownCommand')]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-binding-table-{index}'
+                self.change = lambda manifest, f=change: f(manifest['observations']['gesture_input'])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_keyboard_and_sidebar_inputs_share_extended_receipts_without_replacing_mouse_route(self):
+        self.keyboard_profile()
+        request = self.profile['gestures'][1]
+        request['gesture'] = {'kind': 'sidebar', 'target': {'kind': 'tab', 'tab': 'building'}}
+        receipt = self.gesture_receipts[1]
+        receipt['gesture'] = deepcopy(request['gesture'])
+        receipt.pop('keyboard')
+        receipt['left_press_captured'] = True
+        receipt['sidebar'] = {'resolved_position': [6, 1], 'before': self.sidebar_observation(),
+                              'after': self.sidebar_observation()}
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['gesture_input']['policy'],
+                         observation.KEYBOARD_GESTURE_POLICY)
+
+    def test_local_input_receipts_preserve_owner_values_and_reject_malformed_state(self):
+        self.keyboard_profile()
+        self.gesture_receipts[0]['before']['local_input'].update(
+            repair_mode=True, selection_voice_enabled=False,
+            targeting={'kind': 'building_placement', 'type_id': 'GAWALL'})
+        self.assertEqual(self.run_capture()['status'], 'VALID')
+        changes = [lambda row: row.update(camera_top_left=[0]),
+                   lambda row: row.update(camera_top_left=[True, 0]),
+                   lambda row: row.update(camera_zoom=0),
+                   lambda row: row.update(camera_zoom='1'),
+                   lambda row: row.update(follow_target=0),
+                   lambda row: row.update(follow_target=True),
+                   lambda row: row.update(repair_mode=1),
+                   lambda row: row.update(sell_mode=None),
+                   lambda row: row.update(selection_voice_enabled=0),
+                   lambda row: row.update(targeting={'kind': 'invented', 'type_id': 'GAWALL'}),
+                   lambda row: row.update(targeting={'kind': 'super_weapon', 'type_id': ''}),
+                   lambda row: row.update(selection_voice_requests=[{'speaker_id': 0, 'sound_id': 'S'}]),
+                   lambda row: row.update(selection_voice_requests=[{'speaker_id': 7, 'sound_id': None}]),
+                   lambda row: row.update(selection_voice_requests=[{'speaker_id': 7, 'sound_id': 'S', 'extra': 1}]),
+                   lambda row: row.update(extra=True)]
+        for index, change in enumerate(changes):
+            for location in ('frame', 'gesture'):
+                with self.subTest(case=index, location=location):
+                    self.output = self.root / f'bad-local-{location}-{index}'
+                    self.change = lambda manifest, f=change, where=location: f((
+                        manifest['observations']['frames'][0]['input'] if where == 'frame' else
+                        manifest['observations']['gesture_input']['receipts'][0]['after'])['local_input'])
+                    self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_voice_requests_count_toward_retained_sample_budget(self):
+        self.keyboard_profile()
+        for receipt in self.gesture_receipts:
+            receipt['before']['selected_ids'] = []
+            receipt['after']['selected_ids'] = []
+            receipt['queued_commands'] = []
+        self.keyboard_bindings = []
+        for receipt in self.gesture_receipts:
+            receipt['keyboard']['binding_command'] = None
+        self.gesture_receipts[0]['after']['local_input']['selection_voice_requests'] *= 5
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 4):
+            report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertIn('sample budget', report['errors'][0])
+
+    @staticmethod
     def sidebar_observation():
         # A retained-view fixture, not a second option-sort or layout implementation.
         return {
@@ -353,6 +522,34 @@ class MapObservationTests(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     self.run_capture()
                 child.assert_not_called()
+
+    def test_repair_and_sell_targets_use_retained_toggle_rect_and_state(self):
+        self.sidebar_profile()
+        for index, target in enumerate(('repair', 'sell')):
+            request = self.profile['gestures'][index]
+            receipt = self.gesture_receipts[index]
+            request['gesture']['target'] = {'kind': target}
+            receipt['gesture'] = deepcopy(request['gesture'])
+            receipt['sidebar']['resolved_position'] = [6, 1]
+            receipt['sidebar']['toggle'] = {
+                'before': {'rect': [6.0, 1.0, 1.0, 1.0], 'disabled': False, 'active': False},
+                'after': {'rect': [6.0, 1.0, 1.0, 1.0], 'disabled': False, 'active': True},
+            }
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        changes = [lambda receipt: receipt.pop('toggle'),
+                   lambda receipt: receipt.update(resolved_position=[5, 1]),
+                   lambda receipt: receipt['toggle']['before'].update(disabled=True),
+                   lambda receipt: receipt['toggle']['before'].update(rect=[6, 1, 0, 1]),
+                   lambda receipt: receipt['toggle']['after'].update(active=1),
+                   lambda receipt: receipt['toggle']['after'].update(rect=[6, 1, '1', 1])]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-toggle-{index}'
+                self.change = lambda manifest, f=change: f(
+                    manifest['observations']['gesture_input']['receipts'][0]['sidebar'])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
 
     def test_sidebar_receipts_reject_stale_targets_untyped_fields_and_unrendered_frames(self):
         self.sidebar_profile()

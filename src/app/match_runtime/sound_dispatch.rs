@@ -6,13 +6,79 @@
 
 use super::eva_producers;
 use crate::audio::events::{GameSoundEvent, SoundEventQueue, SoundSource};
-use crate::audio::sfx::SfxPlayer;
+use crate::audio::sfx::{SfxPlayer, SfxRng};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 #[cfg(test)]
 #[path = "bridge_child_sound_tests.rs"]
 mod bridge_child_sound_tests;
+
+#[cfg(test)]
+#[path = "selection_voice_tests.rs"]
+mod selection_voice_tests;
+
+/// The successful normal unit Select's voice tail. TechnoSelect6FBFA0 admits
+/// VoiceSelect only for House50B6F0 or HouseType+1A6 (MultiplayPassive), and
+/// only while the selection-voice latch is enabled (6FBFF4..6FC018).
+/// A rejected wrapper consumes no Main RNG draw.
+///
+/// RESIDUAL: enslaved and offline Robot receivers choose the separate lists
+/// at type+430/+44C inside VoiceSelect708EB0. Those lifecycle/list paths are
+/// not implemented here; ordinary selectable units use type+414. Existing
+/// VoiceQueue/playback owns pending replacement and cleanup; its shared
+/// physical voice slot can still cut overlapping object/EVA voices.
+pub(crate) fn selection_voice_event(
+    sim: &Simulation,
+    rules: &RuleSet,
+    entity_id: u64,
+    voices_enabled: bool,
+    random: &mut SfxRng,
+) -> Option<GameSoundEvent> {
+    let entity = sim.entities().get(entity_id)?;
+    let human_player = sim.house_is_human_player(entity.owner());
+    let passive = sim
+        .houses
+        .get(&entity.owner())
+        .is_some_and(|house| house.multiplay_passive);
+    if !voices_enabled || (!human_player && !passive) {
+        return None;
+    }
+    let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
+    selection_voice_request(
+        entity_id,
+        &object.voice_select,
+        voices_enabled,
+        human_player,
+        random,
+    )
+}
+
+/// Reached normal VoiceSelect708EB0: every nonempty list consumes one raw
+/// Random65C780 draw, including a singleton, then chooses by unsigned modulo.
+/// QueueVoice708D90 applies enable/House50B6F0 after that draw. Rules binding
+/// removes unresolved IDs, so native's additional selected-ID -1 rejection
+/// cannot occur in a normal production list.
+fn selection_voice_request(
+    speaker_id: u64,
+    voices: &[String],
+    voices_enabled: bool,
+    human_player: bool,
+    random: &mut SfxRng,
+) -> Option<GameSoundEvent> {
+    if voices.is_empty() {
+        return None;
+    }
+    let index = random.next_u32() as usize % voices.len();
+    // Empty is the existing VoiceQueue representation of native sound ID -1.
+    if !voices_enabled || voices[index].is_empty() || !human_player {
+        return None;
+    }
+    Some(GameSoundEvent::UnitSelected {
+        speaker_id,
+        sound_id: voices[index].clone(),
+    })
+}
 
 /// The two presentation draws used while interpreting a simulation event.
 /// Production delegates to the existing player RNG; absence of that player

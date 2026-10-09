@@ -141,14 +141,12 @@ fn receipt_for(
 }
 
 fn test_audio() -> crate::app::audio_runtime::AppAudioRuntime {
-    crate::app::audio_runtime::AppAudioRuntime {
-        theme: crate::audio::theme::ThemeRuntime::default(),
-        last_theme_poll_ms: None,
-        music_player: None,
-        sfx_player: None,
-        launcher_audio_available: true,
-        theme_startup_suppressed: false,
-    }
+    crate::app::audio_runtime::AppAudioRuntime::new(
+        None,
+        None,
+        crate::audio::sfx::SfxRng::seeded(1),
+        true,
+    )
 }
 
 /// `begin_loading`'s shell -> scenario boundary: the LOADING request
@@ -173,6 +171,8 @@ fn begin_loading_plays_loading_theme_and_polls_theme_through_the_lease() {
     );
     process_assets.return_from_loading(AssetManager::from_loose_root_for_test(&dir));
     let mut audio = test_audio();
+    audio.begin_scenario_random(1234);
+    let _ = audio.random_mut().next_u32();
     let session = LoadingSession::from_request(LoadingRequest::unverified_legacy_skirmish(
         test_launch_session(LaunchCountry::America),
         unverified_seed(1),
@@ -189,6 +189,21 @@ fn begin_loading_plays_loading_theme_and_polls_theme_through_the_lease() {
         500,
     );
     let session = slot.as_ref().unwrap();
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/input_oracle/selection_navigation.json",
+    ))
+    .unwrap();
+    let seeded = native["voice_histories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "unit_empty_seed1")
+        .unwrap();
+    assert_eq!(
+        audio.random_mut().native_state_hex(),
+        seeded["rng_before_hex"]["main"].as_str().unwrap(),
+        "fresh loading reseeds Main from the resolved request before LOADING",
+    );
 
     assert!(
         process_assets.manager().is_none() && process_assets.is_leased(),
@@ -215,6 +230,74 @@ fn begin_loading_plays_loading_theme_and_polls_theme_through_the_lease() {
         .expect("leased manager serves the Theme poll");
     audio.update_theme(assets, 600);
     assert_eq!(audio.last_theme_poll_ms, Some(600));
+
+    let _ = audio.random_mut().next_u32();
+    let after_loading_draw = audio.random_mut().native_state_hex();
+    audio.request_scenario_theme(
+        None,
+        assets,
+        crate::audio::theme::ThemeAllowContext::default(),
+        |_| None,
+        700,
+    );
+    assert_eq!(
+        audio.random_mut().native_state_hex(),
+        after_loading_draw,
+        "post-read Theme transition retains the loading-time Main cursor",
+    );
+}
+
+#[test]
+fn accepted_loading_reseeds_existing_audio_handles_without_seed_fallback() {
+    let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/input_oracle/selection_navigation.json",
+    ))
+    .unwrap();
+    let expected = native["voice_histories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "unit_empty_seed1234")
+        .unwrap();
+    let mut assets = crate::app::process_assets::ProcessAssets::new(
+        crate::assets::asset_manager::MediaArchiveMode::STOCK_DIGITAL,
+        false,
+    );
+    let mut audio = test_audio();
+    let mut playback_handle = audio.random_mut().clone();
+    let _ = playback_handle.next_u32();
+    let mut slot = None;
+    let mut startup = crate::app::match_runtime::startup::MatchStartup::default();
+    let mut correlation = 1;
+    let prepared = prepared_startup(&mut correlation, 1234);
+    replace_loading_attempt(
+        &mut slot,
+        &mut startup,
+        &mut assets,
+        &mut audio,
+        LoadingSession::from_request(LoadingRequest::accepted_skirmish(prepared)),
+        10,
+    );
+    assert_eq!(
+        playback_handle.native_state_hex(),
+        expected["rng_before_hex"]["main"].as_str().unwrap()
+    );
+    let next = expected["main_next_four"].as_array().unwrap();
+    assert_eq!(
+        u64::from(playback_handle.next_u32()),
+        next[0].as_u64().unwrap()
+    );
+    assert_eq!(
+        u64::from(audio.random_mut().next_u32()),
+        next[1].as_u64().unwrap()
+    );
+    let before_retirement = audio.random_mut().native_state_hex();
+    retire_loading_attempt(&mut slot, &mut assets);
+    assert_eq!(
+        audio.random_mut().native_state_hex(),
+        before_retirement,
+        "retiring a failed/finished loading lease does not invent another seed"
+    );
 }
 
 #[test]

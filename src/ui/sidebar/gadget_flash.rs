@@ -178,6 +178,16 @@ pub struct SidebarGadgetState {
 }
 
 impl SidebarGadgetState {
+    /// Display4AC8C0(0)/4AC660(0): a pending building placement refuses mode
+    /// changes. Power/planning have no active owner yet; a bare superweapon
+    /// target is independent and is not canceled by these calls.
+    pub(crate) fn disable_selection_modes(&mut self, placement_armed: bool) {
+        if !placement_armed {
+            self.repair_mode_on = false;
+            self.sell_mode_on = false;
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

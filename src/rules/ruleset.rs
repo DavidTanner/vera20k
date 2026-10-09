@@ -3566,6 +3566,9 @@ impl RuleSet {
             .and_then(|section| sounds.read_rules_reference(section, "SpyPlaneCamera"));
         for object in &mut self.object_list {
             let section = ini.section(&object.id);
+            object.voice_select = section.map_or_else(Vec::new, |section| {
+                sounds.read_rules_sound_list(section, "VoiceSelect")
+            });
             if object.category == crate::rules::object_type::ObjectCategory::Building {
                 object.buildup_sound = section
                     .and_then(|section| sounds.read_rules_reference(section, "BuildupSound"));

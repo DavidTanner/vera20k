@@ -9,6 +9,10 @@ A ``sidebar`` gesture names a current ``tab``, ``cameo`` (logical ``type_id``),
 sends ordinary mouse edges; the receipt includes the resolved position and
 before/after views. A nonzero run's L0 snapshot is retained-only; later requested
 snapshots must match the actual view submitted to the renderer.
+
+Literal ``key`` gestures traverse the shared in-game keyboard edge owner with
+the loaded bindings. Their policy also observes local camera/mode/follow state
+and pending selection voice requests without draining the audio owner.
 """
 from __future__ import annotations
 
@@ -47,6 +51,7 @@ CLOCK_POLICY = 'map-exact-step-presentation-v1'
 OBSERVATION_POLICY = 'map-ordinary-command-observation-v4'
 GESTURE_POLICY = 'map-tactical-left-gesture-v1'
 SIDEBAR_GESTURE_POLICY = 'map-local-left-gesture-v2'
+KEYBOARD_GESTURE_POLICY = 'map-local-gesture-v3'
 SIDEBAR_POLICY = 'map-retained-sidebar-observation-v1'
 SIDEBAR_TABS = ('building', 'defense', 'infantry', 'vehicle')
 DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
@@ -240,6 +245,11 @@ def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
         end = _screen_point(gesture['to'], f'{label}.to', extent)
         if start == end:
             raise ValidationError(f'{label} drag endpoints must differ')
+    elif gesture.get('kind') == 'key':
+        require_exact_keys(gesture, ('kind', 'key'), label)
+        key = require_string(gesture['key'], f'{label}.key')
+        if key != 'Escape' and not (len(key) == 1 and key.isascii() and key.isalnum()):
+            raise ValidationError(f'{label}.key must be one ASCII letter/digit or Escape')
     elif gesture.get('kind') == 'sidebar':
         require_exact_keys(gesture, ('kind', 'target'), label)
         target = require_object(gesture['target'], f'{label}.target')
@@ -252,15 +262,21 @@ def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
             require_exact_keys(target, ('kind', 'type_id'), f'{label}.target')
             if not require_string(target['type_id'], f'{label}.target.type_id'):
                 raise ValidationError(f'{label}.target.type_id is empty')
-        elif kind in ('scroll_up', 'scroll_down'):
+        elif kind in ('scroll_up', 'scroll_down', 'repair', 'sell'):
             require_exact_keys(target, ('kind',), f'{label}.target')
         else:
-            raise ValidationError(f'{label}.target.kind must be tab, cameo, scroll_up or scroll_down')
+            raise ValidationError(f'{label}.target.kind must be tab, cameo, scroll_up, scroll_down, repair or sell')
     else:
-        raise ValidationError(f'{label}.kind must be click, drag or sidebar')
+        raise ValidationError(f'{label}.kind must be click, drag, sidebar or key')
+
+
+def _observes_local_input(profile: Mapping[str, Any]) -> bool:
+    return any(row['gesture']['kind'] == 'key' for row in profile.get('gestures', []))
 
 
 def _gesture_policy(profile: Mapping[str, Any]) -> str:
+    if _observes_local_input(profile):
+        return KEYBOARD_GESTURE_POLICY
     return (SIDEBAR_GESTURE_POLICY if any(row['gesture']['kind'] == 'sidebar'
             for row in profile.get('gestures', [])) else GESTURE_POLICY)
 
@@ -884,10 +900,45 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
             raise ValidationError(f'{label}.{key} must be a boolean')
 
 
-def _input_observation(value: Any, label: str) -> int:
+def _local_input_observation(value: Any, label: str) -> int:
+    row = require_object(value, label)
+    require_exact_keys(row, ('camera_top_left', 'camera_zoom', 'follow_target', 'repair_mode',
+                             'sell_mode', 'targeting', 'selection_voice_enabled',
+                             'selection_voice_requests'), label)
+    position = require_array(row['camera_top_left'], f'{label}.camera_top_left')
+    if len(position) != 2:
+        raise ValidationError(f'{label}.camera_top_left must contain exactly two coordinates')
+    for index, number in enumerate((*position, row['camera_zoom'])):
+        if type(number) not in (int, float) or not math.isfinite(number):
+            raise ValidationError(f'{label} camera component {index} must be finite')
+    if row['camera_zoom'] <= 0:
+        raise ValidationError(f'{label}.camera_zoom must be positive')
+    if row['follow_target'] is not None:
+        _bounded_int(row['follow_target'], f'{label}.follow_target', 1, (1 << 64) - 1)
+    for key in ('repair_mode', 'sell_mode', 'selection_voice_enabled'):
+        if type(row[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be boolean')
+    if row['targeting'] is not None:
+        targeting = require_object(row['targeting'], f'{label}.targeting')
+        require_exact_keys(targeting, ('kind', 'type_id'), f'{label}.targeting')
+        if targeting['kind'] not in ('building_placement', 'super_weapon'):
+            raise ValidationError(f'{label}.targeting.kind is unknown')
+        if not require_string(targeting['type_id'], f'{label}.targeting.type_id'):
+            raise ValidationError(f'{label}.targeting.type_id is empty')
+    voices = require_array(row['selection_voice_requests'], f'{label}.selection_voice_requests')
+    for index, value in enumerate(voices):
+        voice_label = f'{label}.selection_voice_requests[{index}]'
+        voice = require_object(value, voice_label)
+        require_exact_keys(voice, ('speaker_id', 'sound_id'), voice_label)
+        _bounded_int(voice['speaker_id'], f'{voice_label}.speaker_id', 1, (1 << 64) - 1)
+        require_string(voice['sound_id'], f'{voice_label}.sound_id')
+    return len(voices)
+
+
+def _input_observation(value: Any, label: str, *, local_input: bool = False) -> int:
     row = require_object(value, label)
     require_exact_keys(row, ('selected_ids', 'selection_pending', 'target_line_remaining',
-                             'target_line_active'), label)
+                             'target_line_active', *(('local_input',) if local_input else ())), label)
     selected = require_array(row['selected_ids'], f'{label}.selected_ids')
     for index, identity in enumerate(selected):
         _bounded_int(identity, f'{label}.selected_ids[{index}]', 1, (1 << 64) - 1)
@@ -900,7 +951,8 @@ def _input_observation(value: Any, label: str) -> int:
                              -(1 << 31), (1 << 31) - 1)
     if row['target_line_active'] and remaining <= 0:
         raise ValidationError(f'{label}.target_line_active requires positive remaining frames')
-    return len(selected)
+    return len(selected) + (_local_input_observation(row['local_input'], f'{label}.local_input')
+                            if local_input else 0)
 
 
 def _sidebar_observation(value: Any, label: str) -> int:
@@ -979,11 +1031,29 @@ def _sidebar_observation(value: Any, label: str) -> int:
 def _sidebar_gesture(value: Any, target: Mapping[str, Any], label: str,
                      extent: tuple[int, int]) -> int:
     receipt = require_object(value, label)
-    require_exact_keys(receipt, ('resolved_position', 'before', 'after'), label)
+    toggle_target = target['kind'] in ('repair', 'sell')
+    require_exact_keys(receipt, ('resolved_position', 'before', 'after',
+                                *(('toggle',) if toggle_target else ())), label)
     count = sum(_sidebar_observation(receipt[key], f'{label}.{key}') for key in ('before', 'after'))
     before = receipt['before']
     kind = target['kind']
-    if kind == 'tab':
+    if toggle_target:
+        toggle = require_object(receipt['toggle'], f'{label}.toggle')
+        require_exact_keys(toggle, ('before', 'after'), f'{label}.toggle')
+        for when in ('before', 'after'):
+            row_label = f'{label}.toggle.{when}'
+            row = require_object(toggle[when], row_label)
+            require_exact_keys(row, ('rect', 'disabled', 'active'), row_label)
+            rect = require_array(row['rect'], f'{row_label}.rect')
+            if len(rect) != 4 or any(type(part) not in (int, float) or not math.isfinite(part)
+                                     for part in rect) or rect[2] < 0 or rect[3] < 0:
+                raise ValidationError(f'{row_label}.rect must be a finite rectangle')
+            for flag in ('disabled', 'active'):
+                if type(row[flag]) is not bool:
+                    raise ValidationError(f'{row_label}.{flag} must be boolean')
+        control = toggle['before']
+        count += 2
+    elif kind == 'tab':
         control = next(tab for tab in before['tabs'] if tab['tab'] == target['tab'])
     elif kind == 'cameo':
         found = [item for item in before['items']
@@ -1027,7 +1097,9 @@ def _sidebar_frames(value: Any, profile: Mapping[str, Any]) -> int:
 def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
     label = 'observations.gesture_input'
     observation = require_object(value, label)
-    require_exact_keys(observation, ('policy', 'equal_step_order', 'tactical_extent', 'receipts'), label)
+    local_input = _observes_local_input(profile)
+    require_exact_keys(observation, ('policy', 'equal_step_order', 'tactical_extent', 'receipts',
+                                     *(('keyboard_bindings',) if local_input else ())), label)
     require_value(observation['policy'], _gesture_policy(profile), f'{label}.policy')
     require_value(observation['equal_step_order'], 'commands_then_gestures', f'{label}.equal_step_order')
     dimensions = require_array(observation['tactical_extent'], f'{label}.tactical_extent')
@@ -1040,29 +1112,58 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
     if len(receipts) != len(requested):
         raise ValidationError(f'{label}.receipts differs from requested gesture count')
     sample_count = 0
+    if local_input:
+        bindings = require_array(observation['keyboard_bindings'], f'{label}.keyboard_bindings')
+        seen_commands = set()
+        for index, value in enumerate(bindings):
+            binding_label = f'{label}.keyboard_bindings[{index}]'
+            binding = require_object(value, binding_label)
+            require_exact_keys(binding, ('command', 'first_key'), binding_label)
+            command = require_string(binding['command'], f'{binding_label}.command')
+            if not command or command in seen_commands:
+                raise ValidationError(f'{binding_label}.command is empty or repeated')
+            seen_commands.add(command)
+            if binding['first_key'] is not None:
+                _bounded_int(binding['first_key'], f'{binding_label}.first_key', 1, (1 << 16) - 1)
+        sample_count += len(bindings)
     for index, (value, request) in enumerate(zip(receipts, requested)):
         row_label = f'{label}.receipts[{index}]'
         row = require_object(value, row_label)
         sidebar = request['gesture']['kind'] == 'sidebar'
+        keyboard = request['gesture']['kind'] == 'key'
         require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
                                  'issued_binary_frame', 'gesture', 'before', 'after',
                                  'left_press_captured', 'band_box_before_release',
                                  'neutral_input_restored', 'queued_commands',
-                                 *(('sidebar',) if sidebar else ())), row_label)
+                                 *(('sidebar',) if sidebar else ()),
+                                 *(('keyboard',) if keyboard else ())), row_label)
         for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
                               ('issued_simulation_tick', request['issue_after_step']),
                               ('issued_binary_frame', request['issue_after_step'])):
             require_value(row[key], expected, f'{row_label}.{key}')
         _require_equal(row['gesture'], request['gesture'], f'{row_label}.gesture')
         _gesture(row['gesture'], f'{row_label}.gesture', extent)
-        for key, expected in (('left_press_captured', True), ('neutral_input_restored', True),
+        for key, expected in (('left_press_captured', not keyboard), ('neutral_input_restored', True),
                               ('band_box_before_release', request['gesture']['kind'] == 'drag')):
             require_value(row[key], expected, f'{row_label}.{key}')
         for key in ('before', 'after'):
-            sample_count += _input_observation(row[key], f'{row_label}.{key}')
+            sample_count += _input_observation(row[key], f'{row_label}.{key}', local_input=local_input)
         if sidebar:
             sample_count += _sidebar_gesture(row['sidebar'], request['gesture']['target'],
                 f'{row_label}.sidebar', (profile['width'], profile['height']))
+        if keyboard:
+            key_label = f'{row_label}.keyboard'
+            receipt = require_object(row['keyboard'], key_label)
+            require_exact_keys(receipt, ('encoded_key', 'binding_command', 'press_held',
+                                        'release_cleared'), key_label)
+            _bounded_int(receipt['encoded_key'], f'{key_label}.encoded_key', 1, (1 << 16) - 1)
+            if receipt['binding_command'] is not None and not require_string(
+                    receipt['binding_command'], f'{key_label}.binding_command'):
+                raise ValidationError(f'{key_label}.binding_command is empty')
+            if receipt['binding_command'] is not None and receipt['binding_command'] not in seen_commands:
+                raise ValidationError(f'{key_label}.binding_command is absent from registered bindings')
+            for field in ('press_held', 'release_cleared'):
+                require_value(receipt[field], True, f'{key_label}.{field}')
         commands = require_array(row['queued_commands'], f'{row_label}.queued_commands')
         sample_count += len(commands)
         for number, value in enumerate(commands):
@@ -1183,7 +1284,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
             _terrain(value, expected, f'{row_label}.terrain[{index}]')
         sample_count += len(actors) + len(missing) + len(terrain)
         if gesture_input:
-            sample_count += _input_observation(row['input'], f'{row_label}.input')
+            sample_count += _input_observation(row['input'], f'{row_label}.input',
+                                                local_input=_observes_local_input(profile))
         if docking_state:
             sample_count += _houses(row['houses'], owners, f'{row_label}.houses',
                                     profile.get('observe_super_weapons', False))

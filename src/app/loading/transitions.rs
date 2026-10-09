@@ -430,30 +430,24 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     // resolves through `From_Name` (`0x004758F0`); -1 -> `Stop(fade=1)` of the
     // LOADING stream, else `Queue_Song(index)`. `Main_Tick` then issues
     // `Queue_Song(-2)` and the audio pump's AI picks the first allowed track
-    // once the fade lands. The shuffle stream is a presentation-side copy of
-    // `g_MainRng` seeded from the match seed (never the sim's own cursor), and
-    // `Is_Allowed`'s `Side=` gate compares the local player's side.
+    // once the fade lands. Theme shares the audio Main RNG seeded before
+    // loading; this tail preserves its consumed draws. `Is_Allowed`'s Side
+    // gate compares the local player's side.
     let music_now_ms = sim_tick::monotonic_frame_pacer_ms(state, std::time::Instant::now());
-    let (match_seed, local_side) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| {
-            let simulation = &rt.simulation;
-            let local_side = state
-                .match_state
-                .local_player_owner()
-                .and_then(|owner| {
-                    crate::sim::house_state::house_state_for_owner(
-                        &simulation.houses,
-                        owner,
-                        &simulation.interner,
-                    )
-                })
-                .map(|house| i32::from(house.side_index));
-            (simulation.session.seed as u32, local_side)
-        })
-        .unwrap_or((0, None));
+    let local_side = state.match_state.sim_runtime.as_ref().and_then(|rt| {
+        let simulation = &rt.simulation;
+        state
+            .match_state
+            .local_player_owner()
+            .and_then(|owner| {
+                crate::sim::house_state::house_state_for_owner(
+                    &simulation.houses,
+                    owner,
+                    &simulation.interner,
+                )
+            })
+            .map(|house| i32::from(house.side_index))
+    });
     // `Side=` names resolve against the live `[Sides]` registry (native
     // `0x004756F0` → `0x006A46D0`); unresolved names never match any player.
     let side_names: Vec<String> = state
@@ -480,7 +474,6 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
         state.audio.request_scenario_theme(
             state.match_state.map_basic.theme.as_deref(),
             assets,
-            match_seed,
             crate::audio::theme::ThemeAllowContext {
                 local_side,
                 // Skirmish (`g_GameMode != 0`) skips the campaign `Scenario=` gate.

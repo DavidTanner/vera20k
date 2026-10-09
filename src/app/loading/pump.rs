@@ -649,6 +649,15 @@ fn replace_loading_attempt(
         .map(|s| s.correlation);
     startup.begin(correlation);
     retire_loading_attempt(slot, assets);
+    // MainPrepareSession52E619 initializes Main from the already-resolved
+    // session seed before Start_Scenario plays LOADING and reads the map.
+    // A Generic request has no seed authority and cannot enter the ordinary
+    // typed fresh-scenario route. Snapshot restore does not come through here.
+    match next.stage.request().startup() {
+        LoadingStartup::Accepted(startup) => audio.begin_scenario_random(startup.seed.value),
+        LoadingStartup::UnverifiedLegacy { seed, .. } => audio.begin_scenario_random(seed.value),
+        LoadingStartup::Generic { .. } => {}
+    }
     *slot = Some(lease_loading_assets_and_play_loading_theme(
         assets, audio, next, now_ms,
     ));

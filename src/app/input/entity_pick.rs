@@ -741,7 +741,7 @@ fn type_select_candidates(
             {
                 return None;
             }
-            let dynamic = can_be_selected_now(entity, entities, rules, interner)
+            let dynamic = selection_dynamic_prefix(entity, entities, rules, interner)
                 && type_is_selectable(type_id, rules)
                 && (!require_playfield_membership || entity.in_playfield);
             let undeploying_building_fallback = entity.category == EntityCategory::Structure
@@ -1004,7 +1004,7 @@ fn entities_in_rect(
             ) {
                 return None;
             }
-            if !can_be_selected_now(entity, entities, rules, interner) {
+            if !selection_dynamic_prefix(entity, entities, rules, interner) {
                 return None;
             }
             Some(entity.stable_id())
@@ -1012,7 +1012,12 @@ fn entities_in_rect(
         .collect()
 }
 
-/// The band-box-only half of the eligibility chain.
+/// Shared prefix of Techno6FC030, used by band, TypeSelect and N/M.
+/// Its final virtual+138 call belongs to `Simulation::object_is_selectable`.
+/// N/M invokes that owner during its candidate walk; every selection mutation
+/// invokes it at final admission. The older band/type candidate builders lack
+/// world context for the disguise branch and retain that candidate-tail gap
+/// until their held migration resumes.
 ///
 /// A single click reaches an object through a shorter chain than a band box
 /// does: only the band path asks `CanBeSelectedNow`, which refuses an object
@@ -1052,7 +1057,7 @@ fn entities_in_rect(
 /// gamemd does not have: it silently dropped GIs out of a box dragged over them
 /// during their deploy animation. That gate is gone; the offline latch itself
 /// waits on the Robot Control Center mechanism, which has no owner yet.
-fn can_be_selected_now(
+pub(crate) fn selection_dynamic_prefix(
     entity: &crate::sim::game_entity::GameEntity,
     entities: &EntityStore,
     rules: Option<&RuleSet>,
@@ -1081,6 +1086,23 @@ fn can_be_selected_now(
         return false;
     }
     true
+}
+
+/// Techno virtual+64, original6F32D0. Discovery is retained +41B, not the
+/// current fog tile or viewport. House50B6F0 owns campaign/current-house policy.
+/// This gate does not read Alive, Foot+6AD or Techno+270; later virtuals do.
+pub(crate) fn is_local_player_selectable_object(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&RuleSet>,
+    entity: &crate::sim::game_entity::GameEntity,
+) -> bool {
+    entity.health.current > 0
+        && !entity.lifecycle.in_limbo
+        && entity.in_playfield
+        && entity.category != EntityCategory::Structure
+        && entity.discovery.discovered_by_current_house
+        && type_is_selectable(sim.interner.resolve(entity.type_ref()), rules)
+        && sim.house_is_human_player(entity.owner())
 }
 
 /// Does a building's footprint cover this cell? The native lookup asks the cell
@@ -1274,8 +1296,9 @@ fn static_selection_gate(
         && entity.health.current > 0
         && !entity.lifecycle.in_limbo
         && !entity.is_warped_out()
-        // `TechnoClass::Select @ 0x006F32D0` requires the stored +0x3D5
-        // membership byte. The app supplies the live MapClass authority gate;
+        // The mouse/type caller's aggregate admission includes +0x3D5.
+        // This helper is not the complete virtual+64; see its owner above.
+        // The app supplies the live MapClass authority gate;
         // headless selection fixtures leave it disabled.
         && (!require_playfield_membership || entity.in_playfield)
         && type_is_selectable(entity_type, rules)
@@ -1427,7 +1450,7 @@ mod tests {
         let entities = EntityStore::new();
 
         assert!(
-            can_be_selected_now(&entity, &entities, Some(&rules), Some(&interner)),
+            selection_dynamic_prefix(&entity, &entities, Some(&rules), Some(&interner)),
             "an idle object is selectable"
         );
         for doing in [27, 31] {
@@ -1436,7 +1459,7 @@ mod tests {
                 .set_infantry_doing_verified(doing)
                 .unwrap();
             assert!(
-                can_be_selected_now(&entity, &entities, Some(&rules), Some(&interner)),
+                selection_dynamic_prefix(&entity, &entities, Some(&rules), Some(&interner)),
                 "gamemd has no deploy-transition clause here"
             );
         }

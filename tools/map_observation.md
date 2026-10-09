@@ -318,12 +318,99 @@ ordinary left mouse press/release edges through the production gadget router:
 ```
 
 Other targets are `{"kind":"cameo","type_id":"MTNK"}`,
-`{"kind":"scroll_down"}` and `{"kind":"scroll_up"}`. Cameos must already
+`{"kind":"scroll_down"}`, `{"kind":"scroll_up"}`, `{"kind":"repair"}` and
+`{"kind":"sell"}`. Repair/sell targets click their actual retained toggle
+buttons, not a guessed keyboard shortcut. Their gesture receipts add `toggle`
+before/after rectangles, disabled bits and active latches; historical strip and
+frame receipt shapes remain unchanged. Cameos must already
 be visible; scroll controls must be enabled. Each receipt records the target's
 resolved coordinates and before/after views. Commands created by a cameo click
 still use the ordinary synchronized command scheduler. This observes Rust
 production integration; native ordering comparisons are owned by the
 [sidebar oracle](sidebar_oracle/cameo_order.md), with their separate bounds.
+
+## Literal keyboard gestures
+
+A v2 profile can send a literal key press and release through the same in-game
+keyboard edge owner used by `WindowEvent::KeyboardInput`:
+
+```json
+{
+  "issue_after_step": 10,
+  "gesture": {"kind": "key", "key": "N"}
+}
+```
+
+Keys are one ASCII letter or digit, or `Escape`. They carry no modifiers and
+are not command names. The loaded `KEYBOARDMD.INI` bindings and registered
+startup defaults resolve them in production. Each keyboard receipt reports the
+production `encoded_key`, resolved registered `binding_command` (or `null`),
+and observed held-key press/release state. The capture never dispatches a
+semantic hotkey command directly. `Escape` can cancel ordinary world modes;
+an input that opens a menu leaves the capture's admitted in-game state and fails.
+The gesture transcript also records the startup `keyboard_bindings` table in
+registered command order: each INI command name and its loaded `first_key`, or
+`null` when unbound. This uses the production binding owner rather than parsing
+the retail file again. Individual key receipts resolve their actual binding,
+including any additional binding that is not the command's first key.
+
+Multiple key gestures with the same `issue_after_step` execute in profile order
+before another simulation step. For example, two `N` rows then an `M` row can
+observe immediate pending selection changes without a command-drain tick between
+them. Every gesture releases its key before the next one; OS autorepeat and held
+keys across frames are outside this profile's coverage. The sealed neutral cursor
+and all ordinary idle-input checks still apply. A neutral sidebar location can
+keep placement or repair cursors out of the tactical viewport during observations.
+
+Profiles containing a key gesture use `map-local-gesture-v3`. Their existing
+per-frame and before/after input receipts add `local_input`: current camera
+top-left and zoom, follow target, repair/sell modes, targeting kind and type,
+the selection-voice gate, and ordered pending `UnitSelected` voice requests.
+These values come from the existing input/sidebar/audio owners. Voice requests
+are observed without draining the queue and do not prove audible playback.
+They count toward the retained-sample budget. Ordered `selected_ids` and
+`selection_pending` continue to report the existing optimistic input selection,
+separately from commands queued for the next simulation step.
+
+Mouse-only profiles retain their previous policies and receipt shapes. Keyboard
+and sidebar/tactical gestures may share one profile; all its input observations
+then include the extended local state. No save/load state replacement is added
+to this harness.
+
+The selection-navigation profiles use authored clear-ground maps with unchanged
+retail type rules and assets. They disable starting MCVs and starting units, place
+a construction yard, power plant and barracks for the local player, and retain an
+opponent power plant. No refinery or automatic starting army adds another local
+selection candidate. The ordinary map reader creates one MTNK and two E1s at
+distinct cells; the singleton variant creates just one E1.
+
+| Profile | Input route and observations to check |
+| --- | --- |
+| [Selection and modes](input_oracle/profiles/selection-navigation.json) | Sequential N/M, then N,N,M at step 4 before another tick; real Repair then N at step 5 and Sell then M at step 6; both directions wrap. Match immediate ordered selection, queued commands, camera and voice requests to the actual local actors. No building is sold. |
+| [Singleton Follow](input_oracle/profiles/selection-navigation-singleton.json) | N selects the sole E1, F arms Follow, and N reselects it; F then M repeats the cleanup. The selected identity stays the same while Follow clears. |
+| [Pending placement](input_oracle/profiles/selection-navigation-placement.json) | Defense tab and GAWALL cameo start normal production. After a conservative wait, N selects, F follows, and the ready cameo arms placement at step 500. N then M at that same step must leave placement armed, clear selection and Follow, and add no selection voice. Escape then cancels placement before a final N. |
+
+Run the selection-and-modes profile first. Its loaded `keyboard_bindings` and
+per-key resolutions must establish N→NextObject and M→PreviousObject. **F is a
+provisional literal** in the other two profiles: inspect the loaded binding
+catalog and require its receipt to resolve to Follow before counting that case.
+Likewise require Escape→Options before counting cancellation. If a local binding
+differs, change the literal in a scratch profile; do not dispatch the command
+directly or modify the binding to force the result.
+
+Copy each profile to scratch and replace `launch.selected_map_file` with the
+absolute path of its tracked `.mpr` before running the ordinary capture command.
+The placement witness counts only if the second GAWALL click observes
+`is_ready=true` and its after receipt shows `building_placement` for GAWALL.
+The wait is a capture budget, not a native production-time golden. Every gesture
+receipt has immediate before/after state; a requested frame at step N precedes
+the gestures scheduled after that step. The profile schema has no expected-result
+field, so a structurally valid receipt alone does not establish these outcomes.
+
+These are production integration witnesses. The independent
+[native selection corpus](input_oracle/selection_navigation.md) supplies the
+executed search, command-history and voice references. Production actor IDs and
+camera pixels must come from the loaded map, not the oracle's fixture identities.
 
 ## War Miner Attack return observation
 
