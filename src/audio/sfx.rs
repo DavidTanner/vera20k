@@ -69,7 +69,14 @@ use observation::{PcmObserver, VoiceLatchState};
 /// sustaining cues. Downstream risk: this changes interleaving on the shared
 /// process Main RNG with other sound, Theme and visual draws. The two-GI
 /// acknowledgement comparison uses one-shot cues and does not cover this
-/// device callback schedule or establish parity for looping cues.
+/// device callback schedule or establish parity for looping cues. Native
+/// start also calls PreparePlayout twice (`0x004045D1`, `0x00404673`),
+/// resetting the playlist each time; random multiple-middle-sample cues can
+/// draw at `0x004047EA` in both calls. The cached Rust start prepares once.
+/// Trigger: an admitted random cue with multiple loaded middle samples.
+/// Effect/risk: a missing first-selection Main draw changes later cosmetic
+/// choices. Retail frequency is not established. GI RANDOM one-shots load
+/// one middle sample, so both native equal-bound requests draw no raw word.
 const LOOP_QUEUE_DEPTH: usize = 2;
 
 /// `VocClass::CalcVolumeAndPan @ 0x00750AC0` (`0x00750B0F..0x00750B17`):
@@ -715,10 +722,14 @@ struct ResolvedPlayback {
 ///
 /// gamemd-derived: `OptionsClass::SetDefaults @ 0x005FA350` and
 /// `OptionsClass__ReadFromINI @ 0x005FA620` retain independent SoundVolume and
-/// VoiceVolume settings; ordinary/animation effects use Sound while unit and
-/// EVA speech use Voice.
+/// VoiceVolume settings. All ordinary Voc events, including Techno voices,
+/// bind channel+94 to SoundVolume `[0x0087E748]` at `0x00405B91..0x00405B96`.
+/// The Techno caller passes unity (`0x006F9EE5..0x006F9EF0`) to `750920`,
+/// which creates that ordinary event at `0x007509A3 -> 0x00405190`.
+/// `SetSoundVolume` updates its group at `0x005FA53E..0x005FA546`;
+/// `SetVoiceVolume` instead updates the EVA group at `0x005FA5D3..0x005FA5DB`.
 ///
-/// A Voc channel (`Sound`, `Voice`) is also chained to the many-sounds scaler
+/// A Voc channel (`Sound`) is also chained to the many-sounds scaler
 /// (`ch+0x98`, `0x0087E1B8`) and the audio master (`ch+0x9C`, the group
 /// `[0x0087E758]` stored at `SoundEvent::UpdateState 0x0040571E` and
 /// `0x00405B9C`). The EVA `StreamPlayer` is not: `VoxClass::Init @
@@ -732,7 +743,6 @@ struct ResolvedPlayback {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SfxChannel {
     Sound,
-    Voice,
     /// The EVA stream: Voice master only. `[0x0087E750]` is taken as unity —
     /// RESIDUAL: its only writers are the score dialog's fades
     /// (`0x005BEE27..0x005BF5A8`), which VERA's score screen does not run.
@@ -785,7 +795,7 @@ impl SfxOutputGain {
     fn effective(self, scales: SfxOutputScales) -> f32 {
         let master = match self.channel {
             SfxChannel::Sound => scales.sound_volume,
-            SfxChannel::Voice | SfxChannel::EvaStream => scales.voice_volume,
+            SfxChannel::EvaStream => scales.voice_volume,
         };
         let master_linear = X87Chop53::ftol_f64_low_masked(
             f64::from(master.clamp(0.0, 1.0)) * f64::from(VOLUME_SCALE),
@@ -835,19 +845,6 @@ fn prepare_normal_sfx_output(
     PreparedSfxOutput::new(
         decoded,
         SfxOutputGain::new(base_linear, SfxChannel::Sound),
-        scales,
-    )
-}
-
-#[cfg(test)]
-fn prepare_direct_voice_output(
-    decoded: DecodedAudio,
-    base_linear: i32,
-    scales: SfxOutputScales,
-) -> PreparedSfxOutput {
-    PreparedSfxOutput::new(
-        decoded,
-        SfxOutputGain::new(base_linear, SfxChannel::Voice),
         scales,
     )
 }
@@ -1100,9 +1097,9 @@ pub struct SfxPlayer {
     /// The per-object voice latch: `TechnoClass::Queue_Voice @ 0x00708D90`
     /// writes it, `TechnoClass::AI_Update @ 0x006F9EBB` drains it.
     voice_queue: VoiceQueue,
-    /// Ordinary and animation SFX master volume (0.0 to 1.0).
+    /// Ordinary effects and unit acknowledgement master volume (0.0 to 1.0).
     sound_volume: f64,
-    /// Unit and EVA voice master volume (0.0 to 1.0).
+    /// EVA announcement master volume (0.0 to 1.0).
     voice_volume: f64,
     /// Temporary app-lifecycle multiplier over every live SFX/voice output.
     output_scale: f32,
@@ -1483,7 +1480,7 @@ impl SfxPlayer {
                 EntryFacts::from(entry),
                 entry.volume_linear,
                 PAN_CENTRE,
-                SfxChannel::Voice,
+                SfxChannel::Sound,
             );
             self.arbiter
                 .set_loop_handle(handle, admitted, &registry_key(&entry.id));
@@ -2039,7 +2036,7 @@ impl SfxPlayer {
         }
     }
 
-    /// Compatibility setter: apply one master to both SFX and voice channels.
+    /// Compatibility setter: apply one master to ordinary effects and EVA.
     pub fn set_volume(&mut self, volume: f64) {
         let volume = volume.clamp(0.0, 1.0);
         self.sound_volume = volume;
@@ -2047,13 +2044,13 @@ impl SfxPlayer {
         self.apply_live_output_scales();
     }
 
-    /// Set the ordinary and animation SFX master volume.
+    /// Set the ordinary effects and unit acknowledgement master volume.
     pub fn set_sound_volume(&mut self, volume: f64) {
         self.sound_volume = volume.clamp(0.0, 1.0);
         self.apply_live_output_scales();
     }
 
-    /// Set the unit and EVA voice master volume.
+    /// Set the EVA announcement master volume.
     pub fn set_voice_volume(&mut self, volume: f64) {
         self.voice_volume = volume.clamp(0.0, 1.0);
         self.apply_live_output_scales();
@@ -2157,7 +2154,7 @@ impl SfxPlayer {
         self.sound_volume
     }
 
-    /// Get the current unit and EVA voice master volume.
+    /// Get the current EVA announcement master volume.
     pub fn voice_volume(&self) -> f64 {
         self.voice_volume
     }
@@ -3058,17 +3055,17 @@ mod tests {
     /// The user master is chained into the linear product before the
     /// DirectSound curve, so half master is -10 dB, not half amplitude.
     #[test]
-    fn options_profile_production_routes_sound_and_direct_voice_independently() {
+    fn options_profile_production_routes_sound_and_eva_independently() {
         let half = native_volume_amplitude(8192);
         for (sound_volume, voice_volume, expected_sound, expected_voice) in
             [(0.0, 1.0, 0.0, half), (1.0, 0.0, half, 0.0)]
         {
             let scales = test_output_scales(sound_volume, voice_volume, 1.0, 1.0);
             let sound = prepare_normal_sfx_output(test_decoded_audio(), 8192, scales);
-            let direct_voice = prepare_direct_voice_output(test_decoded_audio(), 8192, scales);
+            let eva = prepare_eva_stream_output(test_decoded_audio(), 8192, scales);
 
             assert_eq!(sound.initial_volume, expected_sound);
-            assert_eq!(direct_voice.initial_volume, expected_voice);
+            assert_eq!(eva.initial_volume, expected_voice);
         }
         let full = prepare_normal_sfx_output(
             test_decoded_audio(),
@@ -3108,14 +3105,14 @@ mod tests {
     fn scenario_exit_master_fade_leaves_the_eva_stream_alone() {
         let full = native_volume_amplitude(13107);
         let faded = test_output_scales(1.0, 1.0, 0.25, 1.0);
-        let voice = prepare_direct_voice_output(test_decoded_audio(), 13107, faded);
+        let voice = prepare_normal_sfx_output(test_decoded_audio(), 13107, faded);
         assert!((voice.initial_volume - full * 0.25).abs() < f32::EPSILON);
         let eva = prepare_eva_stream_output(test_decoded_audio(), 13107, faded);
         assert!((eva.initial_volume - full).abs() < f32::EPSILON);
 
         let silenced = test_output_scales(1.0, 1.0, 0.0, 1.0);
         assert_eq!(
-            prepare_direct_voice_output(test_decoded_audio(), 13107, silenced).initial_volume,
+            prepare_normal_sfx_output(test_decoded_audio(), 13107, silenced).initial_volume,
             0.0
         );
         assert!(
@@ -3130,7 +3127,7 @@ mod tests {
             ..test_output_scales(1.0, 1.0, 1.0, 1.0)
         };
         assert!(
-            prepare_direct_voice_output(test_decoded_audio(), 13107, limited).initial_volume < full
+            prepare_normal_sfx_output(test_decoded_audio(), 13107, limited).initial_volume < full
         );
         assert!(
             (prepare_eva_stream_output(test_decoded_audio(), 13107, limited).initial_volume - full)
@@ -3156,6 +3153,102 @@ mod tests {
         assert!(!player.voices_active());
     }
 
+    /// The original ordinary event binds channel+94 to SoundVolume at
+    /// 405B91..405B96, also for Techno's unity-gain call at6F9EE5..6F9EF0.
+    /// Exercise actual queued/reached playback, live setters and device pulls
+    /// with opposite masters; equal defaults would hide a wrong group.
+    #[test]
+    fn reached_unit_voice_uses_sound_master_at_start_and_during_playback() {
+        let Some((_root, assets)) = crate::rules::retail_ini_fixture::retail_assets() else {
+            return;
+        };
+        let Some(mut player) = SfxPlayer::new() else {
+            return;
+        };
+        let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+        let loaded_index = assets.load_audio_index().expect("retail audio index");
+        let index = loaded_index.as_ref().map(|loaded| &loaded.index);
+        let mut service = TestAudioService::default();
+        for (now, sound_volume, voice_volume, audible) in
+            [(1_000, 0.0, 1.0, false), (2_000, 1.0, 0.0, true)]
+        {
+            player.set_sound_volume(sound_volume);
+            player.set_voice_volume(voice_volume);
+            player
+                .observe_pcm(PcmObservationConfig {
+                    sound_ids: vec!["GIMove".into()],
+                    max_events: 1,
+                    max_samples_per_event: 262_144,
+                })
+                .unwrap();
+            player.queue_unit_voice(7, "GIMove");
+            player.visit_unit_voice(7, definitions.sounds());
+            service.pump(&mut player, now, definitions.sounds(), &assets, index);
+            assert!(player.play_eva(
+                "EVA_UnitReady",
+                None,
+                definitions.eva(),
+                EvaSide::Allied,
+                definitions.sounds(),
+                &assets,
+                index,
+            ));
+            assert_eq!(
+                player.eva_player.as_ref().unwrap().player.volume() > 0.0,
+                voice_volume > 0.0,
+                "EVA retains its independent VoiceVolume group"
+            );
+            let event = player
+                .arbiter
+                .validate_loop_handle(HandleOwner::UnitVoice(7))
+                .expect("reached head has an admitted handle");
+            let started_gain = player.live[&event].player.volume();
+            assert_eq!(
+                started_gain > 0.0,
+                audible,
+                "unit voice must use SoundVolume={sound_volume}, not VoiceVolume={voice_volume}"
+            );
+            player.set_voice_volume(1.0 - voice_volume);
+            assert_eq!(player.live[&event].player.volume(), started_gain);
+            assert_eq!(
+                player.eva_player.as_ref().unwrap().player.volume() > 0.0,
+                voice_volume == 0.0
+            );
+            player.set_voice_volume(voice_volume);
+            if audible {
+                player.set_sound_volume(0.0);
+                assert_eq!(player.live[&event].player.volume(), 0.0);
+                player.set_sound_volume(sound_volume);
+                assert_eq!(player.live[&event].player.volume(), started_gain);
+            }
+            player.live[&event].player.sleep_until_end();
+            player.report_finished_outputs();
+            let report = player.finish_pcm_observation().unwrap();
+            assert!(!report.truncated);
+            assert_eq!(report.outputs.len(), 1);
+            let output = &report.outputs[0];
+            assert!(output.sample_bits.len() >= output.source_sample_count);
+            assert!(output.source_sample_count > 0);
+            assert!(
+                output
+                    .sample_bits
+                    .iter()
+                    .all(|bits| f32::from_bits(*bits).is_finite())
+            );
+            let nonzero = output
+                .sample_bits
+                .iter()
+                .filter(|bits| f32::from_bits(**bits) != 0.0)
+                .count();
+            assert_eq!(nonzero > 0, audible, "post-Player device pulls");
+            eprintln!(
+                "GI SoundVolume={sound_volume} VoiceVolume={voice_volume}: {} pulls, {nonzero} nonzero",
+                output.sample_bits.len()
+            );
+            player.stop_all();
+        }
+    }
+
     /// Original two-E1 QueueVoice708D90 -> AI6F9EBB -> PlayAtPos750920
     /// admits two distinct state-0 SoundEvents before either sample starts.
     #[test]
@@ -3166,7 +3259,7 @@ mod tests {
         let Some(mut player) = SfxPlayer::new() else {
             return;
         };
-        player.set_voice_volume(0.0);
+        player.set_volume(0.0);
         let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
         player.queue_unit_voice(3, "GIMove");
         player.queue_unit_voice(2, "GIMove");
@@ -3194,7 +3287,7 @@ mod tests {
         let Some(mut player) = SfxPlayer::new() else {
             return;
         };
-        player.set_voice_volume(0.0);
+        player.set_volume(0.0);
         let mut service = TestAudioService::default();
         let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
         let loaded_index = assets.load_audio_index().expect("selected audio index");
