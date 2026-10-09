@@ -1484,15 +1484,17 @@ impl ProjectileStore {
         projectile.on_bridge = on_bridge;
     }
 
-    /// Advance every currently admitted projectile in ascending stable id.
+    /// Test adapter for a supplied projectile-store boundary in stable-id order.
     ///
     /// `target_positions` must contain live entity targets in lepton space.
     /// `terrain` supplies the current CellClass ground surface and live
-    /// structural bit for stable cell targets; headless callers may omit it
-    /// and receive the flat fallback.
+    /// structural bit for stable cell targets; omitted terrain supplies a flat
+    /// test surface. This adapter omits world Trailer construction, live Logic
+    /// ordering and the world's retirement transaction.
     /// `collides_at` is a world-owned terrain/wall admission predicate for the
-    /// candidate next coordinate; object collision remains a later port.
-    pub fn advance(
+    /// candidate next coordinate; ordinary object collision is not supplied.
+    #[cfg(test)]
+    pub(crate) fn advance(
         &mut self,
         binary_frame: u32,
         target_positions: &BTreeMap<u64, ProjectileCoord>,
@@ -1560,6 +1562,9 @@ impl ProjectileStore {
         Some(ProjectileAiHead { id, phase })
     }
 
+    /// Test adapter joining the shared AI head and continuation without the
+    /// world's intervening Trailer constructor or retirement transaction.
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn advance_one(
         &mut self,

@@ -79,8 +79,14 @@ The [projectile trailer discovery profile](projectile_oracle/profiles/projectile
 loads an authored water scene with unchanged retail SUB and LCRF rules. Use it
 to confirm stable actor IDs before the ordinary `Attack` in the
 [trajectory profile](projectile_oracle/profiles/projectile-trailer.json).
+Copy these profiles to scratch and replace `launch.selected_map_file` with the
+absolute path of the tracked
+[`projectile-trailer.mpr`](projectile_oracle/profiles/projectile-trailer.mpr)
+in the checkout before running the capture command. Relative map names resolve
+under the retail directory, not the capture checkout.
 The [flight profile](projectile_oracle/profiles/projectile-trailer-flight.json)
-uses the same command and shorter endpoint for a GPU readback during flight.
+records the first 40 steps, with a GPU readback of surviving bubbles after
+impact. The longer trajectory profile follows their final cleanup.
 Its [observer-off control](projectile_oracle/profiles/projectile-trailer-flight-no-effects.json)
 omits only the effect fields, allowing final state and GPU bytes to be compared.
 The trajectory and flight profiles follow the production `SubTorpedo` path and
