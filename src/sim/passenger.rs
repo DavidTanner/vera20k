@@ -894,15 +894,15 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
     let Some(building) = sim.substrate.entities.get(building_id) else {
         return false;
     };
-    let Some(cargo) = building.passenger_role.cargo() else {
-        return false;
-    };
+    // Zero-capacity types have no allocated Rust cargo. Native458272 tests
+    // the empty occupant vector without requiring MaxNumberOccupants > 0.
+    let cargo = building.passenger_role.cargo();
     let current_owner = building.owner();
-    let cargo_empty = cargo.is_empty();
+    let cargo_empty = cargo.is_none_or(PassengerCargo::is_empty);
     //458313 reads Occupants[0], the earliest admission. The retained cargo
     //representation stores it at the tail; firing/ejection ordering is a
     //separate residual recorded on PassengerCargo.
-    let first_passenger = cargo.passengers.last().copied();
+    let first_passenger = cargo.and_then(|cargo| cargo.passengers.last().copied());
 
     let Some(civilian_owner) = sim.civilian_side_house(rules) else {
         // A malformed roster can leave the native empty arm passing NULL to

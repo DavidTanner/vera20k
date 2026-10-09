@@ -305,3 +305,76 @@ fn frame_reports_building_allegiance_from_the_live_object_pass() {
             .ownership_changed
     );
 }
+
+#[test]
+fn zero_capacity_map_garrison_abandons_without_allocated_cargo() {
+    use crate::rules::process_owner::NativeRulesProcessOwner;
+    use crate::rules::sound_ini::SoundRegistry;
+    use std::sync::Arc;
+
+    let root = IniFile::from_str(
+        "[BuildingTypes]\n0=B\n[Sides]\nAllied=Player\nCivilian=Town\n\
+         [B]\nStrength=100\nTechLevel=-1\nCanBeOccupied=yes\nMaxNumberOccupants=10\n\
+         [Animations]\n0=N\n[AudioVisual]\nBuildingAbandonedSound=Abandon\n",
+    );
+    let art_ini = IniFile::from_str("[B]\nFoundation=1x1\nActiveAnim=N\n[N]\nLoopCount=-1\n");
+    let sounds = SoundRegistry::from_ini(&IniFile::from_str("[SoundList]\n0=Abandon\n"));
+    let mut process = NativeRulesProcessOwner::from_cold_start_sources(
+        root,
+        None,
+        art_ini.clone(),
+        Arc::new(sounds),
+    )
+    .unwrap();
+    let (mut rules, _, _, _) = process
+        .load_noncampaign_scenario(None, &IniFile::from_str("[B]\nMaxNumberOccupants=0\n"))
+        .unwrap()
+        .into_parts();
+    assert_eq!(rules.object("B").unwrap().max_number_occupants, 0);
+    let mut art = ArtRegistry::from_ini(&art_ini);
+    art.bind_anim_frame_count_for_test("N", 40);
+    rules.install_art_data(art);
+    let mut sim = Simulation::new();
+    crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+    for (name, human) in [("Player", true), ("Town", false)] {
+        let owner = sim.interner.intern(name);
+        let side = rules
+            .side_index(if human { "Allied" } else { "Civilian" })
+            .unwrap()
+            .0;
+        sim.houses
+            .insert(owner, HouseState::new(owner, side, None, human, 0, 10));
+        sim.session.house_order.push(owner);
+        if human {
+            sim.session.current_house = Some(owner);
+        }
+    }
+    // Use the production constructor: unlike the corpus fixture, it represents
+    // zero capacity without PassengerCargo. Native458272 tests only vector count.
+    let id = sim.spawn_object("B", "Player", 10, 11, 0, &rules).unwrap();
+    assert!(
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .passenger_role
+            .cargo()
+            .is_none()
+    );
+    let old_anim = sim
+        .set_building_anim_slot(id, 3, false, false, 0, &rules)
+        .unwrap();
+    sim.sound_events.clear();
+    sim.object_ai_visit_one(id, Some(&rules), ObjectAiCtx::default());
+
+    let building = sim.substrate.entities.get(id).unwrap();
+    assert_eq!(sim.interner.resolve(building.owner()), "Town");
+    assert_ne!(building.building_anim_slots[3], Some(old_anim));
+    assert!(sim.sound_events.iter().any(|event| matches!(event,
+        SimSoundEvent::VocCentered { sound_id } if sound_id == "Abandon"
+    )));
+    assert!(sim.sound_events.iter().any(|event| matches!(event,
+        SimSoundEvent::StructureAbandoned { owner, .. }
+            if sim.interner.resolve(*owner) == "Player"
+    )));
+}
