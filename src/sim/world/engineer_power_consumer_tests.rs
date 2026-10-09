@@ -103,7 +103,7 @@ fn fixture(radar: bool) -> (Simulation, RuleSet, InternedId) {
          RepairStep=8\nRepairPercent=15%\nRepairRate=.016\n\
          SpeakDelayIsInAudioVisual=yes\n[AudioVisual]\nSpeakDelay=2\n\
          ConditionYellow=50%\nConditionRed=25%\n\
-         [AI]\nCreditReserve=100\nBuildPower=GAPOWR,GAPOWR,GAPOWR\n\
+         [AI]\nCreditReserve=100\nBuildConst=GAPOWR,GAPOWR,GAPOWR\n\
          [IQ]\nRepairSell=1\nSellBack=2\n[Countries]\n0=Americans\n\
          [Americans]\nSide=GDI\n[VehicleTypes]\n0=PENDING\n\
          [PENDING]\nCost=600\nStrength=100\nTechLevel=1\n\
@@ -133,6 +133,28 @@ fn fixture(radar: bool) -> (Simulation, RuleSet, InternedId) {
     building(&mut sim, DRAIN, owner, "DRAIN", 500);
     building(&mut sim, RADAR, owner, "RADAR", 500);
     building(&mut sim, PRODUCER, owner, "FACTORY", 500);
+    // The native House supplies the counters its readers take: `+0x5550`
+    // holds one GAPOWR, the type of the three `Rules+0x8B0` (`BuildConst=`)
+    // entries the low-power advice tests, and the producer's vehicle factory
+    // counter `+0x5380` is one.
+    let gapowr = sim.interner.intern("GAPOWR");
+    let house = sim.houses.get_mut(&owner).unwrap();
+    house
+        .tracking
+        .set_active_for_test(EntityCategory::Structure, gapowr, 1);
+    sim.substrate
+        .entities
+        .get_mut(PRODUCER)
+        .unwrap()
+        .tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
+        EntityCategory::Structure,
+        rules.object("FACTORY"),
+        Some(&rules),
+    );
+    sim.update_house_tracking(
+        PRODUCER,
+        crate::sim::house_tracking::HouseTracking::increment_factory_count,
+    );
     (sim, rules, owner)
 }
 
@@ -497,11 +519,18 @@ fn native_local_low_power_advice_guard_and_eight_speed_delay_values() {
         sim.session.binary_frame = 196;
         sim.session.game_options.game_speed = input["speed"].as_i64().unwrap_or(1) as i32;
         sim.houses.get_mut(&owner).unwrap().eva_low_power_guard = int(&input["guard"]) != 0;
-        if input["count"] == 0 {
-            // Supply absence of the counted BuildPower type, independently
-            // of the retained House power totals. No removal path is claimed.
-            sim.substrate.entities.remove(PLANT);
-        }
+        // The supplied `+0x5550` GAPOWR count, independent of the retained
+        // House power totals.
+        let gapowr = sim.interner.intern("GAPOWR");
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .tracking
+            .set_active_for_test(
+                EntityCategory::Structure,
+                gapowr,
+                input["count"].as_i64().unwrap_or(1) as i32,
+            );
         let mut state = PowerState::default();
         state.total_output = int(&input["power"][0]);
         state.total_drain = int(&input["power"][1]);

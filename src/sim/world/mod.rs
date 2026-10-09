@@ -4899,6 +4899,17 @@ impl Simulation {
             entity.has_been_captured = true;
             entity.repairing = false;
         }
+        // A factory leaves the old house's counter (Recount, `0x0044870E`)
+        // and joins the new one's (IncrementFactoryCount, `0x00448CDD`),
+        // whether it is in limbo or not.
+        if let Some(entity) = self.substrate.entities.get(stable_id) {
+            if let Some(house) = self.houses.get_mut(&old_owner) {
+                house.tracking.recount(entity);
+            }
+            if let Some(house) = self.houses.get_mut(&new_owner) {
+                house.tracking.increment_factory_count(entity);
+            }
+        }
         // A Helipad's docks leave the old house's AirportDocks
         // (`0x00448B4C..0x00448B6A`) and join the new one's
         // (`0x00449229..0x00449245`), whether it has opened or not.

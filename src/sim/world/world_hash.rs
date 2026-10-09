@@ -933,6 +933,11 @@ impl Simulation {
                 b"house-airport-docks-v1".hash(hasher);
                 docks.hash(hasher);
             }
+            let factories = house.tracking.factories();
+            if factories != [0; 5] {
+                b"house-factory-counters-v1".hash(hasher);
+                factories.hash(hasher);
+            }
             if house.strategy_timer != crate::sim::house_state::strategy_timer_at_construction() {
                 b"house-strategy-timer-v1".hash(hasher);
                 house.strategy_timer.hash(hasher);

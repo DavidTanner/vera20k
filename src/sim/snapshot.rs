@@ -898,7 +898,10 @@ use crate::sim::world::Simulation;
 // records lack it.
 // 312 -> 313: the house score (+0x54E8) is one Economy field; MatchStatistics
 // drops its kill half. Prior records cannot resume.
-const SNAPSHOT_VERSION: u32 = 313;
+// 313 -> 314: HouseTracking saves the house's factory counters
+// (+0x5378..+0x5388) and each building its factory counter. Prior records
+// lack them.
+const SNAPSHOT_VERSION: u32 = 314;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3930,7 +3933,8 @@ mod tests {
         // 310 -> 311: the legacy dock Launching phase.
         // 311 -> 312: the house's AirportDocks.
         // 312 -> 313: the house's one score.
-        assert_eq!(super::SNAPSHOT_VERSION, 313);
+        // 313 -> 314: the house's factory counters.
+        assert_eq!(super::SNAPSHOT_VERSION, 314);
     }
 
     #[test]

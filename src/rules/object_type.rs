@@ -151,6 +151,15 @@ pub enum FactoryType {
 
 impl FactoryType {
     /// Parse the Factory= INI value (case-insensitive).
+    ///
+    /// RESIDUAL: native reads `Factory=` through `INIClass::ReadFactory @
+    /// 0x00474FF0`, the case-insensitive class-name table of
+    /// `AbstractType_From_Name @ 0x0040DCE0`, so the object class names
+    /// (`Unit`, `Infantry`, ...) and every other class parse too; VERA keeps
+    /// the four type names and reads anything else as no factory. Trigger: a
+    /// rules or map INI naming another class. Effect: each reader compares
+    /// that class its own way natively. Frequency: none in retail (all 14
+    /// `rulesmd.ini` `Factory=` values are type names).
     pub fn from_ini(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "buildingtype" => Some(Self::BuildingType),
@@ -158,6 +167,16 @@ impl FactoryType {
             "unittype" => Some(Self::UnitType),
             "aircrafttype" => Some(Self::AircraftType),
             _ => None,
+        }
+    }
+
+    /// The factory that builds an object of `category`: its type class.
+    pub const fn for_category(category: ObjectCategory) -> Self {
+        match category {
+            ObjectCategory::Infantry => Self::InfantryType,
+            ObjectCategory::Vehicle => Self::UnitType,
+            ObjectCategory::Aircraft => Self::AircraftType,
+            ObjectCategory::Building => Self::BuildingType,
         }
     }
 }

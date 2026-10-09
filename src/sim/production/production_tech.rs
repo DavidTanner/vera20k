@@ -187,31 +187,6 @@ pub(super) fn is_production_factory(
     }
 }
 
-/// The owner's live factories for `category`, as the House factory counters
-/// hold them for `Time_To_Build`'s MultipleFactory loop (`0x00500910`): a
-/// factory counts from `BuildingClass::Unlimbo` (`0x00440D13`, through
-/// `0x004FFA50`) until Limbo (`0x00445D8E`, through `0x004FF980`), so a factory
-/// still in its build-up animation counts. VERA drops a dying factory at once;
-/// whether gamemd's Limbo lags a building's death is untraced.
-pub(in crate::sim::production) fn matching_factory_count_for_owner(
-    entities: &EntityStore,
-    rules: &RuleSet,
-    owner: &str,
-    category: ProductionCategory,
-    interner: &crate::sim::intern::StringInterner,
-) -> u32 {
-    entities
-        .values()
-        .filter(|e| {
-            !e.dying
-                && !e.lifecycle.in_limbo
-                && interner.resolve(e.owner()).eq_ignore_ascii_case(owner)
-                && e.category == EntityCategory::Structure
-                && is_production_factory(rules, interner.resolve(e.type_ref()), category)
-        })
-        .count() as u32
-}
-
 pub fn producer_candidates_for_owner_category(
     entities: &EntityStore,
     rules: &RuleSet,
