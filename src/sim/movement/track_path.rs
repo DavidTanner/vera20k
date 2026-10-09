@@ -1414,15 +1414,34 @@ impl Simulation {
     /// - A `Teleporter=` type runs its arm first ([`Self::unit_teleporter_arm`]):
     ///   a NULL destination installs a Drive over the Teleport, which the
     ///   FootClass::AI tail ends again once it is stopped.
+    /// - The BalloonHover arm runs ahead of all of these
+    ///   ([`Self::balloon_hover_keeps_nav_com`]).
     ///
-    /// Residual (not represented): the BalloonHover arm (0x741983), the
-    /// +2B0 linked-object branches (0x741ABD /0x742E3A).
+    /// Residual (not represented): the +2B0 linked-object branches (0x741ABD
+    /// /0x742E3A).
     /// A Jumpjet Stop's failed search retains the caller's overlay context
     /// for synchronous damage; callers without that context retain their
     /// existing damage-closure limitation.
     /// Returns whether Foot 0x4D94B0 ran; the Rust scheduling adapter is then
     /// trimmed to the committed head.
     pub(crate) fn set_unit_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        if rules.is_some_and(|rules| self.balloon_hover_keeps_nav_com(id, rules)) {
+            return false;
+        }
+        self.unit_null_destination_past_balloon_arm(id, rules, registry)
+    }
+
+    /// [`Self::set_unit_null_destination`] from its NavCom guard (0x741A80)
+    /// on, past the BalloonHover arm. Besides the setter itself, only the
+    /// pursuit pass's halt for a cruising Jumpjet calls it: that halt stands in
+    /// for the Jumpjet's arrival at the cell Foot's approach (0x4D5690) would
+    /// have sent it to, which native never routes through this setter.
+    pub(crate) fn unit_null_destination_past_balloon_arm(
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
@@ -1478,6 +1497,73 @@ impl Simulation {
         // and its terminal then retires the adapter.
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             super::retain_committed_movement(actor);
+        }
+        true
+    }
+
+    /// Unit 0x741970's BalloonHover arm (0x741983..0x741A7D), the first test
+    /// of a NULL destination. A `BalloonHover=` type (+0xD6A) holding a
+    /// NavCom (+0x5A4) and a Target (+0x2B4) keeps the NavCom when it:
+    /// - is the Target;
+    /// - is a Cell whose first ground object (+0xE4) is the Target; or
+    /// - lies within a quarter turn of the body: Direction_To(Target)
+    ///   (0x5F3DB0) minus PrimaryFacing's Current (+0x388), as a signed word,
+    ///   is at most 0x4000 either way (0x4D03D0), so 0x8000 is outside.
+    ///
+    /// A kept NavCom puts the Unit on Attack (Assign_Mission, vt+0x1F0
+    /// 0x5B2FD0) unless Get_Mission (vt+0x184 0x5B3040, current else queued)
+    /// already answers Attack, and the setter returns with nothing else
+    /// written. Event STOP therefore calls the setter again for a balloon once
+    /// it has cleared the Target.
+    ///
+    /// Native comparison: tools/spatial_oracle/balloon_hover.json `null` rows.
+    pub(crate) fn balloon_hover_keeps_nav_com(&mut self, id: u64, rules: &RuleSet) -> bool {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        let (Some(nav_com), Some(target)) = (
+            actor.navigation.nav_com,
+            actor.attack_target.as_ref().map(|attack| attack.target),
+        ) else {
+            return false;
+        };
+        if !self
+            .object_type(actor.type_ref(), rules)
+            .is_some_and(|object| object.balloon_hover)
+        {
+            return false;
+        }
+        let frame = self.session.binary_frame;
+        let leads_to_target = match (nav_com, target) {
+            (_, crate::sim::combat::TargetKind::Cell(rx, ry)) => {
+                nav_com == NavTargetRef::cell(rx, ry)
+            }
+            (NavTargetRef::Cell { rx, ry }, crate::sim::combat::TargetKind::Entity(target)) => {
+                self.substrate
+                    .occupancy
+                    .get(rx, ry)
+                    .and_then(|cell| cell.first_on_layer(MovementLayer::Ground))
+                    == Some(target)
+            }
+            (_, crate::sim::combat::TargetKind::Entity(target)) => {
+                super::navcom::nav_targets_same_receiver(
+                    Some(nav_com),
+                    NavTargetRef::object(target),
+                )
+            }
+        };
+        let keeps = leads_to_target
+            || super::turret::facing_toward_target(actor, &target, &self.substrate.entities)
+                .is_some_and(|direction| {
+                    let turn = direction.wrapping_sub(actor.body_facing_current(frame)) as i16;
+                    i32::from(turn).abs() <= 0x4000
+                });
+        if !keeps {
+            return false;
+        }
+        let attack = crate::sim::mission::MissionId::from_known(MissionType::Attack);
+        if actor.mission.effective() != attack {
+            let _ = self.mission_assign_exact(id, attack, frame);
         }
         true
     }

@@ -497,6 +497,8 @@ pub(crate) fn tick_movement_with_grid(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+mod balloon_hover_tests;
+#[cfg(test)]
 pub(crate) mod bridge_layer_oracle_tests;
 #[cfg(test)]
 mod ground_pose_tests;

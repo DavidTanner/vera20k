@@ -293,7 +293,9 @@ pub(crate) fn dispatch_foot_mission(
             // MissionAttack4D4E6A calls Approach before its Scenario cadence
             // draw. The accepted destination is visible to this object's
             // subsequent Drive Process, and is retained while it fires.
-            if sim.owns_unit_cell_approach(id, rules) {
+            if !sim.approach_balloon_target(id, rules, ctx.overlay_registry)
+                && sim.owns_unit_cell_approach(id, rules)
+            {
                 sim.approach_unit_cell_target(id, rules, ctx.overlay_registry)
                     .expect("ordinary Cell approach requires valid live map/navigation state");
             }
@@ -1207,10 +1209,10 @@ fn evaluate_foot_hunt(
         .is_some_and(|obj| obj.stupid_hunt);
     if !stupid_hunt {
         // The return value selects between the type arms (all recorded above)
-        // and the idle / return-to-base arm (already covered elsewhere), so
-        // nothing branches on it here — but the call itself is the mission:
-        // it is what installs the target the pursuit pass then closes on.
-        let _acquired = super::target_scan::scan(
+        // and the idle / return-to-base arm (already covered elsewhere). The
+        // call itself is the mission: it is what installs the target the
+        // pursuit pass then closes on.
+        let acquired = super::target_scan::scan(
             sim,
             id,
             rules,
@@ -1220,6 +1222,11 @@ fn evaluate_foot_hunt(
             ctx,
             None,
         );
+        // `0x004D54DD`: a Unit approaches what the scan holds; the balloon
+        // arm takes only a Unit.
+        if acquired {
+            sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+        }
     }
     //4D54EE..4D5576: the human no-target arm invokes the class idle
     //receiver before the mission-rate jitter. Campaign AI return-to-base
@@ -1440,6 +1447,9 @@ fn evaluate_foot_rescue(
             .get_mut(id)
             .expect("Rescue receiver")
             .set_archive_target(None);
+    } else if state == 0 {
+        // `0x004DDFDB..0x004DDFEB`: with a Target, approach it.
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
     }
     let mission = sim
         .substrate
@@ -1530,6 +1540,11 @@ pub(super) fn evaluate_foot_area_guard(
         .entities
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none());
+    // `0x004D6ED1..0x004D6F32`: with a Target the body approaches it instead
+    // of scanning; without a post it does neither (`0x004D6E66`).
+    if !needs_target && archive.is_some() {
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+    }
     let timer_due = sim
         .substrate
         .entities
