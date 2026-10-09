@@ -1778,24 +1778,35 @@ impl ArtRegistry {
 
     /// Resolve the declared cameo id for an object.
     ///
-    /// This stays in the exact-resolution layer: it only reads declared keys and
-    /// falls back to the resolved image id. `ICON` filename guessing lives elsewhere.
+    /// gamemd-derived: `TechnoTypeClass::ReadINI @ 0x00712170` reads art
+    /// `Cameo=` from the section named by `ImageFile` (`+0x1F8`), which
+    /// `ObjectTypeClass::ReadINI` fills from the rules `Image=` key with the
+    /// type ID as default (`0x005F9335`). The read at `0x0071599F` takes the
+    /// section from `LEA ESI,[EBP+0x1F8]` (`0x007157B5`); the art section's
+    /// own `Image=` redirect is never the cameo section, and a BuildingType
+    /// rewrites `ImageFile` from art only after the base read (`0x0046C1DA`
+    /// follows the `CALL 0x712170` at `0x0045FE6B`). Stock: `[MTNK]`
+    /// (`Image=GTNK`) shows `GTNKICON`, not `[MTNK]`'s `MTNKICON`, and
+    /// `[YENGINEER]` (`Image=ENGINEER`) shows `ENGNICON`.
+    ///
+    /// The savegame reload (`0x007162F0`, `Cameo` reads `0x00716C9C` and
+    /// `0x00716CD4`) retries the type-ID section when the image section
+    /// has no `Cameo=`; that fallback is kept as the second lookup. Neither
+    /// path substitutes `AltCameo=` (a separate field, `+0x710`); a missing
+    /// cameo falls back to the resolved image id so the loader's `XXICON`
+    /// style guesses run. Read in the Steam `gamemd.exe`
+    /// (SHA-256 `3e81a617…`); the `0x00716C9C` site matches the pinned
+    /// build's citation above.
     pub fn resolve_declared_cameo_id(&self, type_id: &str, rules_image: &str) -> String {
         let resolved: ResolvedObjectArt<'_> = self.resolve_object_art(type_id, rules_image);
         let type_upper: String = type_id.to_uppercase();
 
-        // Check type-specific section first — e.g. [BFRT] declares its own Cameo
-        // even though Image=SREF points to the Prism Tank's art section.
-        for key in [type_upper.as_str(), resolved.image_id.as_str()] {
-            if let Some(entry) = self.get(key) {
-                if let Some(cameo) = normalize_id(entry.cameo.as_deref().unwrap_or_default()) {
-                    return cameo;
-                }
-                if let Some(alt_cameo) =
-                    normalize_id(entry.alt_cameo.as_deref().unwrap_or_default())
-                {
-                    return alt_cameo;
-                }
+        for key in [resolved.base_art_id.as_str(), type_upper.as_str()] {
+            if let Some(cameo) = self
+                .get(key)
+                .and_then(|entry| normalize_id(entry.cameo.as_deref().unwrap_or_default()))
+            {
+                return cameo;
             }
         }
 
