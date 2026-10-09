@@ -916,7 +916,9 @@ use crate::sim::world::Simulation;
 // lack that order and viewport state.
 // 317 -> 318: Foot MoveSound keeps its native signed dword countdown in
 // one private owner, replacing the lossy byte. Old bincode records cannot resume.
-const SNAPSHOT_VERSION: u32 = 318;
+// 318 -> 319: Guard commands retain a Cell/object/null post and no longer
+// serialize the competing OrderIntent::Guard anchor. Old commands cannot resume.
+const SNAPSHOT_VERSION: u32 = 319;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3965,8 +3967,8 @@ mod tests {
         // 314 -> 315: no ready-building list beside the factories.
         // 315 -> 316: the native airfield loop replaces the legacy dock FSM.
         // 316 -> 317: the local owner's retained sidebar insertion history.
-        // 317 -> 318: Foot MoveSound keeps its native signed-dword countdown.
-        assert_eq!(super::SNAPSHOT_VERSION, 318);
+        // 318 -> 319: Guard carries its native post, with one mission owner.
+        assert_eq!(super::SNAPSHOT_VERSION, 319);
     }
 
     #[test]

@@ -34,6 +34,22 @@ pub(crate) fn selection_voice_event(
     })
 }
 
+/// QueueMegaMission6FFD42's default command acknowledgement. Simulation
+/// owns the ordered-list Main draw and QueueVoice708D90 admission; the
+/// existing unit voice queue owns pending replacement and eventual playback.
+pub(crate) fn default_order_voice_event(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    entity_id: u64,
+    voices_enabled: bool,
+) -> Option<GameSoundEvent> {
+    let sound_id = sim.default_order_voice_request(rules, entity_id, voices_enabled)?;
+    Some(GameSoundEvent::UnitMoveOrder {
+        speaker_id: entity_id,
+        sound_id: sound_id.to_string(),
+    })
+}
+
 /// The two presentation draws used while interpreting a simulation event.
 /// Production delegates to the existing player RNG; absence of that player
 /// still suppresses the same random-dependent cues.

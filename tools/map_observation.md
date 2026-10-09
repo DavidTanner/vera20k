@@ -10,6 +10,14 @@ target handle or `null`. This read-only field is independent of NavCom, mission
 and admitted radio contacts. Older sealed v6 receipts remain accepted without
 the field; its absence supplies no evidence about pending entry.
 
+Actor `retask` reads the existing `suspended_target` and `suspended_nav`
+references alongside current `target`, `archive`, `nav` and mission fields.
+References retain their distinct tagged target/navigation representations;
+`null` means the corresponding owner is empty. The observation sends no retask
+or destination callback. Historical receipts may omit `retask`; omission supplies
+no evidence about either suspended reference. These fixed fields remain part of
+the existing one-sample actor row.
+
 Requested terrain cells also report `local_visibility`: the current viewer's
 owner name and retained `revealed`, `visible` and `gap_covered` queries. It is
 `null` when no local viewer resolves. These read-only observations let a GPU
@@ -157,6 +165,41 @@ rewind. This is VERA same-content snapshot loading, not original SAV compatibili
 Run these profiles with a fresh scratch working directory/config: the production
 save repository uses that working directory's `saves/` folder. There is no
 diagnostic save backend or bypass of preparation/commit.
+
+A v2 `command_bar` gesture names an exact loaded bar command, for example
+`{"kind":"command_bar","command":"Guard"}`. Rust resolves the name through
+the existing command registry, current UIMD slot layout and retained gadget,
+then sends ordinary left press/release edges at its current center. A missing,
+closed, disabled or inconsistent control fails capture. This does not call a
+semantic command dispatcher directly. Its receipt records `command`, actual
+`slot`, retained `gadget_id`, `rect` and `resolved_position`; the shared mouse
+receipt checks the expected gadget captured the press and release restored
+neutral input. The command-bar receipt adds one sample to the existing budget.
+Profiles containing it use `map-local-gesture-v4`; historical tactical/sidebar/
+key-only profiles keep their existing policy and receipt shape. It accepts no
+click modifiers. Python checks receipt shape/geometry without reproducing the
+runtime command registry, layout or action admission.
+
+The Area Guard [standing discovery](input_oracle/profiles/area-guard-standing-discovery.json)
+and [combat discovery](input_oracle/profiles/area-guard-combat-discovery.json)
+profiles load authored object placements on unchanged terrain with retail MTNK
+and E1 types. Materialize `selected_map_file` as an absolute path before capture;
+relative names resolve under the retail directory. Inspect L0 actor IDs before
+reusing the [literal G](input_oracle/profiles/area-guard-key.json),
+[command-bar Guard](input_oracle/profiles/area-guard-bar.json), or
+[mixed tank/GI selection](input_oracle/profiles/area-guard-mixed.json) profiles.
+They use ordinary Select followed by the actual input route, observe tagged
+queued orders and actor retask state, and retain CommandBar SFX PCM. The mixed
+key profile also exposes the existing Main cursor; unit order voices use the
+separate voice queue and are outside this PCM observer. Native ordered voice
+requests and list draws require the separate executed input comparison.
+The [in-range retask profile](input_oracle/profiles/area-guard-retask.json) places
+the enemy four cells away, requests G, later presses S, then clicks empty ground
+at cell `(38,55)`. The literal pixel `(46,359)` comes from the current cell-center
+projection, flat authored terrain and the discovered camera `(-556,1066)` at
+zoom 1. Check the actual queued Move destination and camera in each run before
+using the retask observation. Its 110-step window observes attack and explicit
+retask; it does not certify target destruction, pursuit or return-to-post timing.
 
 The [idle SQD profiles](spatial_oracle/fv_cell_attack/profiles/README.md) use an
 authored water map with unchanged retail types. A separate ignored real-device
@@ -426,9 +469,11 @@ adjustment has separate executed controls in the sidebar oracle. This profile
 observes the removal's sidebar consumer, not native sale or grant timing.
 
 A v2 profile may opt in to `observe_sidebar_steps: [0, 1, 100]`. Each listed
-step records the local retained sidebar view: tabs, ordered visible type/name/
-cost/queue rows, scroll position and hit rectangles. At rendered steps, the
-harness checks that the actual `GameRenderOutput.sidebar_view` matches the
+capture completed step records the local retained sidebar view: tabs, ordered
+visible type/name/cost/queue rows, scroll position and hit rectangles. These
+steps remain monotonic across quickload; a restored simulation tick does not
+repeat an earlier sidebar sample or select a different requested row. At
+rendered steps, the harness checks that the actual `GameRenderOutput.sidebar_view` matches the
 retained projection. Step 0 in a positive-step run is explicitly retained-only.
 
 Sidebar gestures resolve their coordinates from that current view and dispatch

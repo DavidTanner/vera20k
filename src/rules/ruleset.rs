@@ -994,6 +994,11 @@ pub struct GeneralRules {
     /// (`Sell_Back @ 0x00447110`), and so does switching a repair off, or on
     /// below Strength (`BuildingClass::ToggleRepair @ 0x00446FF0`).
     pub generic_click_sound: Option<String>,
+    /// Guard command acknowledgement, Rules+724. Constructor665650 starts
+    /// at -1; AudioVisual66AE1C..66AE67 reads GuardSound with ReadString128
+    /// then Voc FindIndex7514D0, retaining the prior ID on missing, empty or
+    /// unresolved text. The fixed SOUNDMD binder owns name resolution.
+    pub guard_sound: Option<String>,
     /// `[AudioVisual] ScoldSound=` (`Rules+0x700`, read at `0x0066ABE8`
     /// through `VocClass::FindByName`; retail `MenuScold`): ToggleRepair's
     /// sound when a repair is switched on at full Strength (`0x00447068`).
@@ -1956,6 +1961,7 @@ impl Default for GeneralRules {
             gui_move_in_sound: None,
             gui_move_out_sound: None,
             generic_click_sound: None,
+            guard_sound: None,
             scold_sound: None,
             generic_beep_sound: None,
             gui_checkbox_sound: None,
@@ -2876,6 +2882,8 @@ impl GeneralRules {
             generic_click_sound: audio_visual
                 .read_name("GenericClick", 0x80)
                 .map(str::to_owned),
+            // Native constructor -1; resolved by the fixed SOUNDMD binder.
+            guard_sound: None,
             scold_sound: audio_visual
                 .read_name("ScoldSound", 0x80)
                 .map(str::to_owned),
@@ -3564,6 +3572,9 @@ impl RuleSet {
         self.general.spy_plane_camera = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "SpyPlaneCamera"));
+        self.general.guard_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "GuardSound"));
         for object in &mut self.object_list {
             let section = ini.section(&object.id);
             object.voice_select = section.map_or_else(Vec::new, |section| {
@@ -3571,6 +3582,9 @@ impl RuleSet {
             });
             object.move_sound = section.map_or_else(Vec::new, |section| {
                 sounds.read_rules_sound_list(section, "MoveSound")
+            });
+            object.voice_special_attack = section.map_or_else(Vec::new, |section| {
+                sounds.read_rules_sound_list(section, "VoiceSpecialAttack")
             });
             if object.category == crate::rules::object_type::ObjectCategory::Building {
                 object.buildup_sound = section
@@ -4600,7 +4614,11 @@ impl RuleSet {
             .map(|object| {
                 (
                     (object.category, object.id.to_ascii_uppercase()),
-                    (&object.voice_select, &object.move_sound),
+                    (
+                        &object.voice_select,
+                        &object.move_sound,
+                        &object.voice_special_attack,
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>()

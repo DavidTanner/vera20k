@@ -20,6 +20,7 @@ const MAX_GESTURES: usize = 1024;
 const GESTURE_POLICY: &str = "map-tactical-left-gesture-v1";
 const SIDEBAR_GESTURE_POLICY: &str = "map-local-left-gesture-v2";
 const KEYBOARD_GESTURE_POLICY: &str = "map-local-gesture-v3";
+const COMMAND_BAR_GESTURE_POLICY: &str = "map-local-gesture-v4";
 const SIDEBAR_POLICY: &str = "map-retained-sidebar-observation-v1";
 const MAX_OBSERVED_OWNERS: usize = 30;
 const MAX_OBSERVED_TYPES: usize = 256;
@@ -98,6 +99,10 @@ enum MapGesture {
     Sidebar {
         target: MapSidebarTarget,
     },
+    /// Resolve a loaded command-bar control and send ordinary mouse edges.
+    CommandBar {
+        command: String,
+    },
     Key {
         key: String,
         #[serde(
@@ -119,7 +124,7 @@ impl MapGesture {
         match self {
             Self::Click { position } => Some((*position, *position)),
             Self::Drag { from, to } => Some((*from, *to)),
-            Self::Sidebar { .. } | Self::Key { .. } => None,
+            Self::Sidebar { .. } | Self::CommandBar { .. } | Self::Key { .. } => None,
         }
     }
 }
@@ -523,6 +528,9 @@ impl MapCaptureProfile {
                 literal_key(key)?;
                 literal_modifiers(modifiers.as_deref().unwrap_or_default())?;
             }
+            if let MapGesture::CommandBar { command } = &gesture.gesture {
+                command_bar_index(command)?;
+            }
             ensure!(
                 !gesture.gesture.is_quickload() || self.allow_load_segments == Some(true),
                 "literal quickload requires allow_load_segments"
@@ -632,7 +640,13 @@ impl MapCaptureProfile {
     }
 
     fn gesture_policy(&self) -> &'static str {
-        if self.observes_local_input() {
+        if self
+            .gestures()
+            .iter()
+            .any(|entry| matches!(entry.gesture, MapGesture::CommandBar { .. }))
+        {
+            COMMAND_BAR_GESTURE_POLICY
+        } else if self.observes_local_input() {
             KEYBOARD_GESTURE_POLICY
         } else if self
             .gestures()
@@ -655,7 +669,10 @@ impl MapCaptureProfile {
             .any(|entry| matches!(entry.gesture, MapGesture::Key { .. }))
     }
 
-    fn observes_sidebar_step(&self, step: u64) -> bool {
+    fn observes_sidebar_step(&self, frame: &MapFrameObservation) -> bool {
+        // Requested rows follow exact-step receipts even when a load rewinds
+        // the simulation clock retained by the same frame observation.
+        let step = frame.completed_steps;
         self.observe_sidebar_steps.as_ref().is_some_and(|steps| {
             u32::try_from(step).is_ok_and(|step| steps.binary_search(&step).is_ok())
         })
@@ -1097,23 +1114,98 @@ impl MapSidebarObservation {
                 (toggle.rect, toggle.disabled, 0)
             }
         };
-        ensure!(!disabled, "requested sidebar control is disabled");
+        Ok((control_center(rect, disabled, extent)?, slot))
+    }
+}
+
+fn control_center(rect: [f32; 4], disabled: bool, extent: [u32; 2]) -> Result<[u32; 2]> {
+    ensure!(!disabled, "requested control is disabled");
+    ensure!(
+        rect.iter().all(|part| part.is_finite()) && rect[2] > 0.0 && rect[3] > 0.0,
+        "requested control has no finite hit area"
+    );
+    let center = [
+        (rect[0] + rect[2] / 2.0).floor(),
+        (rect[1] + rect[3] / 2.0).floor(),
+    ];
+    ensure!(
+        center
+            .into_iter()
+            .zip(extent)
+            .all(|(point, limit)| limit > 1 && point > 0.0 && point < (limit - 1) as f32),
+        "requested control center is outside the capture"
+    );
+    Ok(center.map(|point| point as u32))
+}
+
+fn command_bar_index(command: &str) -> Result<usize> {
+    crate::ui::sidebar::command_bar::COMMAND_NAMES
+        .iter()
+        .position(|name| *name == command)
+        .context("unknown command-bar command")
+}
+
+#[derive(Debug, Serialize)]
+struct MapCommandBarGestureReceipt {
+    command: String,
+    slot: usize,
+    gadget_id: u16,
+    rect: [f32; 4],
+    resolved_position: [u32; 2],
+}
+
+impl MapCommandBarGestureReceipt {
+    fn capture(state: &AppState, command: &str) -> Result<(Self, crate::ui::gadget::GadgetHandle)> {
+        let (layout, slots) =
+            crate::app::presentation::sidebar_build::command_bar::layout_and_slots(state)
+                .context("command-bar layout is absent")?;
+        Self::resolve(
+            command,
+            layout,
+            &slots,
+            &state.match_state.match_presentation.in_game_gadgets,
+            [state.render_width(), state.render_height()],
+        )
+    }
+
+    fn resolve(
+        command: &str,
+        layout: crate::ui::sidebar::command_bar::CommandBarLayout,
+        slots: &[Option<usize>],
+        gadgets: &crate::app::input::gadget_input::InGameGadgets,
+        extent: [u32; 2],
+    ) -> Result<(Self, crate::ui::gadget::GadgetHandle)> {
+        let command_index = command_bar_index(command)?;
+        let slot = slots
+            .iter()
+            .position(|entry| *entry == Some(command_index))
+            .context("requested command is absent from the loaded command bar")?;
+        let layout_rect = layout
+            .slot(slot)
+            .context("requested command-bar slot is closed or clipped")?;
+        let handle = gadgets
+            .command_bar
+            .context("command-bar controls are absent")?[command_index];
+        let gadget = gadgets
+            .list
+            .get(handle)
+            .context("requested command-bar control is absent")?;
+        let rect = [gadget.rect.x, gadget.rect.y, gadget.rect.w, gadget.rect.h].map(|v| v as f32);
         ensure!(
-            rect.iter().all(|part| part.is_finite()) && rect[2] > 0.0 && rect[3] > 0.0,
-            "requested sidebar control has no finite hit area"
+            rect == [layout_rect.x, layout_rect.y, layout_rect.w, layout_rect.h],
+            "command-bar control differs from its current layout"
         );
-        let center = [
-            (rect[0] + rect[2] / 2.0).floor(),
-            (rect[1] + rect[3] / 2.0).floor(),
-        ];
-        ensure!(
-            center
-                .into_iter()
-                .zip(extent)
-                .all(|(point, limit)| point > 0.0 && point < (limit - 1) as f32),
-            "requested sidebar control center is outside the capture"
-        );
-        Ok((center.map(|point| point as u32), slot))
+        let resolved_position = control_center(rect, gadget.is_disabled, extent)?;
+        Ok((
+            Self {
+                command: command.to_owned(),
+                slot,
+                gadget_id: gadget.id,
+                rect,
+                resolved_position,
+            },
+            handle,
+        ))
     }
 }
 
@@ -1250,6 +1342,15 @@ struct MapGestureReceipt {
     sidebar: Option<MapSidebarGestureReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     keyboard: Option<MapKeyboardGestureReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command_bar: Option<MapCommandBarGestureReceipt>,
+}
+
+fn retask_observation(entity: &crate::sim::game_entity::GameEntity) -> Value {
+    json!({
+        "suspended_target": entity.suspended_attack_target,
+        "suspended_nav": entity.navigation.suspended_nav_com,
+    })
 }
 
 /// Boundary snapshots of the production stores, without retained provenance,
@@ -2025,7 +2126,7 @@ impl TacticalCaptureSession {
             let pending_before = sim.pending_command_snapshot();
             let local_input = profile.observes_local_input();
             let before = MapInputObservation::capture(state, local_input)?;
-            let (left_press_captured, band_box_before_release, sidebar, keyboard) =
+            let (left_press_captured, band_box_before_release, sidebar, keyboard, command_bar) =
                 if let MapGesture::Key { key, modifiers } = &scheduled.gesture {
                     (
                         false,
@@ -2036,10 +2137,17 @@ impl TacticalCaptureSession {
                             key,
                             modifiers.as_deref().unwrap_or_default(),
                         )?),
+                        None,
                     )
                 } else {
                     let sidebar_before = match &scheduled.gesture {
                         MapGesture::Sidebar { .. } => Some(MapSidebarObservation::capture(state)?),
+                        _ => None,
+                    };
+                    let command_bar = match &scheduled.gesture {
+                        MapGesture::CommandBar { command } => {
+                            Some(MapCommandBarGestureReceipt::capture(state, command)?)
+                        }
                         _ => None,
                     };
                     let (from, to, sidebar_slot) = match &scheduled.gesture {
@@ -2049,6 +2157,14 @@ impl TacticalCaptureSession {
                                 .expect("sidebar captured")
                                 .resolve(target, [state.render_width(), state.render_height()])?;
                             (position, position, Some(slot))
+                        }
+                        MapGesture::CommandBar { .. } => {
+                            let position = command_bar
+                                .as_ref()
+                                .expect("command bar captured")
+                                .0
+                                .resolved_position;
+                            (position, position, None)
                         }
                         _ => {
                             let (from, to) =
@@ -2076,10 +2192,13 @@ impl TacticalCaptureSession {
                     button(state, ElementState::Pressed);
                     let mouse = &state.match_state.input.tactical_mouse;
                     let gadgets = &state.match_state.match_presentation.in_game_gadgets;
-                    let left_press_captured =
-                        if let MapGesture::Sidebar { target } = &scheduled.gesture {
+                    let left_press_captured = if matches!(
+                        scheduled.gesture,
+                        MapGesture::Sidebar { .. } | MapGesture::CommandBar { .. }
+                    ) {
+                        let expected = if let MapGesture::Sidebar { target } = &scheduled.gesture {
                             let slot = sidebar_slot.expect("resolved sidebar slot");
-                            let expected = match target {
+                            match target {
                                 MapSidebarTarget::Tab { .. } => {
                                     gadgets.handles.as_ref().map(|handles| handles.tabs[slot])
                                 }
@@ -2096,22 +2215,25 @@ impl TacticalCaptureSession {
                                 MapSidebarTarget::Sell {} => {
                                     gadgets.handles.as_ref().map(|handles| handles.sell)
                                 }
-                            };
-                            let routed = gadgets.out.consumed_by.or(gadgets.focus.sticky);
-                            expected.is_some()
-                                && routed == expected
-                                && gadgets.left_held
-                                && !gadgets.right_held
-                                && !mouse.left_held
-                                && !mouse.captured
-                                && !mouse.right_held
+                            }
                         } else {
-                            mouse.left_held
-                                && mouse.captured
-                                && !mouse.right_held
-                                && gadgets.left_held
-                                && !gadgets.right_held
+                            command_bar.as_ref().map(|(_, handle)| *handle)
                         };
+                        let routed = gadgets.out.consumed_by.or(gadgets.focus.sticky);
+                        expected.is_some()
+                            && routed == expected
+                            && gadgets.left_held
+                            && !gadgets.right_held
+                            && !mouse.left_held
+                            && !mouse.captured
+                            && !mouse.right_held
+                    } else {
+                        mouse.left_held
+                            && mouse.captured
+                            && !mouse.right_held
+                            && gadgets.left_held
+                            && !gadgets.right_held
+                    };
                     if matches!(scheduled.gesture, MapGesture::Drag { .. }) {
                         move_cursor(state, to);
                     }
@@ -2143,7 +2265,13 @@ impl TacticalCaptureSession {
                             })
                         })
                         .transpose()?;
-                    (left_press_captured, band_box_before_release, sidebar, None)
+                    (
+                        left_press_captured,
+                        band_box_before_release,
+                        sidebar,
+                        None,
+                        command_bar.map(|(receipt, _)| receipt),
+                    )
                 };
             let neutral_input_restored = crate::app::input::camera::camera_input_idle(state)
                 && !state.match_state.input.selection_state.is_band_box_active()
@@ -2234,6 +2362,7 @@ impl TacticalCaptureSession {
                 .checked_add(before.sample_count())
                 .and_then(|count| count.checked_add(after.sample_count()))
                 .and_then(|count| count.checked_add(queued_commands.len()))
+                .and_then(|count| count.checked_add(usize::from(command_bar.is_some())))
                 .and_then(|count| {
                     count.checked_add(sidebar.as_ref().map_or(0, |receipt| {
                         receipt.before.sample_count()
@@ -2261,6 +2390,7 @@ impl TacticalCaptureSession {
                 queued_commands,
                 sidebar,
                 keyboard,
+                command_bar,
             });
         }
     }
@@ -2483,6 +2613,7 @@ impl TacticalCaptureSession {
                         "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
                     "target": entity.attack_target.as_ref().map(|target| target.target),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
+                    "retask": retask_observation(entity),
                     "jumpjet": jumpjet,
                     "cloak": cloak,
                     "building": building, "unit": unit,
@@ -2617,7 +2748,7 @@ impl TacticalCaptureSession {
                 .transpose()?,
         };
         let sidebar = profile
-            .observes_sidebar_step(sim.session.tick)
+            .observes_sidebar_step(&frame)
             .then(|| MapSidebarObservation::capture(state))
             .transpose()?;
         let completed_steps = frame.completed_steps;
@@ -3490,9 +3621,6 @@ mod tests {
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(profile.gesture_policy(), SIDEBAR_GESTURE_POLICY);
-        assert!(profile.observes_sidebar_step(0));
-        assert!(profile.observes_sidebar_step(3));
-        assert!(!profile.observes_sidebar_step(2));
         assert_eq!(serde_json::to_value(&profile).unwrap(), value);
         let transcript = initialized_map().transcript(&profile);
         assert_eq!(
@@ -3528,6 +3656,62 @@ mod tests {
             let profile = serde_json::from_value::<MapCaptureProfile>(invalid);
             assert!(profile.is_err() || profile.unwrap().validate().is_err());
         }
+    }
+
+    #[test]
+    fn sidebar_sampling_uses_completed_steps_across_quickload_rewind() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.ticks = 24;
+        profile.allow_load_segments = Some(true);
+        profile.observe_sidebar_steps = Some(vec![0, 1, 2, 4, 8, 9, 16, 17, 24]);
+        profile.validate().unwrap();
+        let mut map = initialized_map();
+        map.allow_load_segments = true;
+        map.observe_load_segment(MapLoadSegment {
+            after_step: 16,
+            gesture_ordinal: 3,
+            before: MapClock {
+                simulation_tick: 16,
+                binary_frame: 16,
+                total_simulation_ms: 352,
+            },
+            after: MapClock {
+                simulation_tick: 4,
+                binary_frame: 4,
+                total_simulation_ms: 88,
+            },
+            restored_audio_state: None,
+        })
+        .unwrap();
+        let mut sampled = Vec::new();
+        for completed_steps in 0..=u64::from(profile.ticks) {
+            let (simulation_tick, binary_frame) = map.expected_clock(completed_steps, false);
+            let frame = MapFrameObservation {
+                completed_steps,
+                simulation_tick,
+                binary_frame,
+                total_simulation_ms: simulation_tick * MAP_PRESENTATION_INTERVAL_MS,
+                actors: vec![],
+                houses: vec![],
+                missing_actor_ids: vec![],
+                terrain: vec![],
+                effects: None,
+                input: None,
+                audio_state: None,
+            };
+            if profile.observes_sidebar_step(&frame) {
+                sampled.push(completed_steps as u32);
+            }
+            map.observe_frame(frame, BTreeSet::new()).unwrap();
+        }
+        assert_eq!(map.frames[17].simulation_tick, 5);
+        assert_eq!(map.frames[20].simulation_tick, 8);
+        assert_eq!(
+            sampled,
+            profile.observe_sidebar_steps.unwrap(),
+            "capture step17 must sample restored tick5; repeated tick8 at step20 must not sample again"
+        );
     }
 
     #[test]
@@ -3624,6 +3808,166 @@ mod tests {
         );
     }
 
+    fn command_bar_fixture() -> (
+        crate::ui::sidebar::command_bar::CommandBarLayout,
+        Vec<Option<usize>>,
+        crate::app::input::gadget_input::InGameGadgets,
+    ) {
+        use crate::ui::gadget::{
+            GadgetRect,
+            list::{GadgetSpec, ToggleKind},
+        };
+        let layout = crate::ui::sidebar::command_bar::CommandBarLayout::new(
+            [800, 600],
+            168,
+            [28, 32],
+            [52, 32],
+            [28, 32],
+            true,
+        )
+        .unwrap();
+        // Prepared layout data for the diagnostic, not a native order golden.
+        let index = command_bar_index("Guard").unwrap();
+        let slots = vec![None, Some(index)];
+        let rect = layout.slot(1).unwrap();
+        let mut gadgets = crate::app::input::gadget_input::InGameGadgets::new();
+        gadgets.command_bar = Some(std::array::from_fn(|i| {
+            let handle = gadgets.list.add_tail(GadgetSpec::button(
+                if i == index {
+                    GadgetRect::new(rect.x as i32, rect.y as i32, rect.w as i32, rect.h as i32)
+                } else {
+                    GadgetRect::new(0, 0, 0, 0)
+                },
+                0xD6 + i as u16,
+                ToggleKind::Plain,
+            ));
+            gadgets.list.get_mut(handle).unwrap().is_disabled = i != index;
+            handle
+        }));
+        (layout, slots, gadgets)
+    }
+
+    #[test]
+    fn command_bar_gesture_resolves_current_layout_and_retained_control() {
+        let (layout, slots, mut gadgets) = command_bar_fixture();
+        let (receipt, handle) =
+            MapCommandBarGestureReceipt::resolve("Guard", layout, &slots, &gadgets, [800, 600])
+                .unwrap();
+        assert_eq!(receipt.slot, 1);
+        assert_eq!(
+            handle,
+            gadgets.command_bar.unwrap()[command_bar_index("Guard").unwrap()]
+        );
+        let gadget = gadgets.list.get_mut(handle).unwrap();
+        assert!(gadget.rect.contains(
+            receipt.resolved_position[0] as i32,
+            receipt.resolved_position[1] as i32
+        ));
+        assert_eq!(receipt.gadget_id, gadget.id);
+        // Observed identity comes from the retained control, not a copied ID formula.
+        gadget.id = 777;
+        assert_eq!(
+            MapCommandBarGestureReceipt::resolve("Guard", layout, &slots, &gadgets, [800, 600])
+                .unwrap()
+                .0
+                .gadget_id,
+            777
+        );
+        gadgets.list.get_mut(handle).unwrap().rect.x += 1;
+        assert!(
+            MapCommandBarGestureReceipt::resolve("Guard", layout, &slots, &gadgets, [800, 600])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn command_bar_gesture_rejects_absent_closed_or_unknown_control() {
+        let (mut layout, slots, mut gadgets) = command_bar_fixture();
+        let resolve =
+            |name,
+             layout,
+             slots: &[Option<usize>],
+             gadgets: &crate::app::input::gadget_input::InGameGadgets| {
+                MapCommandBarGestureReceipt::resolve(name, layout, slots, gadgets, [800, 600])
+            };
+        assert!(resolve("guard", layout, &slots, &gadgets).is_err());
+        assert!(resolve("GuardObject", layout, &slots, &gadgets).is_err());
+        assert!(resolve("Guard", layout, &[], &gadgets).is_err());
+        layout.tile_count = 0;
+        assert!(resolve("Guard", layout, &slots, &gadgets).is_err());
+        layout.tile_count = 10;
+        let handle = gadgets.command_bar.unwrap()[command_bar_index("Guard").unwrap()];
+        gadgets.list.get_mut(handle).unwrap().is_disabled = true;
+        assert!(resolve("Guard", layout, &slots, &gadgets).is_err());
+        gadgets.command_bar = None;
+        assert!(resolve("Guard", layout, &slots, &gadgets).is_err());
+    }
+
+    #[test]
+    fn profile_roundtrip_preserves_command_bar_target() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.cursor_position = Some([720, 556]);
+        profile.gestures = Some(vec![MapScheduledGesture {
+            issue_after_step: 0,
+            gesture: MapGesture::CommandBar {
+                command: "Guard".to_owned(),
+            },
+        }]);
+        profile.validate().unwrap();
+        assert_eq!(profile.gesture_policy(), COMMAND_BAR_GESTURE_POLICY);
+        let value = serde_json::to_value(&profile).unwrap();
+        assert_eq!(
+            value["gestures"][0]["gesture"],
+            json!({"kind":"command_bar", "command":"Guard"})
+        );
+        serde_json::from_value::<MapCaptureProfile>(value.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        for command in ["", "guard", "GuardObject", "G"] {
+            let mut bad = value.clone();
+            bad["gestures"][0]["gesture"]["command"] = json!(command);
+            assert!(
+                serde_json::from_value::<MapCaptureProfile>(bad)
+                    .unwrap()
+                    .validate()
+                    .is_err()
+            );
+        }
+        let mut bad = value;
+        bad["gestures"][0]["gesture"]["modifiers"] = json!(["Ctrl"]);
+        assert!(serde_json::from_value::<MapCaptureProfile>(bad).is_err());
+    }
+
+    #[test]
+    fn actor_retask_snapshot_preserves_tagged_suspended_references() {
+        use crate::sim::{combat::TargetKind, components::NavTargetRef, game_entity::GameEntity};
+        let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 10, 20);
+        entity.suspended_attack_target = Some(TargetKind::Cell(7, 8));
+        entity.navigation.suspended_nav_com = Some(NavTargetRef::object(42));
+        assert_eq!(
+            retask_observation(&entity),
+            json!({
+                "suspended_target":{"Cell":[7,8]}, "suspended_nav":{"Object":{"id":42}}
+            })
+        );
+        entity.suspended_attack_target = Some(TargetKind::Entity(43));
+        entity.navigation.suspended_nav_com = Some(NavTargetRef::cell(9, 10));
+        assert_eq!(
+            retask_observation(&entity),
+            json!({
+                "suspended_target":{"Entity":43}, "suspended_nav":{"Cell":{"rx":9,"ry":10}}
+            })
+        );
+        entity.suspended_attack_target = None;
+        entity.navigation.suspended_nav_com = None;
+        assert_eq!(
+            retask_observation(&entity),
+            json!({"suspended_target":null,"suspended_nav":null})
+        );
+    }
+
     #[test]
     fn gesture_schedule_retains_equal_step_order_and_conditional_receipt_presence() {
         let mut profile = example();
@@ -3678,6 +4022,7 @@ mod tests {
                 queued_commands: Vec::new(),
                 sidebar: None,
                 keyboard: None,
+                command_bar: None,
             });
         }
         assert!(map.pending_gesture(&profile, 1).unwrap().is_none());
