@@ -9,7 +9,10 @@
 //! deposit (`Add_Tiberium_To_Storage @ 0x004F9700`, called only at
 //! `0x0073E48E`) fills a separate store (`+0x314`). So `Spend_Money`'s silo
 //! drain and `Available_Money`'s storage term never run, and
-//! tools/house_money_oracle.py pins them on an empty store.
+//! tools/house_money_oracle.py pins them on an empty store. One writer is not
+//! ported: `Fill_In_Data`'s `[Basic] FillSilos=` loop (`0x00684F02..
+//! 0x00684F7C`) calls `Add_Tiberium_Credits` while the silos have room, and
+//! the retail scenarios that author the key all set it to no.
 //!
 //! Never depends on render/ui/audio/net (sim invariant #1). The wallet is
 //! serialized and hashed.

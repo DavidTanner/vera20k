@@ -2405,7 +2405,9 @@ fn only_a_busy_airfield_refuses_its_type() {
     let mut sim = Simulation::new();
     spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, 2, "Americans", "GAAIRC", 20, 20);
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     for (building, contact) in [(1, 901), (2, 902)] {
         let contacts = &mut sim
             .substrate
