@@ -10,9 +10,9 @@
 //!   The game does NOT quit on the first click; it quits only on confirm.
 //! - Options -> the retained launcher Options parent in `options`.
 //!
-//! Exit confirmation renders through the retail shell. Launcher Options retains
-//! an egui overlay when its native controls are unavailable. State lives on `AppState` as `Option<...>` fields so it
-//! persists across frames while open. All button labels resolve from the live
+//! Exit confirmation and launcher Options render through the retail shell.
+//! State lives on `AppState` as `Option<...>` fields and persists across frames
+//! while open. All button labels resolve from the live
 //! CSF table (passed in by the caller) with English fallbacks; no CSF text is
 //! hardcoded as the source of truth.
 //!
@@ -60,26 +60,6 @@ impl ExitConfirmModalState {
             cancel: csf(EXIT_CONFIRM_CANCEL_KEY, EXIT_CONFIRM_CANCEL_FALLBACK),
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-/// Paint a semi-transparent backdrop behind a modal so the menu reads as
-/// dimmed while the dialog is open.
-fn draw_backdrop(ctx: &egui::Context, id: &str) {
-    egui::Area::new(egui::Id::new(id))
-        .fixed_pos(egui::pos2(0.0, 0.0))
-        .interactable(false)
-        .show(ctx, |ui| {
-            let screen = ctx.content_rect();
-            ui.painter().rect_filled(
-                screen,
-                0.0,
-                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 120),
-            );
-        });
 }
 
 #[cfg(test)]

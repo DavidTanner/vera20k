@@ -28,6 +28,7 @@ pub mod building_zshape;
 pub mod combat_light;
 pub mod cursor_atlas;
 pub mod draw_state;
+#[cfg(feature = "dev-ui")]
 pub mod egui_integration;
 pub mod frame_readback;
 pub(crate) mod foot_depth;

@@ -670,7 +670,7 @@ fn render_main_menu_shell_to_target_inner(
     // the cursor), alpha ramped 0→1 by the cascade. Reuses the 1×1 opaque
     // white_pixel + the ALPHA_BLENDING passthrough pipeline; no new shader. Built
     // here (like every other layer) so it outlives the render pass. Only present on
-    // the SHP path (the atlas is unavailable on the egui fallback).
+    // the SHP path (the atlas is unavailable on the utility error card).
     let fade_alpha = state
         .frontend.quit_cascade
         .as_ref()

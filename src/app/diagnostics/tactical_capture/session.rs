@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use crate::app::AppState;
 use crate::app::diagnostics::tactical_capture::evidence::{
-    ArtifactEvidence, FinalFingerprint, GraphicsEvidence, SidebarRenderEvidence,
-    SidebarSourceEvidence, build_evidence,
+    ArtifactEvidence, BitmapFontEvidence, BitmapFontSourceEvidence, FinalFingerprint,
+    GraphicsEvidence, SidebarRenderEvidence, SidebarSourceEvidence, build_evidence,
 };
 use crate::app::diagnostics::tactical_capture::manifest::{
     FrameArtifact, TacticalCaptureManifest, publish_complete, publish_failure,
@@ -79,7 +79,7 @@ struct RuntimeInputs {
     config: ArtifactEvidence,
     executable: ArtifactEvidence,
     archive: ArtifactEvidence,
-    font: ArtifactEvidence,
+    font_archive: ArtifactEvidence,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -243,12 +243,13 @@ impl TacticalCaptureSession {
         let executable_path =
             std::env::current_exe().context("resolve tactical child executable")?;
         let archive_path = config.paths.ra2_dir.join(&profile.fixture.archive_name);
-        let font_path = profile.pixel_inputs.font.path.clone();
+        let font = &profile.pixel_inputs.bitmap_font;
+        let font_archive_path = config.paths.ra2_dir.join(&font.archive_name);
 
         let config_identity = artifact(&config_path, "config.toml")?;
         let executable_identity = artifact(&executable_path, "tactical executable")?;
         let archive_identity = artifact(&archive_path, "retail tactical archive")?;
-        let font_identity = artifact(&font_path, "tactical system font")?;
+        let font_archive_identity = artifact(&font_archive_path, "tactical bitmap font archive")?;
         require_identity(
             &archive_identity,
             profile.fixture.archive_byte_length,
@@ -256,19 +257,22 @@ impl TacticalCaptureSession {
             "retail archive",
         )?;
         require_identity(
-            &font_identity,
-            profile.pixel_inputs.font.byte_length,
-            &profile.pixel_inputs.font.sha256,
-            "system font",
+            &font_archive_identity,
+            font.archive_byte_length,
+            &font.archive_sha256,
+            "bitmap font archive",
         )?;
         reject_loose_shadow(&cwd.join(&profile.fixture.logical_map_name))?;
         reject_loose_shadow(&config.paths.ra2_dir.join(&profile.fixture.logical_map_name))?;
+
+        reject_loose_shadow(&cwd.join(&font.logical_name))?;
+        reject_loose_shadow(&config.paths.ra2_dir.join(&font.logical_name))?;
 
         self.inputs = Some(RuntimeInputs {
             config: config_identity,
             executable: executable_identity,
             archive: archive_identity,
-            font: font_identity,
+            font_archive: font_archive_identity,
         });
         state.match_state.input.cursor_x = capture.post_load_cursor.x as f32;
         state.match_state.input.cursor_y = capture.post_load_cursor.y as f32;
@@ -928,7 +932,7 @@ impl TacticalCaptureSession {
         })
     }
 
-    /// Observe the completed production game/egui render and arm one readback
+    /// Observe the completed production game render and arm one readback
     /// only when the full player-visible tuple is true.
     pub(crate) fn observe_after_render(
         &mut self,
@@ -1042,11 +1046,12 @@ impl TacticalCaptureSession {
             .is_some_and(|rules| crate::sim::radar::has_radar_for_owner(sim, rules, owner));
         let bound_structures_ready = self.bound_structures_ready(state)?;
         let no_modal_or_debug = !state.match_state.paused()
-            && !state.match_state.match_presentation.show_save_load_panel
             && !state.main_menu_dialog_open()
             && !state.diag.debug_show_pathgrid
+            && !state.diag.debug_show_cell_grid
+            && !state.diag.debug_show_heightmap
             && !state.diag.debug_unit_inspector
-            && !state.match_state.match_presentation.show_hotkey_help
+            && !state.diagnostic_gui_visible()
             && state.match_state.input.targeting_mode.is_none()
             && state.match_state.input.building_placement_preview.is_none()
             && state.match_state.input.keys_held.is_empty()
@@ -1067,10 +1072,20 @@ impl TacticalCaptureSession {
         let sidebar_values_ready = sidebar.power_produced >= sidebar.power_drained
             && sidebar.credits
                 == crate::app::presentation::sidebar_render::counter_credits(sim, owner);
-        let egui = state.capture_egui_observation();
-        let egui_ready = egui
-            .pixels_per_point
-            .is_some_and(|value| value.is_finite() && value > 0.0);
+        let font = state.renderer.bit_font.capture_observation();
+        let expected_font = &profile.pixel_inputs.bitmap_font;
+        let bitmap_font_ready = font.source_identity.is_some_and(|consumed| {
+            consumed.byte_length == expected_font.payload_byte_length
+                && consumed.sha256 == expected_font.payload_sha256
+        }) && font
+            .atlas_dimensions
+            .is_some_and(|extent| extent[0] > 0 && extent[1] > 0)
+            && font.glyph_count > 0
+            && font.cell_height == 17
+            && font.bitmap_rows == 16
+            && font.missing_glyph_present
+            && font.darken_texture_present
+            && output.instance_counts.sidebar_text > 0;
         let source_matches_owner = radar_source.requested_theme == expected_theme
             && radar_source.actual_theme == expected_theme
             && radar_source.atlas.atlas_theme == expected_theme;
@@ -1088,7 +1103,7 @@ impl TacticalCaptureSession {
             && sidebar_values_ready
             && cursor_ready
             && no_modal_or_debug
-            && egui_ready
+            && bitmap_font_ready
             && self.focus_violations == 0
             && self.input_violations == 0;
         Ok((
@@ -1107,7 +1122,7 @@ impl TacticalCaptureSession {
                 "no_modal_or_debug": no_modal_or_debug,
                 "panel_contains_aperture": panel_contains_aperture,
                 "sidebar_values_ready": sidebar_values_ready,
-                "egui_ready": egui_ready,
+                "bitmap_font_ready": bitmap_font_ready,
                 "radar_animation_source": source_evidence,
                 "production_render": render_evidence,
                 "sidebar": {
@@ -1346,23 +1361,54 @@ impl TacticalCaptureSession {
         Ok(())
     }
 
+    fn bitmap_font_evidence(&self, state: &AppState) -> Result<BitmapFontEvidence> {
+        let font = &self.request.profile()?.pixel_inputs.bitmap_font;
+        let selected = state
+            .process_assets
+            .manager()
+            .context("bitmap font evidence requires the production asset manager")?
+            .resolve_ref(&font.logical_name)
+            .context("GAME.FNT is absent from the production asset lookup")?;
+        ensure!(
+            selected.source_archive == font.source_archive
+                && selected.entry_id == font.entry_id
+                && selected.bytes.len() as u64 == font.payload_byte_length,
+            "production GAME.FNT winner differs from the sealed bitmap source"
+        );
+        let payload_sha256 = super::profile::sha256_hex(selected.bytes);
+        ensure!(
+            payload_sha256 == font.payload_sha256,
+            "production GAME.FNT bytes differ from the sealed bitmap input"
+        );
+        BitmapFontEvidence::from_observations(
+            state.renderer.bit_font.capture_observation(),
+            BitmapFontSourceEvidence {
+                logical_name: font.logical_name.clone(),
+                source_archive: selected.source_archive.to_owned(),
+                entry_id: selected.entry_id,
+                payload_byte_length: selected.bytes.len() as u64,
+                payload_sha256,
+            },
+        )
+    }
+
     fn build_manifest_evidence(&self, state: &AppState) -> Result<Value> {
         let inputs = self
             .inputs
             .as_ref()
             .context("manifest input identities are absent")?;
         let profile = self.request.profile()?;
-        let egui = state.capture_egui_observation();
+        let bitmap_font = self.bitmap_font_evidence(state)?;
         let graphics = GraphicsEvidence::from_observations(
             state.renderer.gpu.capture_adapter_observation(),
-            egui,
+            state.platform.window.scale_factor(),
             format!("{:?}", state.renderer.gpu.config.format),
             [
                 state.renderer.gpu.config.width,
                 state.renderer.gpu.config.height,
             ],
             state.match_state.match_presentation.ui_scale,
-            inputs.font.clone(),
+            bitmap_font,
         )?;
         let script = self
             .controller
@@ -1377,7 +1423,7 @@ impl TacticalCaptureSession {
                 "config": inputs.config,
                 "executable": inputs.executable,
                 "archive": inputs.archive,
-                "font": inputs.font,
+                "font_archive": inputs.font_archive,
             },
             "map_source": self.map_source_evidence,
             "lifecycle": {
@@ -1546,13 +1592,12 @@ fn require_identity(
 fn reject_loose_shadow(path: &Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(_) => bail!(
-            "loose tactical map shadow must be absent: {}",
+            "loose tactical input shadow must be absent: {}",
             path.display()
         ),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => {
-            Err(error).with_context(|| format!("inspect loose map shadow {}", path.display()))
-        }
+        Err(error) => Err(error)
+            .with_context(|| format!("inspect loose tactical input shadow {}", path.display())),
     }
 }
 

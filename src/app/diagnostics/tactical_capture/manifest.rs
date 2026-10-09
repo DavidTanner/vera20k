@@ -19,7 +19,7 @@ use super::profile::{
     TacticalCaptureProfile, sha256_hex, validate_new_output_directory,
 };
 
-pub(crate) const CAPTURE_SCHEMA: &str = "vera20k.tactical-capture.v2";
+pub(crate) const CAPTURE_SCHEMA: &str = "vera20k.tactical-capture.v3";
 const NATIVE_COMPARATOR_NONE: &str = "NONE";
 const PARITY_CERTIFICATION_NONE: &str = "NONE";
 static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -565,7 +565,7 @@ mod tests {
     ) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let profile = TacticalCaptureProfile::load_strict(
-            &root.join("tools/tactical_certification/profiles/soviet-radar-online-v2.json"),
+            &root.join("tools/tactical_certification/profiles/soviet-radar-online-v3.json"),
         )
         .expect("profile");
         let contract = TacticalCaptureContract::load_external(

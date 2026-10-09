@@ -1,15 +1,8 @@
 //! Match-session focus, modal, return, save/load, and developer-overlay control.
 
 use super::{App, AppState, GameScreen, Instant, ModifiersState};
+#[cfg(feature = "dev-ui")]
 use crate::app::input::dispatch;
-
-/// Caption gamemd loads onto the abort-mission confirmation's action button.
-/// Its two mode-dependent siblings (`GUI:Restart` in campaign, `GUI:Observe` in
-/// multiplayer) sit on a second button that offline skirmish hides outright.
-const ABORT_CONFIRM_LEAVE_KEY: &str = "GUI:Leave";
-/// The shipped English table resolves `GUI:Leave` to "Quit"; the fallback only
-/// applies when the string table is missing entirely, so it says the same.
-const ABORT_CONFIRM_LEAVE_FALLBACK: &str = "Quit";
 
 impl App {
     /// Hand the scenario RNG cursor back to the offline shell when a match ends.
@@ -39,9 +32,6 @@ impl App {
         state.match_state.match_presentation.abort_buttons = Default::default();
         state.match_state.match_presentation.sound_dialog = None;
         state.match_state.match_presentation.saved_game_browser = None;
-        // The dev save/load panel belongs to the match; nothing draws or
-        // closes it at the main menu.
-        state.match_state.match_presentation.show_save_load_panel = false;
         // Persist the deterministic diagnostic log before leaving the scenario.
         // Runtime and presentation resources remain retained in the shell.
         crate::app::match_runtime::sim_tick::flush_replay_log(state);
@@ -257,37 +247,6 @@ impl App {
         state.platform.window.request_redraw();
     }
 
-    /// Draw whichever in-scenario modal card is open and commit its route.
-    ///
-    /// Options is the native `0xBBB` overlay, drawn earlier in the frame, which
-    /// commits its own routes.
-    pub(super) fn handle_in_game_menu(state: &mut AppState) {
-        use crate::ui::pause_menu::{self, InGameMenuState, ModalOutcome};
-
-        let outcome = match state.match_state.match_presentation.in_game_menu {
-            InGameMenuState::Closed => ModalOutcome::Stay,
-            InGameMenuState::Menu => pause_menu::resolve_menu_action(
-                pause_menu::draw_in_game_menu(&state.renderer.egui.ctx),
-            ),
-            InGameMenuState::AbortConfirm => {
-                let leave_label =
-                    Self::csf_label(state, ABORT_CONFIRM_LEAVE_KEY, ABORT_CONFIRM_LEAVE_FALLBACK);
-                pause_menu::resolve_abort_action(pause_menu::draw_abort_confirm(
-                    &state.renderer.egui.ctx,
-                    &leave_label,
-                ))
-            }
-            // Options is the native `0xBBB` overlay, drawn earlier in the frame;
-            // its Back control returns to the menu through the owner.
-            InGameMenuState::Options
-            | InGameMenuState::Sound
-            | InGameMenuState::Keyboard
-            | InGameMenuState::SavedGame(_) => ModalOutcome::Stay,
-        };
-
-        Self::apply_in_game_modal_outcome(state, outcome);
-    }
-
     /// Every physical or fallback modal commits through the same state/exit owner.
     pub(crate) fn apply_in_game_modal_outcome(
         state: &mut AppState,
@@ -403,42 +362,57 @@ impl App {
         state.match_state.scenario_exit = Some(scenario_exit);
     }
 
-    /// Draw the save/load panel and handle its actions.
-    pub(super) fn handle_save_load_panel(state: &mut AppState) {
-        use crate::app::persistence::save_load_panel::SaveLoadAction;
-
-        state.persistence.refresh_save_list_if_dirty();
-        let action = crate::app::persistence::save_load_panel::draw_save_load_panel(
-            &state.renderer.egui.ctx,
-            state.persistence.save_list_cache.entries(),
-        );
-
-        match action {
-            SaveLoadAction::Load(path) => {
-                crate::app::persistence::commands::load_save_file(state, &path);
-            }
-            SaveLoadAction::Delete(path) => {
-                if let Err(e) = state.persistence.repository.delete(&path) {
-                    log::error!("Failed to delete save {}: {e}", path.display());
-                } else {
-                    log::info!("Deleted save: {}", path.display());
-                }
-                state.persistence.invalidate_save_list();
-            }
-            SaveLoadAction::Close => {
-                state.match_state.match_presentation.show_save_load_panel = false;
-            }
-            SaveLoadAction::None => {}
+    /// Draw diagnostic panels only when the optional GUI is visible.
+    #[cfg(feature = "dev-ui")]
+    pub(super) fn render_diagnostic_ui(
+        state: &mut AppState,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+    ) {
+        if !state.diagnostic_gui_visible() {
+            state
+                .renderer
+                .debug_ui
+                .discard_pending_input(&state.platform.window);
+            return;
         }
+        state.renderer.debug_ui.begin_frame(&state.platform.window);
+        let previous = crate::app::diagnostics::debug_panel::push_debug_light_visuals(
+            &state.renderer.debug_ui.ctx,
+        );
+        if state.diag.debug_show_pathgrid {
+            crate::app::diagnostics::debug_panel::draw_debug_panel(
+                &state.renderer.debug_ui.ctx,
+                state,
+            );
+        }
+        crate::app::diagnostics::debug_panel::draw_event_history_panel(
+            &state.renderer.debug_ui.ctx,
+            state,
+        );
+        if state.match_state.match_presentation.show_hotkey_help {
+            crate::app::diagnostics::debug_panel::draw_hotkey_help(&state.renderer.debug_ui.ctx);
+        }
+        if state.match_state.debug_pause {
+            Self::handle_dev_overlay(state);
+        }
+        crate::app::diagnostics::debug_panel::pop_debug_light_visuals(
+            &state.renderer.debug_ui.ctx,
+            previous,
+        );
+        state.renderer.debug_ui.end_frame_and_render(
+            &state.renderer.gpu,
+            encoder,
+            view,
+            &state.platform.window,
+            state.use_software_cursor(),
+        );
     }
 
-    /// Draw the dev overlay and dispatch its actions. No-op when the
-    /// overlay is hidden — caller checks `show_dev_overlay` before
-    /// calling.
+    /// Dispatch actions from the optional developer overlay.
+    #[cfg(feature = "dev-ui")]
     pub(super) fn handle_dev_overlay(state: &mut AppState) {
-        use crate::app::diagnostics::dev_overlay::{
-            DevOverlayAction, DevOverlayInfo, RecentSaveRow,
-        };
+        use crate::app::diagnostics::dev_overlay::{DevOverlayInfo, RecentSaveRow};
 
         // Build the recent-saves snapshot from the existing cache.
         state.persistence.refresh_save_list_if_dirty();
@@ -457,9 +431,11 @@ impl App {
                     .unwrap_or("?")
                     .to_string(),
                 tick: e.header.tick,
-                age_str: crate::app::persistence::save_load_panel::format_timestamp(
+                age_str: crate::util::native_file_time::format_timestamp_parts(
                     e.header.save_timestamp,
-                ),
+                )
+                .map(|(date, time)| format!("{date} {time}"))
+                .unwrap_or_else(|| format!("timestamp {}", e.header.save_timestamp)),
             })
             .collect();
 
@@ -528,13 +504,23 @@ impl App {
         };
 
         let action = crate::app::diagnostics::dev_overlay::draw_dev_overlay(
-            &state.renderer.egui.ctx,
+            &state.renderer.debug_ui.ctx,
             &mut info,
         );
 
         // Restore the (possibly-edited) buffer.
         state.diag.dev_overlay_save_name = save_name;
 
+        state.diag.queue_ui_action(action);
+    }
+
+    /// Diagnostic actions commit only after the surface texture is presented.
+    #[cfg(feature = "dev-ui")]
+    pub(super) fn commit_diagnostic_ui_action(state: &mut AppState) {
+        use crate::app::diagnostics::dev_overlay::DevOverlayAction;
+        let Some(action) = state.diag.take_ui_action() else {
+            return;
+        };
         match action {
             DevOverlayAction::None => {}
             // Developer-only direct-tps override (fine-grained 1..200, for

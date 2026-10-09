@@ -1,7 +1,7 @@
-//! egui rendering integration — bridges egui, winit, and wgpu.
+//! Optional diagnostic GUI integration — bridges egui, winit, and wgpu.
 //!
 //! Owns the egui Context, the egui-winit input translator (State),
-//! and the egui-wgpu Renderer that draws egui output to GPU textures.
+//! and the egui-wgpu Renderer. Compiled only with the dev-ui feature.
 //!
 //! ## Dependency rules
 //! - Part of render/ — depends on render/gpu for GpuContext.
@@ -14,24 +14,6 @@ use crate::render::gpu::GpuContext;
 
 const VERDANA_FONT_PATH: &str = "C:/Windows/Fonts/verdana.ttf";
 const CALIBRI_FONT_PATH: &str = "C:/Windows/Fonts/calibri.ttf";
-
-/// Immutable identity of the font source selected during egui initialization.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SelectedSystemFontIdentity {
-    SystemFile {
-        path: &'static str,
-        byte_length: usize,
-    },
-    EguiBuiltIn,
-}
-
-/// Capture-only observation of the scale and font inputs used by egui.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct EguiCaptureObservation<'a> {
-    pub selected_font: &'a SelectedSystemFontIdentity,
-    pub window_scale_factor: f64,
-    pub pixels_per_point: Option<f32>,
-}
 
 /// All egui state needed for input handling and rendering.
 ///
@@ -50,12 +32,6 @@ pub struct EguiIntegration {
     /// egui-wgpu renderer. Manages GPU buffers and textures for egui output.
     /// Does NOT use a depth buffer — egui renders flat UI elements.
     renderer: egui_wgpu::Renderer,
-
-    /// Font identity chosen once during initialization.
-    selected_font: SelectedSystemFontIdentity,
-
-    /// Exact value returned by egui for the most recently completed pass.
-    last_pixels_per_point: Option<f32>,
 }
 
 impl EguiIntegration {
@@ -91,24 +67,12 @@ impl EguiIntegration {
         );
 
         // Load Verdana as the proportional font for a cleaner UI look.
-        let selected_font = load_system_font(&ctx);
+        load_system_font(&ctx);
 
         Self {
             ctx,
             state,
             renderer,
-            selected_font,
-            last_pixels_per_point: None,
-        }
-    }
-
-    /// Observe immutable font provenance and the scale factors actually used by
-    /// the current window and most recently completed egui pass.
-    pub(crate) fn capture_observation(&self, window: &Window) -> EguiCaptureObservation<'_> {
-        EguiCaptureObservation {
-            selected_font: &self.selected_font,
-            window_scale_factor: window.scale_factor(),
-            pixels_per_point: self.last_pixels_per_point,
         }
     }
 
@@ -160,7 +124,6 @@ impl EguiIntegration {
         has_software_cursor: bool,
     ) {
         let full_output: egui::FullOutput = self.ctx.end_pass();
-        self.last_pixels_per_point = Some(full_output.pixels_per_point);
 
         // Handle platform output (clipboard, open URL, IME, etc.).
         let mut platform_output = full_output.platform_output;
@@ -240,16 +203,16 @@ impl EguiIntegration {
 
 /// Load Verdana (or Calibri fallback) as the default proportional font.
 /// Falls back silently to egui's built-in font if neither is found.
-fn load_system_font(ctx: &egui::Context) -> SelectedSystemFontIdentity {
+fn load_system_font(ctx: &egui::Context) {
     let Some(font_path) = preferred_system_font_path(|path| std::path::Path::new(path).exists())
     else {
         log::info!("No Verdana/Calibri found — using egui default font");
-        return SelectedSystemFontIdentity::EguiBuiltIn;
+        return;
     };
 
     let Ok(font_bytes) = std::fs::read(font_path) else {
         log::warn!("Failed to read font file: {}", font_path);
-        return SelectedSystemFontIdentity::EguiBuiltIn;
+        return;
     };
     let byte_length = font_bytes.len();
     log::info!("Loaded system font: {} ({} bytes)", font_path, byte_length);
@@ -266,10 +229,6 @@ fn load_system_font(ctx: &egui::Context) -> SelectedSystemFontIdentity {
         .or_default()
         .insert(0, "sidebar_font".to_string());
     ctx.set_fonts(fonts);
-    SelectedSystemFontIdentity::SystemFile {
-        path: font_path,
-        byte_length,
-    }
 }
 
 fn preferred_system_font_path(path_exists: impl Fn(&str) -> bool) -> Option<&'static str> {

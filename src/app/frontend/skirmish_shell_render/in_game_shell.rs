@@ -298,9 +298,10 @@ pub(super) fn render_shell_frame(
         .platform
         .window
         .set_cursor_visible(!state.use_software_cursor());
+    #[cfg(feature = "dev-ui")]
     state
         .renderer
-        .egui
+        .debug_ui
         .discard_pending_input(&state.platform.window);
     let width = state.renderer.gpu.config.width;
     let height = state.renderer.gpu.config.height;

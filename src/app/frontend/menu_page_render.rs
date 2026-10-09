@@ -556,8 +556,7 @@ mod tests {
         assert!(cursor < pass_end);
         assert!(pass_end < present);
 
-        // Steady dispatch: the page is presented to the swapchain texture,
-        // then the egui overlay (save/load panel) draws on the view.
+        // Steady dispatch presents the page directly to the swapchain.
         let app_source = include_str!("../frame.rs");
         let dispatch = &app_source[app_source
             .find("ActiveMenuPage::from_state(state)")
@@ -565,10 +564,9 @@ mod tests {
         let shell_call = dispatch
             .find("render_active_menu_page")
             .expect("menu page renderer call");
-        let overlay = dispatch
-            .find("state.renderer.egui.end_frame_and_render")
-            .expect("post-shell egui overlay");
-        assert!(dispatch[shell_call..overlay].contains("&output.texture"));
-        assert!(dispatch[overlay..].contains("&view"));
+        let dispatch_end = dispatch[shell_call..]
+            .find("MainMenuShellRenderResult")
+            .expect("next shell dispatch");
+        assert!(dispatch[shell_call..shell_call + dispatch_end].contains("&output.texture"));
     }
 }

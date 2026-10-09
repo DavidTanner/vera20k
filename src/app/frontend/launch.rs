@@ -322,7 +322,7 @@ mod tests {
             TACTICAL_CAPTURE_FLAG.into(),
             CHECKPOINT_RADAR_ONLINE_V2.into(),
             "--profile".into(),
-            root.join("tools/tactical_certification/profiles/soviet-radar-online-v2.json")
+            root.join("tools/tactical_certification/profiles/soviet-radar-online-v3.json")
                 .into_os_string(),
             "--contract".into(),
             root.join("src/app/diagnostics/tactical_capture/contract.v2.json")
@@ -497,7 +497,7 @@ mod tests {
         );
         assert_eq!(
             request.profile().unwrap().profile_id,
-            "soviet-radar-online-v2"
+            "soviet-radar-online-v3"
         );
         assert_eq!(request.width(), 800);
         assert_eq!(request.height(), 600);

@@ -243,7 +243,6 @@ fn guard(
         expected_cursor,
         interaction_active: state.main_menu_dialog_open()
             || state.frontend.quit_cascade.is_some()
-            || state.match_state.match_presentation.show_save_load_panel
             || (shell.choose_map_modal.is_some() && chooser.is_none())
             || (shell.random_map_setup_modal.is_some()
                 && !matches!(chooser, Some(ChooserTarget::RandomMap(_))))

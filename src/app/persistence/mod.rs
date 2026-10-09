@@ -6,16 +6,17 @@
 //! modification time. Unifying them would be VERA-internal / gamemd equivalent
 //! UNCHECKED.
 //!
-//! F12 owner tree: the save/load panel UI and options persistence live here
+//! F12 owner tree: optional diagnostic save metadata and options persistence live here
 //! beside the repository they drive.
 
 pub(crate) mod commands;
 pub(crate) mod options;
 pub(crate) mod options_profile;
-pub(crate) mod save_load_panel;
 
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
+#[cfg(any(feature = "dev-ui", test))]
+use std::time::Instant;
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::overlay_types::OverlayTypeRegistry;
@@ -33,8 +34,11 @@ pub(crate) struct PersistenceState {
     /// render, and audio state are projections of this single retained value.
     pub(crate) options_profile: options_profile::RetailOptionsProfile,
     pub(crate) repository: SaveRepository,
+    #[cfg(any(feature = "dev-ui", test))]
     pub(crate) save_list_cache: SaveListCache,
+    #[cfg(any(feature = "dev-ui", test))]
     last_save_tick: Option<u64>,
+    #[cfg(any(feature = "dev-ui", test))]
     last_save_instant: Option<Instant>,
     pub(crate) last_loaded_save_path: Option<PathBuf>,
 }
@@ -44,8 +48,11 @@ impl PersistenceState {
         Self {
             options_profile,
             repository: SaveRepository::new(),
+            #[cfg(any(feature = "dev-ui", test))]
             save_list_cache: SaveListCache::new(),
+            #[cfg(any(feature = "dev-ui", test))]
             last_save_tick: None,
+            #[cfg(any(feature = "dev-ui", test))]
             last_save_instant: None,
             last_loaded_save_path: None,
         }
@@ -76,25 +83,32 @@ impl PersistenceState {
         Ok(path.to_path_buf())
     }
 
-    fn record_successful_save(&mut self, tick: u64) {
-        self.last_save_tick = Some(tick);
-        self.last_save_instant = Some(Instant::now());
-        self.invalidate_save_list();
+    fn record_successful_save(&mut self, _tick: u64) {
+        #[cfg(any(feature = "dev-ui", test))]
+        {
+            self.last_save_tick = Some(_tick);
+            self.last_save_instant = Some(Instant::now());
+            self.invalidate_save_list();
+        }
     }
 
+    #[cfg(any(feature = "dev-ui", test))]
     pub(crate) fn last_save_tick(&self) -> Option<u64> {
         self.last_save_tick
     }
 
+    #[cfg(any(feature = "dev-ui", test))]
     pub(crate) fn last_save_instant(&self) -> Option<Instant> {
         self.last_save_instant
     }
 
+    #[cfg(any(feature = "dev-ui", test))]
     pub(crate) fn refresh_save_list_if_dirty(&mut self) {
         self.save_list_cache.refresh_if_dirty(&self.repository);
     }
 
     pub(crate) fn invalidate_save_list(&mut self) {
+        #[cfg(any(feature = "dev-ui", test))]
         self.save_list_cache.invalidate();
     }
 }
@@ -328,12 +342,14 @@ pub(crate) struct SaveEntry {
     pub(crate) header: GameSnapshotHeader,
 }
 
-/// Cached panel listing, refreshed only after explicit invalidation.
+/// Optional diagnostic listing, refreshed only after explicit invalidation.
+#[cfg(any(feature = "dev-ui", test))]
 pub(crate) struct SaveListCache {
     entries: Vec<SaveEntry>,
     dirty: bool,
 }
 
+#[cfg(any(feature = "dev-ui", test))]
 impl SaveListCache {
     fn new() -> Self {
         Self {
@@ -501,6 +517,7 @@ impl SaveRepository {
 
     /// Panel policy: admit only valid snapshot headers and sort newest embedded
     /// save timestamp first.
+    #[cfg(any(feature = "dev-ui", test))]
     pub(crate) fn panel_entries_by_embedded_time(&self) -> Vec<SaveEntry> {
         let Ok(directory) = std::fs::read_dir(&self.directory) else {
             return Vec::new();
@@ -576,6 +593,7 @@ impl SaveRepository {
     }
 }
 
+#[cfg(any(feature = "dev-ui", test))]
 fn sort_panel_entries_by_embedded_time(entries: &mut [SaveEntry]) {
     entries.sort_by(|left, right| right.header.save_timestamp.cmp(&left.header.save_timestamp));
 }
@@ -699,7 +717,7 @@ mod tests {
         frame_pacer: LocalFramePacer,
         overlay_render_index: Vec<OverlayEntry>,
         lighting_grid: CellLightGrid,
-        show_save_load_panel: bool,
+        in_game_menu: crate::ui::pause_menu::InGameMenuState,
         persistence: PersistenceState,
     }
 
@@ -745,7 +763,9 @@ mod tests {
                     frame: 6,
                 }],
                 lighting_grid,
-                show_save_load_panel: true,
+                in_game_menu: crate::ui::pause_menu::InGameMenuState::SavedGame(
+                    crate::ui::skirmish_shell::SavedSeedMode::Load,
+                ),
                 persistence,
             }
         }
@@ -772,7 +792,7 @@ mod tests {
                     .map(|entry| (entry.rx, entry.ry, entry.overlay_id, entry.frame))
                     .collect(),
                 lighting_tint: self.lighting_grid.tint_or_default((3, 4)),
-                show_save_load_panel: self.show_save_load_panel,
+                in_game_menu: self.in_game_menu,
                 last_loaded_save_path: self.persistence.last_loaded_save_path.clone(),
                 save_list_dirty: self.persistence.save_list_cache.dirty,
             }
@@ -800,7 +820,7 @@ mod tests {
         pacer_admits_next_bucket: bool,
         overlay_render_index: Vec<(u16, u16, u8, u8)>,
         lighting_tint: [f32; 3],
-        show_save_load_panel: bool,
+        in_game_menu: crate::ui::pause_menu::InGameMenuState,
         last_loaded_save_path: Option<PathBuf>,
         save_list_dirty: bool,
     }

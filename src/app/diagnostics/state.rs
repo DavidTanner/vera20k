@@ -4,8 +4,66 @@
 //! Match-lifetime diagnostic replay lives in `app::match_diagnostics`; this
 //! owner is process-scoped tooling state.
 
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
+
+const FRAME_TIMER_WINDOW: usize = 60;
+
+/// Rolling FPS / frame-time tracker. Sampled once per `render_frame`.
+pub(crate) struct FrameTimer {
+    samples: VecDeque<Duration>,
+    last_tick: Option<Instant>,
+}
+
+impl FrameTimer {
+    pub(crate) fn new() -> Self {
+        Self {
+            samples: VecDeque::with_capacity(FRAME_TIMER_WINDOW),
+            last_tick: None,
+        }
+    }
+
+    /// Record one frame boundary. Call from the top of `render_frame`.
+    pub(crate) fn sample(&mut self, now: Instant) {
+        if let Some(prev) = self.last_tick {
+            let dt = now - prev;
+            if self.samples.len() == FRAME_TIMER_WINDOW {
+                self.samples.pop_front();
+            }
+            self.samples.push_back(dt);
+        }
+        self.last_tick = Some(now);
+    }
+
+    /// Mean frame time in milliseconds over the current window, or 0
+    /// if no samples have been recorded yet.
+    pub(crate) fn frame_ms_mean(&self) -> f32 {
+        if self.samples.is_empty() {
+            return 0.0;
+        }
+        let total_ns: u128 = self.samples.iter().map(|d| d.as_nanos()).sum();
+        let mean_ns: u128 = total_ns / self.samples.len() as u128;
+        (mean_ns as f64 / 1_000_000.0) as f32
+    }
+
+    /// FPS derived from the mean frame time, or 0 if no samples.
+    #[cfg(any(feature = "dev-ui", test))]
+    pub(crate) fn fps(&self) -> f32 {
+        let ms = self.frame_ms_mean();
+        if ms <= 0.0 { 0.0 } else { 1000.0 / ms }
+    }
+}
+
+impl Default for FrameTimer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub(crate) struct DiagnosticsState {
     presentation_clock: PresentationClock,
+    #[cfg(feature = "dev-ui")]
+    pending_ui_action: Option<crate::app::diagnostics::dev_overlay::DevOverlayAction>,
     /// One-shot: advance a single sim tick while paused (dev overlay).
     pub(crate) debug_frame_step_requested: bool,
     /// PathGrid walkability overlay toggle (P / F9).
@@ -23,9 +81,10 @@ pub(crate) struct DiagnosticsState {
     /// the run being measured).
     pub(crate) parity_digest_sink: Option<crate::sim::parity_digest::ParityDigestSink>,
     /// Save-name text field in the dev overlay.
+    #[cfg(feature = "dev-ui")]
     pub(crate) dev_overlay_save_name: String,
     /// Rolling frame-time statistics for the dev overlay.
-    pub(crate) frame_timer: crate::app::diagnostics::dev_overlay::FrameTimer,
+    pub(crate) frame_timer: FrameTimer,
 }
 
 /// A diagnostic input policy, never a second simulation clock. The map route
@@ -45,6 +104,8 @@ impl DiagnosticsState {
     ) -> Self {
         Self {
             presentation_clock: PresentationClock::Wall,
+            #[cfg(feature = "dev-ui")]
+            pending_ui_action: None,
             debug_frame_step_requested: false,
             debug_show_pathgrid: false,
             debug_terrain_cost_speed_type: None,
@@ -52,9 +113,29 @@ impl DiagnosticsState {
             debug_show_heightmap: false,
             debug_unit_inspector: false,
             parity_digest_sink,
+            #[cfg(feature = "dev-ui")]
             dev_overlay_save_name: String::new(),
-            frame_timer: crate::app::diagnostics::dev_overlay::FrameTimer::new(),
+            frame_timer: FrameTimer::new(),
         }
+    }
+
+    #[cfg(feature = "dev-ui")]
+    pub(crate) fn queue_ui_action(
+        &mut self,
+        action: crate::app::diagnostics::dev_overlay::DevOverlayAction,
+    ) {
+        self.pending_ui_action = (!matches!(
+            action,
+            crate::app::diagnostics::dev_overlay::DevOverlayAction::None
+        ))
+        .then_some(action);
+    }
+
+    #[cfg(feature = "dev-ui")]
+    pub(crate) fn take_ui_action(
+        &mut self,
+    ) -> Option<crate::app::diagnostics::dev_overlay::DevOverlayAction> {
+        self.pending_ui_action.take()
     }
 
     pub(crate) fn use_map_presentation_clock(&mut self) -> anyhow::Result<()> {
@@ -141,5 +222,43 @@ mod tests {
         assert!(!messages.manage(now(182)));
         assert!(messages.manage(now(183)));
         assert!(messages.messages().is_empty());
+    }
+
+    #[test]
+    fn frame_timer_empty_returns_zero() {
+        let t = FrameTimer::new();
+        assert_eq!(t.frame_ms_mean(), 0.0);
+        assert_eq!(t.fps(), 0.0);
+    }
+
+    #[test]
+    fn frame_timer_single_sample_is_still_zero() {
+        // First sample establishes the baseline; no delta yet.
+        let mut t = FrameTimer::new();
+        t.sample(Instant::now());
+        assert_eq!(t.frame_ms_mean(), 0.0);
+    }
+
+    #[test]
+    fn frame_timer_two_samples_record_one_delta() {
+        let mut t = FrameTimer::new();
+        let t0 = Instant::now();
+        let t1 = t0 + Duration::from_millis(16);
+        t.sample(t0);
+        t.sample(t1);
+        let mean = t.frame_ms_mean();
+        assert!((mean - 16.0).abs() < 0.5, "expected ~16ms, got {mean}");
+        let fps = t.fps();
+        assert!((fps - 62.5).abs() < 5.0, "expected ~62.5 fps, got {fps}");
+    }
+
+    #[test]
+    fn frame_timer_window_caps_at_60() {
+        let mut t = FrameTimer::new();
+        let t0 = Instant::now();
+        for i in 0..200 {
+            t.sample(t0 + Duration::from_millis(16 * i));
+        }
+        assert_eq!(t.samples.len(), FRAME_TIMER_WINDOW);
     }
 }
