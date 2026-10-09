@@ -232,7 +232,20 @@ fn native_idle_timelines_keep_latch_countdown_and_main_draw_history() {
             );
         }
     }
-    assert_eq!(rows.len(), 5, "all original timelines consumed");
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [
+            "stock_idle_disabled",
+            "stock_idle_accepted_boundary",
+            "authored_idle_rate5_lapse",
+            "ordered_two_sounds",
+            "ordered_duplicate_sounds",
+            "stock_idle_frame_zero",
+        ],
+        "all original timelines and the frame-zero addition consumed"
+    );
 }
 
 #[test]
@@ -360,14 +373,21 @@ fn retail_idle_squid_production_frames_match_native_counter_and_sound_cadence() 
         return;
     };
     let corpus = native();
-    let row = corpus["timelines"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|row| row["name"] == "stock_idle_disabled")
-        .unwrap();
+    for name in ["stock_idle_disabled", "stock_idle_frame_zero"] {
+        let row = corpus["timelines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["name"] == name)
+            .unwrap();
+        assert_retail_idle_timeline(&retail_dir, row);
+    }
+}
+
+fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
+    let name = row["name"].as_str().unwrap();
     let steps = row["steps"].as_array().unwrap();
-    let mut scene = crate::headless_scenario::load(&retail_dir, "Hills.mmx", 31)
+    let mut scene = crate::headless_scenario::load(retail_dir, "Hills.mmx", 31)
         .expect("production retail Hills/Battle load");
     assert_binding(
         &scene.runtime.resources.rules,
@@ -413,9 +433,10 @@ fn retail_idle_squid_production_frames_match_native_counter_and_sound_cadence() 
     sim.main_rng =
         SimRng::from_native_state_hex_for_test(steps[0]["before"]["rng"]["main"].as_str().unwrap());
     for step in steps {
+        let native_frame = step["frame"].as_u64().unwrap() as u32;
         assert_eq!(
-            u64::from(runtime.simulation.session.binary_frame),
-            step["frame"].as_u64().unwrap()
+            runtime.simulation.session.binary_frame, native_frame,
+            "{name}: original entry frame"
         );
         let output = runtime
             .advance_frame(
@@ -426,17 +447,23 @@ fn retail_idle_squid_production_frames_match_native_counter_and_sound_cadence() 
             .expect("paid ordinary production frame");
         assert!(output.tick.frame_committed);
         let sim = &runtime.simulation;
+        // SimRuntime's ordinary frame commits binary_frame after object AI.
+        // Native slice frame 0 therefore supplies completed boundary 1; the
+        // event/state assertions below compare the same pre-commit visit.
+        assert_eq!(
+            sim.session.binary_frame,
+            native_frame.wrapping_add(1),
+            "{name}: completed boundary after original frame {native_frame}"
+        );
         assert_eq!(
             actor_state(sim, id),
             expected_state(&step["after"]),
-            "paid frame {}",
-            step["frame"]
+            "{name}: paid original frame {native_frame}"
         );
         assert_eq!(
             effects(sim, id, &output.sound_events, false),
             native_effects(step, false),
-            "paid frame {}: captured-before-Process counter reaches sound owner",
-            step["frame"]
+            "{name}: paid original frame {native_frame}: captured-before-Process counter reaches sound owner"
         );
         assert_eq!(
             sim.main_rng.native_state_hex(),

@@ -273,9 +273,17 @@ class FootSound(Native):
                     supplied_moving_answers=moving_answers)
 
 
-def timeline(name, frames, **inputs):
+def timeline(name, frames=None, *, start_frame=None, frame_count=None, **inputs):
+    supplied = dict(seed=31, **inputs)
+    if frames is None:
+        if start_frame is None or frame_count is None or frame_count <= 0:
+            raise ValueError('A timeline interval requires start_frame and positive frame_count')
+        frames = range(start_frame, start_frame + frame_count)
+        supplied.update(start_frame=start_frame, frame_count=frame_count)
+    elif start_frame is not None or frame_count is not None:
+        raise ValueError('Use explicit frames or an interval, not both')
     fixture = FootSound(inputs)
-    return dict(name=name, input=dict(seed=31, **inputs), binding=fixture.binding(),
+    return dict(name=name, input=supplied, binding=fixture.binding(),
                 steps=[fixture.visit(frame) for frame in frames])
 
 
@@ -541,7 +549,8 @@ def generate():
                                     playback='accepted_boundary'),
                            timeline('ordered_two_sounds', [4], move_sound='SquidMove,GenLargeWaterDie'),
                            timeline('ordered_duplicate_sounds', [4],
-                                    move_sound='GenLargeWaterDie,SquidMove,GenLargeWaterDie')],
+                                    move_sound='GenLargeWaterDie,SquidMove,GenLargeWaterDie'),
+                           timeline('stock_idle_frame_zero', start_frame=0, frame_count=16)],
                 controls=controls, handles=handle_controls(), load=load_controls(),
                 queued_playout=queued_controls())
 
@@ -562,7 +571,8 @@ def metadata():
     result = provenance(
         scope=__doc__,
         entry_points=dict(foot_counter_and_sound=0x4DA806, sound_tail=0x4DAA01,
-                          counter_update=0x4DA886, body_rate_reader=0x712222,
+                          counter_update=0x4DA886, idle_rate_division=0x4DA989,
+                          body_counter_increment=0x4DA9FB, body_rate_reader=0x712222,
                           move_sound_reader=0x713459, sound_list=0x525430,
                           sound_registry=0x7510D0, voc_reader=0x750440,
                           ship_constructor=0x69EC50, ship_is_moving_now=0x69F330,
@@ -574,6 +584,7 @@ def metadata():
             'Existing naval_occupants VM owns original UnitType/base Unit/Foot constructor prefix and Ship constructor, supplied actor/house/cell placement and its inherited selected type/rules reads. This is an already-live healthy SQD boundary, not full Unlimbo or physical map placement.',
             'Selected physical RULESMD, absent LANGRULE, MPBattleMD and Hills inner-map INI caches execute original WalkRate then IdleRate/current defaults and MoveSound ordered-vector blocks. Fixed SOUNDMD original selected SoundList/Defaults/Voc bodies bind SquidMove and GenLargeWaterDie; indexes are fixture-relative and sample lookup maps physical names locally.',
             'Original4DA806..4DAB3C captures the actual pre-Process body counter, executes original gates, original body counter and complete sound tail. Stock idle IsMovingNow executes original69F330 from original Ship ctor state. Explicit callback variants are supplied retained responses. Earlier Foot/Techno AI and full object/world scheduling are excluded.',
+            'stock_idle_frame_zero supplies globalA8ED84 values0..15 to the same already-live SQD boundary. Original idle-rate division4DA989 and counter increment4DA9FB execute at frame0; no host modulo or counter delta is supplied. Its before/after visit states bracket the AI body, while production exact-step receipts expose the subsequently committed frame. Native scenario frame initialization and whole first-frame AI are excluded.',
             'All three whole0x3F4 RNG states are seeded through original65C6D0. Draw results, modulo-selected list slot, order and counter/timer writes come from original execution. No host arithmetic supplies an expected output. Foot selection draws are distinct from later audio-service Main RNG.',
             'Tagged playing/pending and authored loop controls are explicit event/type boundary fields, with no attached channel/sample buffer. Original405D40/405FD0/406060 and bounded FootLimbo/destructor suffixes execute all cleanup writes. Pending state2 is a supplied state, not an event-allocation lifetime claim.',
             'Raw-load controls reuse naval_lifetime_controls: original AbstractLoad, unconditional Foot audio reset, no-init Foot ctor and Unit vtables execute against supplied Unit-size bytes. Dynamic vectors, COM/pointer swizzling and whole old-world Clear are excluded. NoInit clears the saved locomotor pointer; the next visit explicitly reattaches the existing constructor-built idle Ship and uses the declared Process boundary. Pair+2A8/type+692 controls supply presence/byte only and do not establish reciprocal-link lifecycle.',

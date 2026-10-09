@@ -47,6 +47,23 @@ measure the caller and handle lifecycle, not decoder, channel or device output.
 An authored IdleRate 5 timeline exposes lapse/restart without inventing a stock
 Stop-command release: stock idle SQD keeps refreshing its latch.
 
+The additive `stock_idle_frame_zero` timeline supplies `start_frame=0` and
+`frame_count=16` through the same producer. Original `4DA983` reads frame
+`A8ED84`, `4DA989` divides it by IdleRate, and the qualifying path increments
+the body counter at `4DA9FB`. The frame-zero visit executes those instructions
+and the joined sound tail; no startup exception or calculated counter delta is
+supplied. It changes body counter 0 to 1, sets the latch and countdown 3, and
+makes one Main draw; Scenario and MapGen remain unchanged. This remains an
+already-live SQD boundary, not native scenario frame initialization or whole
+first-frame AI.
+
+Production observations use committed frame boundaries: `SimRuntime::advance_frame`
+calls the shared frame transaction, whose live object pass precedes the late
+`binary_frame` increment. Thus L0 is before AI at frame 0; completed step 1
+records frame 1 after executing frame-0 work. Compare a native visit's
+`after` state to that committed observation, not to a visit at its displayed
+frame number. The five earlier timelines retain their explicit frame inputs.
+
 ## Cleanup and queued playback
 
 The tagged controls execute full `405D40`, `405FD0`, `406060`, the selected

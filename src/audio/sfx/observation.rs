@@ -270,6 +270,11 @@ impl PcmObservationConfig {
     }
 }
 
+/// Last completed exact-step capture boundary, supplied by the diagnostic
+/// controller. It stays fixed while a step runs, including that step's sound
+/// submission, and is refreshed after its receipt commits. These fields are
+/// not an exact simulation timestamp for an audio action or a PCM sample.
+/// Input-driven restore refreshes the loaded frame/tick without adding a step.
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub(crate) struct PcmObservationContext {
     pub completed_steps: u64,
@@ -280,6 +285,8 @@ pub(crate) struct PcmObservationContext {
 #[derive(Debug, Serialize)]
 pub(crate) struct OutputAction {
     pub kind: &'static str,
+    /// SfxPlayer's last serviced wall-clock value. Actions between service
+    /// passes retain it; this is not the action's independently sampled time.
     pub service_ms: u64,
     pub context: PcmObservationContext,
 }

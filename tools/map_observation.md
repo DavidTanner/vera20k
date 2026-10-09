@@ -107,6 +107,17 @@ The PCM includes any Player queue filler silence. Completion requires both the
 existing SFX owner's terminal action and the device mixer pulling the queue to its end;
 recording is not cut off merely because a stop/release was requested.
 
+An action's `context` is the **last completed exact-step capture boundary**.
+It remains fixed during a step, including sound submission, and refreshes after
+the step receipt commits. For example, a sound emitted during native frame 0
+can be submitted with context step 0/frame 0, then started by the following
+audio service with context step 1/frame 1. It is not an exact action or PCM
+sample timestamp. `service_ms` is SfxPlayer's last serviced wall-clock value;
+actions between service passes retain that value rather than sampling a new
+clock. Frame observations are post-commit state: the step 1/frame 1 row contains
+the result of executing native frame 0. A literal load also refreshes the
+context's loaded frame/tick while `completed_steps` remains monotonic.
+
 Limits are 1..16 distinct ASCII sound IDs (128 bytes each), 1..16 submissions,
 1..262144 samples per submission, 64 action/format rows and 128 resolved sample
 names per submission. After the requested exact steps, the existing frame/audio
