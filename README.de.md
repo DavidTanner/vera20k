@@ -7,7 +7,6 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Letzter Testlauf der Bibliothek unter Linux (manuell gestartet)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Bibliothekstests unter Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Letzter Testlauf der Bibliothek unter Windows (manuell gestartet)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Bibliothekstests unter Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Discord beitreten" height="20" align="middle"></a>
-  <img src="https://img.shields.io/badge/QQ_Gruppe-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="Chinesische QQ-Gruppe" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -75,8 +74,7 @@ ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten nach Rust und p
 Hilfe ist willkommen. Du kannst Code schreiben, die Engine refaktorieren, das Spiel testen,
 Ideen einbringen oder es neben dem Original spielen und uns sagen, was sich falsch anfühlt.
 Öffne einen PR, und wir kümmern uns um den Rest; bei größeren Vorhaben frag vorher in einem
-Issue, auf [Discord](https://discord.gg/kmjRUn5m5F) oder in der von der Community
-betriebenen chinesischen QQ-Gruppe (1097193563).
+Issue oder auf [Discord](https://discord.gg/kmjRUn5m5F).
 
 Die Spiellogik liegt in `src/sim/`, das Rendering in `src/render/` und Menüs und Eingabe in
 `src/app/` und `src/ui/`; die Python-Werkzeuge in `tools/` brauchst du nicht.
