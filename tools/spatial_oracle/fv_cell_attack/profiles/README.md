@@ -24,9 +24,11 @@ absolute authored map path. The production loader does not resolve these
 repository-relative strings against the profile's directory. Keep the runtime
 working directory separate from the retained output and use a fresh copy of
 `config.toml`; production quicksave/quickload then uses only scratch `saves/`.
+Unset inherited `RA2_DIR` for the sealed capture wrapper; its retail path comes
+from that isolated configuration.
 
 ```sh
-python -m tools.map_observation --profile /absolute/materialized-profile.json \
+env -u RA2_DIR python -m tools.map_observation --profile /absolute/materialized-profile.json \
   --contract /absolute/checkout/src/app/diagnostics/tactical_capture/contract.v2.json \
   --cwd /absolute/fresh-runtime-directory --build-label CANDIDATE_LABEL \
   --output /absolute/new-retained-run
