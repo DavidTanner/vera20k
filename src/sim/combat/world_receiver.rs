@@ -1961,8 +1961,10 @@ fn emit_detonation_receivers(
         SpecialDetonationAction::OrdinaryDamage => {
             emit_projectile_shrapnel(
                 detonation,
-                &mut world.substrate.entities,
-                &mut world.substrate.occupancy,
+                bullet_location(world, detonation).0,
+                &world.substrate.entities,
+                &world.substrate.occupancy,
+                &world.production.terrain_object_cells,
                 rules,
                 &mut world.interner,
                 world.resolved_terrain.as_ref(),
@@ -2011,6 +2013,30 @@ fn emit_detonation_receivers(
     }
 }
 
+/// The detonating bullet's Location (`+0x9C`) and OnBridge, which
+/// SpawnShrapnel and the anim tail read. The impact ladder
+/// (`ResolveImpactCoordAndDetonate @ 0x00468D80`) hands DetonateAtCoord a
+/// resolved coordinate but never moves the bullet. A death weapon's bullet is
+/// never placed: Fire_Death_Weapon creates it, Limbos it and detonates it at
+/// its firer's GetCoords (`0x0070D756..0x0070D782`), so its Location is still
+/// the constructor's zero coordinate (`0x005F3993` copies `0x00AC1380`, which
+/// `0x005F38A0` zeroes), off any bridge. A detonation with no live bullet (a
+/// test fixture) stands at its own coordinate.
+fn bullet_location(
+    world: &Simulation,
+    detonation: &ProjectileDetonation,
+) -> (ProjectileCoord, bool) {
+    match world.projectiles.get(detonation.projectile_id) {
+        Some(bullet) => (bullet.position, bullet.on_bridge),
+        None if detonation.reason
+            == crate::sim::projectile::ProjectileDetonationReason::DeathWeapon =>
+        {
+            (ProjectileCoord::new(0, 0, 0), false)
+        }
+        None => (detonation.impact, false),
+    }
+}
+
 /// `LAB_00469AA4`, reached by the ordinary arm and every special arm after
 /// their receivers: an `Inviso=` bullet first scatters the anim coordinate
 /// by one raw Scenario draw (`0x0049F420`, radius 0x20; the damage keeps the
@@ -2042,20 +2068,7 @@ fn emit_detonation_anim(
     // 469AF0..469BCF reads the still-live Bullet, not the damage/animation
     // coordinate copied at469AA4. The terrain here includes the synchronous
     // bridge continuation, so a collapsed deck can now select SplashList.
-    // A death weapon's bullet is never placed: Fire_Death_Weapon creates it,
-    // Limbos it and detonates it at its firer's GetCoords
-    // (`0x0070D756..0x0070D782`), so its Location is still the constructor's
-    // zero coordinate (`0x005F3993` copies `0x00AC1380`, which `0x005F38A0`
-    // zeroes), off any bridge.
-    let (selection_coordinate, on_bridge) = match world.projectiles.get(detonation.projectile_id) {
-        Some(bullet) => (bullet.position, bullet.on_bridge),
-        None if detonation.reason
-            == crate::sim::projectile::ProjectileDetonationReason::DeathWeapon =>
-        {
-            (ProjectileCoord::new(0, 0, 0), false)
-        }
-        None => (detonation.impact, false),
-    };
+    let (selection_coordinate, on_bridge) = bullet_location(world, detonation);
     let land = detonation_anim::bullet_land(
         world,
         rules,
