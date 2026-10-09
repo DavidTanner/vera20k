@@ -921,7 +921,7 @@ fn forced_track_end_requests_its_own_cell_in_the_same_process() {
         y: 11 * 256,
         z: 0,
     };
-    assert!(sim.force_drive_track(id, 0x47, head));
+    assert!(sim.force_track(id, 0x47, head));
     for frame in 101..300 {
         visit(&mut sim, &rules, &registry, id, frame);
         let e = sim.substrate.entities.get(id).unwrap();

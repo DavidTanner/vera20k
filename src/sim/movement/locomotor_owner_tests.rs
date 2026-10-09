@@ -185,7 +185,7 @@ fn refused_restore_keeps_live_head_and_forced_segment() {
             .unwrap()
             .store_track_head(TrackFamily::Drive, Some(DriveCoord::cell(9, 8, 731)));
         if forced {
-            assert!(sim.force_drive_track(1, 0x47, DriveCoord::cell(9, 8, 731)));
+            assert!(sim.force_track(1, 0x47, DriveCoord::cell(9, 8, 731)));
         }
 
         assert!(destination(&mut sim, &rules, true));
@@ -259,7 +259,7 @@ fn reusing_active_drive_keeps_complete_instance_including_forced_track() {
     let (mut sim, _) = fixture();
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     activate_drive(entity);
-    assert!(sim.force_drive_track(1, 0x47, DriveCoord::cell(9, 8, 731)));
+    assert!(sim.force_track(1, 0x47, DriveCoord::cell(9, 8, 731)));
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let before = owned_state(entity);
 
@@ -706,7 +706,7 @@ fn foot_queue_operations_match_original_memory_witnesses() {
 }
 
 #[test]
-fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
+fn drive_end_uses_native_gates_and_preserves_owner_state() {
     for denied in [0, 1, 2, 3] {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -730,7 +730,7 @@ fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
         }
         let before = owned_state(entity);
         let speed = entity.foot_speed.clone();
-        assert_eq!(try_end_drive_at_foot_idle(entity), denied == 0);
+        assert_eq!(try_end_piggyback(entity), denied == 0);
         assert_eq!(entity.foot_speed, speed);
         if denied != 0 {
             assert_eq!(owned_state(entity), before);

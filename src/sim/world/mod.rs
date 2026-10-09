@@ -1972,11 +1972,7 @@ impl Simulation {
             spawn_target_updates: _,
             drain_links: _,
         } = emit;
-        for projectile in projectile_spawns {
-            let stable_id = self.allocate_stable_id();
-            self.admit_projectile(stable_id, projectile);
-            self.construct_bullet_scheme(stable_id, rules);
-        }
+        self.admit_projectile_spawns(projectile_spawns, rules);
         let receipt = damage_consequences::DamageConsequences::live_fire(
             effects,
             pings,
@@ -2013,11 +2009,7 @@ impl Simulation {
         );
         let terrain_navigation_changed_cells = run.finish();
 
-        for projectile in commit.projectile_spawns {
-            let stable_id = self.allocate_stable_id();
-            self.admit_projectile(stable_id, projectile);
-            self.construct_bullet_scheme(stable_id, rules);
-        }
+        self.admit_projectile_spawns(commit.projectile_spawns, rules);
         #[cfg(test)]
         if let Some(fixture) = self.receiver_fixture.as_mut() {
             let changed = commit.effects.bridge_state_changed;
@@ -4131,6 +4123,21 @@ impl Simulation {
             .flatten()
             .map(|owner| owner.owner());
         self.projectiles.set_firer_house(bullet, house);
+    }
+
+    /// Admit the bullets a detonation spawned (`BulletClass::SpawnShrapnel
+    /// @ 0x0046A310`), each [`Self::construct_bullet_scheme`]d as every
+    /// constructed bullet is.
+    pub(crate) fn admit_projectile_spawns(
+        &mut self,
+        spawns: impl IntoIterator<Item = crate::sim::projectile::ProjectileSpawn>,
+        rules: &RuleSet,
+    ) {
+        for projectile in spawns {
+            let stable_id = self.allocate_stable_id();
+            self.admit_projectile(stable_id, projectile);
+            self.construct_bullet_scheme(stable_id, rules);
+        }
     }
 
     pub(crate) fn admit_wave(&mut self, stable_id: u64, wave: crate::sim::wave::Wave) -> u64 {
@@ -6507,10 +6514,7 @@ impl Simulation {
                 &fire_requests,
                 &projectile_detonations,
             );
-            for projectile in combat_result.projectile_spawns.iter().copied() {
-                let stable_id = self.allocate_stable_id();
-                self.admit_projectile(stable_id, projectile);
-            }
+            self.admit_projectile_spawns(combat_result.projectile_spawns.iter().copied(), rules);
             bridge_state_changed |= self.visit_combat_tail(first_tail_id, rules, overlay_registry);
             turret::tick_turret_rotation(
                 &mut self.substrate.entities,

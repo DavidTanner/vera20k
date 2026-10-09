@@ -356,7 +356,7 @@ fn start_install_force_track(
     }
     let facing = facing_from_delta(dcx, dcy);
     let track = octant_install_track(facing);
-    let admitted = sim.force_drive_track(
+    let admitted = sim.force_track(
         unit_id,
         i32::from(track),
         crate::sim::components::DriveCoord {

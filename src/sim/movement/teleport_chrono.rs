@@ -27,8 +27,9 @@
 //!   target cleared, a NULL destination, the timer at `+0x284` and WarpOut
 //!   again; -> 6 (`0x00719A01..0x00719B85`).
 //! - 7: WarpingIn down, the archive target cleared, a NULL destination,
-//!   Is_Moving down; -> 0 (`0x00719BB4..0x00719BDF`), after which the Foot AI
-//!   tail ends the piggyback (`locomotor_owner::piggyback_end_admitted`).
+//!   Is_Moving down; -> 0 (`0x00719BB4..0x00719BDF`), after which the next
+//!   IPiggyback END ends the piggyback (`locomotor_owner::try_end_piggyback`):
+//!   an idle entry's (`0x004D831A`) or the Foot AI tail's.
 //!
 //! FootClass::AI's Process call runs it, and so does each class AI's prologue
 //! while the object is warping in, or warped out with the latch

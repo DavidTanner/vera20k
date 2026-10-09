@@ -896,7 +896,7 @@ fn forced_track_terminal_samples_full_head_xy_before_relink() {
     entity.movement_target = None;
     insert(&mut sim, entity);
     sim.resolved_terrain = Some(terrain.clone());
-    assert!(sim.force_drive_track(
+    assert!(sim.force_track(
         1,
         0x47,
         DriveCoord {

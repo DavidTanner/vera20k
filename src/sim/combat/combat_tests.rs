@@ -4221,7 +4221,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
 }
 
 /// The death arm's gate, then the payload it admits.
-fn death_weapon_aoe(
+fn death_arm_payload(
     rules: &RuleSet,
     obj: &crate::rules::object_type::ObjectType,
     veterancy: u16,
@@ -4264,7 +4264,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
     let mut interner = test_interner();
 
     assert_eq!(
-        death_weapon_aoe(
+        death_arm_payload(
             &rules,
             rules.object("FV").unwrap(),
             0,
@@ -4276,7 +4276,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
         "DeathWeapon without Explodes/current Suicide is inert (stock FV shape)"
     );
 
-    let (nanrct_damage, nanrct_wh, nanrct_weapon) = death_weapon_aoe(
+    let (nanrct_damage, nanrct_wh, nanrct_weapon) = death_arm_payload(
         &rules,
         rules.object("NANRCT").unwrap(),
         0,
@@ -4290,7 +4290,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
     assert_eq!(interner.resolve(nanrct_weapon), "NukePayload");
 
     assert_eq!(
-        death_weapon_aoe(
+        death_arm_payload(
             &rules,
             rules.object("SLOTGATE").unwrap(),
             0,
@@ -4302,7 +4302,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
         "ordinary current Primary does not admit the helper"
     );
     // The gate reads the weapon at CurrentWeaponNumber (`GetWeapon(+0x138)`).
-    let (suicide_damage, suicide_wh, suicide_weapon) = death_weapon_aoe(
+    let (suicide_damage, suicide_wh, suicide_weapon) = death_arm_payload(
         &rules,
         rules.object("SLOTGATE").unwrap(),
         0,
@@ -4316,7 +4316,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
     assert_eq!(interner.resolve(suicide_weapon), "SlotBoom");
 
     // The payload fires GetCurrentWeapon (vtable `+0x3F4`).
-    let (current_damage, current_wh, current_weapon) = death_weapon_aoe(
+    let (current_damage, current_wh, current_weapon) = death_arm_payload(
         &rules,
         rules.object("CURRENT").unwrap(),
         0,
@@ -4329,7 +4329,7 @@ fn gsi_04_07_damage_death_weapon_gate_selection_and_native_damage() {
     assert_eq!(interner.resolve(current_wh), "OrdinaryWH");
     assert_eq!(interner.resolve(current_weapon), "Ordinary");
 
-    let (default_damage, default_wh, default_weapon) = death_weapon_aoe(
+    let (default_damage, default_wh, default_weapon) = death_arm_payload(
         &rules,
         rules.object("DEFAULTED").unwrap(),
         0,
@@ -6795,6 +6795,231 @@ fn gsi_04_11_death_weapon_anim_precedes_outer_detonation_anim() {
     );
 }
 
+/// Fire_Death_Weapon's bullet takes DetonateAtCoord's tail (`0x00469AA4`)
+/// inside the dying object's ReceiveDamage: an Inviso death weapon scatters
+/// its anim by one raw Scenario draw, ahead of the outer shot's anim, and
+/// draws no cluster successor (`0x0070D782` calls DetonateAtCoord directly).
+#[test]
+fn an_inviso_death_weapon_scatters_its_anim_inside_the_receiver() {
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n\n\
+         [VehicleTypes]\n0=TNK\n1=DEMO\n\n\
+         [AircraftTypes]\n\n\
+         [BuildingTypes]\n\n\
+         [TNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=TANKW\n\n\
+         [DEMO]\nStrength=100\nArmor=light\nSpeed=6\nPrimary=DEMOW\nExplodes=yes\n\n\
+         [TANKW]\nDamage=100\nROF=20\nRange=10\nWarhead=TANKHIT\n\n\
+         [DEMOW]\nDamage=200\nROF=50\nRange=4\nProjectile=DEMOP\nWarhead=DEMOWH\n\n\
+         [DEMOP]\nInviso=yes\n\n\
+         [TANKHIT]\nCellSpread=0\nPercentAtMax=1\nAnimList=TANKEXP\n\
+         Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\n\
+         [DEMOWH]\nCellSpread=2\nPercentAtMax=0.5\nAnimList=UCEXPLOD\n\
+         Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    ))
+    .expect("Inviso demo rules should parse");
+    initialize_fixture_anim_types(&mut rules);
+
+    let mut store = EntityStore::new();
+    store.insert(make_entity(1, "TNK", 5, 5, 300));
+    store.insert(make_entity(2, "DEMO", 8, 5, 100));
+    let mut interner = test_interner();
+    install_entity_attack_target_for_test(&mut store, 1, 2);
+
+    let mut scenario_rng = SimRng::new(1);
+    let mut expected_rng = scenario_rng.clone();
+    // FireAt's GetROF jitter, then the death weapon's scatter around its
+    // GetCoords. The tank's shot names no BulletType: no scatter, no cluster.
+    expected_rng.next_range_u32_inclusive(0, 2);
+    let demo = (8, 5, SimFixed::from_num(128), SimFixed::from_num(128));
+    let death_anim = inviso_scatter::scatter_inviso_effect_coord(
+        &mut expected_rng,
+        demo.0,
+        demo.1,
+        demo.2,
+        demo.3,
+    );
+    align_attackers_to_targets(&mut store);
+    let result = tick_combat(
+        &mut store,
+        &mut OccupancyGrid::new(),
+        &rules,
+        &mut interner,
+        0,
+        100,
+        0,
+        &mut scenario_rng,
+    );
+
+    assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
+    assert_eq!(store.get(2).unwrap().health.current, 0);
+    let ucexplod = interner.intern("UCEXPLOD");
+    let tankexp = interner.intern("TANKEXP");
+    assert_eq!(
+        result
+            .fixture_anims
+            .iter()
+            .map(|anim| anim.type_id)
+            .collect::<Vec<_>>(),
+        vec![ucexplod, tankexp]
+    );
+    assert_eq!(constructed_anim_coord(&result.fixture_anims[0]), death_anim);
+    assert_ne!(death_anim, demo, "seed 1 moves the anim");
+}
+
+/// A death weapon's bullet is never placed, so the anim tail picks its anim
+/// by the land at the bullet's zero Location (`0x00469B0E`/`0x00469BA2`; the
+/// constructor's `0x00AC1380` copy), cell (0,0). Over water a Conventional
+/// death weapon still takes its AnimList anim; the shot that killed it, read
+/// at its impact, takes the SplashList one.
+#[test]
+fn a_death_weapon_over_water_picks_its_anim_at_the_zero_location() {
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n\n\
+         [VehicleTypes]\n0=TNK\n1=DEMO\n\n\
+         [AircraftTypes]\n\n\
+         [BuildingTypes]\n\n\
+         [CombatDamage]\nSplashList=SPLASH\n\n\
+         [TNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=TANKW\n\n\
+         [DEMO]\nStrength=100\nArmor=light\nSpeed=6\nPrimary=DEMOW\nExplodes=yes\n\n\
+         [TANKW]\nDamage=100\nROF=20\nRange=10\nWarhead=TANKHIT\n\n\
+         [DEMOW]\nDamage=200\nROF=50\nRange=4\nWarhead=DEMOWH\n\n\
+         [TANKHIT]\nCellSpread=0\nConventional=yes\nAnimList=TANKEXP\n\
+         Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\n\
+         [DEMOWH]\nCellSpread=0\nConventional=yes\nAnimList=UCEXPLOD\n\
+         Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    ))
+    .expect("death weapon rules should parse");
+    initialize_fixture_anim_types(&mut rules);
+
+    let mut store = EntityStore::new();
+    for mut entity in [
+        make_entity(1, "TNK", 5, 5, 300),
+        make_entity(2, "DEMO", 8, 5, 100),
+    ] {
+        entity.lifecycle.cell_marked = true;
+        store.insert(entity);
+    }
+    let mut occupancy = OccupancyGrid::rebuild(&store);
+    let mut interner = test_interner();
+    let mut terrain = crate::sim::tiberium::test_support::flat_terrain(16, 16);
+    let water = terrain.cell_mut(8, 5).unwrap();
+    water.yr_cell_land_type = 2;
+    water.base_yr_cell_land_type = 2;
+    // The tank's shot lands on the demo truck and kills it.
+    let shot = crate::sim::projectile::ProjectileDetonation {
+        projectile_id: 7,
+        source_id: 1,
+        target: crate::sim::projectile::ProjectileTarget::Entity(2),
+        impact: crate::sim::projectile::ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
+        payload: crate::sim::projectile::ProjectilePayload::new(
+            100,
+            interner.intern("TANKHIT"),
+            interner.intern("TANKW"),
+        ),
+        reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
+    };
+    let handles =
+        crate::sim::type_handle_table::ResolvedRuleHandles::resolve(&rules, &mut interner);
+    let result = tick_combat_with_fog_and_main_rng(
+        &mut store,
+        &mut occupancy,
+        &rules,
+        &mut interner,
+        Some(handles),
+        None,
+        &BTreeMap::new(),
+        &mut BTreeMap::new(),
+        &[],
+        &crate::map::houses::HouseAllianceMap::default(),
+        None,
+        None,
+        None,
+        Some(&mut terrain),
+        1,
+        100,
+        1,
+        &[1, 2],
+        &[shot],
+        None,
+        &mut SimRng::new(1),
+        &mut SimRng::new(1),
+        None,
+    );
+
+    assert_eq!(store.get(2).unwrap().health.current, 0);
+    let anims: Vec<_> = result
+        .fixture_anims
+        .iter()
+        .map(|anim| interner.resolve(anim.type_id).to_string())
+        .collect();
+    assert_eq!(anims, ["UCEXPLOD", "SPLASH"]);
+}
+
+/// Fire_Death_Weapon detonates at its object's GetCoords (vt+0x48 at
+/// `0x0070D77C`): for a building that is the foundation centre
+/// (`BuildingClass::GetCoords @ 0x00447AC0`), not its Location's top-left
+/// cell. A victim two cells east of a 3x3 centre is 512 leptons from the
+/// blast; from the Location it would be about 809, outside CellSpread 2.5.
+#[test]
+fn a_buildings_death_weapon_detonates_at_its_foundation_centre() {
+    let ini = IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n0=VICTIM\n[AircraftTypes]\n\
+         [BuildingTypes]\n0=DERRICK\n\
+         [Warheads]\n0=KillWH\n1=OilWH\n\
+         [DERRICK]\nStrength=100\nArmor=wood\nExplodes=yes\nDeathWeapon=OilBoom\n\
+         [VICTIM]\nStrength=1000\nArmor=heavy\n\
+         [OilBoom]\nDamage=100\nWarhead=OilWH\n\
+         [KillWH]\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+         [OilWH]\nCellSpread=2.5\nPercentAtMax=1\n\
+         Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    );
+    let rules = RuleSet::from_ini(&ini).expect("derrick rules");
+    let mut sim = Simulation::with_seed(1);
+    let owner = sim.interner.intern("Neutral");
+    let mut derrick = GameEntity::test_default_of_category(
+        1,
+        "DERRICK",
+        "Neutral",
+        10,
+        10,
+        EntityCategory::Structure,
+    );
+    derrick.owner = owner;
+    derrick.type_ref = sim.interner.intern("DERRICK");
+    derrick.foundation = "3x3".to_string();
+    derrick.is_voxel = false;
+    derrick.health.current = 100;
+    sim.substrate.entities.insert(derrick);
+    let _ = sim.reveal(1);
+    let mut victim = GameEntity::test_default(2, "VICTIM", "Neutral", 13, 11);
+    victim.owner = owner;
+    victim.type_ref = sim.interner.intern("VICTIM");
+    victim.health.current = 1000;
+    sim.substrate.entities.insert(victim);
+    let _ = sim.reveal(2);
+    sim.substrate.next_stable_object_id = 3;
+
+    let kill_wh = sim.interner.intern("KillWH");
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[EntityDamageEvent::area(
+            1,
+            100,
+            0,
+            RAD_NO_ATTACKER,
+            None,
+            kill_wh,
+        )],
+    );
+    assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 0);
+    assert_eq!(
+        sim.substrate.entities.get(2).unwrap().health.current,
+        900,
+        "the full 100 at 512 leptons from the foundation centre"
+    );
+}
+
 fn inviso_weapon_rules(inviso: bool, with_anim: bool) -> RuleSet {
     let anim_list = if with_anim { "AnimList=PIFF\n" } else { "" };
     let ini = IniFile::from_str(&format!(
@@ -8551,31 +8776,33 @@ fn projectile_shrapnel_targets_hostile_head_before_random_cell_child() {
     assert_eq!(scenario_rng.logical_state(), expected_rng.logical_state());
 }
 
-/// SpawnShrapnel's object branch aims at the hostile object's GetCoords
-/// (vt+0x48 at `0x0046A614`): for a building its foundation center
-/// (`0x00447AC0`), not its north-west cell.
+/// SpawnShrapnel lessens a negative ShrapnelCount by the cells from the
+/// bullet to its firer's GetCoords (`[bullet+0xB0]`, vt+0x48 at
+/// `0x0046A370`): for a building firer its foundation centre (`0x00447AC0`),
+/// not its north-west cell, and never the target.
 #[test]
-fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
+fn projectile_shrapnel_count_measures_to_the_firers_get_coords() {
     let ini = IniFile::from_str(
-        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-5\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n[MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n[PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n[PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-8\n\n[CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n[CHILDPROJ]\nSubjectToWalls=yes\n\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     );
     let art = IniFile::from_str("[HQ]\nFoundation=3x3\n");
     let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("shrapnel rules");
     let mut entities = EntityStore::new();
-    let mut source = make_entity_owned(1, "MTNK", 5, 5, 100, "Soviet");
+    // The firer's GetCoords (the 3x3 foundation centre, `0x00447AC0`) is
+    // 1280 leptons from the impact, 5 cells; its NW cell's centre is 1557, 6.
+    let mut source = make_entity_owned(1, "HQ", 2, 4, 100, "Soviet");
+    source.category = EntityCategory::Structure;
+    // Construction stamps the type's `Foundation=3x3`.
+    source.foundation = "3x3".to_string();
     source.lifecycle.cell_marked = true;
     entities.insert(source);
-    // The HQ's NW cell is one cell from the impact; its GetCoords (the 3x3
-    // foundation centre, `0x00447AC0`) is (512, 256) leptons away: 572 -> 2.
-    let mut target = make_entity_owned(2, "HQ", 6, 5, 100, "Americans");
-    target.category = EntityCategory::Structure;
-    // Construction stamps the type's `Foundation=3x3`.
-    target.foundation = "3x3".to_string();
+    // The target is one cell from the impact.
+    let mut target = make_entity_owned(2, "MTNK", 9, 5, 100, "Americans");
     target.lifecycle.cell_marked = true;
     entities.insert(target);
     let mut occupancy = OccupancyGrid::rebuild(&entities);
     let mut interner = test_interner();
-    let impact = crate::sim::projectile::ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
+    let impact = crate::sim::projectile::ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0);
     let detonation = crate::sim::projectile::ProjectileDetonation {
         projectile_id: 7,
         source_id: 1,
@@ -8620,8 +8847,7 @@ fn projectile_shrapnel_count_measures_to_the_targets_get_coords() {
         None,
     );
 
-    // `0x0046A370`: -ShrapnelCount minus the distance in cells to the
-    // Target's GetCoords, 5 - 2 (the raw NW Location would give 5 - 1).
+    // 8 - 5; the firer's NW cell would give 8 - 6 and the target 8 - 1.
     assert_eq!(result.projectile_spawns.len(), 3);
 }
 

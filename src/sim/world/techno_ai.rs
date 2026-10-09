@@ -624,7 +624,7 @@ fn techno_ai_shell(
     }
     match category {
         EntityCategory::Unit => {
-            unit_techno_bracket(sim, id, rules, ctx);
+            unit_techno_bracket(sim, id, rules, ctx, &mut outcome.bridge_state_changed);
         }
         // InfantryClass::AI promotes queued missions via Ready→Commence
         // (`0x0051BC51`/`0x0051BF03`); fear, fire and sequence run in
@@ -658,7 +658,13 @@ fn techno_ai_shell(
                 // existing owner until retained AttackMove is ported.
                 sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
             }
-            bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+            bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            );
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             if let Some(rules) = rules {
@@ -701,7 +707,13 @@ fn techno_ai_shell(
                 return;
             }
             passive_acquire_step(sim, id, rules, ctx);
-            if !bomb_fuse_slot(sim, id, rules, ctx.overlay_registry) {
+            if !bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            ) {
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
@@ -788,7 +800,13 @@ fn techno_ai_shell(
                 sim.fire_requests.aircraft.insert(id);
             }
             passive_acquire_step(sim, id, rules, ctx);
-            bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+            bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            );
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             techno_common_post(sim, id, rules);
@@ -1386,15 +1404,17 @@ fn spawn_manager_slot(
 /// The bomb fuse's slot in `TechnoClass::AI_Update` (`0x006FA6F5..
 /// 0x006FA717`): after the mission step and passive acquisition, before the
 /// SlaveManager and CaptureManager. A carrier its own blast kills runs no
-/// further AI this frame (the IsAlive gate at `0x006FA735`).
+/// further AI this frame (the IsAlive gate at `0x006FA735`). A bridge the
+/// blast changes is reported through `bridge_state_changed`.
 fn bomb_fuse_slot(
     sim: &mut Simulation,
     id: u64,
     rules: Option<&RuleSet>,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    bridge_state_changed: &mut bool,
 ) -> bool {
     if let Some(rules) = rules {
-        sim.bomb_fuse_step(id, rules, overlay_registry);
+        *bridge_state_changed |= sim.bomb_fuse_step(id, rules, overlay_registry);
     }
     ai_alive(sim, id)
 }
@@ -1626,6 +1646,7 @@ fn unit_techno_bracket(
     id: u64,
     rules: Option<&RuleSet>,
     ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
 ) -> BracketReach {
     techno_common_pre(sim, id, rules, ctx.overlay_registry);
     // Guard B (IsAlive, `0x006FA23C`). A crashing wreck is alive at Health 0,
@@ -1645,7 +1666,7 @@ fn unit_techno_bracket(
     // match routes Harvest, Attack and the other represented Foot handlers.
     if mission_handlers_run(sim, id) {
         if let Some(rules) = rules {
-            dispatch_foot_mission(sim, id, rules, ctx);
+            *bridge_state_changed |= dispatch_foot_mission(sim, id, rules, ctx);
         }
     }
     // `UnitClass::AI @ 0x007361A9..0x007361E9`: a draining Floating Disc
@@ -1661,7 +1682,7 @@ fn unit_techno_bracket(
         // its unported retained state/cadence is documented there.
         sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
     }
-    bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+    bomb_fuse_slot(sim, id, rules, ctx.overlay_registry, bridge_state_changed);
     slave_manager_slot(sim, id, rules, ctx.overlay_registry);
     // Guard E (IsAlive, `0x006FA735`): the dispatched handler, or the bomb it
     // carried, may have destroyed the Unit; a dead Unit runs no post-mission
@@ -1937,7 +1958,7 @@ mod tests {
         // A live Unit reaches the dispatch point: +0xC4 counter tick; the
         // verb-owned current selector is untouched.
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         let u = sim.substrate.entities.get(1).unwrap();
@@ -1955,7 +1976,7 @@ mod tests {
         // Guard B (IsAlive) fires after the (empty) pre-block: a dead Unit runs
         // no mission work (counter stays 0).
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::DiedInPre
         );
         assert_eq!(
@@ -1974,7 +1995,7 @@ mod tests {
         e.crashing = true;
         sim.substrate.entities.insert(e);
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         assert_eq!(
@@ -1993,7 +2014,7 @@ mod tests {
         // common mission step for every live Unit (the miner FSM keeps driving
         // behavior; its mission commits arrive through the departure verbs).
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         assert_eq!(
@@ -5882,7 +5903,7 @@ mod tests {
             ));
             let head = DriveCoord::cell(8, 7, 731);
             if forced {
-                assert!(sim.force_drive_track(ORDINARY_DRIVE_HOST_ID, 0x47, head));
+                assert!(sim.force_track(ORDINARY_DRIVE_HOST_ID, 0x47, head));
             } else {
                 let loco = sim
                     .substrate

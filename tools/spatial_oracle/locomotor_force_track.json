@@ -60143,6 +60143,4932 @@
       }
     }
   ],
+  "ship_force_track": [
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": false,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": true,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 1,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": false,
+        "turn": 0
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 0
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": true,
+        "turn": 0
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 0
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 1,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 0
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": false,
+        "turn": 1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "coord": [
+              2427,
+              2992,
+              312
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          },
+          {
+            "cell": [
+              9,
+              11
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 1
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": true,
+        "turn": 1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 1,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 1
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": false,
+        "turn": 18
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 18
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 18
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": true,
+        "turn": 18
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 18
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 1,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 18
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 18
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": false,
+        "turn": 63
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 63
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 63
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "kind": "admitted",
+        "reversed": true,
+        "turn": 63
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": 63
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 1,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": 63
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 63
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": -23,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "kind": "null_coordinate",
+        "old_head": [
+          2304,
+          2560,
+          -347
+        ],
+        "residual": -23,
+        "reversed": true,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": -23,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2176,
+            2176,
+            417
+          ],
+          "head": [
+            2304,
+            2560,
+            -347
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": -23,
+          "reversed": 1,
+          "target_fraction_bits": "3fd8000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": -23,
+        "reversed": 1,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "family": "ship",
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "kind": "null_coordinate",
+        "old_head": [
+          0,
+          0,
+          0
+        ],
+        "residual": -23,
+        "reversed": true,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                0,
+                0,
+                0
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": -23,
+              "reversed": 1,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2176,
+            2176,
+            417
+          ],
+          "head": [
+            0,
+            0,
+            0
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": -23,
+          "reversed": 1,
+          "target_fraction_bits": "3fd8000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "owner_alive": 0,
+        "owner_limbo": 0,
+        "residual": 0,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 0,
+        "turn": 27
+      },
+      "input": {
+        "alive": false,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "owner_gate",
+        "limbo": false,
+        "old_head": [
+          0,
+          0,
+          0
+        ],
+        "old_valid": false,
+        "residual": 0,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                0,
+                0,
+                0
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 0,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 0,
+          "owner_limbo": 0,
+          "residual": 0,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "owner_alive": 0,
+        "owner_limbo": 1,
+        "residual": 0,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 0,
+        "turn": 27
+      },
+      "input": {
+        "alive": false,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "owner_gate",
+        "limbo": true,
+        "old_head": [
+          0,
+          0,
+          0
+        ],
+        "old_valid": false,
+        "residual": 0,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                0,
+                0,
+                0
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 0,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 0,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2176,
+            2176,
+            417
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 0,
+          "owner_limbo": 1,
+          "residual": 0,
+          "reversed": 0,
+          "target_fraction_bits": "3fd8000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 0,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 0,
+        "turn": 27
+      },
+      "input": {
+        "alive": true,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "owner_gate",
+        "limbo": false,
+        "old_head": [
+          0,
+          0,
+          0
+        ],
+        "old_valid": false,
+        "residual": 0,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                0,
+                0,
+                0
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 0,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 0,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fd0000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          0,
+          0,
+          0
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 1,
+        "residual": 0,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 0,
+        "turn": 27
+      },
+      "input": {
+        "alive": true,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "owner_gate",
+        "limbo": true,
+        "old_head": [
+          0,
+          0,
+          0
+        ],
+        "old_valid": false,
+        "residual": 0,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                0,
+                0,
+                0
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 0,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fd0000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 1,
+              "residual": 0,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fd0000000000000",
+          "cursor": 0,
+          "destination": [
+            2176,
+            2176,
+            417
+          ],
+          "head": [
+            0,
+            0,
+            0
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 1,
+          "residual": 0,
+          "reversed": 0,
+          "target_fraction_bits": "3fd8000000000000",
+          "track_valid": 0,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a044c",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0454",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a045d",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0460",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fe8000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "applied": 0.75,
+        "bridge": false,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "occupation_plane",
+        "occupation_enabled": true,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1056,
+              2048
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fe8000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    },
+    {
+      "before": {
+        "applied_fraction_bits": "3fe8000000000000",
+        "cursor": -7,
+        "destination": [
+          2176,
+          2176,
+          417
+        ],
+        "head": [
+          2304,
+          2560,
+          -347
+        ],
+        "owner_alive": 1,
+        "owner_limbo": 0,
+        "residual": 971,
+        "reversed": 0,
+        "target_fraction_bits": "3fd8000000000000",
+        "track_valid": 1,
+        "turn": 27
+      },
+      "input": {
+        "applied": 0.75,
+        "bridge": true,
+        "family": "ship",
+        "head": [
+          2656,
+          2720,
+          731
+        ],
+        "kind": "occupation_plane",
+        "occupation_enabled": true,
+        "turn": -1
+      },
+      "output": {
+        "events": [
+          {
+            "stage": "selector_published_before_null_guard",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2304,
+                2560,
+                -347
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "head_published_before_map_query",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "crate_dispatch_no_overlay"
+          },
+          {
+            "result_al": 1,
+            "stage": "post_crate_return",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "stage": "apply_occupation_entry",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          },
+          {
+            "coord": [
+              2656,
+              2720,
+              731
+            ],
+            "stage": "unit_raw_put"
+          },
+          {
+            "stage": "occupation_return_before_destination",
+            "state": {
+              "applied_fraction_bits": "3fe8000000000000",
+              "cursor": 0,
+              "destination": [
+                2176,
+                2176,
+                417
+              ],
+              "head": [
+                2656,
+                2720,
+                731
+              ],
+              "owner_alive": 1,
+              "owner_limbo": 0,
+              "residual": 971,
+              "reversed": 0,
+              "target_fraction_bits": "3fd8000000000000",
+              "track_valid": 1,
+              "turn": -1
+            }
+          }
+        ],
+        "marked_cells": [
+          {
+            "cell": [
+              10,
+              10
+            ],
+            "raw": [
+              1024,
+              2080
+            ]
+          }
+        ],
+        "owner_comparison_base": "initial_state",
+        "owner_preserved": true,
+        "state": {
+          "applied_fraction_bits": "3fe8000000000000",
+          "cursor": 0,
+          "destination": [
+            2656,
+            2720,
+            731
+          ],
+          "head": [
+            2656,
+            2720,
+            731
+          ],
+          "owner_alive": 1,
+          "owner_limbo": 0,
+          "residual": 971,
+          "reversed": 0,
+          "target_fraction_bits": "3ff0000000000000",
+          "track_valid": 1,
+          "turn": -1
+        },
+        "writes": [
+          {
+            "instruction": "006a0323",
+            "offset": 88,
+            "owner": "ship",
+            "size": 4,
+            "value": 4294967295
+          },
+          {
+            "instruction": "006a0326",
+            "offset": 92,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0386",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a038d",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0396",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 0
+          },
+          {
+            "instruction": "006a039a",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a03ca",
+            "offset": 99,
+            "owner": "ship",
+            "size": 1,
+            "value": 1
+          },
+          {
+            "instruction": "006a03ce",
+            "offset": 64,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a03d0",
+            "offset": 68,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a03d7",
+            "offset": 72,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a041a",
+            "offset": 52,
+            "owner": "ship",
+            "size": 4,
+            "value": 2656
+          },
+          {
+            "instruction": "006a041c",
+            "offset": 56,
+            "owner": "ship",
+            "size": 4,
+            "value": 2720
+          },
+          {
+            "instruction": "006a041f",
+            "offset": 60,
+            "owner": "ship",
+            "size": 4,
+            "value": 731
+          },
+          {
+            "instruction": "006a0422",
+            "offset": 80,
+            "owner": "ship",
+            "size": 4,
+            "value": 0
+          },
+          {
+            "instruction": "006a0429",
+            "offset": 84,
+            "owner": "ship",
+            "size": 4,
+            "value": 1072693248
+          }
+        ]
+      }
+    }
+  ],
   "supplied_post_crate_continuations": [
     {
       "before": {

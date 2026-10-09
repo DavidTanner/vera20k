@@ -89,47 +89,47 @@ fn cell(coord: DriveCoord) -> (u16, u16) {
 }
 
 impl Simulation {
-    /// Drive Force_Track4B0C40, on the ILoco interface (+4 receiver).
-    /// Selector/cursor publication precedes the null-coordinate return. Head,
-    /// destination, residual and owner speed have independent lifetimes.
-    pub(crate) fn force_drive_track(
-        &mut self,
-        id: u64,
-        selector: i32,
-        supplied: DriveCoord,
-    ) -> bool {
-        self.force_drive_track_observed(id, selector, supplied, &mut |_, _, _| true)
+    /// The active locomotor's Force_Track, on the ILoco interface (+4
+    /// receiver): Drive `0x004B0C40` and its twin Ship `0x006A0310`, whose
+    /// bodies differ only in their null coordinate and their occupation
+    /// callee (`0x004B0AD0`, `0x006A01A0`). Every other class has the base's
+    /// empty body (`0x0055AC10`). Selector/cursor publication precedes the
+    /// null-coordinate return. Head, destination, residual and owner speed
+    /// have independent lifetimes.
+    pub(crate) fn force_track(&mut self, id: u64, selector: i32, supplied: DriveCoord) -> bool {
+        self.force_track_observed(id, selector, supplied, &mut |_, _, _| true)
     }
 
-    fn force_drive_track_observed(
+    fn force_track_observed(
         &mut self,
         id: u64,
         selector: i32,
         supplied: DriveCoord,
         receive: &mut impl FnMut(&mut Simulation, u64, DriveCoord) -> bool,
     ) -> bool {
+        use crate::rules::locomotor_type::LocomotorKind;
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        if !entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|loco| loco.kind == crate::rules::locomotor_type::LocomotorKind::Drive)
-        {
+        let Some(family) = entity.locomotor.as_ref().and_then(|loco| match loco.kind {
+            LocomotorKind::Drive => Some(TrackFamily::Drive),
+            LocomotorKind::Ship => Some(TrackFamily::Ship),
+            _ => None,
+        }) else {
             return false;
-        }
+        };
         let loco = entity.locomotor.as_mut().unwrap();
         loco.ensure_installed_track_state();
-        let mut progress = loco.track_progress(TrackFamily::Drive).unwrap();
+        let mut progress = loco.track_progress(family).unwrap();
         progress.select_forced(selector);
-        loco.store_track_progress(TrackFamily::Drive, progress);
+        loco.store_track_progress(family, progress);
         if supplied == (DriveCoord { x: 0, y: 0, z: 0 }) {
             return false;
         }
-        loco.store_track_head(TrackFamily::Drive, Some(supplied));
-        loco.store_track_valid(TrackFamily::Drive, true);
-        //4B0D14/4B0D1B: address the supplied cell, then synchronous crate
-        // pickup. The shared track host's crate receiver is still incomplete;
+        loco.store_track_head(family, Some(supplied));
+        loco.store_track_valid(family, true);
+        //4B0D14/4B0D1B (Ship 6A03E4/6A03EB): address the supplied cell, then
+        // synchronous crate pickup. The shared track host's crate receiver is still incomplete;
         // the observer preserves its callback/reload boundary for witnesses.
         let received = receive(self, id, supplied);
         let survives = self
@@ -142,23 +142,23 @@ impl Simulation {
                 && entity.lifecycle.object_alive
                 && let Some(loco) = entity.locomotor.as_mut()
             {
-                loco.store_track_head(TrackFamily::Drive, None);
-                loco.store_track_valid(TrackFamily::Drive, false);
+                loco.store_track_head(family, None);
+                loco.store_track_valid(family, false);
             }
             return false;
         }
-        self.track_apply_occupation_at(id, TrackFamily::Drive, supplied, true);
+        self.track_apply_occupation_at(id, family, supplied, true);
         let Some(loco) = self
             .substrate
             .entities
             .get_mut(id)
             .and_then(|entity| entity.locomotor.as_mut())
-            .filter(|loco| loco.has_track_state(TrackFamily::Drive))
+            .filter(|loco| loco.has_track_state(family))
         else {
             return false;
         };
-        loco.store_track_destination(TrackFamily::Drive, Some(supplied));
-        loco.store_track_target_fraction(TrackFamily::Drive, crate::util::fixed_math::SIM_ONE);
+        loco.store_track_destination(family, Some(supplied));
+        loco.store_track_target_fraction(family, crate::util::fixed_math::SIM_ONE);
         true
     }
 
@@ -1011,9 +1011,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        // Foot4D833D..8376 queries/ends the active Drive before NavQueue.
+        // Foot4D831A..8376 asks the active IPiggyback, whatever its class,
+        // and ends it before NavQueue when its Is_Ok_To_End allows.
         // Unit saves the base return but still executes its own receiver tail.
-        let ended_drive = super::locomotor_owner::try_end_drive_at_foot_idle(entity);
+        let ended = super::locomotor_owner::try_end_piggyback(entity);
         // Foot4D8382..83E2 takes NavQueue even with an existing NavCom.
         // Preserve its saved return independently from the resulting NavCom.
         // Non-Cell targets and other class END remain bounded base-receiver
@@ -1090,7 +1091,7 @@ impl Simulation {
         }
         // A consumed NavQueue or ended piggyback returns true before
         // the Infantry Archive arm and final zero-speed setter.
-        if ended_drive || queued_cell.is_some() {
+        if ended || queued_cell.is_some() {
             return true;
         }
         // Foot4D8472..852A: Archive belongs to Techno, and +2DC is
