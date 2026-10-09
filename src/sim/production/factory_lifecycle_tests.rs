@@ -41,10 +41,10 @@ fn world(seed: u64) -> (Simulation, RuleSet, InternedId) {
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAPILE", 14, 10);
-    spawn_structure(&mut sim, 3, "Americans", "GACNST", 18, 10);
-    spawn_structure(&mut sim, 4, "Americans", "GATECH", 22, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAPILE", 14, 10);
+    spawn_structure(&mut sim, &rules, 3, "Americans", "GACNST", 18, 10);
+    spawn_structure(&mut sim, &rules, 4, "Americans", "GATECH", 22, 10);
     (sim, rules, owner)
 }
 
@@ -595,7 +595,7 @@ fn revalidation_without_house_disposes_held_graph_without_creating_account() {
 #[test]
 fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     let (mut sim, rules, owner) = world(0xfac7_0018);
-    spawn_structure(&mut sim, 5, "Americans", "GAAIRC", 26, 10);
+    spawn_structure(&mut sim, &rules, 5, "Americans", "GAAIRC", 26, 10);
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "ORCA"));
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "ORCA"));
     let held = held_id(&sim, owner, ProductionCategory::Aircraft);
@@ -727,7 +727,7 @@ fn plant_world() -> (Simulation, RuleSet, InternedId) {
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
     );
-    spawn_structure(&mut sim, 1, "Russians", "NAWEAP", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Russians", "NAWEAP", 10, 10);
     (sim, rules, owner)
 }
 

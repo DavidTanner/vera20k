@@ -68,7 +68,7 @@ with the interposed ordinary House state supplied. Building sampling is original
 | Six blackout controls | Remaining1 resets to `{196,0,0}`, invalidates and assesses even with prior dirty0. Remaining0 and2 with prior dirty0 preserve cached totals; with dirty1, remaining0 assesses and remaining2 forces output0. |
 | Four blackout setter controls | Whole `50BC90` stores current frame196 and replaces the duration with30,4,80 or0, including shorter and zero replacements over a supplied running `{100,0,120}` timer. It sets power dirty1, preserves radar dirty and retained totals, and makes no RNG draw. |
 | Sixteen radar controls | Dirty clears even for a nonlocal House, but only PlayerPtr changes the native local result. FreeRadar follows the separate radar-outage gate. Selling, offline, unmarked and limbo candidates are skipped. The first otherwise eligible EMP/warp candidate decides false. A first Selling candidate followed by a good provider gives true. |
-| Thirteen advice controls | Local shortage with a counted BuildPower type sets the low-power guard and requests EVA once; restoration clears it. SpeakDelay2 produces native durations14400,7200,4800,3600,2880,2400,2057,1800 at stored speeds0..7. |
+| Thirteen advice controls | Local shortage with a counted type among the first three `Rules+0x8B0` entries (the `[AI] BuildConst=` items; the harness names them `POWER_TYPES`) sets the low-power guard and requests EVA once; restoration clears it. SpeakDelay2 produces native durations14400,7200,4800,3600,2880,2400,2057,1800 at stored speeds0..7. |
 
 The added provider cases execute the same complete `508DF0` body: independent
 online1/warp1 followed by a good provider gives false; first Selling followed by

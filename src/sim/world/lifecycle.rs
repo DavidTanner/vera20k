@@ -1066,6 +1066,11 @@ impl Simulation {
             {
                 self.recalculate_house_base_geometry(owner, rules);
             }
+            // Building440D13: IncrementFactoryCount right after it.
+            self.update_house_tracking(
+                stable_id,
+                crate::sim::house_tracking::HouseTracking::increment_factory_count,
+            );
             self.append_live_build_const(stable_id);
             self.append_house_base_building(stable_id);
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
@@ -2533,6 +2538,19 @@ impl Simulation {
     ) -> ConcealOutcome {
         if !self.substrate.entities.contains(stable_id) {
             return ConcealOutcome::MissingOrDead;
+        }
+        // Building445D8E: Recount on the first Limbo (Building4458CE skips a
+        // repeated one), before the base recompute.
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| !entity.lifecycle.in_limbo)
+        {
+            self.update_house_tracking(
+                stable_id,
+                crate::sim::house_tracking::HouseTracking::recount,
+            );
         }
         // Building445DA6 precedes Techno Limbo445DDA, including its pointer
         // expiry and InLimbo write. Building4458CE skips it on repeated Limbo;

@@ -119,10 +119,34 @@ fn scenario() -> (Simulation, RuleSet) {
             HouseState::new(oid, *side, None, true, START_CREDITS, 10),
         );
         let sid = (i as u64) * 10 + 1;
-        spawn_structure(&mut sim, sid, owner, "GACNST", *base_x, *base_y);
-        spawn_structure(&mut sim, sid + 1, owner, "GAPILE", *base_x + 2, *base_y);
-        spawn_structure(&mut sim, sid + 2, owner, "GAWEAP", *base_x + 4, *base_y);
-        spawn_structure(&mut sim, sid + 3, owner, "GAAIRC", *base_x + 6, *base_y);
+        spawn_structure(&mut sim, &rules, sid, owner, "GACNST", *base_x, *base_y);
+        spawn_structure(
+            &mut sim,
+            &rules,
+            sid + 1,
+            owner,
+            "GAPILE",
+            *base_x + 2,
+            *base_y,
+        );
+        spawn_structure(
+            &mut sim,
+            &rules,
+            sid + 2,
+            owner,
+            "GAWEAP",
+            *base_x + 4,
+            *base_y,
+        );
+        spawn_structure(
+            &mut sim,
+            &rules,
+            sid + 3,
+            owner,
+            "GAAIRC",
+            *base_x + 6,
+            *base_y,
+        );
     }
     (sim, rules)
 }
@@ -691,11 +715,11 @@ fn retail_builds_step_at_the_native_frames() {
             owner,
             HouseState::new(owner, 0, None, true, START_CREDITS, 10),
         );
-        spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
-        spawn_structure(&mut sim, 2, "Americans", factory, 16, 10);
-        spawn_structure(&mut sim, 3, "Americans", "GAPOWR", 22, 10);
-        spawn_structure(&mut sim, 4, "Americans", "GAPOWR", 26, 10);
-        spawn_structure(&mut sim, 5, "Americans", "GAPOWR", 30, 10);
+        spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
+        spawn_structure(&mut sim, &rules, 2, "Americans", factory, 16, 10);
+        spawn_structure(&mut sim, &rules, 3, "Americans", "GAPOWR", 22, 10);
+        spawn_structure(&mut sim, &rules, 4, "Americans", "GAPOWR", 26, 10);
+        spawn_structure(&mut sim, &rules, 5, "Americans", "GAPOWR", 30, 10);
         // Full-strength buildings, so the plants give their retail 200 each.
         for id in 1..=5 {
             let entity = sim.substrate.entities.get_mut(id).expect("structure");
@@ -768,7 +792,7 @@ fn retail_builds_step_at_the_native_frames() {
         }
         let (start_frame, rate) = start.expect("the build started");
         let obj = sim.object_type(type_id, &rules).expect("retail type");
-        let inputs = super::factory::time_to_build_inputs(&sim, &rules, owner, category, obj);
+        let inputs = super::factory::time_to_build_inputs(&sim, &rules, owner, obj);
         let row = cadence["builds"]
             .as_array()
             .unwrap()
