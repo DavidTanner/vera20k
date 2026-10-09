@@ -12,9 +12,7 @@ use super::can_build::{check_build_limit, find_factory};
 use super::factory::{
     AbandonedObject, EnqueueOutcome, FactoryHolder, time_to_build, time_to_build_inputs,
 };
-use super::production_tech::{
-    production_category_for_object, strip_keeps, supports_live_production,
-};
+use super::production_tech::{production_category_for_object, strip_keeps};
 use super::production_types::ProductionCategory;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
@@ -51,9 +49,6 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
     let Some(obj) = rules.object(type_id) else {
         return false;
     };
-    if !supports_live_production(obj) {
-        return false;
-    }
     let owner_id = sim.interner.intern(owner);
     if find_factory(sim, rules, owner_id, obj, false, true, true).is_none() {
         return false;

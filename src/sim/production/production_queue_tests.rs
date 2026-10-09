@@ -2373,6 +2373,54 @@ fn hold_world() -> (Simulation, RuleSet, InternedId) {
     (sim, rules, owner)
 }
 
+/// FindFactory's radio gate (`0x005F79C7..0x005F79FB`) is for AircraftType
+/// only (`CMP EAX,3`; `AircraftTypeClass::What_Am_I 0x0041CFB0`): an airfield
+/// whose contacts are all taken refuses an aircraft unless the caller skips
+/// the gate, while a War Factory holding the vehicle it just delivered still
+/// takes a vehicle PRODUCE.
+#[test]
+fn only_a_busy_airfield_refuses_its_type() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[Countries]\n0=Americans\n[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n\
+         [AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=GAWEAP\n1=GAAIRC\n\
+         [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
+         [ORCA]\nCost=1200\nStrength=150\nSpeed=14\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nOwner=Americans\nFactory=UnitType\n\
+         [GAAIRC]\nOwner=Americans\nFactory=AircraftType\n",
+    ))
+    .expect("radio gate rules");
+    let mut sim = Simulation::new();
+    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
+    spawn_structure(&mut sim, 2, "Americans", "GAAIRC", 20, 20);
+    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    for (building, contact) in [(1, 901), (2, 902)] {
+        let contacts = &mut sim
+            .substrate
+            .entities
+            .get_mut(building)
+            .unwrap()
+            .radio_contacts;
+        contacts.set_capacity(1);
+        contacts.insert(contact);
+    }
+    let owner = sim.interner.intern("Americans");
+    let factory = |sim: &Simulation, name: &str, skip_gate: bool| {
+        super::find_factory(
+            sim,
+            &rules,
+            owner,
+            rules.object(name).unwrap(),
+            skip_gate,
+            true,
+            true,
+        )
+    };
+    assert_eq!(factory(&sim, "MTNK", false), Some(1));
+    assert_eq!(factory(&sim, "ORCA", false), None);
+    assert_eq!(factory(&sim, "ORCA", true), Some(2));
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+}
+
 /// A PRODUCE resumes a held build even at its type's build limit: the held build
 /// counts toward the limit, and `CanBuild(type, 1, 1)` passes a type one of the
 /// house's factories holds (`0x004F8348`). The build start (`0x004C9EA0`)

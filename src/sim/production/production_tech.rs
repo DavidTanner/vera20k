@@ -56,8 +56,23 @@ pub(super) fn strip_keeps(
     owner: InternedId,
     obj: &ObjectType,
 ) -> bool {
-    find_factory(sim, rules, owner, obj, true, false, false).is_some()
-        && can_build(sim, rules, owner, obj, false, true) != CanBuild::No
+    strip_refusal(sim, rules, owner, obj).is_none()
+}
+
+/// Which of [`strip_keeps`]'s two tests drops `obj` from the strip.
+fn strip_refusal(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    obj: &ObjectType,
+) -> Option<BuildDisabledReason> {
+    if find_factory(sim, rules, owner, obj, true, false, false).is_none() {
+        Some(BuildDisabledReason::NoFactory)
+    } else if can_build(sim, rules, owner, obj, false, true) == CanBuild::No {
+        Some(BuildDisabledReason::CannotBuild)
+    } else {
+        None
+    }
 }
 
 /// Whether the sidebar lists `obj` for `owner` ([`strip_keeps`]), and, if it
@@ -78,11 +93,8 @@ fn sidebar_state(
     owner: InternedId,
     obj: &ObjectType,
 ) -> Option<BuildDisabledReason> {
-    if find_factory(sim, rules, owner, obj, true, false, false).is_none() {
-        return Some(BuildDisabledReason::NoFactory);
-    }
-    if can_build(sim, rules, owner, obj, false, true) == CanBuild::No {
-        return Some(BuildDisabledReason::CannotBuild);
+    if let Some(refusal) = strip_refusal(sim, rules, owner, obj) {
+        return Some(refusal);
     }
     if find_factory(sim, rules, owner, obj, true, true, true).is_none() {
         return Some(BuildDisabledReason::NoReadyFactory);
@@ -139,18 +151,6 @@ pub(super) fn production_category_for_object(
             _ => ProductionCategory::Building,
         },
     }
-}
-
-pub(super) fn supports_live_production(obj: &crate::rules::object_type::ObjectType) -> bool {
-    matches!(
-        production_category_for_object(obj),
-        ProductionCategory::Building
-            | ProductionCategory::Defense
-            | ProductionCategory::Infantry
-            | ProductionCategory::Vehicle
-            | ProductionCategory::Aircraft
-            | ProductionCategory::Ship
-    )
 }
 
 /// Check if a structure is a production factory for the given category.

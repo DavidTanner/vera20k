@@ -324,7 +324,7 @@ pub(crate) fn find_factory(
     rules: &RuleSet,
     owner: InternedId,
     obj: &ObjectType,
-    skip_busy_unit_radio: bool,
+    skip_busy_airfield: bool,
     require_online: bool,
     require_can_build: bool,
 ) -> Option<u64> {
@@ -357,13 +357,19 @@ pub(crate) fn find_factory(
             && (!require_can_build
                 || can_build(sim, rules, building.owner(), obj, true, true) == CanBuild::Yes)
             && ownable & get_ownable(building_type, rules, game_mode_nonzero) != 0
-            && building_type.naval == naval_unit
-            // ObjectType5F79F4: arg1 only skips the UnitType radio gate.
-            // Wrapper5F5C20 supplies (arg1,arg2,false,actualHouse); House
-            // PLACE first tries (0,1), then Unit alone retries (1,1).
-            && (skip_busy_unit_radio || obj.category != ObjectCategory::Vehicle
-                || building.radio_contacts.is_empty()
-                || building.radio_contacts.first_free().is_some())
+            && if !skip_busy_airfield
+                && obj.category == ObjectCategory::Aircraft
+                && !building.radio_contacts.is_empty()
+            {
+                // 0x005F79C7..0x005F79FB: unless arg1 skips it, an
+                // AircraftType (`What_Am_I` 3) needs a free contact slot in a
+                // factory In_Radio_Contact (0x0065AE30, 0x0065ADC0).
+                building.radio_contacts.first_free().is_some()
+            } else {
+                // 0x005F7A09..0x005F7A49: a naval UnitType needs a naval
+                // factory, anything else a non-naval one.
+                building_type.naval == naval_unit
+            }
         {
             candidate = Some(id);
             if primary == Some(id) {
