@@ -13,9 +13,11 @@ def i32(u,p):return struct.unpack('<i',u.mem_read(p,4))[0]
 def vec(u,p):
  raw=bytes(u.mem_read(p,24));return dict(value=list(struct.unpack('<3d',raw)),bits=[f'{v:016x}' for v in struct.unpack('<3Q',raw)])
 def xyz(u,p):return list(struct.unpack('<3i',u.mem_read(p,12)))
-def create(construct_bullet=True):
+def create(construct_bullet=True, *, reader=None):
  root=assets_root();art,_=lexical((root/'ARTMD.INI').read_bytes(),{'AAHeatSeeker2','DRAGON','FV'})
- m=BulletReader(art);u=m.u
+ # A composed witness may supply the same reader owner with additional fixed
+ # ART sections. World construction and all original initializers stay here.
+ m=reader if reader is not None else BulletReader(art);u=m.u
  # Verified C initializer table members for Bullet, Cell, and homing helper.
  initializers=[]
  for base,count in ((0x8127f4,13),(0x8129fc,13),(0x813c2c,13)):

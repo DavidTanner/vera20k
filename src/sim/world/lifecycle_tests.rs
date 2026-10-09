@@ -4341,6 +4341,9 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
         );
         let id = sim.allocate_stable_id();
         sim.admit_projectile(id, shot);
+        // The native control supplies an in-flight OLD-height boundary.
+        // Restore it after admission's independent 46C4F0 launch-floor fixup.
+        sim.projectiles.get_mut(id).unwrap().position = origin;
         if with_source {
             sim.projectiles.get_mut(id).unwrap().last_distance_half = 0;
         }
@@ -4679,7 +4682,8 @@ fn gsi_05_02_tail_appends_run_same_pass_and_terminal_current_skips_successor() {
         sim.projectiles.get(projectile_id).unwrap().position,
         // CellClass target coordinates resolve from the live cell center on
         // every visit, so Cell(16, 0) contributes a small positive Y step.
-        ProjectileCoord::new(64, 1, 0)
+        // BulletType 46C4F0 places this ground-level launch at floor + 1.
+        ProjectileCoord::new(64, 1, 1)
     );
     assert_eq!(sim.waves.get(wave_id).unwrap().lifetime, 99);
 
@@ -5878,6 +5882,9 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
         sim.interner.intern("MISSINGWEAPON"),
     );
     sim.admit_projectile(projectile_id, spawn);
+    // Supply an already-arrived impact boundary for the lethal transaction;
+    // native launch-floor placement is covered by projectile_trailer tests.
+    sim.projectiles.get_mut(projectile_id).unwrap().position = impact;
     sim.set_logic_order_for_test(vec![projectile_id, victim_id, successor_id]);
     sim.lifecycle_test_events.clear();
 

@@ -133,6 +133,7 @@ fn production_retail_projectile_art_matches_original_referenced_type_readers() {
     };
     let rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
     let corpus = native();
+    let anim_roots = crate::rules::effect_asset_catalog::anim_class_roots(&rules);
     let mut compared = Vec::new();
     for row in corpus["retail"]["rows"].as_array().unwrap() {
         let identity = row["identity"].as_str().unwrap();
@@ -140,9 +141,22 @@ fn production_retail_projectile_art_matches_original_referenced_type_readers() {
         // type, including dormant declarations outside the runtime registry.
         if let Some(projectile) = rules.projectile(identity) {
             compare(projectile, &row["rows"][0]["state"], identity);
+            if let Some(trailer) = row["rows"][0]["state"]["trailer"].as_str() {
+                assert!(
+                    anim_roots
+                        .iter()
+                        .any(|root| root == &trailer.to_ascii_uppercase()),
+                    "native {identity} Trailer={trailer} must reach the common animation binder"
+                );
+            }
             compared.push(identity);
         }
     }
+    assert_eq!(
+        compared.len(),
+        rules.projectiles_iter().count(),
+        "every production-registered type has an original reader comparison"
+    );
     assert!(compared.contains(&"Cannon"));
     assert!(
         compared.contains(&"AAHeatSeeker2"),

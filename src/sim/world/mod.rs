@@ -117,6 +117,8 @@ mod jumpjet_infantry_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod projectile_trailer_tests;
+#[cfg(test)]
 pub(crate) use lifecycle_tests::common_raw_terrain_cell as common_raw_test_terrain_cell;
 #[cfg(test)]
 mod team_script_vm_tests;
@@ -4097,8 +4099,17 @@ impl Simulation {
         stable_id: u64,
         spawn: crate::sim::projectile::ProjectileSpawn,
     ) -> u64 {
-        self.projectiles
-            .spawn_at(stable_id, self.session.binary_frame, spawn);
+        let location = crate::sim::projectile::bullet_unlimbo_coord(
+            self.resolved_terrain.as_ref(),
+            &self.effective_shared_cell_dummy(),
+            spawn.origin,
+        );
+        self.projectiles.spawn_at(
+            stable_id,
+            self.session.binary_frame,
+            spawn,
+            location,
+        );
         let registered = self.register_projectile(stable_id, spawn.flat);
         debug_assert!(registered);
         if let Some(style) = spawn.line_trail {

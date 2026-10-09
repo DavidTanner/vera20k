@@ -14,6 +14,7 @@
     "Native OverlayType dense prefix/full BRIDGE2 and GEM01 reads, BridgeStrength constructor/read, bridge effect/SplashList/Wake constructor/read blocks, and full physical Anim ART readers execute. Overlay SHPs are missing; no overlay renderer claim.",
     "Independent seeds31/39 bound rejection/admission; collapse is primed by native576BA0, not a prior full weapon hit. Bullet94 and subsequent runtime effect IDs are actual partial fixture constructor order, not wholematch identity.",
     "Original Tactical constructor and Map/Radar/dirty vector initializers execute. Viewport800x600, camera0, known projection multiplier, GameSpeed4 and timeGetTime0 are supplied. Live-game flagA8E9A0=1 admits complete original Anim Unlimbo including native coordinate commit and Display submission. Source lifecycle/Bullet launch admission boundaries are inherited.",
+    "The shared Bullet admission boundary now executes original InLimbo clearing and coordinate fixup. Its later Conceal therefore includes DetachAll PointerExpired7258D0 and DisplayRemove4A9770 before drain; all other retained bridge, impact, ID, RNG and state outputs are unchanged.",
     "Stops after full Bullet queue drain with impact/bridge animations retained. No post-impact Anim scheduler/retirement or whole Rules Process chronology claim. Shared ifv_impact separately executes single XGRYSML2 lifetime."
   ],
   "substitutions": [
@@ -34,5 +35,5 @@
     "screen_dirty": "0x006D2790",
     "drain": "0x00725C70"
   },
-  "payload_sha256": "3b997c199aa2222bcdf9a636518bb3f17c2cd265fec387dbd8f7ddfc262b5d1e"
+  "payload_sha256": "36c16bd14376041041fbd4869aa0e0fe6ddf442526b5a24d5d0ea817d10b3446"
 }

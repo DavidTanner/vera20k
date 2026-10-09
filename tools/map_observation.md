@@ -59,6 +59,42 @@ The [procedural drawing comparisons](procedural_drawing_oracle/README.md)
 bind these observations to separately executed native readers/getters and retain
 an observer-off replay proving unchanged frame bytes and gameplay boundaries.
 
+Optional v2 `observe_projectiles: true` and `observe_anim_types: ["BBBLELRG"]`
+add an `effects` snapshot at L0 and every committed frame. Each option is
+independent. Projectile rows read every live projectile in stable-ID order,
+including physical XYZ, source, visual counters and Logic membership; its weapon
+resolves the type name through the loaded rules. Animation rows read the global
+animation owner filtered by the requested types, including attached animations,
+with attachment, stored and absolute XYZ, flags, visibility, bounds and the
+existing complete runtime/timer. An unavailable absolute coordinate is `null`.
+Rows disappear when their owners retire them; the observer keeps no invented
+projectile-to-animation parent link or additional lifecycle state. The snapshot
+also reads the Scenario RNG cursor without drawing. It counts one cursor plus
+every retained object toward the shared 100000-sample budget and preserves the
+128 MiB receipt limit. Animation filters contain 1..256 nonempty names, distinct
+under ASCII case folding. Absent options (or only `observe_projectiles: false`)
+add no frame fields; v1 rejects both options.
+
+The [projectile trailer discovery profile](projectile_oracle/profiles/projectile-trailer-discovery.json)
+loads an authored water scene with unchanged retail SUB and LCRF rules. Use it
+to confirm stable actor IDs before the ordinary `Attack` in the
+[trajectory profile](projectile_oracle/profiles/projectile-trailer.json).
+Copy these profiles to scratch and replace `launch.selected_map_file` with the
+absolute path of the tracked
+[`projectile-trailer.mpr`](projectile_oracle/profiles/projectile-trailer.mpr)
+in the checkout before running the capture command. Relative map names resolve
+under the retail directory, not the capture checkout.
+The [flight profile](projectile_oracle/profiles/projectile-trailer-flight.json)
+records the first 40 steps, with a GPU readback of surviving bubbles after
+impact. The longer trajectory profile follows their final cleanup.
+Its [observer-off control](projectile_oracle/profiles/projectile-trailer-flight-no-effects.json)
+omits only the effect fields, allowing final state and GPU bytes to be compared.
+The trajectory and flight profiles follow the production `SubTorpedo` path and
+filter `BBBLELRG`; neither injects a projectile or animation. Their endpoints bound a first-shot experiment;
+inspect actual emission, retirement and cleanup frames before drawing a timing
+conclusion. Per-frame owner snapshots and a rendered endpoint establish production
+integration within that window, not original-engine pixel or whole-weapon parity.
+
 Optional v2 `observe_super_weapons: true` adds a `super_weapons` list to each
 observed House row: every Super the House holds, ordered by the interned type id
 an ordinary `LaunchSuperWeapon` command names, with its grant, readiness, hold,

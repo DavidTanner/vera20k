@@ -66,8 +66,11 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
                             'EnterTransport', 'UnloadPassengers', 'RepairAtDepot', 'SellBuilding', 'SetRally',
                             'LaunchSuperWeapon'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
-EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types', 'observe_action_line_inputs', 'camera_cell',
-                              'cursor_position', 'terrain_cells', 'observe_super_weapons', 'observe_sidebar_steps'))
+EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types',
+                              'observe_projectiles', 'observe_anim_types', 'observe_action_line_inputs',
+                              'camera_cell', 'cursor_position', 'terrain_cells',
+                              'observe_super_weapons', 'observe_sidebar_steps'))
+ASCII_UPPER = str.maketrans('abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -363,6 +366,18 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
             if not name or name in selected_types:
                 raise ValidationError('profile.observe_types has an empty or duplicate type')
             selected_types.add(name)
+    if 'observe_projectiles' in profile and type(profile['observe_projectiles']) is not bool:
+        raise ValidationError('profile.observe_projectiles must be a boolean')
+    if 'observe_anim_types' in profile:
+        names = require_array(profile['observe_anim_types'], 'profile.observe_anim_types')
+        if not 1 <= len(names) <= 256:
+            raise ValidationError('profile.observe_anim_types must contain 1..256 types')
+        selected = set()
+        for index, name in enumerate(names):
+            name = require_string(name, f'profile.observe_anim_types[{index}]')
+            if not name or name.translate(ASCII_UPPER) in selected:
+                raise ValidationError('profile.observe_anim_types has an empty or duplicate type')
+            selected.add(name.translate(ASCII_UPPER))
     if 'camera_cell' in profile:
         _coordinate(profile['camera_cell'], 'profile.camera_cell')
     if 'observe_action_line_inputs' in profile and type(profile['observe_action_line_inputs']) is not bool:
@@ -489,20 +504,24 @@ def _building(value: Any, label: str) -> int:
                 raise ValidationError(f'{anim_label}.building_slot must contain owner and slot')
             _bounded_int(owner_slot[0], f'{anim_label}.building_slot[0]', 1, (1 << 64) - 1)
             _bounded_int(owner_slot[1], f'{anim_label}.building_slot[1]', 0, 20)
-        runtime = require_object(anim['runtime'], f'{anim_label}.runtime')
-        require_exact_keys(runtime, ('current_frame', 'frame_step', 'delay_remaining', 'rate_reload',
-                                     'frame_timer', 'loop_remaining', 'first_ai_guard',
-                                     'constructor_reverse', 'inactive', 'paused'), f'{anim_label}.runtime')
-        for key in ('current_frame', 'frame_step'):
-            _bounded_int(runtime[key], f'{anim_label}.runtime.{key}', -(1 << 31), (1 << 31) - 1)
-        for key in ('delay_remaining', 'rate_reload'):
-            _bounded_int(runtime[key], f'{anim_label}.runtime.{key}', 0, (1 << 16) - 1)
-        _bounded_int(runtime['loop_remaining'], f'{anim_label}.runtime.loop_remaining', 0, 255)
-        _timer(runtime['frame_timer'], f'{anim_label}.runtime.frame_timer')
-        for key in ('first_ai_guard', 'constructor_reverse', 'inactive', 'paused'):
-            if type(runtime[key]) is not bool:
-                raise ValidationError(f'{anim_label}.runtime.{key} must be a boolean')
+        _animation_runtime(anim['runtime'], f'{anim_label}.runtime')
     return len(slots)
+
+
+def _animation_runtime(value: Any, label: str) -> None:
+    runtime = require_object(value, label)
+    require_exact_keys(runtime, ('current_frame', 'frame_step', 'delay_remaining', 'rate_reload',
+                                 'frame_timer', 'loop_remaining', 'first_ai_guard',
+                                 'constructor_reverse', 'inactive', 'paused'), label)
+    for key in ('current_frame', 'frame_step'):
+        _bounded_int(runtime[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('delay_remaining', 'rate_reload'):
+        _bounded_int(runtime[key], f'{label}.{key}', 0, (1 << 16) - 1)
+    _bounded_int(runtime['loop_remaining'], f'{label}.loop_remaining', 0, 255)
+    _timer(runtime['frame_timer'], f'{label}.frame_timer')
+    for key in ('first_ai_guard', 'constructor_reverse', 'inactive', 'paused'):
+        if type(runtime[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
 
 
 def _rule_types(value: Any) -> None:
@@ -1190,6 +1209,78 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
     return sample_count
 
 
+def _observes_effects(profile: Mapping[str, Any]) -> bool:
+    return profile.get('observe_projectiles', False) or 'observe_anim_types' in profile
+
+
+def _effects(value: Any, profile: Mapping[str, Any], label: str) -> int:
+    effects = require_object(value, label)
+    with_projectiles = profile.get('observe_projectiles', False)
+    with_anims = 'observe_anim_types' in profile
+    require_exact_keys(effects, ('scenario_rng_cursor',
+                                *(('projectiles',) if with_projectiles else ()),
+                                *(('animations',) if with_anims else ())), label)
+    cursor = require_array(effects['scenario_rng_cursor'], f'{label}.scenario_rng_cursor')
+    if len(cursor) != 2:
+        raise ValidationError(f'{label}.scenario_rng_cursor must contain two indices')
+    for index, number in enumerate(cursor):
+        _bounded_int(number, f'{label}.scenario_rng_cursor[{index}]', 0, 249)
+    anim_types = {name.translate(ASCII_UPPER) for name in profile.get('observe_anim_types', [])}
+    samples = 1
+    for kind in ('projectiles', 'animations'):
+        if kind not in effects:
+            continue
+        rows = require_array(effects[kind], f'{label}.{kind}')
+        samples += len(rows)
+        if samples > MAX_OBSERVATION_SAMPLES:
+            raise ValidationError(f'{label} exceeds its retained sample budget')
+        previous = 0
+        for index, value in enumerate(rows):
+            row_label = f'{label}.{kind}[{index}]'
+            row = require_object(value, row_label)
+            common = ('stable_id', 'native_id', 'type_id', 'physical_leptons', 'in_logic_vector')
+            fields = (('weapon', 'source_id', 'awaiting_anim', 'visual_frame', 'visual_countdown')
+                      if kind == 'projectiles' else
+                      ('stored_leptons', 'owner_entity', 'completed', 'effective_end',
+                       'effective_loop_end', 'draw_flags', 'z_adjust', 'hidden',
+                       'translucency_ramp', 'runtime'))
+            require_exact_keys(row, (*common, *fields), row_label)
+            identity = _bounded_int(row['stable_id'], f'{row_label}.stable_id', 1, (1 << 64) - 1)
+            if identity <= previous:
+                raise ValidationError(f'{row_label}.stable_id is repeated or out of order')
+            previous = identity
+            _bounded_int(row['native_id'], f'{row_label}.native_id', -(1 << 31), (1 << 31) - 1)
+            if kind == 'projectiles':
+                _coordinate(row['physical_leptons'], f'{row_label}.physical_leptons', leptons=True)
+                if not require_string(row['weapon'], f'{row_label}.weapon'):
+                    raise ValidationError(f'{row_label}.weapon is empty')
+                if row['type_id'] is not None and not require_string(row['type_id'], f'{row_label}.type_id'):
+                    raise ValidationError(f'{row_label}.type_id is empty')
+                _bounded_int(row['source_id'], f'{row_label}.source_id', 0, (1 << 64) - 1)
+                for field in ('visual_frame', 'visual_countdown'):
+                    _bounded_int(row[field], f'{row_label}.{field}', 0, 255)
+                booleans = ('in_logic_vector', 'awaiting_anim')
+            else:
+                name = require_string(row['type_id'], f'{row_label}.type_id')
+                if name.translate(ASCII_UPPER) not in anim_types:
+                    raise ValidationError(f'{row_label}.type_id is outside the requested animation filter')
+                if row['physical_leptons'] is not None:
+                    _coordinate(row['physical_leptons'], f'{row_label}.physical_leptons', leptons=True)
+                _coordinate(row['stored_leptons'], f'{row_label}.stored_leptons', leptons=True)
+                if row['owner_entity'] is not None:
+                    _bounded_int(row['owner_entity'], f'{row_label}.owner_entity', 1, (1 << 64) - 1)
+                for field in ('effective_end', 'effective_loop_end', 'z_adjust'):
+                    _bounded_int(row[field], f'{row_label}.{field}', -(1 << 31), (1 << 31) - 1)
+                _bounded_int(row['draw_flags'], f'{row_label}.draw_flags', 0, (1 << 32) - 1)
+                _bounded_int(row['translucency_ramp'], f'{row_label}.translucency_ramp', 0, 255)
+                _animation_runtime(row['runtime'], f'{row_label}.runtime')
+                booleans = ('in_logic_vector', 'completed', 'hidden')
+            for field in booleans:
+                if type(row[field]) is not bool:
+                    raise ValidationError(f'{row_label}.{field} must be a boolean')
+    return samples
+
+
 def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, Any], *,
                   building_state: bool = True, docking_state: bool = True,
                   walk_state: bool = True) -> dict[str, Any]:
@@ -1197,6 +1288,9 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
     observations = require_object(value, label)
     gesture_input = 'gestures' in profile
     sidebar = 'observe_sidebar_steps' in profile
+    effects = _observes_effects(profile)
+    if effects and not walk_state:
+        raise ValidationError('effect observations require the current observation policy')
     if (gesture_input or sidebar) and not walk_state:
         raise ValidationError('gesture/sidebar observations require the current observation policy')
     require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
@@ -1249,6 +1343,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         require_exact_keys(row, ('completed_steps', 'simulation_tick', 'binary_frame',
                                  'total_simulation_ms', 'actors', 'missing_actor_ids', 'terrain',
                                  *(('input',) if gesture_input else ()),
+                                 *(('effects',) if effects else ()),
                                  *(('houses',) if docking_state else ())), row_label)
         for key in ('completed_steps', 'simulation_tick', 'binary_frame'):
             require_value(row[key], step, f'{row_label}.{key}')
@@ -1288,6 +1383,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         for index, (value, expected) in enumerate(zip(terrain, expected_cells)):
             _terrain(value, expected, f'{row_label}.terrain[{index}]')
         sample_count += len(actors) + len(missing) + len(terrain)
+        if effects:
+            sample_count += _effects(row['effects'], profile, f'{row_label}.effects')
         if gesture_input:
             sample_count += _input_observation(row['input'], f'{row_label}.input',
                                                 local_input=_observes_local_input(profile))

@@ -15,10 +15,36 @@ spec=importlib.util.spec_from_file_location('_impact_launch',Path(__file__).with
 launch=importlib.util.module_from_spec(spec);spec.loader.exec_module(launch)
 i32,xyz,vec=launch.i32,launch.xyz,launch.vec
 base_prepare=launch.prepare
-def prepare():
- result=base_prepare();m=result[0];u=m.u;m.invoke(0x561910,0)
+def initialize_effect_registries(m):
+ """Original effect/world initializer regions shared by complete Anim witnesses."""
+ u=m.u;m.invoke(0x561910,0)
  for start,end in ((0x4e7ae0,0x4e7b16),(0x7253d0,0x725406),(0x7252d0,0x725306),(0x725450,0x725486)):
   u.reg_write(UC_X86_REG_ESP,SP);run_checked(u,start,end)
+
+def initialize_effect_world(m,cells,seed=31,*,map_size=(64,64),clear_terrain=True):
+ """Supply the existing flat world's active/display state and seed natively."""
+ u=m.u;u.mem_write(0xa8e9a0,b'\x01');u.mem_write(0x87f914,dwords(*map_size))
+ for start,end in ((0x40b540,0x40b5ab),(0x725850,0x725886),(0x4e6d60,0x4e6d96)):
+  u.reg_write(UC_X86_REG_ESP,SP);run_checked(u,start,end)
+ from tools.rmg_oracle.gen_rng_vectors import seeded_struct
+ u.mem_write(m.read32(0xa8b230)+0x218,seeded_struct(seed))
+ if clear_terrain:
+  for c in list(cells.values())+[0xabdc50]:
+   u.mem_write(c+0x38,dwords(-1));u.mem_write(c+0x44,dwords(-1))
+
+def retirement_transport(m,pc,events):
+ """Only the existing Windows COM decrement/readability boundaries."""
+ u=m.u;sp=u.reg_read(UC_X86_REG_ESP)
+ if pc==0x46b007:
+  ptr=m.read32(sp);value=(m.read32(ptr)-1)&0xffffffff
+  u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value)
+  u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46b00d)
+  events.append(dict(event='OSInterlockedDecrement',field=hex(ptr),result=value))
+  return True
+ return checked_is_bad_read_ptr_transport(u,pc,sp,events)
+
+def prepare():
+ result=base_prepare();m=result[0];u=m.u;initialize_effect_registries(m)
  names=['XGRYSML1','XGRYSML2','EXPLOSML','XGRYMED1','XGRYMED2','EXPLOMED','EXPLOLRG','TWLT070']
  art,_=lexical((assets_root()/'ARTMD.INI').read_bytes(),set(names));m.make_ini(art);rows=[]
  for name in names:
@@ -31,13 +57,7 @@ launch.prepare=prepare
 
 def execute(bridge=True,origin=(2688,5248,1030),bridge_band=None,changes=()):
  m,b,cells,result=launch.launch(origin=origin,bridge=bridge);u=m.u
- u.mem_write(0xa8e9a0,b'\x01');u.mem_write(0x87f914,dwords(64,64))
- for start,end in ((0x40b540,0x40b5ab),(0x725850,0x725886),(0x4e6d60,0x4e6d96)):
-  u.reg_write(UC_X86_REG_ESP,SP);run_checked(u,start,end)
- from tools.rmg_oracle.gen_rng_vectors import seeded_struct
- u.mem_write(m.read32(0xa8b230)+0x218,seeded_struct(31))
- for c in list(cells.values())+[0xabdc50]:
-  u.mem_write(c+0x38,dwords(-1));u.mem_write(c+0x44,dwords(-1))
+ initialize_effect_world(m,cells)
  if bridge_band is not None:
   for xy,c in cells.items():u.mem_write(c+0x140,dwords(0x100 if xy in bridge_band else 0))
   result['supplied']['bridge_band']=[list(xy) for xy in bridge_band]
@@ -66,11 +86,7 @@ def execute(bridge=True,origin=(2688,5248,1030),bridge_band=None,changes=()):
    if a in (0x489280,0x48a4f0,0x421ea0,0x68bcb0,0x65c780,0x65c7e0,0x5f4ec0):pending[m.read32(sp)]=entry
    if a==0x65c7e0:entry.update(low=i32(u,sp+4),high=i32(u,sp+8))
    events.append(entry)
-  if a==0x46b007:
-   sp=u.reg_read(UC_X86_REG_ESP);ptr=m.read32(sp);value=(m.read32(ptr)-1)&0xffffffff
-   u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46b00d)
-   events.append(dict(event='OSInterlockedDecrement',field=hex(ptr),result=value))
-  checked_is_bad_read_ptr_transport(u,a,u.reg_read(UC_X86_REG_ESP),events)
+  retirement_transport(m,a,events)
   if a>=0x20000000 and a!=RET_MAGIC:raise AssertionError(('non-image-code',hex(a)))
  h=u.hook_add(UC_HOOK_CODE,obs);hi=u.hook_add(UC_HOOK_MEM_INVALID,invalid)
  frames=[]
@@ -113,6 +129,7 @@ def generate():
 def metadata():
  return provenance(scope='Five physical IFV impact controls: 125 original Bullet AI visits and 70 impact Anim AI visits through complete bounded retirement',assumptions=[
   'Original cell-spread table initializer561910, selected physical readers, FireAt launch, guided flight, full Detonate4690B0 and AreaDamage489280, impact SelectAnim/constructor/Start and full Bullet/Anim retirement execute. Earlier launch supplied boundaries remain: source lifecycle/FLH, Unlimbo/Display admission and inter-frame structural-bit changes.',
+  'The shared launch boundary executes original Unlimbo admission-state writes, BulletType coordinate fixup and SetLocation. Correcting its former raw-coordinate copy clears InLimbo, so Conceal now executes DetachAll PointerExpired7258D0 and DisplayRemove4A9770 before drain. Every other retained payload field is unchanged by that boundary correction.',
   'Supplied GameActiveA8E9A0=1 admits original Anim Unlimbo/coordinate commit/Display submission. Flat level6 map cells, empty damage/air receivers, no tile/overlay identities and ScenarioDestroyableBridges=false. No damageable bridge topology; that is the separate ifv_bridge_impact fixture.',
   'Physical DRAGON and eight HE effect SHPs are read through native readers. Original partial pool construction gives Bullet29 then impact Anim30; no full startup/wholematch native-ID claim. Each control independently seeds Scenario RNG31.',
   'Host schedules pending drain after the Bullet tick, then one impact AnimAI per frame until its native retirement. All timer bodies execute; no whole Logic/Display scheduler claim. The LineTrail slot is null; ifv_trail_impact separately joins its admitted producer and detach.',

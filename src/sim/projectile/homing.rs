@@ -485,7 +485,7 @@ mod tests {
                 closing_accumulator_bits: input["closing_accum"].as_f64().unwrap_or(0.0).to_bits(),
             });
             let mut store = ProjectileStore::new();
-            store.spawn_at(1, 0, shot);
+            store.spawn_at(1, 0, shot, shot.origin);
             let bullet = store.get_mut(1).unwrap();
             let result = step(
                 bullet,
@@ -630,7 +630,7 @@ mod tests {
                 closing_accumulator_bits: 0,
             });
             let mut store = ProjectileStore::new();
-            store.spawn_at(1, 0, shot);
+            store.spawn_at(1, 0, shot, shot.origin);
             for row in case["frames"].as_array().unwrap() {
                 let frame = row["frame"].as_u64().unwrap() as u32;
                 for change in input["between_frame_flag_changes"].as_array().unwrap() {

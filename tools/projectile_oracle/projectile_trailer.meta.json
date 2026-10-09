@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Original Bullet placement/Fire, AI trailer cadence and complete free-standing BBBLELRG Anim lifetime",
+  "assumptions": [
+    "The full original BulletType constructor and readers consume supplied physical lexical RULESMD, optional LANGRULE, MPBattleMD and Hills inputs; fixed ART reads consume SUBT and BBBLELRG. Hills.map is the unchanged inner INI entryD5FE80AC extracted from loose Hills.mmx, not the MMX container or XHills.MAP. Native physical archive/INI walking is outside this witness.",
+    "The existing guided and impact fixture owners initialize selected original registries and flat level6 Cell objects. Each header Bullet executes full original Fire468670/Unlimbo before documented in-flight position/alive/wait/frame overrides; admission is retained in retail.admission. GameActive, empty receiver pools, target Cell and incoming Fire velocity are supplied boundaries. No SUB placement, upstream Techno FireAt, collision, rendering or complete startup pool identity is claimed.",
+    "Header execution begins at4666E0 including ObjectAI and ends before flight4668BD, at the original dead/wait return, or the expired-wait explosion entry468D80. One continuation executes native Torpedo guidance through precommit467B7A with supplied incoming velocity and records its distinct candidate coordinate after the earlier Anim constructor. No native arithmetic result or branch outcome is calculated by Python. Explicit #DE controls accept only processor-exception faults at the two original IDIV instructions; all other execution failures abort publication.",
+    "Scaled controls execute original setter46C840 but supply its input; they do not establish the Scalable producer/list lifecycle. ART delay controls go through original readers. Main and Scenario RNG are independently seeded by original65C6D0 with seed31; original raw draw stores and both retained state hashes are recorded.",
+    "Every admitted emission executes full Anim421EA0 including native identity, registration, Unlimbo and timer setup. Two histories remove the original Bullet through UnInit and deferred drain, then run the surviving independent AnimAI from the same frame through deferred retirement. The host supplies that schedule; the complete Logic loop, renderer and audio device are outside coverage.",
+    "One authored RandomRate=450,225 ART control executes the original reader conversion before constructor RNG ordering and continuation; stock BBBLELRG retains its physical ART. Reader dependencies use unchanged shared default fixture setup rather than a separate world implementation.",
+    "Original Bullet466380 plus AddRef46AFD0 establishes one host-held COM reference; original Configure4664C0 reads the physical weapon/type outputs. This does not execute upstream Unit FireAt or COM activation.",
+    "The auxiliary Scalable inventory is selected from physical RULESMD Projectile references plus the two explicit nuclear roots. Every included constructor/full layered reader executes; this selection is not original native registry discovery and excludes no duplicate selected ART section silently.",
+    "Placement controls execute the concrete BulletType virtual+6C owner46C4F0 and full BulletFire468670, including original ObjectUnlimbo, SetLocation, Display and ProximitySetup. Flat Cell level/slope/live-bridge inputs, raw muzzle XYZ, mapped target Cell and incoming velocity are supplied; no upstream Unit GetFLH/FireAt or native whole-map placement is claimed. Dummy/unallocated source/cell-target aliasing is outside these mapped-cell controls. Each control constructs a fresh unadmitted physical Torpedo through the existing world owner. Direct controls include signed input-height extremes without supplying an impossible INT_MAX terrain result."
+  ],
+  "substitutions": [
+    "Inherited reader supplies signed-CRC INI indexes, exact extracted archive bytes, allocation/delete/CRT/TLS and the unused Color entry. Original ObjectType LoadVoxel5F8110 is skipped only after scalar reads, as in ArtStateReader. Runtime voxel loading is not established.",
+    "The one allocation-failure control returns null at the shared operator_new boundary only for the producer requested1C8 bytes. Existing shared Windows InterlockedIncrement/Decrement and checked IsBadReadPtr transports admit original native reference/retirement/RTTI with an empty supplied FS exception chain."
+  ],
+  "entry_points": {
+    "bullet_ai": "0x004666E0",
+    "base_idiv": "0x0046687C",
+    "scaled_idiv": "0x00466844",
+    "anim_ctor": "0x00421EA0",
+    "anim_ai": "0x00423AC0",
+    "anim_reader": "0x00427D00",
+    "bullet_type_ctor": "0x0046BBC0",
+    "bullet_type_reader": "0x0046BEE0",
+    "scaled_setter": "0x0046C840",
+    "bullet_type_fixup_coord": "0x0046C4F0",
+    "bullet_fire": "0x00468670",
+    "object_unlimbo": "0x005F4EC0",
+    "set_location": "0x005F6940",
+    "map_ground": "0x00578080",
+    "proximity_setup": "0x004E1130",
+    "uninit": "0x005F65F0",
+    "drain": "0x00725C70"
+  },
+  "command": "PYTHONDONTWRITEBYTECODE=1 python -m tools.projectile_oracle.projectile_trailer --check",
+  "input_environment": "RA2_DIR or VERA20K_GAMEMD_EXE selects the supported executable; VERA20K_PROJECTILE_RENDER_ASSETS selects the extracted files identified in the payload sources.",
+  "source_normalized_lf_sha256": {
+    "tools/projectile_oracle/projectile_trailer.py": "f72b755b4128507f7f4b28778bc31a5a1ca85d1621617b01aa0285e63a377ed0",
+    "tools/projectile_oracle/guided_step.py": "2109693736e94e182354adf0218e0d85fc1ddfdcc78ab9e92a09aff5a07e67a2",
+    "tools/projectile_oracle/ifv_impact.py": "4373fc12cac9455b0603dbd10c3c6c43ab53c104f8e7d8a6f7b93b1a55764544",
+    "tools/projectile_oracle/ifv_launch.py": "5758aff2cf2001b16d44956847f7526efdf5ab0f23c5838e8ebe321d3ac9775d",
+    "tools/projectile_oracle/bridge_render_inputs.py": "2f05d2e7e917aef585553502830947ea8ca121eab2d886d2c9ba4df7c935727d",
+    "tools/projectile_oracle/bridge_render_art_state.py": "57ce9e4492a47b320d218135b61b9017fa3d1ad39424d108f2089193f7b8bc73",
+    "tools/projectile_oracle/flat_art.py": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6",
+    "tools/rules_oracle/bridge_anim_inputs.py": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+    "tools/rules_oracle/bridge_anim_lists.py": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "tools/spatial_oracle/building_body_rules.py": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "tools/spatial_oracle/map_queries.py": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305",
+    "tools/rmg_oracle/gen_rng_vectors.py": "c1e75b4eade453c1331ddc140365eb687a70e06d64852a9b786856fd5bb530ad",
+    "tools/native_oracle.py": "67a69b8e446a8134fbff1128c1fe15025350f329fc25585af29ea725746f2ceb"
+  },
+  "payload_sha256": "8453dd55300842ab7400029d27ff1ba59420ccf6546600dafa4c0b8521e633b5"
+}

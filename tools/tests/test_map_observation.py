@@ -48,6 +48,7 @@ class MapObservationTests(unittest.TestCase):
         self.rule_types = [{'type_id': name, 'interned_id': identity, 'category': 'Structure'}
                            for name, identity in [('GACNST', 40), ('GAPOWR', 41), ('GAPILE', 42)]]
         self.terrain_frames = {}
+        self.effect_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
         self.keyboard_bindings = []
@@ -122,6 +123,13 @@ class MapObservationTests(unittest.TestCase):
                            'missing_actor_ids': sorted(seen - current_ids), 'terrain': deepcopy(terrain)})
             if 'gestures' in self.profile:
                 frames[-1]['input'] = deepcopy(self.input_frames.get(step, self.input_observation()))
+            if observation._observes_effects(self.profile):
+                effects = {'scenario_rng_cursor': [0, 103]}
+                if self.profile.get('observe_projectiles', False):
+                    effects['projectiles'] = []
+                if 'observe_anim_types' in self.profile:
+                    effects['animations'] = []
+                frames[-1]['effects'] = deepcopy(self.effect_frames.get(step, effects))
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
             'rule_types': deepcopy(self.rule_types),
@@ -236,6 +244,108 @@ class MapObservationTests(unittest.TestCase):
                             width=4, height=4, cursor_position=[2, 1])
         self.frame = bytes(range(64))
         self.profile_path.write_text(json.dumps(self.profile))
+
+    def effect_profile(self):
+        # Synthetic receipt rows exercise schema and retention, not native timing.
+        self.profile.update(schema_version=observation.PROFILE_V2,
+                            observe_projectiles=True, observe_anim_types=['BBBLELRG'])
+        self.profile_path.write_text(json.dumps(self.profile))
+        projectile = {'stable_id': 11, 'native_id': 9, 'weapon': 'SubTorpedo',
+                      'type_id': 'Torpedo', 'source_id': 1, 'physical_leptons': [100, 200, 0],
+                      'in_logic_vector': True, 'awaiting_anim': False,
+                      'visual_frame': 0, 'visual_countdown': 1}
+        animation = {'stable_id': 12, 'native_id': 10, 'type_id': 'BBBLELRG',
+                     'stored_leptons': [100, 200, 0], 'physical_leptons': [100, 200, 0],
+                     'owner_entity': None, 'in_logic_vector': True, 'completed': False,
+                     'effective_end': 15, 'effective_loop_end': 15, 'draw_flags': 1536,
+                     'z_adjust': 0, 'hidden': False, 'translucency_ramp': 0,
+                     'runtime': {'current_frame': 0, 'frame_step': 1, 'delay_remaining': 1,
+                                 'rate_reload': 2, 'frame_timer': {'start_frame': 1, 'duration': 2},
+                                 'loop_remaining': 1, 'first_ai_guard': False,
+                                 'constructor_reverse': False, 'inactive': False, 'paused': False}}
+        self.effect_frames = {
+            1: {'scenario_rng_cursor': [0, 103], 'projectiles': [projectile], 'animations': [animation]},
+            2: {'scenario_rng_cursor': [0, 103], 'projectiles': [], 'animations': [deepcopy(animation)]}}
+        self.effect_frames[2]['animations'][0]['runtime'].update(current_frame=1, delay_remaining=0)
+
+    def test_effect_observations_retain_lifecycle_rows_without_invented_provenance(self):
+        report = self.run_capture()
+        self.assertNotIn('effects', report['capture']['observations']['frames'][0])
+        self.effect_profile()
+        self.output = self.root / 'effects'
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frames = report['capture']['observations']['frames']
+        self.assertEqual(frames[1]['effects'], self.effect_frames[1])
+        self.assertEqual(frames[2]['effects'], self.effect_frames[2])
+        self.assertEqual(frames[3]['effects'],
+                         {'scenario_rng_cursor': [0, 103], 'projectiles': [], 'animations': []})
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_effect_profile_requires_explicit_typed_bounded_filters(self):
+        modern = dict(self.profile, schema_version=observation.PROFILE_V2)
+        cases = [dict(modern, observe_projectiles=value) for value in (None, 0, 1, 'true', [])]
+        cases += [dict(modern, observe_anim_types=value)
+                  for value in (None, [], [''], ['BBBLELRG', 'bbblelrg'], [True],
+                                [str(index) for index in range(257)])]
+        cases += [dict(self.profile, observe_projectiles=False),
+                  dict(self.profile, observe_anim_types=['BBBLELRG'])]
+        for index, candidate in enumerate(cases):
+            with self.subTest(case=index), patch.object(observation, 'run_child') as child:
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+                self.assertFalse(self.output.exists())
+        observation._profile_extensions(dict(modern, observe_projectiles=False))
+        observation._profile_extensions(dict(modern, observe_anim_types=['BBBLELRG']))
+
+    def test_effect_receipts_reject_missing_unrequested_or_malformed_owner_rows(self):
+        self.effect_profile()
+        changes = [lambda row: row.pop('effects'),
+                   lambda row: row['effects'].update(scenario_rng_cursor=[250, 0]),
+                   lambda row: row['effects'].update(scenario_rng_cursor=[True, 0]),
+                   lambda row: row['effects']['projectiles'].append(
+                       deepcopy(row['effects']['projectiles'][0])),
+                   lambda row: row['effects']['projectiles'][0].update(physical_leptons=None),
+                   lambda row: row['effects']['projectiles'][0].update(native_id=1 << 31),
+                   lambda row: row['effects']['projectiles'][0].update(visual_frame=256),
+                   lambda row: row['effects']['projectiles'][0].update(awaiting_anim=1),
+                   lambda row: row['effects']['animations'][0].update(type_id='OTHER'),
+                   lambda row: row['effects']['animations'][0].update(owner_entity=0),
+                   lambda row: row['effects']['animations'][0].update(physical_leptons=[1, 2]),
+                   lambda row: row['effects']['animations'][0].update(trailer_parent=11),
+                   lambda row: row['effects']['animations'][0]['runtime'].update(paused=1),
+                   lambda row: row['effects']['animations'][0]['runtime'].update(delay_remaining=65536)]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'invalid-effect-{index}'
+                self.change = lambda manifest, f=change: f(manifest['observations']['frames'][1])
+                self.assertEqual(self.run_capture()['status'], 'INVALID')
+        with self.assertRaises(ValidationError):
+            observation._observations({}, self.profile, {}, walk_state=False)
+        self.profile.pop('observe_projectiles')
+        self.profile.pop('observe_anim_types')
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'unrequested-effects'
+        self.change = lambda manifest: manifest['observations']['frames'][0].update(effects={})
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_effect_samples_are_budgeted_and_compared_even_after_projectile_retirement(self):
+        self.effect_profile()
+        # Four cursor snapshots, one projectile and two animation rows: seven samples.
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 6):
+            report = self.run_capture()
+            self.assertEqual(report['status'], 'INVALID')
+            self.assertIn('sample budget', report['errors'][0])
+        before = self.valid_capture('effects-before')
+        self.change = lambda manifest: manifest['observations']['frames'][2]['effects'][
+            'animations'][0]['runtime'].update(current_frame=2)
+        after = self.valid_capture('effects-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual([row['field'] for row in report['differences']],
+                         ['observations.frames[2].effects.animations[0].runtime.current_frame'])
 
     @staticmethod
     def input_observation(selected=(), remaining=0, pending=False, active=None):

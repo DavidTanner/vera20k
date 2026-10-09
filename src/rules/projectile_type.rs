@@ -83,7 +83,8 @@ pub struct ProjectileType {
     pub anim_palette: bool,
     /// Uses the firing unit's palette for rendering. (+0x2A9)
     pub firers_palette: bool,
-    /// Projectile can be scaled (e.g., for perspective). (+0x2EC)
+    /// Enrolls in the process-wide scalable-Bullet list used to adjust the
+    /// type's Trailer cadence (InitScalable46B280, +0x2EC), not sprite size.
     pub scalable: bool,
     /// Launches vertically before turning toward target. (+0x2C0)
     pub vertical: bool,
@@ -102,7 +103,8 @@ pub struct ProjectileType {
     pub acceleration: i32,
     /// Number of frames the projectile flies straight before homing. (+0x2E0)
     pub course_lock_duration: i32,
-    /// Delay in frames between spawning sub-projectiles (read from Image section). (+0x2E4)
+    /// Signed global-frame cadence for Trailer, read from fixed ART's Image
+    /// section (Bullet AI46687C, +0x2E4).
     pub spawn_delay: i32,
     /// Signed proximity-fuse delay (+0x2F0); collisions bypass it and Aircraft targets use zero.
     pub arm: i32,

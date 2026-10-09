@@ -423,6 +423,58 @@
       },
       {
         "args": [
+          "0x24092570",
+          "0x5f4d67",
+          "0x1",
+          "0x1"
+        ],
+        "ecx": "0x24092760",
+        "event": "DetachAllTrailCall",
+        "frame": 1,
+        "pc": "0x5f528e",
+        "return_pc": "0x24092570"
+      },
+      {
+        "args": [
+          "0x24092570",
+          "0x24092570",
+          "0x5f4d67",
+          "0x1"
+        ],
+        "ecx": "0x24092760",
+        "event": "TrailDetach",
+        "frame": 1,
+        "pc": "0x556b30",
+        "return_pc": "0x5f5293"
+      },
+      {
+        "args": [
+          "0x24092570",
+          "0x24092570",
+          "0x5f4d67",
+          "0x1"
+        ],
+        "ecx": "0x24092570",
+        "event": "PointerExpired",
+        "frame": 1,
+        "pc": "0x7258d0",
+        "return_pc": "0x5f5316"
+      },
+      {
+        "args": [
+          "0x24092570",
+          "0x1",
+          "0x24092570",
+          "0x1480"
+        ],
+        "ecx": "0x87f7e8",
+        "event": "DisplayRemove",
+        "frame": 1,
+        "pc": "0x4a9770",
+        "return_pc": "0x5f4d7e"
+      },
+      {
+        "args": [
           "0x0",
           "0x0",
           "0x0",
@@ -490,32 +542,6 @@
         "frame": 1,
         "pc": "0x5f3b80",
         "return_pc": "0x466657"
-      },
-      {
-        "args": [
-          "0x24092570",
-          "0x466657",
-          "0x24092570",
-          "0x24092570"
-        ],
-        "ecx": "0x24092760",
-        "event": "ObjectDtorTrailCall",
-        "frame": 1,
-        "pc": "0x5f3d56",
-        "return_pc": "0x24092570"
-      },
-      {
-        "args": [
-          "0x24092570",
-          "0x24092570",
-          "0x466657",
-          "0x24092570"
-        ],
-        "ecx": "0x24092760",
-        "event": "TrailDetach",
-        "frame": 1,
-        "pc": "0x556b30",
-        "return_pc": "0x5f3d5b"
       },
       {
         "args": [

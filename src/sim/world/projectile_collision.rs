@@ -1120,6 +1120,15 @@ mod tests {
         let mut sim = Simulation::new();
         install_native_size_terrain(&mut sim, 2, 3);
         let mut shot = gsi_05_02_projectile(999, None);
+        // The supplied motion fixture has no WeaponType, but the live Bullet
+        // header still resolves its retained weapon before checking Trailer.
+        // Keep that absent type represented by a valid Simulation-owned ID.
+        let missing = sim.interner.intern("MISSING");
+        shot.payload = crate::sim::projectile::ProjectilePayload::new(
+            shot.payload.base_damage,
+            missing,
+            missing,
+        );
         shot.origin = ProjectileCoord::new(640, 640, 5);
         shot.target = ProjectileTarget::Cell { rx: 5, ry: 2 };
         shot.initial_target_position = ProjectileCoord::new(1408, 640, 0);

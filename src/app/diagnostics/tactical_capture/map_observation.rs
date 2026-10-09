@@ -240,6 +240,20 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_types: Option<Vec<String>>,
+    // Immutable global projectile/animation owner snapshots. Their absence
+    // preserves historical profile and receipt bytes.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_projectiles: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_anim_types: Option<Vec<String>>,
     // Opt-in immutable inputs for native Attack-coordinate comparisons.
     // Historical profiles and their exact observation rows stay unchanged.
     #[serde(
@@ -310,6 +324,8 @@ impl MapCaptureProfile {
                     && self.gestures.is_none()
                     && self.observe_owners.is_none()
                     && self.observe_types.is_none()
+                    && self.observe_projectiles.is_none()
+                    && self.observe_anim_types.is_none()
                     && self.observe_action_line_inputs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
@@ -456,6 +472,19 @@ impl MapCaptureProfile {
                 );
             }
         }
+        if let Some(types) = &self.observe_anim_types {
+            ensure!(
+                !types.is_empty() && types.len() <= MAX_OBSERVED_TYPES,
+                "observed animation types must contain 1..256 names"
+            );
+            let mut unique = BTreeSet::new();
+            for name in types {
+                ensure!(
+                    !name.is_empty() && unique.insert(name.to_ascii_uppercase()),
+                    "empty or duplicate observed animation type"
+                );
+            }
+        }
         let cells = self.terrain_cells();
         ensure!(
             cells.len() <= MAX_TERRAIN_CELLS,
@@ -524,6 +553,10 @@ impl MapCaptureProfile {
         } else {
             GESTURE_POLICY
         }
+    }
+
+    fn observes_effects(&self) -> bool {
+        self.observe_projectiles == Some(true) || self.observe_anim_types.is_some()
     }
 
     fn observes_local_input(&self) -> bool {
@@ -1035,6 +1068,73 @@ struct MapGestureReceipt {
     keyboard: Option<MapKeyboardGestureReceipt>,
 }
 
+/// Boundary snapshots of the production stores, without retained provenance,
+/// synthetic spawns, timer advancement or implied native frame equivalence.
+#[derive(Debug, Serialize)]
+struct MapEffectObservation {
+    scenario_rng_cursor: [i32; 2],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    projectiles: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    animations: Option<Vec<Value>>,
+}
+
+impl MapEffectObservation {
+    fn capture(
+        sim: &crate::sim::world::Simulation,
+        rules: &crate::rules::ruleset::RuleSet,
+        profile: &MapCaptureProfile,
+    ) -> Result<Self> {
+        let projectiles = (profile.observe_projectiles == Some(true)).then(|| {
+            sim.projectiles.iter().take(MAX_OBSERVATION_SAMPLES + 1).map(|(&id, bullet)| {
+                let weapon = sim.interner.resolve(bullet.payload.weapon);
+                // Bullet retains its Weapon identity; the immutable RuleSet
+                // resolves its Projectile type for the existing draw path too.
+                let type_id = rules.weapon(weapon).and_then(|weapon| weapon.projectile.as_deref());
+                json!({"stable_id": id, "native_id": bullet.native_unique_id,
+                    "weapon": weapon, "type_id": type_id, "source_id": bullet.source_id,
+                    "physical_leptons": [bullet.position.x, bullet.position.y, bullet.position.z],
+                    "in_logic_vector": bullet.in_logic_vector, "awaiting_anim": bullet.awaiting_anim(),
+                    "visual_frame": bullet.visual.runtime_frame,
+                    "visual_countdown": bullet.visual.runtime_countdown})
+            }).collect::<Vec<_>>()
+        });
+        let animations = profile.observe_anim_types.as_ref().map(|types| {
+            sim.anims().filter(|(_, anim)| types.iter().any(|name|
+                name.eq_ignore_ascii_case(sim.interner.resolve(anim.type_id))))
+                .take(MAX_OBSERVATION_SAMPLES + 1).map(|(&id, anim)| {
+                    let absolute = sim.anim_absolute_coord(id).map(|at| [at.x, at.y, at.z]);
+                    json!({"stable_id": id, "native_id": anim.native_unique_id,
+                        "type_id": sim.interner.resolve(anim.type_id),
+                        "stored_leptons": [anim.world_coord.x, anim.world_coord.y, anim.world_coord.z],
+                        "physical_leptons": absolute, "owner_entity": anim.owner_entity,
+                        "in_logic_vector": anim.in_logic_vector, "completed": anim.completed(),
+                        "effective_end": anim.effective_end, "effective_loop_end": anim.effective_loop_end,
+                        "draw_flags": anim.draw_flags, "z_adjust": anim.z_adjust,
+                        "hidden": anim.draw_runtime.hidden,
+                        "translucency_ramp": anim.draw_runtime.translucency_ramp,
+                        "runtime": anim.runtime})
+                }).collect::<Vec<_>>()
+        });
+        let rng = sim.rng_views().scenario;
+        let snapshot = Self {
+            scenario_rng_cursor: [rng.index_a, rng.index_b],
+            projectiles,
+            animations,
+        };
+        ensure!(
+            snapshot.sample_count() <= MAX_OBSERVATION_SAMPLES,
+            "effect observation exceeds sample budget"
+        );
+        Ok(snapshot)
+    }
+
+    fn sample_count(&self) -> usize {
+        1 + self.projectiles.as_ref().map_or(0, Vec::len)
+            + self.animations.as_ref().map_or(0, Vec::len)
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct MapFrameObservation {
     completed_steps: u64,
@@ -1045,6 +1145,8 @@ struct MapFrameObservation {
     houses: Vec<Value>,
     missing_actor_ids: Vec<u64>,
     terrain: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effects: Option<MapEffectObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     input: Option<MapInputObservation>,
 }
@@ -1161,6 +1263,14 @@ impl MapObservation {
             })
             .and_then(|count| count.checked_add(frame.missing_actor_ids.len()))
             .and_then(|count| count.checked_add(frame.terrain.len()))
+            .and_then(|count| {
+                count.checked_add(
+                    frame
+                        .effects
+                        .as_ref()
+                        .map_or(0, MapEffectObservation::sample_count),
+                )
+            })
             .and_then(|count| {
                 count.checked_add(
                     frame
@@ -1396,6 +1506,14 @@ impl TacticalCaptureSession {
                 }
             }
             profile.validate_observed_rule_types(&rule_types)?;
+            if let Some(types) = &profile.observe_anim_types {
+                for name in types {
+                    ensure!(
+                        rules.art().anim_runtime_config(name).is_some(),
+                        "observed animation type {name:?} is absent from loaded ART"
+                    );
+                }
+            }
             // Owner strings must name real loaded Houses before the ordinary
             // input owner is allowed to intern a command receiver.
             for owner in profile.observe_owners().iter().map(String::as_str).chain(
@@ -2130,6 +2248,10 @@ impl TacticalCaptureSession {
             houses,
             missing_actor_ids,
             terrain,
+            effects: profile
+                .observes_effects()
+                .then(|| MapEffectObservation::capture(sim, &runtime.resources.rules, profile))
+                .transpose()?,
             input: profile
                 .gestures
                 .as_ref()
@@ -2510,6 +2632,112 @@ mod tests {
     }
 
     #[test]
+    fn effect_filters_are_opt_in_case_insensitive_and_bounded() {
+        let mut profile = example();
+        assert!(!profile.observes_effects());
+        profile.observe_projectiles = Some(false);
+        assert!(profile.validate().is_err());
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.validate().unwrap();
+        assert!(!profile.observes_effects());
+        for names in [
+            vec![],
+            vec![String::new()],
+            vec!["TRAIL".into(), "trail".into()],
+            (0..=MAX_OBSERVED_TYPES)
+                .map(|index| index.to_string())
+                .collect(),
+        ] {
+            profile.observe_anim_types = Some(names);
+            assert!(profile.validate().is_err());
+        }
+        profile.observe_anim_types = Some(vec!["TRAIL".into()]);
+        profile.validate().unwrap();
+        assert!(profile.observes_effects());
+    }
+
+    #[test]
+    fn effect_snapshot_reads_filtered_live_owner_without_advancing_state() {
+        use crate::rules::{art_data::ArtRegistry, ini_parser::IniFile, ruleset::RuleSet};
+        use crate::sim::{
+            anim_class::AnimWorldCoord, components::AnimClassSpawnDescriptor, world::Simulation,
+        };
+        use crate::util::fixed_math::SimFixed;
+
+        let mut rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
+        let mut art =
+            ArtRegistry::from_ini(&IniFile::from_str("[TRAIL]\nRate=450\n[OTHER]\nRate=300\n"));
+        art.bind_anim_frame_count_for_test("TRAIL", 15);
+        art.bind_anim_frame_count_for_test("OTHER", 8);
+        rules.replace_art_registry_for_test(art);
+        let mut sim = Simulation::new();
+        let at = AnimWorldCoord {
+            x: 913,
+            y: 1237,
+            z: -17,
+        };
+        let mut selected = 0;
+        for name in ["TRAIL", "OTHER"] {
+            let kind = sim.interner.intern(name);
+            let mut descriptor =
+                AnimClassSpawnDescriptor::new(kind, 0, 0, SimFixed::ZERO, SimFixed::ZERO, 0);
+            descriptor.delay = 1;
+            let id = sim.spawn_anim_at_world(&rules, descriptor, at).unwrap();
+            if name == "TRAIL" {
+                selected = id;
+            }
+        }
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.observe_projectiles = Some(true);
+        profile.observe_anim_types = Some(vec!["trail".into()]);
+        let hash = sim.state_hash();
+        let rng = sim.rng_state();
+        let snapshot = MapEffectObservation::capture(&sim, &rules, &profile).unwrap();
+        assert_eq!(snapshot.sample_count(), 2);
+        let rows = snapshot.animations.as_ref().unwrap();
+        assert!(snapshot.projectiles.as_ref().unwrap().is_empty());
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["stable_id"], selected);
+        assert_eq!(rows[0]["stored_leptons"], json!([at.x, at.y, at.z]));
+        assert_eq!(rows[0]["physical_leptons"], json!([at.x, at.y, at.z]));
+        assert_eq!(rows[0]["owner_entity"], Value::Null);
+        let live = sim.anims().find(|(id, _)| **id == selected).unwrap().1;
+        assert_eq!(
+            rows[0]["runtime"],
+            serde_json::to_value(&live.runtime).unwrap()
+        );
+        assert_eq!(sim.state_hash(), hash);
+        assert_eq!(sim.rng_state(), rng);
+
+        let mut observation = MapObservation {
+            sample_count: MAX_OBSERVATION_SAMPLES - 1,
+            ..Default::default()
+        };
+        assert!(
+            observation
+                .observe_frame(
+                    MapFrameObservation {
+                        completed_steps: 0,
+                        simulation_tick: 0,
+                        binary_frame: 0,
+                        total_simulation_ms: 0,
+                        actors: vec![],
+                        houses: vec![],
+                        missing_actor_ids: vec![],
+                        terrain: vec![],
+                        effects: Some(snapshot),
+                        input: None,
+                    },
+                    BTreeSet::new()
+                )
+                .is_err()
+        );
+        assert_eq!(observation.sample_count, MAX_OBSERVATION_SAMPLES - 1);
+        assert!(observation.frames.is_empty());
+    }
+
+    #[test]
     fn keyboard_profile_preserves_literal_edges_and_rejects_command_or_chord_spellings() {
         let mut value = serde_json::to_value(example()).unwrap();
         value["schema_version"] = json!(PROFILE_V2);
@@ -2582,6 +2810,8 @@ mod tests {
                 {"sw_type_id": 5, "target_rx": 3, "target_ry": 4}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
         modern["observe_types"] = json!(["CLEG"]);
+        modern["observe_projectiles"] = json!(true);
+        modern["observe_anim_types"] = json!(["BBBLELRG"]);
         modern["observe_action_line_inputs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
@@ -2595,6 +2825,8 @@ mod tests {
             "gestures",
             "observe_owners",
             "observe_types",
+            "observe_projectiles",
+            "observe_anim_types",
             "observe_action_line_inputs",
             "camera_cell",
             "cursor_position",
@@ -3008,6 +3240,7 @@ mod tests {
                 houses: Vec::new(),
                 missing_actor_ids: Vec::new(),
                 terrain: Vec::new(),
+                effects: None,
                 input: None,
             },
             BTreeSet::from([7]),
@@ -3024,6 +3257,7 @@ mod tests {
                 houses: Vec::new(),
                 missing_actor_ids: vec![7],
                 terrain: Vec::new(),
+                effects: None,
                 input: None,
             },
             BTreeSet::from([7]),
@@ -3208,6 +3442,7 @@ mod tests {
             houses: Vec::new(),
             missing_actor_ids: Vec::new(),
             terrain: Vec::new(),
+            effects: None,
             input: None,
         };
         let mut map = initialized_map();
