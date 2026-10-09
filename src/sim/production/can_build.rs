@@ -329,12 +329,7 @@ pub(crate) fn find_factory(
     require_can_build: bool,
 ) -> Option<u64> {
     let house = sim.houses.get(&owner)?;
-    let factory_type = match obj.category {
-        ObjectCategory::Infantry => FactoryType::InfantryType,
-        ObjectCategory::Vehicle => FactoryType::UnitType,
-        ObjectCategory::Aircraft => FactoryType::AircraftType,
-        ObjectCategory::Building => FactoryType::BuildingType,
-    };
+    let factory_type = FactoryType::for_category(obj.category);
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     let ownable = get_ownable(obj, rules, game_mode_nonzero);
     let selling = MissionId::from_known(MissionType::Selling);

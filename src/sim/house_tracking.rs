@@ -67,9 +67,8 @@
 //! (`0x00448CDD`), and leaves it (`HouseClass::Recount @ 0x004FF980`, a plain
 //! decrement) at its first Limbo (`0x00445D8E`) and when ChangeOwner takes it
 //! from a house (`0x0044870E`). An ordinary building death limbos it at once:
-//! `BuildingClass::ReceiveDamage` UnInits it in its death arm (`0x0044269A`);
-//! an `Explodes=` building or one killed while selling waits for its Update
-//! (`0x004400D4`), which VERA does not (`crate::sim::crew_survival`).
+//! `BuildingClass::ReceiveDamage` UnInits it in its death arm (`0x0044269A`)
+//! while the death timer DestructionEffects armed (`+0x528`, 8 frames) runs.
 //! Time_To_Build reads one counter (`HouseClass::GetFactoryCount @
 //! 0x00500910`); the EVA funds nag sums four.
 //!
@@ -94,11 +93,22 @@
 //! negative when nothing is left (the house is never defeated); VERA does
 //! neither.
 //!
-//! RESIDUAL: Limbo skips Recount while the game is not active
-//! (`0x00445AC6`, `[0x00A8E9A0]`); VERA has no such flag and always counts
-//! the Limbo. Trigger: a placed building limboed before the game starts or
-//! after it ends. Effect: the native counter keeps that building. Frequency:
-//! scenario load and teardown only, when no reader runs.
+//! RESIDUAL: a factory whose type is `Explodes=` (TechnoType `+0xD15`) or
+//! that dies while selling leaves its counter one frame late natively.
+//! DestructionEffects arms its death timer at 0 (`0x00441C43..0x00441C8C`),
+//! so ReceiveDamage skips the UnInit, and the next Update limbos it
+//! (`0x004400C5`) before its UnInit; VERA UnInits every building at once
+//! (`crate::sim::crew_survival` records the same split). Trigger: every
+//! shipyard death (GAYARD, NAYARD and YAYARD are `Explodes=yes`) and any
+//! factory killed while sold. Effect: a build started or re-rated in that
+//! frame counts one factory more natively (one more MultipleFactory step).
+//!
+//! RESIDUAL: while the game-active byte `[0x00A8E9A0]` is clear, Limbo skips
+//! everything after `0x00445AC6`, Recount and TechnoClass::Limbo included;
+//! VERA has no such byte. Main__PrepareSession sets it (`0x0052D9D7`) before
+//! the scenario starts, and the game-exit paths and the command-queue
+//! writers clear it when a game ends. Trigger: a building limboed after the
+//! game ended. Effect: none VERA can show; its simulation stops there.
 
 use std::collections::BTreeMap;
 

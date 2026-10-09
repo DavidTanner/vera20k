@@ -22,7 +22,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::rules::object_type::{ObjectCategory, ObjectType};
+use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::economy::Economy;
 use crate::sim::house_tracking::FactorySlot;
@@ -441,13 +441,7 @@ pub(super) fn time_to_build_inputs(
         .power_states
         .get(&owner)
         .map_or((0, 0), |power| (power.total_output, power.total_drain));
-    let slot = match obj.category {
-        ObjectCategory::Building => FactorySlot::Building,
-        ObjectCategory::Infantry => FactorySlot::Infantry,
-        ObjectCategory::Aircraft => FactorySlot::Aircraft,
-        ObjectCategory::Vehicle if obj.naval => FactorySlot::Naval,
-        ObjectCategory::Vehicle => FactorySlot::Vehicle,
-    };
+    let slot = FactorySlot::of(FactoryType::for_category(obj.category), obj.naval);
     let factory_count = sim
         .houses
         .get(&owner)
