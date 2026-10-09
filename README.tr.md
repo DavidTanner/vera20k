@@ -7,7 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Son Linux kütüphane testi çalıştırması (elle başlatılır)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux kütüphane testleri" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Son Windows kütüphane testi çalıştırması (elle başlatılır)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows kütüphane testleri" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Discord'a katılın" height="20" align="middle"></a>
-  <img src="https://img.shields.io/badge/QQ_grubu-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="Çince QQ grubu" height="20" align="middle">
+  <img src="https://img.shields.io/badge/QQ_grubu-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ grubu" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -73,7 +73,7 @@ ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosy
 Yardımlarınızı bekliyoruz. Kod yazabilir, motoru yeniden düzenleyebilir, oyunu test edebilir,
 fikirlerinizi paylaşabilir veya orijinal oyunla yan yana oynayıp neyin yanlış hissettirdiğini
 bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz; büyük bir değişiklik için önce bir
-issue'da, [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ya da topluluğun yönettiği Çince QQ grubunda (1097193563) sorun.
+issue'da, [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ya da QQ grubunda (1097193563) sorun.
 
 Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/` ve `src/ui/`
 içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
