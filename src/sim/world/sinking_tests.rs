@@ -436,7 +436,6 @@ fn retained_health_one_ship_is_illegal_as_firer_and_target() {
             obj: rules.object("TEST").unwrap(),
             target: Some(TargetKind::Entity(target_id)),
             weapon_index: 0,
-            garrison: None,
         }
         .fire_error(false)
     };

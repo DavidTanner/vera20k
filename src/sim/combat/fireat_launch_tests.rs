@@ -484,7 +484,6 @@ fn grand_cannon_recoil_follows_successful_launch_ai_and_snapshot() {
         obj: duel.rules.object("GTGCAN").unwrap(),
         target: actor.attack_target.as_ref().map(|a| a.target),
         weapon_index: 0,
-        garrison: None,
     }
     .fire_error(true);
     assert!(

@@ -54,9 +54,12 @@ fn live_shot<'r>(
     };
     let selected = combat_weapon::resolve_selected_weapon(
         rules,
+        entity,
         obj,
         &combat_weapon::attacker_facts(entity, obj),
         target_facts.as_ref(),
+        &world.substrate.entities,
+        &world.interner,
     )?;
     let burst = selected.weapon.burst;
     let coordinates = match target {
@@ -229,7 +232,6 @@ impl CombatStrike<'_, '_> {
             obj: self.obj,
             target: Some(target),
             weapon_index,
-            garrison: None,
         }))
     }
 

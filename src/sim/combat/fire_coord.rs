@@ -578,12 +578,11 @@ fn building_pixel_offset(
 /// gamemd-derived, `TechnoClass::Fire_At` `0x006FF2D1..0x006FF349`: a weapon
 /// with exactly eight `Anim=` entries picks one by the fire facing,
 /// `(dir8(facing) + 1) & 7`; any other non-empty list picks its first entry.
-/// When the firer's occupied virtual (`+0x400`, for a building `0x00458DD0`:
-/// type bytes `+0x157B` and `+0x157C` and an occupant count above zero)
-/// answers true the pick is replaced by the weapon's `OccupantAnim=`
-/// (`+0x110`), null included. That is the building's state, not a record of
-/// which weapon was chosen, so VERA keys it on the building being occupied.
-/// Type byte `+0x157C` is UNCHECKED and not modelled.
+/// When the firer's occupied virtual (`+0x400`, for a building `0x00458DD0`,
+/// [`super::combat_weapon::is_occupied`]) answers true the pick is replaced by
+/// the weapon's `OccupantAnim=` (`+0x110`), null included. That is the
+/// building's state, not a record of which weapon was chosen, so VERA keys it
+/// on the building being occupied.
 ///
 /// When nothing is picked and the firer rides an open-topped transport
 /// (`+0x82`), the weapon's `OpenToppedAnim=` (`+0x118`) plays instead

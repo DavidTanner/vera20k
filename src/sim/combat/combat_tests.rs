@@ -4229,7 +4229,11 @@ fn death_arm_payload(
     current_weapon: Option<&str>,
     interner: &mut StringInterner,
 ) -> Option<(i32, InternedId, InternedId)> {
-    super::death_arm_explodes(rules, obj, veterancy, current_weapon_number)
+    let numbered_weapon =
+        super::combat_weapon::weapon_for_index(obj, veterancy, current_weapon_number)
+            .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
+    let current_weapon = current_weapon.and_then(|weapon_id| rules.weapon(weapon_id));
+    super::death_arm_explodes(obj, veterancy, numbered_weapon)
         .then(|| super::fire_death_weapon_payload(rules, obj, current_weapon, interner))
         .flatten()
 }
@@ -6571,7 +6575,6 @@ fn an_illegal_shot_is_still_in_range() {
         obj: rules.object("MTNK").unwrap(),
         target: Some(target),
         weapon_index: 0,
-        garrison: None,
     }
     .fire_error(false);
     assert_eq!(code, crate::sim::combat::fire_error::FireError::Illegal);

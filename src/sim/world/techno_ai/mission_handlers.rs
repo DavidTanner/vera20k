@@ -398,9 +398,11 @@ pub(crate) fn dispatch_foot_mission(
                 let actor = sim.substrate.entities.get(id).expect("deployed shim actor");
                 let Some(weapon) = crate::sim::combat::combat_weapon::resolve_weapon_index(
                     rules,
+                    actor,
                     object,
-                    actor.veterancy(),
                     1,
+                    &sim.substrate.entities,
+                    &sim.interner,
                 ) else {
                     return bridge_changed;
                 };
@@ -426,7 +428,6 @@ pub(crate) fn dispatch_foot_mission(
                         obj: object,
                         target: actual_target,
                         weapon_index: 1,
-                        garrison: None,
                     }
                     .fire_error(true);
                     if error == crate::sim::combat::fire_error::FireError::Ok {

@@ -41,13 +41,9 @@ pub(crate) struct FireSubject<'a> {
     pub obj: &'a ObjectType,
     pub target: Option<TargetKind>,
     pub weapon_index: i32,
-    /// A garrisoned building's GetWeapon (`0x004526F0`) answers its firing
-    /// occupant's weapon ([`combat_weapon::occupant_weapon`]) for every slot,
-    /// with the garrison range.
-    pub garrison: Option<(&'a WeaponType, crate::util::fixed_math::SimFixed)>,
 }
 
-impl FireSubject<'_> {
+impl<'a> FireSubject<'a> {
     /// GetFireError for this subject.
     pub(crate) fn fire_error(&self, check_range: bool) -> FireError {
         let facts = self.facts();
@@ -60,7 +56,7 @@ impl FireSubject<'_> {
     }
 
     /// `GetWeaponDamageValue(-1) @ 0x006F3970` through this subject's
-    /// GetWeapon, so a garrison reads its occupant's weapon.
+    /// GetWeapon, so an occupied building reads its occupant's weapon.
     pub(crate) fn weapon_damage_value(&self) -> i32 {
         super::fire_error::weapon_value(&self.facts(), &mut WorldQuery::new(self))
     }
@@ -96,14 +92,18 @@ impl FireSubject<'_> {
         )
     }
 
-    /// GetWeapon (vt+0x3F8) at an index: a garrison's occupant weapon for
-    /// every slot (`0x004526F0`), else the rank-selected slot.
-    pub(crate) fn weapon_at(&self, index: i32) -> Option<&WeaponType> {
-        if let Some((weapon, _)) = self.garrison {
-            return (index >= 0).then_some(weapon);
-        }
-        combat_weapon::weapon_for_index(self.obj, self.firer.veterancy(), index)
-            .and_then(|(weapon_id, _)| self.rules.weapon(weapon_id))
+    /// GetWeapon (vt+0x3F8) at an index ([`combat_weapon::get_weapon`]): an
+    /// occupied building's firing occupant's weapon for every slot, else the
+    /// rank-selected slot.
+    pub(crate) fn weapon_at(&self, index: i32) -> Option<&'a WeaponType> {
+        combat_weapon::get_weapon(
+            self.firer,
+            self.obj,
+            index,
+            &self.world.substrate.entities,
+            self.rules,
+            &self.world.interner,
+        )
     }
 
     fn weapon_facts(&self, weapon: &WeaponType) -> WeaponFacts {
@@ -413,40 +413,6 @@ impl FireSubject<'_> {
     }
 }
 
-/// A garrisoned building's GetWeapon (`0x004526F0` through `IsOccupied`
-/// `0x00458DD0`): its firing occupant's weapon for every index and target
-/// ([`combat_weapon::occupant_weapon`]), with the garrison fire range (half
-/// the foundation plus `OccupyWeaponRange`).
-pub(crate) fn garrison_weapon<'r>(
-    world: &Simulation,
-    rules: &'r RuleSet,
-    building: &GameEntity,
-    obj: &ObjectType,
-) -> Option<(&'r WeaponType, crate::util::fixed_math::SimFixed)> {
-    if !obj.can_be_occupied || !obj.can_occupy_fire {
-        return None;
-    }
-    let cargo = building
-        .passenger_role
-        .cargo()
-        .filter(|cargo| !cargo.is_empty())?;
-    let occupant = world
-        .substrate
-        .entities
-        .get(cargo.passengers[cargo.garrison_fire_index as usize % cargo.count() as usize])?;
-    let weapon = rules
-        .object(world.interner.resolve(occupant.type_ref()))
-        .and_then(|occupant_obj| {
-            combat_weapon::occupant_weapon(rules, occupant_obj, occupant.veterancy())
-        })?;
-    let (width, height) = crate::rules::foundation::foundation_dimensions(&obj.foundation);
-    let cells = i32::from(width.min(height) / 2) + rules.garrison_rules.occupy_weapon_range;
-    Some((
-        weapon,
-        crate::util::fixed_math::SimFixed::from_num(cells.max(1)),
-    ))
-}
-
 /// The owners' answers, asked by [`super::fire_error::get_fire_error`].
 struct WorldQuery<'s, 'a> {
     subject: &'s FireSubject<'a>,
@@ -512,27 +478,6 @@ impl FireQuery for WorldQuery<'_, '_> {
             return false;
         };
         let firer = subject.firer;
-        let flat = |range: crate::util::fixed_math::SimFixed| {
-            super::is_within_range_leptons(
-                super::lepton_distance_sq_raw(
-                    firer.position.rx,
-                    firer.position.ry,
-                    firer.position.sub_x,
-                    firer.position.sub_y,
-                    rx,
-                    ry,
-                    sub_x,
-                    sub_y,
-                ),
-                range,
-            )
-        };
-        // RESIDUAL: a garrison shot measures flat distance with the garrison
-        // range, so it never runs InRange's wall/cliff walk or adds its
-        // elevation bonus; see RESIDUAL 2 at `is_within_range_leptons`.
-        if let Some((_, range)) = subject.garrison {
-            return flat(range);
-        }
         match subject.terrain() {
             // GetFireError6FCCEE calls InRange with its original target. A Cell
             // retains its Cell+48/+50 geometry through the existing range
@@ -582,7 +527,19 @@ impl FireQuery for WorldQuery<'_, '_> {
                     },
                 )
             }),
-            None => flat(weapon.range),
+            None => super::is_within_range_leptons(
+                super::lepton_distance_sq_raw(
+                    firer.position.rx,
+                    firer.position.ry,
+                    firer.position.sub_x,
+                    firer.position.sub_y,
+                    rx,
+                    ry,
+                    sub_x,
+                    sub_y,
+                ),
+                weapon.range,
+            ),
         }
     }
 

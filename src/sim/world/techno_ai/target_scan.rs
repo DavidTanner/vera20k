@@ -26,7 +26,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::combat::fire_error::FireError;
-use crate::sim::combat::fire_error_world::{FireSubject, garrison_weapon};
+use crate::sim::combat::fire_error_world::FireSubject;
 use crate::sim::combat::{ScanMission, TargetKind, combat_weapon};
 use crate::sim::mission::MissionType;
 use crate::sim::world::Simulation;
@@ -418,7 +418,6 @@ fn fire_subject<'a>(
         obj,
         target,
         weapon_index,
-        garrison: garrison_weapon(sim, rules, firer, obj),
     })
 }
 
