@@ -176,7 +176,12 @@ class Airfield(ScratchAircraft):
         return {"input": row, "ret": result["ret"], "calls": result["calls"]}
 
 
-DEFAULTS = {"strength": STRENGTH, "reload_rate": f64_bits(0.3)}
+# What CCINIClass::ReadDouble (0x005283D0) stores for retail `ReloadRate=.3`: sscanf "%f"
+# scans a float, widened to the double field, not 0.3's own double (src/rules/ini_value.rs
+# parse_read_double).
+RETAIL_RELOAD_RATE = struct.unpack("<f", struct.pack("<f", 0.3))[0]
+
+DEFAULTS = {"strength": STRENGTH, "reload_rate": f64_bits(RETAIL_RELOAD_RATE)}
 
 
 def contact(query_reloaded, need_to_move, reload, repair, health=STRENGTH, missions=(GUARD,)):
@@ -214,11 +219,14 @@ def above(value):
     return math.nextafter(value, math.inf)
 
 
-# ReloadRate values (minutes): the default and retail, products with 900 just below, at and
-# above an integer, zero and negatives, past int32 and int64, infinity and a subnormal.
+# ReloadRate values (minutes): the default, retail's and 0.3's own double, products with 900
+# just below, at and above an integer, zero and negatives, past int32 and int64, infinity and
+# a subnormal.
 RATES = (
-    ("default", 0.05), ("retail", 0.3), ("retail_below", below(0.3)),
-    ("retail_above", above(0.3)), ("0.1", 0.1), ("0.1_below", below(0.1)),
+    ("default", 0.05), ("retail", RETAIL_RELOAD_RATE),
+    ("retail_below", below(RETAIL_RELOAD_RATE)), ("retail_above", above(RETAIL_RELOAD_RATE)),
+    ("0.3", 0.3), ("0.3_below", below(0.3)), ("0.3_above", above(0.3)),
+    ("0.1", 0.1), ("0.1_below", below(0.1)),
     ("0.1_above", above(0.1)), ("0.15", 0.15), ("0.2", 0.2), ("0.6", 0.6), ("0.7", 0.7),
     ("0.125", 0.125), ("0.25", 0.25), ("0.5", 0.5), ("1", 1.0), ("1_below", below(1.0)),
     ("1_above", above(1.0)), ("2.5", 2.5), ("3", 3.0), ("1/900", 1 / 900),
@@ -310,8 +318,9 @@ def metadata():
               "call. One to four slots holding nothing or a contact taking each way through the "
               "arm, a count of 0, a count below the slots the vector holds, a count changed by a "
               "release during the visit, and one contact in two slots. ReloadRate 0.05 (the "
-              "default), 0.3 (retail) and values whose product with 900 sits just below, at or "
-              "above an integer, zero, negatives, products past int32 and int64, infinities and "
+              "default), the value ReadDouble stores for retail `.3` (0.3 as a float, widened; "
+              "every combination row runs with it), 0.3's own double and values whose product "
+              "with 900 sits just below, at or above an integer, zero, negatives, products past int32 and int64, infinities and "
               "a subnormal, on a serviced visit, and three on a visit that services nothing. "
               "Returned value and the ordered log of the count reads, Contact_With_Whom calls, "
               "Transmit_Message calls with message and contact, type getter calls, Get_Mission "

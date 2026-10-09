@@ -226,10 +226,12 @@ impl EnterHost for WorldEnter<'_> {
         i32::from(self.transmit(RadioMessage::DockNow).code())
     }
 
-    /// RESIDUAL, unreachable: only a transport aircraft answers DOCK_NOW
-    /// with 5 (`0x00419300`), and VERA's aircraft receiver answers it None;
+    /// RESIDUAL, dormant: an aircraft receiver answers DOCK_NOW with 5
+    /// (`0x00419300`), so natively an aircraft reaches this only with
+    /// another aircraft as its radio contact, which only a transport
+    /// aircraft's boarding forms; no retail aircraft type has `Passengers=`.
+    /// VERA's aircraft receiver answers DOCK_NOW 0 (`radio::receive`), and
     /// VERA boards passengers through `passenger::tick_passenger_system`'s
-    /// proximity transaction instead. Natively an aircraft reaches it only by
-    /// entering a transport aircraft, which no retail order gives.
+    /// proximity transaction instead.
     fn board_contact(&mut self) {}
 }

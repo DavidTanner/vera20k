@@ -344,8 +344,12 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                         .expect("represented Infantry destination dependencies must be available");
                     return true;
                 }
-                crate::map::entities::EntityCategory::Aircraft
-                | crate::map::entities::EntityCategory::Structure
+                // `AircraftClass::Assign_Destination @ 0x0041AA80`.
+                crate::map::entities::EntityCategory::Aircraft => {
+                    sim.assign_aircraft_destination(prepared.receiver, Some(requested), rules);
+                    return true;
+                }
+                crate::map::entities::EntityCategory::Structure
                 | crate::map::entities::EntityCategory::Unit
                 | crate::map::entities::EntityCategory::Infantry => {}
             }

@@ -267,7 +267,7 @@ pub(crate) fn fly_status(entity: &crate::sim::game_entity::GameEntity) -> Option
         1
     } else if state.taking_off() {
         0
-    } else if state.moving() {
+    } else if super::motion_query::is_moving(entity) == Some(true) {
         2
     } else {
         3

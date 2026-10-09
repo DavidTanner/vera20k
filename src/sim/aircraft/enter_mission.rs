@@ -25,7 +25,7 @@
 //! while descending it steps its Location at most 5 leptons in X and Y
 //! toward its NavCom's dock coordinate (a Building's GetDockCoord, vt+0xA8,
 //! for this aircraft; else vt+0x48) through SetLocation (vt+0x1B4). Landed,
-//! it sends DOCK_NOW (0x15): ROGER queues Guard, 5 (a transport aircraft's
+//! it sends DOCK_NOW (0x15): ROGER queues Guard, 5 (an aircraft contact's
 //! answer, `0x0041938E`) boards the contact (`0x0041A02C..0x0041A058`) and
 //! any other answer enters idle mode. Those set `+0x6D4` and return 1; a
 //! state past 7 returns 1.

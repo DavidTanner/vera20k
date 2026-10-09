@@ -99,7 +99,7 @@ impl ReloadHost for Recorder<'_> {
 #[test]
 fn reload_visit_matches_the_original() {
     let rows = rows();
-    assert_eq!(rows.len(), 304);
+    assert_eq!(rows.len(), 307);
     let mut disagreements = Vec::new();
     for row in &rows {
         let input = &row["input"];
@@ -128,4 +128,48 @@ fn reload_visit_matches_the_original() {
         rows.len(),
         disagreements.join("\n")
     );
+}
+
+/// Retail `[General] ReloadRate=.3`, read through the production reader,
+/// is 0.3 scanned as a float and widened (ReadDouble `0x005283D0`), not
+/// 0.3's own double: a visit that hands a sleeping contact a round returns
+/// 270 frames, as the original's `retail` row does (0.3's double gives 269).
+#[test]
+fn retail_reload_rate_services_every_270_frames() {
+    let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+        return;
+    };
+    let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+    assert_eq!(
+        rules.general.reload_rate.to_bits(),
+        f64::from(0.3_f32).to_bits()
+    );
+
+    /// One sleeping contact short of a round.
+    struct Reloading;
+    impl ReloadHost for Reloading {
+        fn capacity(&mut self) -> usize {
+            1
+        }
+        fn contact(&mut self, _slot: usize) -> Option<u64> {
+            Some(1)
+        }
+        fn roger(&mut self, _contact: u64, message: RadioMessage) -> bool {
+            matches!(message, RadioMessage::NeedToMove | RadioMessage::Reload)
+        }
+        fn full_strength(&mut self, _contact: u64) -> bool {
+            true
+        }
+        fn mission(&mut self, _contact: u64) -> MissionId {
+            MissionId::from_known(MissionType::Sleep)
+        }
+        fn queue_sleep(&mut self, _contact: u64) {}
+        fn release(&mut self, _contact: u64) {
+            panic!("a contact taking a round stays");
+        }
+        fn queue_guard(&mut self) {
+            panic!("a servicing visit queues no Guard");
+        }
+    }
+    assert_eq!(reload_visit(rules.general.reload_rate, &mut Reloading), 270);
 }

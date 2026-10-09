@@ -649,9 +649,10 @@ pub(in crate::sim) fn exit_produced_object(
 /// `0x00443CD4`) the aircraft is unlimboed at the factory's dock coordinate
 /// for it (vt+0xA8, `0x00447B20`) facing Rules PoseDir (`0x00417FD0`), its
 /// Z first zeroed (`ObjectClass::SetZ @ 0x005F6060`). The factory then sends
-/// it HELLO and TETHER (vt+0x278, answers ignored), which link the slot,
-/// and the aircraft moves to the dock coordinate of that slot (vt+0x1B4)
-/// and takes the factory as its dock (`+0x6CC`). One that is not
+/// it HELLO and TETHER (vt+0x278, answers ignored): HELLO links the slot,
+/// TETHER tethers only an aircraft that is not `AirportBound=`
+/// (`0x006F4B4B`). The aircraft moves to the dock coordinate of that slot
+/// (vt+0x1B4) and takes the factory as its dock (`+0x6CC`). One that is not
 /// `AirportBound=` also takes the factory's rally point (`+0x218`) as its
 /// destination and queues Move. Unlimbo's own idle mode
 /// (`TechnoClass::Unlimbo @ 0x006F6E2A`) picks its mission before the link.

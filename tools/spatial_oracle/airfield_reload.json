@@ -29,7 +29,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -66,7 +66,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -103,7 +103,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -140,7 +140,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -177,7 +177,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -214,7 +214,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -251,7 +251,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -288,7 +288,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -325,7 +325,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -362,7 +362,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -399,7 +399,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -436,7 +436,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -473,7 +473,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -510,7 +510,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -547,7 +547,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -584,7 +584,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -621,7 +621,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -658,7 +658,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -695,7 +695,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -732,7 +732,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -769,7 +769,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -806,7 +806,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -843,7 +843,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -880,7 +880,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -917,7 +917,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -954,7 +954,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -991,7 +991,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1028,7 +1028,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1065,7 +1065,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1102,7 +1102,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1139,7 +1139,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1176,7 +1176,7 @@
         },
         "count": 1,
         "name": "one.q1.h200.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1211,7 +1211,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1246,7 +1246,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1281,7 +1281,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1316,7 +1316,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1351,7 +1351,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1386,7 +1386,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1421,7 +1421,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1456,7 +1456,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1493,13 +1493,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1530,13 +1530,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1568,13 +1568,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1609,13 +1609,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1645,7 +1645,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1681,7 +1681,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1717,7 +1717,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1753,7 +1753,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1790,13 +1790,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1827,13 +1827,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1864,13 +1864,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1901,13 +1901,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -1937,7 +1937,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -1973,7 +1973,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2009,7 +2009,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2045,7 +2045,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2082,13 +2082,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2119,13 +2119,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2156,13 +2156,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2193,13 +2193,13 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2229,7 +2229,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2265,7 +2265,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2301,7 +2301,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2337,7 +2337,7 @@
         },
         "count": 1,
         "name": "one.q1.h199.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2372,7 +2372,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2407,7 +2407,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2442,7 +2442,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2477,7 +2477,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2512,7 +2512,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2547,7 +2547,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2582,7 +2582,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2617,7 +2617,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2654,13 +2654,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2691,13 +2691,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2729,13 +2729,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2770,13 +2770,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2806,7 +2806,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2842,7 +2842,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2878,7 +2878,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2914,7 +2914,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -2951,13 +2951,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -2988,13 +2988,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3025,13 +3025,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3062,13 +3062,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3098,7 +3098,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3134,7 +3134,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3170,7 +3170,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3206,7 +3206,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3243,13 +3243,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3280,13 +3280,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3317,13 +3317,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3354,13 +3354,13 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3390,7 +3390,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3426,7 +3426,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3462,7 +3462,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3498,7 +3498,7 @@
         },
         "count": 1,
         "name": "one.q1.h201.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3532,7 +3532,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3566,7 +3566,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3600,7 +3600,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3634,7 +3634,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3668,7 +3668,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3702,7 +3702,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3736,7 +3736,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3770,7 +3770,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3806,13 +3806,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3842,13 +3842,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3879,13 +3879,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3919,13 +3919,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -3954,7 +3954,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -3989,7 +3989,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4024,7 +4024,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4059,7 +4059,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4095,13 +4095,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4131,13 +4131,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4167,13 +4167,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4203,13 +4203,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4238,7 +4238,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4273,7 +4273,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4308,7 +4308,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4343,7 +4343,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4379,13 +4379,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4415,13 +4415,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4451,13 +4451,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4487,13 +4487,13 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4522,7 +4522,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4557,7 +4557,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4592,7 +4592,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4627,7 +4627,7 @@
         },
         "count": 1,
         "name": "one.q10.h200.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4661,7 +4661,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4695,7 +4695,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4729,7 +4729,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4763,7 +4763,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4797,7 +4797,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4831,7 +4831,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4865,7 +4865,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4899,7 +4899,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -4935,13 +4935,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -4971,13 +4971,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5008,13 +5008,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5048,13 +5048,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5083,7 +5083,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5118,7 +5118,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5153,7 +5153,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5188,7 +5188,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5224,13 +5224,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5260,13 +5260,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5296,13 +5296,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5332,13 +5332,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5367,7 +5367,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5402,7 +5402,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5437,7 +5437,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5472,7 +5472,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5508,13 +5508,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5544,13 +5544,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5580,13 +5580,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5616,13 +5616,13 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -5651,7 +5651,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5686,7 +5686,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5721,7 +5721,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5756,7 +5756,7 @@
         },
         "count": 1,
         "name": "one.q10.h199.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5790,7 +5790,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5824,7 +5824,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5858,7 +5858,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5892,7 +5892,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5926,7 +5926,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5960,7 +5960,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -5994,7 +5994,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6028,7 +6028,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m7.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6064,13 +6064,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6100,13 +6100,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6137,13 +6137,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6177,13 +6177,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6212,7 +6212,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6247,7 +6247,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6282,7 +6282,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6317,7 +6317,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m0.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6353,13 +6353,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6389,13 +6389,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6425,13 +6425,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6461,13 +6461,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6496,7 +6496,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6531,7 +6531,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6566,7 +6566,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6601,7 +6601,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m5.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6637,13 +6637,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n1.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6673,13 +6673,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n1.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6709,13 +6709,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n1.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6745,13 +6745,13 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n1.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6780,7 +6780,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n10.r1.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6815,7 +6815,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n10.r1.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6850,7 +6850,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n10.r10.p1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6885,7 +6885,7 @@
         },
         "count": 1,
         "name": "one.q10.h201.m-1.n10.r10.p10",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6925,13 +6925,13 @@
         },
         "count": 1,
         "name": "answer.0x1D.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -6960,7 +6960,7 @@
         },
         "count": 1,
         "name": "answer.0x13.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -6997,13 +6997,13 @@
         },
         "count": 1,
         "name": "answer.0x1F.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7037,13 +7037,13 @@
         },
         "count": 1,
         "name": "answer.0x1C.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7077,13 +7077,13 @@
         },
         "count": 1,
         "name": "answer.0x1D.20",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7112,7 +7112,7 @@
         },
         "count": 1,
         "name": "answer.0x13.20",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7149,13 +7149,13 @@
         },
         "count": 1,
         "name": "answer.0x1F.20",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7189,13 +7189,13 @@
         },
         "count": 1,
         "name": "answer.0x1C.20",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7229,13 +7229,13 @@
         },
         "count": 1,
         "name": "answer.0x1D.23",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7264,7 +7264,7 @@
         },
         "count": 1,
         "name": "answer.0x13.23",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7301,13 +7301,13 @@
         },
         "count": 1,
         "name": "answer.0x1F.23",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7341,13 +7341,13 @@
         },
         "count": 1,
         "name": "answer.0x1C.23",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7381,13 +7381,13 @@
         },
         "count": 1,
         "name": "answer.0x1D.32",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7416,7 +7416,7 @@
         },
         "count": 1,
         "name": "answer.0x13.32",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7453,13 +7453,13 @@
         },
         "count": 1,
         "name": "answer.0x1F.32",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7493,13 +7493,13 @@
         },
         "count": 1,
         "name": "answer.0x1C.32",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7533,13 +7533,13 @@
         },
         "count": 1,
         "name": "answer.0x1D.33",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7568,7 +7568,7 @@
         },
         "count": 1,
         "name": "answer.0x13.33",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7605,13 +7605,13 @@
         },
         "count": 1,
         "name": "answer.0x1F.33",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7645,13 +7645,13 @@
         },
         "count": 1,
         "name": "answer.0x1C.33",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7686,13 +7686,13 @@
         },
         "count": 1,
         "name": "missions.5.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7723,13 +7723,13 @@
         },
         "count": 1,
         "name": "missions.0.5",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7764,13 +7764,13 @@
         },
         "count": 1,
         "name": "missions.-1.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7801,13 +7801,13 @@
         },
         "count": 1,
         "name": "missions.0.-1",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7838,13 +7838,13 @@
         },
         "count": 1,
         "name": "missions.0.7",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -7873,7 +7873,7 @@
         },
         "count": 1,
         "name": "missions.7.0",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7910,7 +7910,7 @@
         },
         "count": 1,
         "name": "pads.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7944,7 +7944,7 @@
         },
         "count": 1,
         "name": "pads.entering",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -7979,7 +7979,7 @@
         },
         "count": 1,
         "name": "pads.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -8015,13 +8015,13 @@
         },
         "count": 1,
         "name": "pads.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8051,13 +8051,13 @@
         },
         "count": 1,
         "name": "pads.reloading",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8088,13 +8088,13 @@
         },
         "count": 1,
         "name": "pads.repairing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8128,13 +8128,13 @@
         },
         "count": 1,
         "name": "pads.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8149,7 +8149,7 @@
         "contacts": {},
         "count": 2,
         "name": "pads.None.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           null
@@ -8189,7 +8189,7 @@
         },
         "count": 2,
         "name": "pads.None.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b"
@@ -8227,7 +8227,7 @@
         },
         "count": 2,
         "name": "pads.None.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b"
@@ -8266,14 +8266,14 @@
         },
         "count": 2,
         "name": "pads.None.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8309,14 +8309,14 @@
         },
         "count": 2,
         "name": "pads.None.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8349,7 +8349,7 @@
         },
         "count": 2,
         "name": "pads.full.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           null
@@ -8406,7 +8406,7 @@
         },
         "count": 2,
         "name": "pads.full.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
@@ -8461,7 +8461,7 @@
         },
         "count": 2,
         "name": "pads.full.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
@@ -8517,14 +8517,14 @@
         },
         "count": 2,
         "name": "pads.full.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8577,14 +8577,14 @@
         },
         "count": 2,
         "name": "pads.full.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8615,7 +8615,7 @@
         },
         "count": 2,
         "name": "pads.parked.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           null
@@ -8670,7 +8670,7 @@
         },
         "count": 2,
         "name": "pads.parked.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
@@ -8723,7 +8723,7 @@
         },
         "count": 2,
         "name": "pads.parked.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
@@ -8777,14 +8777,14 @@
         },
         "count": 2,
         "name": "pads.parked.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8835,14 +8835,14 @@
         },
         "count": 2,
         "name": "pads.parked.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8874,14 +8874,14 @@
         },
         "count": 2,
         "name": "pads.landing.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           null
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8930,14 +8930,14 @@
         },
         "count": 2,
         "name": "pads.landing.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -8984,14 +8984,14 @@
         },
         "count": 2,
         "name": "pads.landing.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9040,14 +9040,14 @@
         },
         "count": 2,
         "name": "pads.landing.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9100,14 +9100,14 @@
         },
         "count": 2,
         "name": "pads.landing.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9143,14 +9143,14 @@
         },
         "count": 2,
         "name": "pads.done.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           null
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9203,14 +9203,14 @@
         },
         "count": 2,
         "name": "pads.done.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9261,14 +9261,14 @@
         },
         "count": 2,
         "name": "pads.done.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9321,14 +9321,14 @@
         },
         "count": 2,
         "name": "pads.done.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9385,14 +9385,14 @@
         },
         "count": 2,
         "name": "pads.done.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9411,7 +9411,7 @@
         "contacts": {},
         "count": 4,
         "name": "pads.None.None.None.None",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           null,
@@ -9508,7 +9508,7 @@
         },
         "count": 4,
         "name": "pads.full.full.full.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -9620,7 +9620,7 @@
         },
         "count": 4,
         "name": "pads.done.done.done.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -9629,7 +9629,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9712,7 +9712,7 @@
         },
         "count": 4,
         "name": "pads.entering.parked.reloading.repairing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -9721,7 +9721,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9810,7 +9810,7 @@
         },
         "count": 4,
         "name": "pads.landing.full.done.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -9819,7 +9819,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9876,7 +9876,7 @@
         },
         "count": 4,
         "name": "pads.None.done.None.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b",
@@ -9885,7 +9885,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -9936,7 +9936,7 @@
         },
         "count": 3,
         "name": "pads.full.None.landing",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           null,
@@ -9944,7 +9944,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10007,7 +10007,7 @@
         },
         "count": 3,
         "name": "pads.parked.parked.parked",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -10026,7 +10026,7 @@
         "contacts": {},
         "count": 0,
         "name": "count0.empty",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [],
         "strength": 200
       },
@@ -10054,7 +10054,7 @@
         },
         "count": 0,
         "name": "count0.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a"
         ],
@@ -10086,7 +10086,7 @@
         },
         "count": 1,
         "name": "count1.none.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           null,
           "b"
@@ -10154,7 +10154,7 @@
         },
         "count": 2,
         "name": "count2.full.landing.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -10162,7 +10162,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10221,7 +10221,7 @@
           "contact": "a",
           "count": 1
         },
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -10309,7 +10309,7 @@
           "contact": "a",
           "count": 3
         },
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -10317,7 +10317,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10367,14 +10367,14 @@
           "contact": "a",
           "count": 0
         },
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10419,14 +10419,14 @@
         },
         "count": 2,
         "name": "twice.done",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "a"
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10482,7 +10482,7 @@
         },
         "count": 3,
         "name": "twice.landing.full",
-        "reload_rate": "0x3FD3333333333333",
+        "reload_rate": "0x3FD3333340000000",
         "slots": [
           "a",
           "b",
@@ -10490,7 +10490,7 @@
         ],
         "strength": 200
       },
-      "ret": 269
+      "ret": 270
     },
     {
       "calls": [
@@ -10556,6 +10556,114 @@
         },
         "count": 1,
         "name": "rate.retail",
+        "reload_rate": "0x3FD3333340000000",
+        "slots": [
+          "a"
+        ],
+        "strength": 200
+      },
+      "ret": 270
+    },
+    {
+      "calls": [
+        "count",
+        "contact 0",
+        "transmit 0x1D a",
+        "mission a",
+        "transmit 0x13 a",
+        "mission a",
+        "queue_mission a 0 0",
+        "count"
+      ],
+      "input": {
+        "contacts": {
+          "a": {
+            "answers": {
+              "0x13": 1,
+              "0x1C": 1,
+              "0x1D": 10,
+              "0x1F": 1
+            },
+            "health": 200,
+            "missions": [
+              5
+            ]
+          }
+        },
+        "count": 1,
+        "name": "rate.retail_below",
+        "reload_rate": "0x3FD333333FFFFFFF",
+        "slots": [
+          "a"
+        ],
+        "strength": 200
+      },
+      "ret": 270
+    },
+    {
+      "calls": [
+        "count",
+        "contact 0",
+        "transmit 0x1D a",
+        "mission a",
+        "transmit 0x13 a",
+        "mission a",
+        "queue_mission a 0 0",
+        "count"
+      ],
+      "input": {
+        "contacts": {
+          "a": {
+            "answers": {
+              "0x13": 1,
+              "0x1C": 1,
+              "0x1D": 10,
+              "0x1F": 1
+            },
+            "health": 200,
+            "missions": [
+              5
+            ]
+          }
+        },
+        "count": 1,
+        "name": "rate.retail_above",
+        "reload_rate": "0x3FD3333340000001",
+        "slots": [
+          "a"
+        ],
+        "strength": 200
+      },
+      "ret": 270
+    },
+    {
+      "calls": [
+        "count",
+        "contact 0",
+        "transmit 0x1D a",
+        "mission a",
+        "transmit 0x13 a",
+        "mission a",
+        "queue_mission a 0 0",
+        "count"
+      ],
+      "input": {
+        "contacts": {
+          "a": {
+            "answers": {
+              "0x13": 1,
+              "0x1C": 1,
+              "0x1D": 10,
+              "0x1F": 1
+            },
+            "health": 200,
+            "missions": [
+              5
+            ]
+          }
+        },
+        "count": 1,
+        "name": "rate.0.3",
         "reload_rate": "0x3FD3333333333333",
         "slots": [
           "a"
@@ -10591,7 +10699,7 @@
           }
         },
         "count": 1,
-        "name": "rate.retail_below",
+        "name": "rate.0.3_below",
         "reload_rate": "0x3FD3333333333332",
         "slots": [
           "a"
@@ -10627,7 +10735,7 @@
           }
         },
         "count": 1,
-        "name": "rate.retail_above",
+        "name": "rate.0.3_above",
         "reload_rate": "0x3FD3333333333334",
         "slots": [
           "a"

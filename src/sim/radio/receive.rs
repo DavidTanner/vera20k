@@ -744,13 +744,31 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
 /// paradrop or Spy Plane mission without an Airstrike (`+0x294`) answers
 /// every message 0 (`0x004190B6..0x004190E3`). Its own arms (table
 /// `0x0041957C`) are the reload dock's queries (0x1D, 0x1F), MOVE_HERE (0x12),
-/// NEED_TO_MOVE (0x13) and RUN_AWAY (0x17); the rest take the Foot path.
+/// NEED_TO_MOVE (0x13) and RUN_AWAY (0x17). Message 8 takes the Foot path
+/// unless the type is `Carryall=` (`+0xDFC`, `0x004194C5`), and 0xE unless
+/// the type has `Passengers=` (`+0x5E0`) above its cargo (`+0x114`,
+/// `0x00419397`); the rest take the Foot path.
 ///
-/// RESIDUAL: the transport arms (8 for a `Carryall=` type, 0xE, 0xF and 0x15
-/// for a type with `Passengers=`, `0x004194C5`, `0x00419397`, `0x0041946B`,
-/// `0x00419300`) and 0x21 (`0x0041918C`) are not represented: no retail Fly
-/// aircraft takes passengers over the radio or is a Carryall
-/// (`retail_fly_aircraft_take_no_radio_passengers`), and nothing sends 0x21.
+/// RESIDUAL: the transport arms are not represented, and no retail aircraft
+/// type is a Carryall or has `Passengers=`
+/// (`retail_fly_aircraft_take_no_radio_passengers`):
+/// - 8 for a Carryall on Move holding a passenger (`0x004194C5..`);
+/// - 0xE's admission into a hold with room (`0x004193B7..`);
+/// - 0xF (`0x0041946B`), which answers 0 without `Passengers=`, as here;
+/// - 0x15 (`0x00419300`) answers 5 for any type. At capacity (every
+///   non-transport) it first closes the door (`0x004A5240`), and an Infantry
+///   sender of a type with `+0xEC1` and without `+0x6D9` makes the aircraft
+///   drop its Target and destination and queue Retreat. No retail sender
+///   reaches an aircraft with DOCK_NOW, so VERA answers it 0;
+/// - 0x21 (`0x0041918C`), which nothing sends.
+/// What the aircraft receiver's transport gates read: `Carryall=`
+/// (`+0xDFC`), `Passengers=` (`+0x5E0`) and the cargo count (`+0x114`).
+struct AircraftHold {
+    carryall: bool,
+    passengers: i32,
+    cargo: i32,
+}
+
 fn aircraft_receive(
     sim: &mut Simulation,
     aircraft: u64,
@@ -784,9 +802,16 @@ fn aircraft_receive(
         .aircraft_ammo
         .as_ref()
         .map_or(-1, |ammo| ammo.current);
-    let type_ammo = rules
-        .and_then(|rules| sim.object_type(entity.type_ref(), rules))
-        .map_or(-1, |object| object.ammo);
+    let object = rules.and_then(|rules| sim.object_type(entity.type_ref(), rules));
+    let type_ammo = object.map_or(-1, |object| object.ammo);
+    let transport = AircraftHold {
+        carryall: object.is_some_and(|object| object.carryall),
+        passengers: object.map_or(0, |object| object.passengers),
+        cargo: entity
+            .passenger_role
+            .cargo()
+            .map_or(0, |cargo| cargo.count() as i32),
+    };
     let target = entity.attack_target.is_some();
     match msg {
         // 0x00419109: half its type's Ammo or more and a Target, it does not
@@ -821,6 +846,12 @@ fn aircraft_receive(
                 sim.assign_aircraft_destination(aircraft, Some(airfield), rules);
             }
             crate::sim::radio::transmit_to_contact(sim, aircraft, RadioMessage::Break, rules);
+            foot_receive(sim, aircraft, sender, msg, payload, rules)
+        }
+        RadioMessage::RequestClearance if !transport.carryall => {
+            foot_receive(sim, aircraft, sender, msg, payload, rules)
+        }
+        RadioMessage::CanDock if transport.passengers <= transport.cargo => {
             foot_receive(sim, aircraft, sender, msg, payload, rules)
         }
         RadioMessage::RequestClearance
@@ -2428,5 +2459,23 @@ mod tests {
                 .radio_contacts
                 .is_empty()
         );
+    }
+
+    /// The aircraft receiver's transport arms need `Carryall=` (`+0xDFC`) or
+    /// `Passengers=` (`+0x5E0`); no retail aircraft type sets either, so 8
+    /// and 0xE take the Foot path and the others stay residuals
+    /// (`aircraft_receive`).
+    #[test]
+    fn retail_fly_aircraft_take_no_radio_passengers() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap();
+        assert!(!rules.aircraft_ids.is_empty());
+        for name in &rules.aircraft_ids {
+            let object = rules.object(name).unwrap();
+            assert!(!object.carryall, "{name}");
+            assert_eq!(object.passengers, 0, "{name}");
+        }
     }
 }

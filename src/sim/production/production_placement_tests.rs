@@ -3899,3 +3899,93 @@ fn successful_placement_requests_building_slam_once() {
     let wall_owner = wall_sim.interner.get("Americans").expect("owner");
     assert_eq!(building_placed_owners(&wall_sim), vec![wall_owner]);
 }
+
+/// ExitObject's aircraft arm (`BuildingClass::ExitObject_Main @ 0x00443CB4`):
+/// the airfield unlimboes each aircraft it builds at the dock coordinate for
+/// it, a contact it does not hold yet answering the centre (`0x00447B20`);
+/// HELLO links the next free slot (TETHER leaves an `AirportBound=` aircraft
+/// untethered, `0x006F4B4B`), and the aircraft steps onto that slot's
+/// `DockingOffset` and takes the airfield as its dock (`+0x6CC`).
+#[test]
+fn an_airfield_puts_each_aircraft_it_builds_on_its_own_pad() {
+    use crate::sim::movement::ground_pose;
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(
+        "[Countries]\n0=Americans\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n0=ORCA\n\
+         [BuildingTypes]\n0=GAAIRC\n\
+         [ORCA]\nCost=1200\nStrength=150\nSpeed=14\nTechLevel=1\nOwner=Americans\nAmmo=1\n\
+         Landable=yes\nAirportBound=yes\nFighter=yes\nPrimary=TestGun\nDock=GAAIRC\n\
+         Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
+         [GAAIRC]\nOwner=Americans\nStrength=1000\nFactory=AircraftType\nHelipad=yes\n\
+         UnitReload=yes\nNumberOfDocks=4\n\
+         [TestGun]\nDamage=10\nRange=6\nROF=60\nProjectile=TestShot\nWarhead=TestWH\n\
+         [TestShot]\nROT=0\n[TestWH]\nVerses=100%\n",
+    ))
+    .expect("airfield rules");
+    rules.install_art_data(ArtRegistry::from_ini(&IniFile::from_str(
+        "[GAAIRC]\nFoundation=3x2\nDockingOffset0=0,-128,0\nDockingOffset1=0,128,0\n\
+         DockingOffset2=256,-128,0\nDockingOffset3=256,128,0\n",
+    )));
+    let mut sim = placement_sim();
+    let owner = sim.interner.intern("Americans");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
+    );
+    sim.session.house_order.push(owner);
+    let airfield = sim
+        .spawn_object("GAAIRC", "Americans", 20, 20, 0, &rules)
+        .expect("airfield");
+    let centre = ground_pose::object_get_coords(
+        sim.substrate.entities.get(airfield).unwrap(),
+        sim.resolved_terrain.as_ref(),
+    );
+    for (slot, [dx, dy]) in [[0, -128], [0, 128]].into_iter().enumerate() {
+        assert!(super::enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            "ORCA"
+        ));
+        let built = sim
+            .production
+            .factories
+            .view(owner, ProductionCategory::Aircraft)
+            .unwrap()
+            .object
+            .unwrap()
+            .entity_id
+            .unwrap();
+        let cost = sim.cost_of(owner, rules.object("ORCA").unwrap(), &rules);
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .economy
+            .spend_money(cost);
+        assert!(
+            sim.production
+                .factories
+                .test_arm_ready(owner, ProductionCategory::Aircraft)
+        );
+        assert!(super::dispatch_production_changes_for_tests(
+            &mut sim, &rules, None
+        ));
+        let plane = sim.substrate.entities.get(built).unwrap();
+        assert!(!plane.lifecycle.in_limbo, "slot {slot}: placed");
+        let at = ground_pose::position_world_coord(&plane.position);
+        assert_eq!(
+            [at.x, at.y],
+            [centre.x + dx, centre.y + dy],
+            "slot {slot}: on its pad"
+        );
+        assert_eq!(plane.radio_contacts.slot(0), Some(airfield));
+        assert_eq!(plane.dock_entered_with, None, "TETHER");
+        assert_eq!(
+            plane.aircraft_ammo.as_ref().and_then(|ammo| ammo.dock()),
+            Some(airfield),
+            "+0x6CC"
+        );
+        assert_eq!(plane.mission.current().known(), Some(MissionType::Guard));
+        let pad = sim.substrate.entities.get(airfield).unwrap();
+        assert_eq!(pad.radio_contacts.slot(slot), Some(built));
+    }
+}
