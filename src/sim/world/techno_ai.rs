@@ -6060,7 +6060,7 @@ mod tests {
             .unwrap()
             .locomotor
             .insert(LocomotorState::for_test_kind(LocomotorKind::Teleport));
-        assert!(teleporter.begin_drive_piggyback_for_teleporter(0));
+        assert!(teleporter.begin_piggyback(LocomotorKind::Drive, 0));
         assert_ordinary_drive_host_error(
             &primary_mismatch,
             &control,

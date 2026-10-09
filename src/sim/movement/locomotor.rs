@@ -72,10 +72,9 @@ pub struct LocomotorState {
     /// to on — an unpowered locomotor is a state something must actively put a
     /// unit into.
     pub powered: bool,
-    /// The suspended locomotor object, when a piggyback displaced it.
-    ///
-    /// For CMIN drive phases, `kind` becomes Drive and this stores the complete
-    /// primary Teleport object until the active Drive locomotor is ok to end.
+    /// The suspended locomotor object, when a piggyback displaced it, with any
+    /// stash of its own: a Chrono Miner's Drive holds the miner's Teleport,
+    /// and a Chrono Warp's Teleport holds whatever it displaced.
     #[serde(default)]
     pub piggyback: Option<StashedLocomotor>,
     /// Class-local state of this locomotor object.
@@ -177,9 +176,9 @@ impl LocomotorState {
     /// `LocomotionClass` constructor `0x0055A6C0`) and links it
     /// (`0x007426C9`) before BEGIN (`0x0074276F`).
     /// - It keeps this object's type caches and the Foot's current layer. A
-    ///   BEGIN does not move the Foot, and both classes of the one production
-    ///   BEGIN, a Drive over a Teleport, answer Ground from `In_Which_Layer`
-    ///   (`0x004B4820`, `0x00719E20`).
+    ///   BEGIN does not move the Foot, and the two classes production BEGINs
+    ///   install, the setter's Drive and the Chrono Warp's Teleport, answer
+    ///   Ground from `In_Which_Layer` (`0x004B4820`, `0x00719E20`).
     /// - A Jumpjet or Fly temporary would also need its type's link block and
     ///   its own layer answer. Nothing installs one.
     pub(crate) fn fresh_linked(&self, kind: LocomotorKind, binary_frame: u32) -> Self {
@@ -348,6 +347,30 @@ impl LocomotorState {
             (LocomotorKind::Teleport, LocomotorRuntimePayload::Teleport(runtime)) => Some(runtime),
             _ => None,
         }
+    }
+
+    /// The Teleport that holds a Chronosphere warp, active or suspended.
+    pub(crate) fn warp_teleport(&self) -> Option<&super::teleport_movement::TeleportRuntime> {
+        self.teleport_runtime()
+            .filter(|runtime| runtime.chrono().is_some())
+            .or_else(|| self.piggyback.as_deref()?.warp_teleport())
+    }
+
+    /// [`Self::warp_teleport`] for its Process, which writes its own timer
+    /// and state after the Unit setter's Drive has suspended it: state 5
+    /// after `Set_Destination(NULL)` (`0x00719B0D`) at
+    /// `0x00719B1B..0x00719B85`, state 7 after `0x00719BCC` at
+    /// `0x00719BD2..0x00719BDF`.
+    pub(crate) fn warp_teleport_mut(
+        &mut self,
+    ) -> Option<&mut super::teleport_movement::TeleportRuntime> {
+        if self
+            .teleport_runtime()
+            .is_some_and(|runtime| runtime.chrono().is_some())
+        {
+            return self.teleport_runtime_mut();
+        }
+        self.piggyback.as_mut()?.warp_teleport_mut()
     }
 
     /// Foot warp-effect readers see an effect held by the complete suspended
@@ -537,22 +560,9 @@ impl LocomotorState {
         self.piggyback.is_none()
     }
 
-    /// Activate Drive over a stashed Teleport locomotor — the Chrono Miner
-    /// bridge model: the unit stays a Teleport unit, Drive temporarily drives it
-    /// for destinations that need ground movement. The setter reuses a Drive
-    /// that is already active (`0x007425F8`).
-    pub fn begin_drive_piggyback_for_teleporter(&mut self, binary_frame: u32) -> bool {
-        if self.effective_kind() != LocomotorKind::Teleport {
-            return false;
-        }
-        self.kind == LocomotorKind::Drive
-            || self.begin_piggyback(LocomotorKind::Drive, binary_frame)
-    }
-
-    /// Begin a piggyback: stash the driving locomotor and install this one.
-    ///
-    /// Refuses, changing nothing, if a stash is already present — the native
-    /// BEGIN returns `E_FAIL` in exactly that case.
+    /// Begin a piggyback: a fresh `kind` object suspends the active one, with
+    /// any stash of its own, and becomes active. Native BEGIN refuses only
+    /// when the fresh object's own slot is occupied, which it never is.
     pub fn begin_piggyback(&mut self, kind: LocomotorKind, binary_frame: u32) -> bool {
         piggyback::begin(self, kind, binary_frame) == piggyback::BeginOutcome::Installed
     }

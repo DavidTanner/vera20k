@@ -791,7 +791,7 @@ impl Simulation {
                         && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
                 if may_end && let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
+                    crate::sim::movement::locomotor_owner::end_admitted_piggyback(e);
                 }
                 // Ore-miner arm, last — retail runs it after the radio break,
                 // the navigation clear, the target clear and the path-cursor

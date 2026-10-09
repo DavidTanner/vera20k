@@ -660,7 +660,7 @@ fn terminal_drive_snap_updates_ramp_height_with_stashed_teleport_owner() {
     let mut sim = Simulation::new();
     let mut entity = mover(&mut sim, LocomotorKind::Drive);
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Teleport);
-    assert!(loco.begin_drive_piggyback_for_teleporter(0));
+    assert!(loco.begin_piggyback(LocomotorKind::Drive, 0));
     entity.locomotor = Some(loco);
     let target = entity.movement_target.as_mut().unwrap();
     target.final_goal = Some((3, 3));

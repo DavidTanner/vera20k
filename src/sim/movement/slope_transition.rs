@@ -307,7 +307,7 @@ mod tests {
                 .locomotor
                 .as_mut()
                 .unwrap()
-                .begin_drive_piggyback_for_teleporter(22)
+                .begin_piggyback(LocomotorKind::Drive, 22)
         );
         assert!(super::state_for_entity(&active_drive).is_some());
         assert_eq!(

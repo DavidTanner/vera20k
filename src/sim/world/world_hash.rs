@@ -161,7 +161,7 @@ mod locomotor_field_hash_tests {
         entity.category = EntityCategory::Unit;
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Teleport);
         if stashed {
-            assert!(locomotor.begin_drive_piggyback_for_teleporter(0));
+            assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
         }
         if let Some(mutate) = mutate {
             match locomotor.piggyback.as_mut() {
