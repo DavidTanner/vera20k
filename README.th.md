@@ -7,7 +7,6 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="การทดสอบไลบรารีบน Linux ครั้งล่าสุด (สั่งรันด้วยตนเอง)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="การทดสอบไลบรารีบน Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="การทดสอบไลบรารีบน Windows ครั้งล่าสุด (สั่งรันด้วยตนเอง)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="การทดสอบไลบรารีบน Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="เข้าร่วม Discord" height="20" align="middle"></a>
-  <img src="https://img.shields.io/badge/QQ_group-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="กลุ่ม QQ ภาษาจีน" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -68,7 +67,7 @@ cargo run --release --bin vera20k
 
 ยินดีรับความช่วยเหลือ คุณจะเขียนโค้ด รีแฟกเตอร์เอนจิน ทดสอบเกม เสนอไอเดีย หรือเล่นเทียบกับเกมต้นฉบับ
 แล้วบอกเราว่าตรงไหนรู้สึกผิดไปก็ได้ เปิด PR มาได้เลย ที่เหลือเราจัดการเอง ถ้าเป็นงานใหญ่ ให้ถามก่อนใน issue
-หรือใน [Discord](https://discord.gg/kmjRUn5m5F) หรือในกลุ่ม QQ ภาษาจีนที่ชุมชนดูแล (1097193563)
+หรือใน [Discord](https://discord.gg/kmjRUn5m5F)
 
 โค้ดกลไกเกมอยู่ใน `src/sim/` การเรนเดอร์อยู่ใน `src/render/` ส่วนเมนูและการรับอินพุตอยู่ใน `src/app/` และ `src/ui/`
 คุณไม่จำเป็นต้องใช้เครื่องมือ Python ใน `tools/`

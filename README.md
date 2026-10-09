@@ -7,7 +7,6 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Latest Linux library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux library tests" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Latest Windows library test run (run manually)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows library tests" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="20" align="middle"></a>
-  <img src="https://img.shields.io/badge/QQ_group-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="Chinese QQ group" height="20" align="middle">
 </p>
 
 <!-- Keep all translated READMEs in sync when changing the text below. -->
@@ -73,8 +72,7 @@ and playtesting. Agents follow [AGENTS.md](AGENTS.md).
 
 Help is welcome. You can write code, refactor the engine, test the game, share ideas, or play
 it next to the original and tell us what feels wrong. Open a PR and we'll take it from there;
-for anything large, ask first in an issue, on [Discord](https://discord.gg/kmjRUn5m5F), or in the
-community-run Chinese QQ group (1097193563).
+for anything large, ask first in an issue or on [Discord](https://discord.gg/kmjRUn5m5F).
 
 Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/` and
 `src/ui/`; you don't need the Python tools in `tools/`. The
