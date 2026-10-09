@@ -40,6 +40,9 @@ use crate::sim::world::display_layers::DisplayLayer;
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::MaskedX87Chop53;
 
+#[path = "area_guard_oracle_tests.rs"]
+mod area_guard_oracle_tests;
+
 pub(super) fn oracle() -> &'static Value {
     static CORPUS: OnceLock<Value> = OnceLock::new();
     CORPUS.get_or_init(|| {
@@ -217,6 +220,7 @@ fn rules_with_native_reader_context(unread_weapons: bool, context: &str) -> Opti
     assert_weapon_reader_projection(
         &rules,
         &native["weapon_reader_receipts"][if unread_weapons { "before" } else { "after" }],
+        "E1",
     );
     Some(rules)
 }
@@ -224,11 +228,11 @@ fn rules_with_native_reader_context(unread_weapons: bool, context: &str) -> Opti
 /// Named type identity and gameplay fields only: native allocation pointers,
 /// image storage/padding and reader-callback ABI are retained in the evidence,
 /// not inferred from Rust allocation. Null children remain null references.
-fn assert_weapon_reader_projection(rules: &RuleSet, expected: &Value) {
+fn assert_weapon_reader_projection(rules: &RuleSet, expected: &Value, family: &str) {
     use crate::sim::combat::combat_weapon::{weapon_for_index, weapon_range};
     use crate::sim::combat::threat_range::threat_range_leptons;
 
-    let object = rules.object("E1").unwrap();
+    let object = rules.object(family).unwrap();
     assert_eq!(expected["range_entry"], "0x7012c0");
     assert_eq!(expected["get_weapon_entry"], "0x70e140");
     assert_eq!(expected["rng_unchanged"], true);
@@ -323,7 +327,7 @@ fn assert_weapon_reader_projection(rules: &RuleSet, expected: &Value) {
         .as_array()
         .unwrap()
         .iter()
-        .find(|row| row["input"]["family"] == "E1")
+        .find(|row| row["input"]["family"] == family)
         .unwrap();
     let mut fixture = SuppliedFootFixture::new(row, rules);
     for control in expected["range_controls"].as_array().unwrap() {
@@ -549,6 +553,10 @@ impl SuppliedFootFixture {
         for pointer in lists["techno"]["actors"].as_array().unwrap() {
             let pointer_text = pointer.as_str().unwrap();
             let id = pointers[pointer_text];
+            // Constructor ordinals use the shared Rust namespace/cursor as
+            // well as its entity store, so this supplied world can be saved.
+            // Native Abstract IDs are transported separately by consumers.
+            assert_eq!(sim.allocate_stable_id(), id);
             let extra = registration["placements"]
                 .as_array()
                 .unwrap()

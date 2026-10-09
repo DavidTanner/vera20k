@@ -153,6 +153,8 @@ pub mod warhead_type;
 pub mod weapon_type;
 
 #[cfg(test)]
+pub(crate) mod area_guard_tests;
+#[cfg(test)]
 mod ini_token_readers_tests;
 #[cfg(test)]
 pub(crate) mod move_sound_tests;

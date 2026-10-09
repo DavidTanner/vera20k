@@ -588,8 +588,12 @@ pub struct ObjectType {
     /// `0x007026E7` is 0 either way; a modded list would diverge. Same
     /// divergence as the `VoiceMove=` one on `voice_id_for_key`.
     pub voice_feedback: Option<String>,
-    /// Sound ID played when this unit performs a special attack.
-    pub voice_special_attack: Option<String>,
+    /// Ordered default command-voice list at TechnoType+4A0. Constructor
+    /// 710E13..710E49 creates an empty vector; ReadINI712CC5..712D2A uses
+    /// ReadSoundList525430. QueueMegaMission6FFD42 draws once for a nonempty
+    /// list, then resolves the unsigned remainder through the fixed SOUNDMD
+    /// catalog's retained ordered names.
+    pub voice_special_attack: Vec<String>,
     /// Sound ID played when this entity is crushed by a vehicle (squish).
     pub crush_sound: Option<String>,
     /// Sound ID played when this unit deploys (e.g. GI sandbag-up).
@@ -2014,8 +2018,9 @@ impl ObjectType {
                 .is_present(key)
                 .then(|| section.read_double(key, 0.0))
         };
-        // Voice and move-sound keys are sound lists (`ReadSoundList @
-        // 0x00525430`); VERA keeps the list's first sound.
+        // These remaining legacy voice keys are sound lists (ReadSoundList
+        // 525430), but currently retain only the first sound. VoiceSelect,
+        // VoiceSpecialAttack and MoveSound use the complete list below.
         let first_sound = |key: &str| {
             section
                 .read_sound_list(key)
@@ -2265,7 +2270,12 @@ impl ObjectType {
                 .read_name("ImpactLandSound", 0x80)
                 .map(str::to_owned),
             voice_feedback: first_sound("VoiceFeedback"),
-            voice_special_attack: first_sound("VoiceSpecialAttack"),
+            voice_special_attack: section
+                .read_sound_list("VoiceSpecialAttack")
+                .unwrap_or_default()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
             crush_sound: section.read_name("CrushSound", 0x80).map(str::to_owned),
             deploy_sound: section.read_name("DeploySound", 0x80).map(str::to_owned),
             buildup_sound: None,

@@ -616,9 +616,9 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     {
         let e = sim.substrate.entities.get_mut(1).expect("unit");
         e.attack_target = Some(AttackTarget::new(2));
-        e.order_intent = Some(OrderIntent::Guard {
-            anchor_rx: 3,
-            anchor_ry: 3,
+        e.order_intent = Some(OrderIntent::AttackMove {
+            goal_rx: 3,
+            goal_ry: 3,
         });
     }
 

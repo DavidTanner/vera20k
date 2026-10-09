@@ -1440,13 +1440,14 @@ impl SfxPlayer {
     ///
     /// Trigger: two objects with a latched line in the same
     /// `drain_sound_events` pass. Player effect: the second line cuts the
-    /// first. Frequency: not reachable from ordinary player input while A1's
-    /// one-voice-per-batch latch (`g_SelectionVoice_Enable @ 0x00822CF2`)
-    /// holds — it lets only one object speak per dispatch — but a selection
-    /// voice and an order voice from *different* objects arriving in the same
-    /// pass would hit it. Downstream risk: none; folding voices into the
-    /// 16-channel pool is the `voice_player` residual's job, and that is what
-    /// closes it.
+    /// first. Frequency: ordinary G/command-bar Guard on multiple E1 units
+    /// reaches this: selection loop730D96..730E69 never clears voice-enable
+    /// 822CF2, so each QueueMegaMission6FFD42 default voice can latch GIMove
+    /// before the next drain. Stock MTNK's empty VoiceSpecialAttack list does
+    /// not enter this case. Mixed selection/order requests can also reach it.
+    /// Downstream risk: audible overlap/truncation and native object-AI drain
+    /// order remain outside request/list/Main-RNG comparisons; VoiceQueue
+    /// currently drains by stable ID and the device has only one voice slot.
     fn live_voice_owner(&self) -> Option<u64> {
         let owner = self.current_voice_owner?;
         self.voice_player

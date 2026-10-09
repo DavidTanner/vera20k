@@ -53,6 +53,7 @@ OBSERVATION_POLICY = 'map-ordinary-command-observation-v4'
 GESTURE_POLICY = 'map-tactical-left-gesture-v1'
 SIDEBAR_GESTURE_POLICY = 'map-local-left-gesture-v2'
 KEYBOARD_GESTURE_POLICY = 'map-local-gesture-v3'
+COMMAND_BAR_GESTURE_POLICY = 'map-local-gesture-v4'
 SIDEBAR_POLICY = 'map-retained-sidebar-observation-v1'
 AUDIO_POLICY = 'map-device-pulled-player-pcm-v1'
 LOAD_SEGMENT_POLICY = 'map-literal-quickload-clock-segments-v1'
@@ -266,6 +267,13 @@ def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
             if (len(modifiers) > 4 or any(type(value) is not str or value not in ('Ctrl', 'Shift', 'Alt', 'Super')
                                           for value in modifiers) or len(set(modifiers)) != len(modifiers)):
                 raise ValidationError(f'{label}.modifiers must be unique literal Ctrl/Shift/Alt/Super keys')
+    elif gesture.get('kind') == 'command_bar':
+        require_exact_keys(gesture, ('kind', 'command'), label)
+        command = require_string(gesture['command'], f'{label}.command')
+        if not command.isascii() or not 1 <= len(command) <= 128:
+            raise ValidationError(f'{label}.command must be a bounded nonempty ASCII identity')
+        # Rust resolves the name from the existing command-bar registry. The
+        # wrapper neither maintains another registry nor maps names to actions.
     elif gesture.get('kind') == 'sidebar':
         require_exact_keys(gesture, ('kind', 'target'), label)
         target = require_object(gesture['target'], f'{label}.target')
@@ -283,7 +291,7 @@ def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
         else:
             raise ValidationError(f'{label}.target.kind must be tab, cameo, scroll_up, scroll_down, repair or sell')
     else:
-        raise ValidationError(f'{label}.kind must be click, drag, sidebar or key')
+        raise ValidationError(f'{label}.kind must be click, drag, sidebar, command_bar or key')
 
 
 def _observes_local_input(profile: Mapping[str, Any]) -> bool:
@@ -291,6 +299,8 @@ def _observes_local_input(profile: Mapping[str, Any]) -> bool:
 
 
 def _gesture_policy(profile: Mapping[str, Any]) -> str:
+    if any(row['gesture']['kind'] == 'command_bar' for row in profile.get('gestures', [])):
+        return COMMAND_BAR_GESTURE_POLICY
     if _observes_local_input(profile):
         return KEYBOARD_GESTURE_POLICY
     return (SIDEBAR_GESTURE_POLICY if any(row['gesture']['kind'] == 'sidebar'
@@ -784,6 +794,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('unit',) if 'unit' in actor else ()),
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
                               *(('cloak',) if 'cloak' in actor else ()),
+                              *(('retask',) if 'retask' in actor else ()),
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
@@ -832,6 +843,13 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         _bounded_int(timer[key], f'{label}.mission.dispatch_timer.{key}', -(1 << 31), (1 << 31) - 1)
     for key in ('target', 'archive', 'nav'):
         _target_reference(actor[key], f'{label}.{key}', navigation=key == 'nav')
+    if 'retask' in actor:
+        # Historical receipts omit this projection. Absence is not a claim
+        # that either existing suspended-reference owner was empty.
+        retask = require_object(actor['retask'], f'{label}.retask')
+        require_exact_keys(retask, ('suspended_target', 'suspended_nav'), f'{label}.retask')
+        _target_reference(retask['suspended_target'], f'{label}.retask.suspended_target')
+        _target_reference(retask['suspended_nav'], f'{label}.retask.suspended_nav', navigation=True)
     foot = actor['foot']
     if category == 'Structure':
         require_value(foot, None, f'{label}.foot')
@@ -1145,6 +1163,25 @@ def _sidebar_frames(value: Any, profile: Mapping[str, Any]) -> int:
     return count
 
 
+def _command_bar_gesture(value: Any, command: str, label: str, extent: tuple[int, int]) -> int:
+    receipt = require_object(value, label)
+    require_exact_keys(receipt, ('command', 'slot', 'gadget_id', 'rect', 'resolved_position'), label)
+    require_value(receipt['command'], command, f'{label}.command')
+    _bounded_int(receipt['slot'], f'{label}.slot', 0, extent[0] - 1)
+    _bounded_int(receipt['gadget_id'], f'{label}.gadget_id', 1, (1 << 16) - 1)
+    rect = require_array(receipt['rect'], f'{label}.rect')
+    if (len(rect) != 4 or any(type(part) not in (int, float) or not math.isfinite(part) for part in rect)
+            or rect[2] <= 0 or rect[3] <= 0):
+        raise ValidationError(f'{label}.rect must have a finite positive hit area')
+    center = [rect[0] + rect[2] / 2, rect[1] + rect[3] / 2]
+    if not all(math.isfinite(value) for value in center):
+        raise ValidationError(f'{label}.rect has a nonfinite center')
+    expected = [math.floor(value) for value in center]
+    _screen_point(receipt['resolved_position'], f'{label}.resolved_position', extent)
+    _require_equal(receipt['resolved_position'], expected, f'{label}.resolved_position')
+    return 1
+
+
 def _is_quickload(gesture: Mapping[str, Any]) -> bool:
     return (gesture.get('kind') == 'key' and gesture.get('key', '').upper() == 'N'
             and set(gesture.get('modifiers', [])) == {'Ctrl', 'Shift'})
@@ -1329,11 +1366,13 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any], segments=()) -
         row = require_object(value, row_label)
         sidebar = request['gesture']['kind'] == 'sidebar'
         keyboard = request['gesture']['kind'] == 'key'
+        command_bar = request['gesture']['kind'] == 'command_bar'
         require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
                                  'issued_binary_frame', 'gesture', 'before', 'after',
                                  'left_press_captured', 'band_box_before_release',
                                  'neutral_input_restored', 'queued_commands',
                                  *(('sidebar',) if sidebar else ()),
+                                 *(('command_bar',) if command_bar else ()),
                                  *(('keyboard',) if keyboard else ())), row_label)
         tick, frame = _segment_clock(request['issue_after_step'], segments, after_inputs=True, gesture_ordinal=index)
         for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
@@ -1349,6 +1388,9 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any], segments=()) -
         if sidebar:
             sample_count += _sidebar_gesture(row['sidebar'], request['gesture']['target'],
                 f'{row_label}.sidebar', (profile['width'], profile['height']))
+        if command_bar:
+            sample_count += _command_bar_gesture(row['command_bar'], request['gesture']['command'],
+                f'{row_label}.command_bar', (profile['width'], profile['height']))
         if keyboard:
             key_label = f'{row_label}.keyboard'
             receipt = require_object(row['keyboard'], key_label)

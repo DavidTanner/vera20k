@@ -145,14 +145,13 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
     ) != CellVisibilityState::Visible
     {
         // Over shrouded/fogged cells the player can still issue move orders,
-        // so show the queued-order-mode cursor (Move / AttackMove / Guard)
+        // so show the queued-order-mode cursor (Move / AttackMove)
         // instead of reverting to the default arrow.
         return Some(match state.match_state.input.queued_order_mode {
             crate::app::presentation::render::OrderMode::Move => CursorFeedbackKind::Move,
             crate::app::presentation::render::OrderMode::AttackMove => {
                 CursorFeedbackKind::AttackMove
             }
-            crate::app::presentation::render::OrderMode::Guard => CursorFeedbackKind::Guard,
         });
     }
     let modifier = crate::app::input::context_order::resolve_order_modifiers(
@@ -270,7 +269,6 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
     Some(match state.match_state.input.queued_order_mode {
         crate::app::presentation::render::OrderMode::Move => CursorFeedbackKind::Move,
         crate::app::presentation::render::OrderMode::AttackMove => CursorFeedbackKind::AttackMove,
-        crate::app::presentation::render::OrderMode::Guard => CursorFeedbackKind::Guard,
     })
 }
 
@@ -2333,7 +2331,7 @@ mod cursor_animation_tests {
         assert_eq!(anim.advance(CursorId::IronCurtain, 5, 0, 10_000), 0);
     }
 
-    /// Guard mode shows the guard-area reticle, not the select cursor.
+    /// Guard-area action feedback resolves the dedicated reticle.
     #[test]
     fn guard_feedback_maps_to_the_guard_area_reticle() {
         assert_eq!(

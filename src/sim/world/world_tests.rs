@@ -7655,9 +7655,10 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
 }
 
 #[test]
-fn test_guard_returns_to_anchor_when_displaced() {
+fn test_area_guard_keeps_its_post_when_displaced_inside_the_native_leash() {
     let rules = combat_test_rules();
     let mut sim: Simulation = Simulation::new();
+    let grid = crate::sim::arena_fixture::flat_arena(&mut sim, &rules);
     sim.spawn_from_map(
         &[MapEntity {
             owner: "Americans".to_string(),
@@ -7677,7 +7678,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
             structure_ai_sellable: false,
             structure_ai_repairable: false,
         }],
-        None,
+        Some(&rules),
     );
     let guard_cmd = cmd_envelope(
         &sim,
@@ -7685,10 +7686,9 @@ fn test_guard_returns_to_anchor_when_displaced() {
         1,
         Command::Guard {
             entity_id: 1,
-            target_id: None,
+            target: Some(crate::sim::combat::TargetKind::Cell(2, 2)),
         },
     );
-    let grid = PathGrid::new(32, 32);
     let _ = sim.advance_tick(&[guard_cmd], Some(&rules), Some(&grid), None, 100);
 
     sim.remove_entity_occupancy(1);
@@ -7697,6 +7697,7 @@ fn test_guard_returns_to_anchor_when_displaced() {
         e.position.ry = 2;
         e.movement_target = None;
         e.attack_target = None;
+        e.navigation.nav_com = None;
     }
     sim.add_entity_occupancy(1);
 
@@ -7706,11 +7707,15 @@ fn test_guard_returns_to_anchor_when_displaced() {
         .entities
         .get(1)
         .expect("entity 1 should exist");
-    let _movement = ge
-        .movement_target
-        .as_ref()
-        .expect("guard should re-path back to its anchor");
-    assert_eq!(crate::sim::movement::movement_goal_cell(ge), Some((2, 2)));
+    assert!(ge.order_intent.is_none());
+    assert_eq!(
+        ge.archive_target(),
+        Some(crate::sim::combat::TargetKind::Cell(2, 2))
+    );
+    assert!(
+        ge.navigation.nav_com.is_none(),
+        "a displacement within the leash does not force a return"
+    );
 }
 
 #[test]

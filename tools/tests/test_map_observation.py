@@ -398,6 +398,84 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['commands'][0]['payload'], {'Stop': {'entity_id': 7}})
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
+    def command_bar_profile(self):
+        self.gesture_profile()
+        request, receipt = self.profile['gestures'][0], self.gesture_receipts[0]
+        request['gesture'] = {'kind': 'command_bar', 'command': 'Guard'}
+        receipt['gesture'] = deepcopy(request['gesture'])
+        # Synthetic geometry deliberately below the tactical viewport. The
+        # production child resolves the actual retained layout/gadget instead.
+        receipt['command_bar'] = {'command': 'Guard', 'slot': 4, 'gadget_id': 220,
+                                  'rect': [1.0, 6.0, 2.0, 1.0], 'resolved_position': [2, 6]}
+        receipt['queued_commands'][0]['payload'] = {'Guard': {'entity_id': 7, 'target': {'Cell': [10, 20]}}}
+        self.profile_path.write_text(json.dumps(self.profile))
+
+    def test_command_bar_gesture_retains_control_and_mouse_receipt_with_one_bounded_sample(self):
+        self.command_bar_profile()
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        transcript = report['capture']['observations']['gesture_input']
+        self.assertEqual(transcript['policy'], observation.COMMAND_BAR_GESTURE_POLICY)
+        self.assertEqual(transcript['receipts'], self.gesture_receipts)
+        self.assertNotIn('keyboard_bindings', transcript)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        count = observation._gesture_observations(transcript, self.profile)
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', count):
+            self.assertEqual(observation._gesture_observations(transcript, self.profile), count)
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', count - 1):
+            with self.assertRaises(ValidationError):
+                observation._gesture_observations(transcript, self.profile)
+        historical, profile = deepcopy(transcript), deepcopy(self.profile)
+        historical['policy'] = observation.GESTURE_POLICY
+        historical['receipts'][0].pop('command_bar')
+        profile['gestures'][0]['gesture'] = {'kind': 'click', 'position': [2, 2]}
+        historical['receipts'][0]['gesture'] = deepcopy(profile['gestures'][0]['gesture'])
+        self.assertEqual(observation._gesture_observations(historical, profile), count - 1)
+
+    def test_command_bar_receipt_requires_requested_identity_control_geometry_and_presence(self):
+        self.command_bar_profile()
+        changes = [lambda row: row.pop('command_bar'),
+                   lambda row: row.update(sidebar={}),
+                   lambda row: row['command_bar'].update(command='Stop'),
+                   lambda row: row['command_bar'].update(slot=-1),
+                   lambda row: row['command_bar'].update(slot=True),
+                   lambda row: row['command_bar'].update(slot=8),
+                   lambda row: row['command_bar'].update(gadget_id=0),
+                   lambda row: row['command_bar'].update(gadget_id=65536),
+                   lambda row: row['command_bar'].update(rect=[1, 6, 0, 1]),
+                   lambda row: row['command_bar'].update(rect=[1, 6, True, 1]),
+                   lambda row: row['command_bar'].update(rect=[1, 6, 2]),
+                   lambda row: row['command_bar'].update(rect=[1.6e308, 6, 1.6e308, 1]),
+                   lambda row: row['command_bar'].update(resolved_position=[3, 6]),
+                   lambda row: row['command_bar'].update(extra=True)]
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-command-bar-{index}'
+                self.change = lambda manifest, f=change: f(manifest['observations']['gesture_input']['receipts'][0])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+        self.gesture_profile()
+        self.output = self.root / 'unexpected-command-bar'
+        self.change = lambda manifest: manifest['observations']['gesture_input']['receipts'][0].update(command_bar={})
+        self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_command_bar_profile_rejects_nonliteral_fields_and_unbounded_names(self):
+        self.command_bar_profile()
+        modern = deepcopy(self.profile)
+        for gesture in ({'kind': 'command_bar'}, {'kind': 'command_bar', 'command': ''},
+                        {'kind': 'command_bar', 'command': 'x' * 129},
+                        {'kind': 'command_bar', 'command': None},
+                        {'kind': 'command_bar', 'command': 'Güard'},
+                        {'kind': 'command_bar', 'command': 'Guard', 'modifiers': ['Ctrl']},
+                        {'kind': 'command_bar', 'command': 'Guard', 'position': [2, 6]}):
+            with self.subTest(gesture=gesture), patch.object(observation, 'run_child') as child:
+                candidate = deepcopy(modern)
+                candidate['gestures'][0]['gesture'] = gesture
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+
     @staticmethod
     def local_input_observation():
         return {'camera_top_left': [100.0, -50.0], 'camera_zoom': 1.0,
@@ -1101,6 +1179,35 @@ class MapObservationTests(unittest.TestCase):
                 actor = self.actor()
                 actor['foot']['pending_entry_500'] = value
                 observation._actor(actor, 'actor')
+
+    def test_retask_projection_round_trips_tagged_references_and_historical_omission(self):
+        self.scripted_profile()
+        for step, actors in self.actor_frames.items():
+            if step:
+                actors[0]['retask'] = {
+                    'suspended_target': {'Cell': [10, 20]} if step == 1 else None,
+                    'suspended_nav': {'Object': {'id': 9}} if step == 1 else None,
+                }
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        rows = report['capture']['observations']['frames']
+        self.assertNotIn('retask', rows[0]['actors'][0])
+        for row in rows[1:]:
+            self.assertEqual(row['actors'][0]['retask'], self.actor_frames[row['completed_steps']][0]['retask'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        actor = self.actor()
+        actor['retask'] = {'suspended_target': {'Entity': 9}, 'suspended_nav': {'Cell': {'rx': 10, 'ry': 20}}}
+        observation._actor(actor, 'actor')
+
+    def test_retask_projection_rejects_partial_or_malformed_suspended_references(self):
+        for retask in (None, {}, {'suspended_target': None}, {'suspended_nav': None},
+                       {'suspended_target': None, 'suspended_nav': None, 'extra': 1},
+                       {'suspended_target': {'Entity': 0}, 'suspended_nav': None},
+                       {'suspended_target': {'Cell': {'rx': 1, 'ry': 2}}, 'suspended_nav': None},
+                       {'suspended_target': None, 'suspended_nav': {'Cell': [1, 2]}},
+                       {'suspended_target': None, 'suspended_nav': {'Object': {'id': True}}}):
+            with self.subTest(retask=retask), self.assertRaises(ValidationError):
+                observation._actor(dict(self.actor(), retask=retask), 'actor')
 
     def test_cloak_projection_preserves_signed_native_inputs_and_nullable_runtime(self):
         observation._cloak(None, 'cloak')

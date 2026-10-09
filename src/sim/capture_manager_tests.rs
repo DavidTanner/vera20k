@@ -1330,9 +1330,9 @@ fn capture_and_release_drop_the_previous_order() {
             .is_none()
     );
 
-    sim.substrate.entities.get_mut(gi).unwrap().order_intent = Some(OrderIntent::Guard {
-        anchor_rx: 11,
-        anchor_ry: 10,
+    sim.substrate.entities.get_mut(gi).unwrap().order_intent = Some(OrderIntent::AttackMove {
+        goal_rx: 11,
+        goal_ry: 10,
     });
     assert!(sim.free_unit(yuri, gi, &rules, None));
     assert_eq!(owner(&sim, gi), "Americans");
