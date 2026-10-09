@@ -378,11 +378,10 @@ impl Simulation {
             }
             if let Some(sound) = crashing_sound {
                 let world = Self::movement_sound_world(entity);
-                let sound_id = self.interner.intern(&sound);
                 self.sound_events
                     .push(super::SimSoundEvent::AnimationStarted {
                         anim_id: id,
-                        sound_id,
+                        sound_id: sound,
                         world,
                     });
             }

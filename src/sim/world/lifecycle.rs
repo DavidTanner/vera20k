@@ -4335,6 +4335,30 @@ impl Simulation {
         self.bomb_defuse(stable_id);
         self.team_script_vm.object_deleted(stable_id);
         self.release_house_base_tracking(stable_id);
+        // Selected original Foot destructor4D3632..4D366E clears only its
+        // cached+564 Cell if+E0 still holds this Foot. UnInit/Limbo retain it;
+        // the block sends no notification and leaves the obsolete+564 intact.
+        self.clear_foot_air_slot_at_destruction(stable_id);
+        // Foot destructor4D3677 Release406060 follows class Remove_Tracking
+        // and Foot's cached-cell cleanup. All Foot classes share it, including
+        // constructor-complete limbo disposal. No caller-local hard stop.
+        if self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.category != EntityCategory::Structure)
+        {
+            self.sound_events
+                .push(super::SimSoundEvent::ObjectSoundReleased { owner: stable_id });
+        }
+        // Foot4D3701 delegates to Techno6F4500 only after its own sound
+        // tail. Techno6F4607 destroys the distinct voice handle via405C00,
+        // before its attached/deploy Anims6F468B. Keep the disposal marker in
+        // the same stream as AI visits and those Anim sound callbacks.
+        if self.substrate.entities.contains(stable_id) {
+            self.sound_events
+                .push(super::SimSoundEvent::UnitVoiceDestroyed { owner: stable_id });
+        }
         // Techno destructor6F467F..6F4691 UnInits its retained deploy Anim.
         // Pointer-expiry may already have cleared it through the Anim owner.
         if let Some(anim) = self
@@ -4351,22 +4375,6 @@ impl Simulation {
             self.conceal_anim(stable_id);
             self.release_anim_owner_reference(stable_id);
             self.clear_building_anim_reference(stable_id);
-        }
-        // Selected original Foot destructor4D3632..4D366E clears only its
-        // cached+564 Cell if+E0 still holds this Foot. UnInit/Limbo retain it;
-        // the block sends no notification and leaves the obsolete+564 intact.
-        self.clear_foot_air_slot_at_destruction(stable_id);
-        // Foot destructor4D3677 Release406060 follows class Remove_Tracking
-        // and Foot's cached-cell cleanup. All Foot classes share it, including
-        // constructor-complete limbo disposal. No caller-local hard stop.
-        if self
-            .substrate
-            .entities
-            .get(stable_id)
-            .is_some_and(|entity| entity.category != EntityCategory::Structure)
-        {
-            self.sound_events
-                .push(super::SimSoundEvent::ObjectSoundReleased { owner: stable_id });
         }
         // Display registration never outlives the object. Fly's phase tail
         // (4CD4DE) resubmits even an owner concealed earlier in the frame.

@@ -739,10 +739,9 @@ fn terminal_master_frame_visits_class_sequence_before_exit_without_frame_commit(
 #[test]
 fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() {
     let mut sim = Simulation::new();
-    let sound_id = sim.interner.intern("WaterfallLoop");
     sim.sound_events.push(SimSoundEvent::AnimationStarted {
         anim_id: 9,
-        sound_id,
+        sound_id: "WaterfallLoop".to_owned(),
         world: crate::sim::anim_class::AnimWorldCoord {
             x: 128,
             y: 128,

@@ -63,6 +63,8 @@ pub(crate) use move_sound::MoveSoundState;
 #[cfg(test)]
 mod move_sound_tests;
 #[cfg(test)]
+mod main_sound_identity_tests;
+#[cfg(test)]
 mod native_cell_input_test_fixture;
 mod navigation;
 mod object_turn;
@@ -328,6 +330,12 @@ pub(crate) enum HouseAiActivationOrderTestEvent {
 /// Pure data — no audio library dependency. Drained by the app layer each frame.
 #[derive(Debug, Clone)]
 pub enum SimSoundEvent {
+    /// A pending acknowledgement owner's live AI reached Techno6F9EBB.
+    /// The app owns the latch/handle; this fact preserves the actual visit.
+    UnitVoiceVisit { owner: u64 },
+    /// Techno destructor6F4607 destroys its voice handle before its owned
+    /// Anims. The app discards both pending and playing voice identities.
+    UnitVoiceDestroyed { owner: u64 },
     /// Voc7509E0 on the object's handle (Building+6A0 for Construction).
     /// The existing app/audio handle owner performs looping updates and release.
     ObjectSoundStarted {
@@ -335,10 +343,12 @@ pub enum SimSoundEvent {
         sound_id: InternedId,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
-    /// Constructor-time animation start/report sound, keyed to object identity.
+    /// Start/report sound on an object or animation handle. Keep the canonical
+    /// sound name outside the gameplay interner: a Main-selected cue must not
+    /// allocate an ID that changes later gameplay hashes or saved identities.
     AnimationStarted {
         anim_id: crate::sim::anim_class::AnimId,
-        sound_id: InternedId,
+        sound_id: String,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
     /// Hard-stop the owner's handle, then optionally play StopSound. Anim
@@ -354,7 +364,7 @@ pub enum SimSoundEvent {
     /// gattling_sound_owner(techno)`.
     GattlingLoop {
         owner: u64,
-        sound_id: InternedId,
+        sound_id: String,
         world: crate::sim::anim_class::AnimWorldCoord,
     },
     /// A stage-up's hard stop of that loop (`VocHandle::StopAndClear @
@@ -378,7 +388,7 @@ pub enum SimSoundEvent {
     },
     /// An entity was destroyed — play its DieSound=.
     EntityDied {
-        die_sound_id: InternedId,
+        die_sound_id: String,
         rx: u16,
         ry: u16,
     },
@@ -725,50 +735,6 @@ pub enum SimSoundEvent {
     /// `Strength * Rules+0x1708` (ConditionRed) to below it. Ordinary hits
     /// that cross nothing return 1 and are silent.
     BuildingDamagedSfx { rx: u16, ry: u16 },
-    /// A techno of any category crossed the half-strength threshold and its
-    /// type authors a non-empty `VoiceFeedback=` — the damage voice line.
-    ///
-    /// gamemd: `TechnoClass::ReceiveDamage @ 0x00701900`. The damage result
-    /// selects an arm through `0x00702049 JMP [EDI*4 + 0x00702D24]`
-    /// (`{0x007027F7, 0x00702713, 0x00702695, 0x007027F7, 0x00702050}`, with
-    /// `EDI` forced to 4 when `[ESI+0x6C]` Health is zero at `0x00702035`).
-    /// Index 2 — result 2, the `Strength >> 1` crossing — is `0x00702695`:
-    ///
-    /// - `0x007026A1 MOV EAX,[EDI+0x4E8]` / `0x007026A9 JLE` — an empty
-    ///   `VoiceFeedback=` list returns without drawing anything.
-    /// - `0x007026B3 MOV ECX,0x886B88` / `CALL 0x0065C7E0` with `(0, 0x63)` —
-    ///   `RandomRanged(0, 99)`; `0x007026BD CMP EAX,0x1E ; JGE` drops the cue,
-    ///   so it speaks 30 times in 100. **The draw is spent before the owner
-    ///   gate**, so this event is emitted for every qualifying crossing on any
-    ///   house and the roll happens app-side.
-    /// - `0x007026C6 MOV ECX,[ESI+0x21C]` / `CALL HouseClass::IsHumanPlayer @
-    ///   0x0050B6F0` — in a skirmish or multiplayer game (`g_GameMode != 0`)
-    ///   that is `house == g_PlayerPtr`, i.e. the local player only.
-    /// - `0x007026DE CALL 0x0065C780` then `0x007026E7 DIV [EDI+0x4E8]` picks
-    ///   `items[rand % count]` from `[EDI+0x4DC]`, and `0x00702709 CALL
-    ///   VocClass::PlayAt @ 0x007509E0` plays it at the object's own coords
-    ///   (`0x00702702 CALL [EDX+0x48]`).
-    ///
-    /// `TechnoTypeClass+0x4D8` is the `VoiceFeedback=` vector (items `+0x4DC`,
-    /// count `+0x4E8`): `0x00712D9C LEA EDI,[EBP+0x4D8]` in
-    /// `TechnoTypeClass::ReadINI` pushes the key string at `0x0084424C`
-    /// (`"VoiceFeedback"`) into `CCINIClass::ReadSoundList @ 0x00525430` at
-    /// `0x00712DCB`.
-    ///
-    /// Both draws are on `g_MainRng @ 0x00886B88`, which
-    /// `Init_Random_Number_System @ 0x0052FC20` seeds from `g_RngSeed`
-    /// alongside the scenario stream but which per-frame draw paths
-    /// (`EBolt::DrawRecursiveBolt`, `LaserDrawClass::Draw`,
-    /// `RadBeam::DrawAndTickAll`) also consume, so it is not lockstep state.
-    /// They therefore belong to the presentation RNG here, not to `sim/`.
-    VoiceFeedback {
-        /// Owning house — `[ESI+0x21C]`, resolved against the local player.
-        owner: InternedId,
-        /// The techno's type, for the `VoiceFeedback=` list lookup.
-        type_ref: InternedId,
-        rx: u16,
-        ry: u16,
-    },
     /// Tank-bunker walls-up cue — emitted on install. App resolves to
     /// [AudioVisual] BunkerWallsUpSound (retail "TankBunkerUp").
     BunkerWallsUp { rx: u16, ry: u16 },
@@ -1065,6 +1031,12 @@ pub struct Simulation {
     /// The app drains these without feeding them back into simulation.
     #[serde(skip)]
     pub(crate) lifecycle_outputs: Vec<LifecycleOutput>,
+    /// Derived presentation interest for the next admitted frame. The app
+    /// copies only pending voice owners; this is never a second voice latch.
+    /// `advance_app_frame` clears it on success and error, and restore starts
+    /// empty. Neither snapshots nor world hashes include this transient set.
+    #[serde(skip)]
+    unit_voice_visit_interest: std::collections::BTreeSet<u64>,
     /// Conversion receipts drained into the same tick's navigation/app outputs.
     /// Derived frame output, not gameplay state; saves occur at frame boundaries.
     #[serde(skip)]
@@ -3129,6 +3101,7 @@ impl Simulation {
             house_alliances: HouseAllianceMap::default(),
             substrate: ObjectSubstrate::new(),
             lifecycle_outputs: Vec::new(),
+            unit_voice_visit_interest: Default::default(),
             mission_spawned_entities: false,
             frame_overlay_updates: Vec::new(),
             frame_overlay_removals: Vec::new(),
@@ -3238,6 +3211,12 @@ impl Simulation {
     // (`terrain_load_draws`), selection_voice, Gattling Report, death sounds
     // and MoveSound. Local selection calls the domain operation; it must not
     // create a seeded copy that loses loading or live-consumer continuation.
+
+    /// Process Main886B88, shared by native command voices, Voc and Theme.
+    /// Draws remain outside Scenario/hash/save state; no copied audio cursor.
+    pub(crate) fn presentation_main_draws(&mut self) -> crate::sim::rng::MainRngDraws<'_> {
+        crate::sim::rng::MainRngDraws::borrow(&mut self.main_rng)
+    }
 
     /// Test/replay helper for the per-game Scenario/Main pair only.
     ///
@@ -6143,8 +6122,25 @@ impl Simulation {
             tick_ms,
             lane,
             trigger_inputs,
-        )?;
-        Ok(self.collect_frame_output(frame))
+        );
+        // A failed frame must not carry a previous caller's derived interest
+        // into a later headless, replay or ordinary presentation frame.
+        self.unit_voice_visit_interest.clear();
+        Ok(self.collect_frame_output(frame?))
+    }
+
+    /// Install the sole audio owner's read-only pending-interest projection
+    /// immediately before an admitted frame. No voice names/state live here.
+    pub(crate) fn prepare_unit_voice_visits(&mut self, owners: std::collections::BTreeSet<u64>) {
+        self.unit_voice_visit_interest = owners;
+    }
+
+    /// Emit only interested reached heads, in the existing ordered channel.
+    fn record_unit_voice_visit(&mut self, owner: u64) {
+        if self.unit_voice_visit_interest.contains(&owner) {
+            self.sound_events
+                .push(SimSoundEvent::UnitVoiceVisit { owner });
+        }
     }
 
     fn collect_frame_output(&mut self, frame: MasterFrameOutput) -> SimFrameOutput {

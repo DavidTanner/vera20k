@@ -1893,7 +1893,7 @@ pub(crate) struct DeathEffects {
     #[cfg(test)]
     pub(crate) cell_target_detaches: Vec<combat_aoe::CellTargetDetach>,
     pub(crate) tiberium_reduction_requests: Vec<TiberiumReductionRequest>,
-    pub(crate) death_sounds: Vec<(InternedId, u16, u16)>,
+    pub(crate) death_sounds: Vec<(String, u16, u16)>,
     pub(crate) smudge_spawn_requests: Vec<SmudgeSpawnRequest>,
     pub(crate) rad_detonations: Vec<crate::sim::radiation::RadDetonation>,
     pub(crate) under_attack_events: Vec<UnderAttackEvent>,
@@ -2193,17 +2193,16 @@ fn append_selected_death_sounds(
     building_die_sound: Option<&str>,
     owner_is_human: bool,
     main_rng: &mut SimRng,
-    interner: &mut StringInterner,
     rx: u16,
     ry: u16,
-    death_sounds: &mut Vec<(InternedId, u16, u16)>,
+    death_sounds: &mut Vec<(String, u16, u16)>,
 ) {
     let mut append_choice = |choices: &[String]| {
         if choices.is_empty() {
             return;
         }
         let index = (main_rng.next_u32() % choices.len() as u32) as usize;
-        death_sounds.push((interner.intern(&choices[index]), rx, ry));
+        death_sounds.push((choices[index].clone(), rx, ry));
     };
 
     if owner_is_human {
@@ -2213,7 +2212,7 @@ fn append_selected_death_sounds(
 
     if category == EntityCategory::Structure && object_type.die_sounds.is_empty() {
         if let Some(sound_id) = building_die_sound.filter(|id| !id.is_empty()) {
-            death_sounds.push((interner.intern(sound_id), rx, ry));
+            death_sounds.push((sound_id.to_owned(), rx, ry));
         }
     }
 }

@@ -15,7 +15,8 @@ use std::time::Duration;
 use rodio::Source;
 use serde::Serialize;
 
-use super::EventId;
+use super::{EventId, HandleOwner};
+use crate::audio::voice_queue::VoiceQueue;
 
 const MAX_ACTIONS: usize = 64;
 const MAX_SAMPLE_NAMES: usize = 128;
@@ -166,9 +167,9 @@ mod tests {
     fn release_and_detach_do_not_complete_the_observed_output_or_rebind_old_owners() {
         for operation in ["release", "detach"] {
             let mut recorder = observer(8);
-            recorder.bind_owner(EventId(1), 7);
-            recorder.owner_action(7, operation, 40);
-            recorder.owner_action(7, "release", 50);
+            recorder.bind_owner(EventId(1), HandleOwner::Positional(7));
+            recorder.owner_action(HandleOwner::Positional(7), operation, 40);
+            recorder.owner_action(HandleOwner::Positional(7), "release", 50);
             assert!(!recorder.settled());
             recorder.action(EventId(1), "completed", 100);
             recorder.action(EventId(1), "stopped", 101);
@@ -195,14 +196,14 @@ mod tests {
         .unwrap();
         let event = EventId(0);
         recorder.submitted(event, "TEST", Some(vec!["old".to_owned()]), 4, 0);
-        recorder.bind_owner(event, 7);
+        recorder.bind_owner(event, HandleOwner::Positional(7));
         let mut old = recorder
             .wrap(event, source(vec![1.0, 2.0, 3.0, 4.0]), 34)
             .unwrap();
         assert_eq!(old.next(), Some(1.0));
         recorder.action(event, "stopped", 68);
         recorder.submitted(event, "TEST", Some(vec!["new".to_owned()]), 2, 69);
-        recorder.bind_owner(event, 8);
+        recorder.bind_owner(event, HandleOwner::Positional(8));
         let mut new = recorder.wrap(event, source(vec![10.0, 20.0]), 103).unwrap();
         old.by_ref().for_each(drop);
         new.by_ref().for_each(drop);
@@ -291,6 +292,34 @@ pub(crate) struct OutputAction {
     pub context: PcmObservationContext,
 }
 
+/// A read-only snapshot of the actual per-object latch. Observation never
+/// supplies an owner visit, a handle result, or a voice admission decision.
+#[derive(Debug, Serialize)]
+pub(super) struct VoiceLatchState {
+    pending: Option<String>,
+    playing: Option<String>,
+}
+
+impl VoiceLatchState {
+    pub(super) fn read(queue: &VoiceQueue, owner: u64) -> Self {
+        Self {
+            pending: queue.pending_for(owner).map(str::to_owned),
+            playing: queue.playing_for(owner).map(str::to_owned),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct VoiceAction {
+    owner: u64,
+    action: OutputAction,
+    before: VoiceLatchState,
+    after: VoiceLatchState,
+    /// Present only for a reached head's actual ValidateOrClear result.
+    live_event_before: Option<u32>,
+    submitted_event: Option<u32>,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct PcmFormat {
     pub first_sample: usize,
@@ -302,6 +331,7 @@ pub(crate) struct ObservedOutput {
     pub submission: usize,
     pub event: u32,
     pub owner: Option<u64>,
+    pub owner_role: Option<&'static str>,
     pub sound_id: String,
     pub resolved_samples: Vec<String>,
     pub source_sample_count: usize,
@@ -314,6 +344,7 @@ pub(crate) struct ObservedOutput {
 
 pub(crate) struct PcmObservationReport {
     pub outputs: Vec<ObservedOutput>,
+    pub voice_actions: Vec<VoiceAction>,
     pub truncated: bool,
 }
 
@@ -329,14 +360,14 @@ impl PcmObservationReport {
             }
             let finite = output.sample_bits.iter().filter(|bits| f32::from_bits(**bits).is_finite()).count();
             let nonzero = output.sample_bits.iter().filter(|bits| f32::from_bits(**bits) != 0.0).count();
-            serde_json::json!({"submission": output.submission, "event": output.event, "owner": output.owner, "sound_id": output.sound_id,
+            serde_json::json!({"submission": output.submission, "event": output.event, "owner": output.owner, "owner_role": output.owner_role, "sound_id": output.sound_id,
                 "resolved_samples": output.resolved_samples, "source_sample_count": output.source_sample_count,
                 "source_ended": output.source_ended,
                 "actions": output.actions, "pcm": {"encoding": "f32le", "sample_count": output.sample_bits.len(),
                     "finite_count": finite, "nonzero_count": nonzero, "formats": output.formats,
                     "sha256": crate::util::sha256::sha256_hex(&bytes), "hex": hex, "truncated": output.truncated}})
         }).collect::<Vec<_>>();
-        serde_json::json!({"outputs": outputs, "truncated": self.truncated})
+        serde_json::json!({"outputs": outputs, "voice_actions": self.voice_actions, "truncated": self.truncated})
     }
 }
 
@@ -472,7 +503,7 @@ impl<S: Source> Source for ObservedSource<S> {
 
 struct OutputRecord {
     event: EventId,
-    owner: Option<u64>,
+    owner: Option<HandleOwner>,
     sound_id: String,
     samples: Vec<String>,
     source_sample_count: usize,
@@ -486,6 +517,7 @@ pub(super) struct PcmObserver {
     config: PcmObservationConfig,
     context: PcmObservationContext,
     outputs: Vec<OutputRecord>,
+    voice_actions: Vec<VoiceAction>,
     truncated: bool,
 }
 
@@ -505,6 +537,7 @@ impl PcmObserver {
             config,
             context: PcmObservationContext::default(),
             outputs: Vec::new(),
+            voice_actions: Vec::new(),
             truncated: false,
         })
     }
@@ -518,6 +551,45 @@ impl PcmObserver {
 
     pub(super) fn context(&mut self, context: PcmObservationContext) {
         self.context = context;
+    }
+
+    pub(super) fn voice_action(
+        &mut self,
+        owner: u64,
+        kind: &'static str,
+        before: VoiceLatchState,
+        after: VoiceLatchState,
+        handles: (Option<EventId>, Option<EventId>),
+        now_ms: u64,
+    ) {
+        if ![
+            &before.pending,
+            &before.playing,
+            &after.pending,
+            &after.playing,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|sound| self.wants(sound))
+        {
+            return;
+        }
+        if self.voice_actions.len() == self.config.max_events * MAX_ACTIONS {
+            self.truncated = true;
+            return;
+        }
+        self.voice_actions.push(VoiceAction {
+            owner,
+            action: OutputAction {
+                kind,
+                service_ms: now_ms,
+                context: self.context,
+            },
+            before,
+            after,
+            live_event_before: handles.0.map(|event| event.0),
+            submitted_event: handles.1.map(|event| event.0),
+        });
     }
 
     pub(super) fn submitted(
@@ -549,7 +621,7 @@ impl PcmObserver {
         self.action(event, "submitted", now_ms);
     }
 
-    pub(super) fn bind_owner(&mut self, event: EventId, owner: u64) {
+    pub(super) fn bind_owner(&mut self, event: EventId, owner: HandleOwner) {
         if let Some(index) = self.active_index(event) {
             let output = &mut self.outputs[index];
             output.owner = Some(owner);
@@ -576,7 +648,7 @@ impl PcmObserver {
         }
     }
 
-    pub(super) fn owner_action(&mut self, owner: u64, kind: &'static str, now_ms: u64) {
+    pub(super) fn owner_action(&mut self, owner: HandleOwner, kind: &'static str, now_ms: u64) {
         // This diagnostic association is recorded when the production handle
         // binds. It never supplies a gameplay/audio admission decision.
         if let Some(output) = self
@@ -690,7 +762,13 @@ impl PcmObserver {
                 ObservedOutput {
                     submission,
                     event: output.event.0,
-                    owner: output.owner,
+                    owner: output.owner.map(|owner| match owner {
+                        HandleOwner::Positional(id) | HandleOwner::UnitVoice(id) => id,
+                    }),
+                    owner_role: output.owner.map(|owner| match owner {
+                        HandleOwner::Positional(_) => "positional",
+                        HandleOwner::UnitVoice(_) => "unit_voice",
+                    }),
                     sound_id: output.sound_id,
                     resolved_samples: output.samples,
                     source_sample_count: output.source_sample_count,
@@ -707,6 +785,7 @@ impl PcmObserver {
             .collect();
         PcmObservationReport {
             outputs,
+            voice_actions: self.voice_actions,
             truncated: self.truncated,
         }
     }

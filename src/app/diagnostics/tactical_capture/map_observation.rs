@@ -27,7 +27,7 @@ const MAX_OBSERVED_TYPES: usize = 256;
 const MAX_TERRAIN_CELLS: usize = 256;
 const MAX_OBSERVATION_SAMPLES: usize = 100_000;
 const MAX_RECEIPT_BYTES: usize = 128 * 1024 * 1024;
-const AUDIO_POLICY: &str = "map-device-pulled-player-pcm-v1";
+const AUDIO_POLICY: &str = "map-device-pulled-player-pcm-v2";
 const LOAD_SEGMENT_POLICY: &str = "map-literal-quickload-clock-segments-v1";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -461,7 +461,7 @@ impl App {
         );
         let mut startup_audio_runtime = crate::app::audio_runtime::AppAudioRuntime {
             theme: crate::audio::theme::ThemeRuntime::default(),
-            last_theme_poll_ms: None,
+            service_clock: crate::audio::arbiter::AudioServiceClock::default(),
             music_player,
             sfx_player,
             launcher_audio_available,

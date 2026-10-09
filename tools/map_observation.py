@@ -55,7 +55,8 @@ SIDEBAR_GESTURE_POLICY = 'map-local-left-gesture-v2'
 KEYBOARD_GESTURE_POLICY = 'map-local-gesture-v3'
 COMMAND_BAR_GESTURE_POLICY = 'map-local-gesture-v4'
 SIDEBAR_POLICY = 'map-retained-sidebar-observation-v1'
-AUDIO_POLICY = 'map-device-pulled-player-pcm-v1'
+AUDIO_POLICY = 'map-device-pulled-player-pcm-v2'
+PRIOR_AUDIO_POLICY = 'map-device-pulled-player-pcm-v1'
 LOAD_SEGMENT_POLICY = 'map-literal-quickload-clock-segments-v1'
 SIDEBAR_TABS = ('building', 'defense', 'infantry', 'vehicle')
 DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
@@ -1256,12 +1257,28 @@ def _load_segments(value: Any, profile: Mapping[str, Any]) -> list:
     return list(transitions)
 
 
+def _audio_action(value: Any, label: str, profile: Mapping[str, Any], kinds: tuple[str, ...], earliest_ms: int) -> int:
+    action = require_object(value, label)
+    require_exact_keys(action, ('kind', 'service_ms', 'context'), label)
+    if action['kind'] not in kinds:
+        raise ValidationError('unknown audio action')
+    milliseconds = _bounded_int(action['service_ms'], f'{label}.service_ms', earliest_ms, (1 << 64) - 1)
+    context = require_object(action['context'], f'{label}.context')
+    require_exact_keys(context, ('completed_steps', 'simulation_tick', 'binary_frame'), f'{label}.context')
+    for key in context:
+        _bounded_int(context[key], f'{label}.context.{key}', 0, profile['ticks'])
+    return milliseconds
+
+
 def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
     label = 'observations.audio'
     audio = require_object(value, label)
+    if audio.get('policy') not in (AUDIO_POLICY, PRIOR_AUDIO_POLICY):
+        raise ValidationError('unknown audio observation policy')
+    voices = audio['policy'] == AUDIO_POLICY
     require_exact_keys(audio, ('policy', 'point', 'completion_tail_ms', 'tail_draw_count',
-                               'settled', 'truncated', 'outputs'), label)
-    for key, expected in (('policy', AUDIO_POLICY), ('point', 'post_player_pre_device_mixer'),
+                               'settled', 'truncated', 'outputs', *(('voice_actions',) if voices else ())), label)
+    for key, expected in (('point', 'post_player_pre_device_mixer'),
                           ('settled', True), ('truncated', False)):
         require_value(audio[key], expected, f'{label}.{key}')
     _bounded_int(audio['completion_tail_ms'], f'{label}.completion_tail_ms', 0, profile['timeout_seconds'] * 1000)
@@ -1273,12 +1290,15 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
     for index, value in enumerate(outputs):
         row_label = f'{label}.outputs[{index}]'
         row = require_object(value, row_label)
-        require_exact_keys(row, ('submission', 'event', 'owner', 'sound_id', 'resolved_samples', 'source_sample_count', 'source_ended', 'actions', 'pcm'), row_label)
+        require_exact_keys(row, ('submission', 'event', 'owner', 'sound_id', 'resolved_samples', 'source_sample_count', 'source_ended', 'actions', 'pcm', *(('owner_role',) if voices else ())), row_label)
         require_value(row['submission'], index, f'{row_label}.submission')
         require_value(row['source_ended'], True, f'{row_label}.source_ended')
         _bounded_int(row['event'], f'{row_label}.event', 0, (1 << 32) - 1)
         if row['owner'] is not None:
             _bounded_int(row['owner'], f'{row_label}.owner', 1, (1 << 64) - 1)
+        if voices and (row['owner_role'] not in (None, 'positional', 'unit_voice')
+                       or (row['owner_role'] is None) != (row['owner'] is None)):
+            raise ValidationError('audio owner role differs from its typed owner')
         if require_string(row['sound_id'], f'{row_label}.sound_id').upper() not in {name.upper() for name in config['sound_ids']}:
             raise ValidationError('audio output is outside requested sound filter')
         names = require_array(row['resolved_samples'], f'{row_label}.resolved_samples')
@@ -1292,17 +1312,10 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
             raise ValidationError('audio output requires bounded submission and terminal actions')
         previous_ms = 0
         for ordinal, action in enumerate(actions):
-            action = require_object(action, f'{row_label}.actions[]')
-            require_exact_keys(action, ('kind', 'service_ms', 'context'), f'{row_label}.actions[]')
-            if action['kind'] not in ('submitted', 'started', 'release', 'detach', 'stopped', 'completed'):
-                raise ValidationError('unknown audio action')
+            previous_ms = _audio_action(action, f'{row_label}.actions[]', profile,
+                ('submitted', 'started', 'release', 'detach', 'stopped', 'completed'), previous_ms)
             if ordinal < len(actions) - 1 and action['kind'] in ('stopped', 'completed'):
                 raise ValidationError('audio output continued after terminal action')
-            previous_ms = _bounded_int(action['service_ms'], f'{row_label}.service_ms', previous_ms, (1 << 64) - 1)
-            context = require_object(action['context'], f'{row_label}.context')
-            require_exact_keys(context, ('completed_steps', 'simulation_tick', 'binary_frame'), f'{row_label}.context')
-            for key in context:
-                _bounded_int(context[key], f'{row_label}.context.{key}', 0, profile['ticks'])
         pcm = require_object(row['pcm'], f'{row_label}.pcm')
         require_exact_keys(pcm, ('encoding', 'sample_count', 'finite_count', 'nonzero_count', 'formats', 'sha256', 'hex', 'truncated'), f'{row_label}.pcm')
         require_value(pcm['encoding'], 'f32le', f'{row_label}.pcm.encoding')
@@ -1327,6 +1340,34 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
                 require_value(span['first_sample'], 0, 'PCM first format')
             _bounded_int(span['channels'], 'PCM channels', 1, 65535)
             _bounded_int(span['sample_rate'], 'PCM sample_rate', 1, (1 << 32) - 1)
+    if voices:
+        actions = require_array(audio['voice_actions'], f'{label}.voice_actions')
+        if len(actions) > config['max_events'] * 64:
+            raise ValidationError('voice action count exceeds requested bound')
+        previous_ms = 0
+        for ordinal, value in enumerate(actions):
+            row_label = f'{label}.voice_actions[{ordinal}]'
+            row = require_object(value, row_label)
+            require_exact_keys(row, ('owner', 'action', 'before', 'after', 'live_event_before', 'submitted_event'), row_label)
+            _bounded_int(row['owner'], f'{row_label}.owner', 1, (1 << 64) - 1)
+            previous_ms = _audio_action(row['action'], f'{row_label}.action', profile,
+                ('queued', 'reached_head', 'destroyed'), previous_ms)
+            for key in ('live_event_before', 'submitted_event'):
+                if row[key] is not None:
+                    _bounded_int(row[key], f'{row_label}.{key}', 0, (1 << 32) - 1)
+                    require_value(row['action']['kind'], 'reached_head', f'{row_label}.action.kind')
+            names = []
+            for phase in ('before', 'after'):
+                state = require_object(row[phase], f'{row_label}.{phase}')
+                require_exact_keys(state, ('pending', 'playing'), f'{row_label}.{phase}')
+                for key, name in state.items():
+                    if name is not None:
+                        require_string(name, f'{row_label}.{phase}.{key}')
+                        if not name or len(name) > 128 or not name.isascii():
+                            raise ValidationError('voice latch identity exceeds bounds')
+                        names.append(name.upper())
+            if not set(names).intersection(name.upper() for name in config['sound_ids']):
+                raise ValidationError('voice action is outside requested sound filter')
 
 
 def _gesture_observations(value: Any, profile: Mapping[str, Any], segments=()) -> int:
