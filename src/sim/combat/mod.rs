@@ -2631,10 +2631,15 @@ pub(crate) fn projectile_impact_cell(
     )
 }
 
+/// `BulletClass::SpawnShrapnel @ 0x0046A310` for the bullet at `location`,
+/// its Location (`+0x9C`), which the count, the admission, the ring centre and
+/// every fragment's origin read; the impact coordinate never reaches it.
 fn emit_projectile_shrapnel(
     detonation: &ProjectileDetonation,
+    location: ProjectileCoord,
     entities: &EntityStore,
     occupancy: &OccupancyGrid,
+    terrain_object_cells: &BTreeMap<(u16, u16), u64>,
     rules: &RuleSet,
     interner: &mut StringInterner,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
@@ -2683,11 +2688,7 @@ fn emit_projectile_shrapnel(
         let coord = crate::sim::movement::ground_pose::object_get_coords(firer, terrain);
         crate::util::native_x87::distance_3d_leptons(
             [coord.x, coord.y, coord.z],
-            [
-                detonation.impact.x,
-                detonation.impact.y,
-                detonation.impact.z,
-            ],
+            [location.x, location.y, location.z],
         ) / 256
     });
     let count = projectile_shrapnel_count(
@@ -2699,9 +2700,42 @@ fn emit_projectile_shrapnel(
         return;
     }
 
-    let center_rx = detonation.impact.x / 256;
-    let center_ry = detonation.impact.y / 256;
-    let source_owner = firer.map(|source| source.owner());
+    // The bullet's cell (`vt+0x1B8`, `0x0041BEA0`): the ring centre, and the
+    // cell `0x0046A3D6..0x0046A406` admits. It throws shrapnel only when that
+    // cell (GetCell, vt+0x1BC, `0x005F6960`) holds a first ground object
+    // (`+0xE4`) that is not a building (What_Am_I 6); a missed lookup's dummy
+    // cell holds none.
+    let center_rx = crate::util::lepton::lepton_to_cell(location.x);
+    let center_ry = crate::util::lepton::lepton_to_cell(location.y);
+    let admitted = match (u16::try_from(center_rx), u16::try_from(center_ry)) {
+        (Ok(rx), Ok(ry))
+            if terrain.is_none()
+                || matches!(
+                    crate::sim::cell_rect::get_cellclass_fallback(terrain, center_rx, center_ry),
+                    crate::sim::cell_rect::CellRef::Real(_)
+                ) =>
+        {
+            match occupancy
+                .cell_objects(
+                    rx,
+                    ry,
+                    crate::sim::movement::locomotor::MovementLayer::Ground,
+                    terrain_object_cells.get(&(rx, ry)).copied(),
+                )
+                .next()
+            {
+                Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => entities
+                    .get(id)
+                    .is_some_and(|object| object.category != EntityCategory::Structure),
+                Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) => true,
+                None => false,
+            }
+        }
+        _ => false,
+    };
+    if !admitted {
+        return;
+    }
     // Random CellClass selections must capture their target coordinate at the
     // lookup call point: every miss returns the same mutable process dummy, so
     // resolving a collected list afterward would give all missed children the
@@ -2711,9 +2745,17 @@ fn emit_projectile_shrapnel(
         Vec::with_capacity(count as usize);
     // `0x0046A436..0x0046A48B`: the child weapon's Range (`+0xB4`) divided by
     // 256 toward zero names the last ring; rings 1 through it are walked,
-    // never the impact cell.
+    // never the bullet's cell. `0x0046A4E5..0x0046A4F5`: a ring cell's first
+    // object is a target only while the bullet has a firer, so with the firer
+    // gone every fragment takes a random cell.
     let rings = (child_weapon.range_leptons / 256).max(0) as usize;
-    for &(dx, dy) in self::cell_spread::sweep(rings).iter().skip(1) {
+    let ring_cells = if firer.is_some() {
+        self::cell_spread::sweep(rings)
+    } else {
+        &[]
+    };
+    let source_owner = firer.map(|source| source.owner());
+    for &(dx, dy) in ring_cells.iter().skip(1) {
         if targets.len() == count as usize {
             break;
         }
@@ -2825,7 +2867,7 @@ fn emit_projectile_shrapnel(
             ),
             flat: child_projectile.flat,
             source_id: detonation.source_id,
-            origin: detonation.impact,
+            origin: location,
             target,
             initial_target_position: target_coord,
             payload: ProjectilePayload::new(
@@ -2835,7 +2877,7 @@ fn emit_projectile_shrapnel(
             ),
             speed_leptons_per_frame: child_weapon.speed.clamp(1, i32::from(u16::MAX)) as u16,
             velocity: crate::sim::projectile::launch::shrapnel_launch_velocity(
-                detonation.impact,
+                location,
                 target_coord,
                 child_weapon.speed,
                 random_cell,
