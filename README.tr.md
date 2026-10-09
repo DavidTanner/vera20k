@@ -72,8 +72,8 @@ ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosy
 
 Yardımlarınızı bekliyoruz. Kod yazabilir, motoru yeniden düzenleyebilir, oyunu test edebilir,
 fikirlerinizi paylaşabilir veya orijinal oyunla yan yana oynayıp neyin yanlış hissettirdiğini
-bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz; büyük bir değişiklik için önce bir
-issue'da, [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ya da QQ grubunda (1097193563) sorun.
+bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz.
+Tartışmalar [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ve QQ grubunda (1097193563) yürür.
 
 Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/` ve `src/ui/`
 içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.

@@ -74,8 +74,7 @@ portar sedan dess beteende till Rust och kontrollerar det med
 
 All hjälp är välkommen. Du kan skriva kod, refaktorera motorn, testa spelet, dela idéer eller
 spela det sida vid sida med originalet och berätta vad som känns fel. Öppna en PR så tar vi det
-därifrån; gäller det något stort, fråga först i ett issue, på
-[Discord](https://discord.gg/kmjRUn5m5F) eller i QQ-gruppen (1097193563).
+därifrån. Diskussionen sker på [Discord](https://discord.gg/kmjRUn5m5F) och i QQ-gruppen (1097193563).
 
 Spelmekaniken finns i `src/sim/`, renderingen i `src/render/` och menyer och inmatning i
 `src/app/` och `src/ui/`; Python-verktygen i `tools/` behöver du inte.
