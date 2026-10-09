@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="آخر تشغيل لاختبارات المكتبة على Linux (تُشغّل يدويًا)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="اختبارات المكتبة على Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="آخر تشغيل لاختبارات المكتبة على Windows (تُشغّل يدويًا)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="اختبارات المكتبة على Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="انضم إلى Discord" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_group-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="مجموعة QQ الصينية" height="20" align="middle">
 </p>
 
 <div dir="rtl">
@@ -73,7 +74,7 @@ cargo run --release --bin vera20k
 
 نرحب بالمساعدة. يمكنك كتابة الكود، أو إعادة هيكلة المحرك، أو اختبار اللعبة، أو مشاركة الأفكار، أو لعبها
 جنبًا إلى جنب مع الأصل وإخبارنا بما يبدو غير صحيح. افتح PR وسنتولى الأمر من هناك؛ وإذا كان التغيير كبيرًا،
-فاسأل أولًا في issue أو على [Discord](https://discord.gg/kmjRUn5m5F).
+فاسأل أولًا في issue أو على [Discord](https://discord.gg/kmjRUn5m5F) أو في مجموعة QQ الصينية التي يديرها المجتمع (1097193563).
 
 منطق اللعب في `src/sim/`، والرسم في `src/render/`، والقوائم والإدخال في `src/app/` و`src/ui/`؛
 ولا تحتاج إلى أدوات Python الموجودة في `tools/`. تشرح [نظرة عامة على البنية](https://yuriplanet.github.io/vera20k/ar/)
