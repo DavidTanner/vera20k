@@ -954,7 +954,7 @@
     "tools/spatial_oracle/anim_bouncer_launch.py": "f038ac51504a1927efac0d5c65092fe5ddb7bcc4f9525e01bd71c3ca008d2ac3",
     "tools/spatial_oracle/anytown_damage/unit_unlimbo.py": "526d0ab5f0854bde65e55650a6e6664b2d0cd33a05c75a2ddf2491a78871f4b3",
     "tools/spatial_oracle/anytown_damage/navigation_inputs.py": "a4971d093ed40dac72da16f52a5ddd33a27d9899cc7607c8ec4d01ebd7f5bd5f",
-    "src/rules/object_type.rs": "9e21a7398a5e01a15fec6935b6c313c768855b3de0941edb2f13c7280edb8dce",
+    "src/rules/object_type.rs": "82ff94e9f2535fede34edc77132cd8896a266b04bbbd165610a251441d3978b0",
     "src/rules/native_processing.rs": "2ae806b152453fb7c2372aff8d3858826ab1515c5a171adde9dd79c5c98150e2",
     "src/sim/stage.rs": "dbbc1e239decf9f29b908981a33d109ad39196690f001dbff61deceaa16e950e",
     "src/sim/cell_kernel.rs": "5a28185b14db8091fc78a68b51354120f048fcbcc7f76f63035b8e6956664a62",
@@ -964,7 +964,7 @@
     "src/sim/world/world_spawn.rs": "9f9c06cafa3124889f043ba15e567643f06827008d72941bdb4b28372f012aff",
     "src/sim/world/lifecycle.rs": "7963060de23bface0731e1435e76ced20d38a9d09af674c4765e4e778dda7a60",
     "src/sim/world/object_entry.rs": "0b6434b10a0cfeef9dc0366ea6636d65db80a2e9eefe49452c2cda2dbea6291c",
-    "src/sim/movement/ground_pose.rs": "80fce675062ad988650663119024d18928d8f9d10b8ad785c0c7951b73b7e370",
+    "src/sim/movement/ground_pose.rs": "71840d4b8de4986e79feb9cd21dd60277b2acf42707f700c25525c46981015f0",
     "src/sim/movement/slope_transition.rs": "b3582340603b14e7b50e6922562dfbeb0b1001a25c1b65baef918977ff5d501b",
     "src/sim/door.rs": "8b5d637d948daf185011ad64f531d08a4402ee95d073178f82064c6f51511d1f",
     "src/sim/game_entity.rs": "4965f8053a6efd5ac9bffeced7bb99bcaa76dbc4d668ae988b2a7b01272bf473",
@@ -988,7 +988,7 @@
     "src/rules/ini_parser_tests.rs": "95002a316f2678d338c76b32109d5229c51f5c7e37a450a44e626508a2ede5fd",
     "src/rules/ini_value.rs": "1f8a4ba227916f186ac3db3769a6ed859e784d13dcbbe7040a65bb64038264d5",
     "src/rules/retail_ini_fixture.rs": "a658a6b5f9308887631ac28c1ebd84fb9ec79211b357e5abf43a200a19d3f457",
-    "src/rules/ruleset.rs": "dd7b44034a0a4785c28f9275e7212a64f022e551f3f077b980c0e303e3963a98"
+    "src/rules/ruleset.rs": "188f042b99f67a9fbf74556b730f1e9c2ce6ac2477355ff1cb48322b4abd752f"
   },
   "payload_sha256": "2915c344ba2fd60cac1782f7a08a053e0b369a4f1eab0f0c61f9869d277e581b"
 }
