@@ -780,13 +780,9 @@ fn constructor_lists_collapse_empty_fields_without_trimming_individual_tokens() 
 
     assert_eq!(anim_ids, vec!["FIRST", " SECOND ", " none ", " THIRD"]);
     assert_eq!(
-        processed
-            .ini()
-            .section("General")
-            .expect("projected General section")
-            .get_for_test("PrerequisitePower"),
-        Some("FIRST,FIRST"),
-        "native strtok vectors retain repeated resolved pointers",
+        processed.prerequisite_lists()[PrerequisiteGroup::Power.index()],
+        [Prerequisite::Building(0), Prerequisite::Building(0)],
+        "native strtok vectors retain repeated entries",
     );
 }
 
@@ -2001,14 +1997,7 @@ fn general_prerequisite_groups_are_lookup_only() {
             .registry_ids()
             .is_empty()
     );
-    assert_eq!(
-        processed
-            .ini()
-            .section("General")
-            .unwrap()
-            .get_for_test("PrerequisitePower"),
-        Some("")
-    );
+    assert!(processed.prerequisite_lists()[PrerequisiteGroup::Power.index()].is_empty());
 }
 
 #[test]
@@ -2020,12 +2009,8 @@ fn general_prerequisite_groups_keep_only_registered_buildings() {
     .expect("prerequisite registration fixture processes");
 
     assert_eq!(
-        processed
-            .ini()
-            .section("General")
-            .unwrap()
-            .get_for_test("PrerequisitePower"),
-        Some("GAPOWR")
+        processed.prerequisite_lists()[PrerequisiteGroup::Power.index()],
+        [Prerequisite::Building(0)]
     );
 }
 

@@ -9,7 +9,7 @@ use crate::sim::house_state::{HouseDifficulty, HouseState};
 use crate::sim::rng::SimRng;
 use crate::sim::superweapon::SuperWeaponInstance;
 use crate::sim::superweapon::cell_receiver_tests::{test_playfield_bounds, test_terrain_cell};
-use crate::sim::world::Simulation;
+use crate::sim::world::{SimSoundEvent, Simulation};
 use serde_json::Value;
 
 const RULES: &str = "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
@@ -131,11 +131,38 @@ fn click_fire_matches_native() {
         }
         let launched = click_fire(&mut sim, &rules, owner, sw_type_id, &sw, (33, 44), None);
         let events = row["events"].as_array().unwrap();
+        let called = |name: &str| events.iter().any(|event| event[0] == name);
+        assert_eq!(launched, called("launch"), "{row}");
+        // A refusal arm (`0x006CBAA7`, `0x006CBAD6`): native asked its
+        // predicate and the row's stub answered yes. Its line prints only
+        // for the row's `player` (Fire_SW's `this == PlayerPtr`); VERA
+        // reports every refusal and the app posts the line for the local
+        // player's house (`sound_dispatch::super_weapon_messages`).
+        let player = flag(&row["player"]);
+        let storm_refused = called("has_deferment") && flag(&row["deferment"]);
+        let dominator_refused =
+            called("psychic_dominator_active") && flag(&row["dominator_active"]);
+        assert_eq!(called("storm_message"), storm_refused && player, "{row}");
         assert_eq!(
-            launched,
-            events.iter().any(|event| event[0] == "launch"),
+            called("dominator_message"),
+            dominator_refused && player,
             "{row}"
         );
+        let refusals: Vec<_> = sim
+            .sound_events
+            .iter()
+            .filter_map(|event| match *event {
+                SimSoundEvent::LightningStormRefused { owner } => Some(("storm", owner)),
+                SimSoundEvent::PsychicDominatorRefused { owner } => Some(("dominator", owner)),
+                _ => None,
+            })
+            .collect();
+        let expected: Vec<_> = [("storm", storm_refused), ("dominator", dominator_refused)]
+            .into_iter()
+            .filter(|&(_, refused)| refused)
+            .map(|(arm, _)| (arm, owner))
+            .collect();
+        assert_eq!(refusals, expected, "{row}");
         let after = &sim.super_weapons[&owner][&sw_type_id];
         assert_eq!(
             (

@@ -31,6 +31,7 @@ use crate::rules::particle_system_type::{
     ParticleSystemType, ParticleSystemTypeId, PendingParticleSystemType,
 };
 use crate::rules::particle_type::{ParticleType, ParticleTypeId, PendingParticleType};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup};
 use crate::rules::projectile_type::ProjectileType;
 use crate::rules::radar_event_config::RadarEventConfig;
 use crate::rules::smudge_type::SmudgeTypeRegistry;
@@ -3227,11 +3228,10 @@ pub struct RuleSet {
     /// Used by production_tech to determine what a building produces without
     /// hardcoding building names.
     pub factory_map: HashMap<String, FactoryType>,
-    /// Maps prerequisite alias (uppercase, e.g. "POWER") → list of building IDs
-    /// (uppercase) that satisfy it. Built from [General] PrerequisiteXxx keys.
-    /// RA2 uses these so that Prerequisite=POWER means "any power plant" rather
-    /// than a specific building ID.
-    pub prerequisite_groups: HashMap<String, Vec<String>>,
+    /// The `[General] Prerequisite*` lists (Rules `+0x358..+0x3E4`), in
+    /// [`PrerequisiteGroup::ALL`] order: an on-map building of any of them
+    /// meets that group in CanBuild.
+    prerequisite_lists: [Vec<Prerequisite>; 6],
     /// Rules-driven terrain land-type semantics keyed by TMP land byte.
     pub terrain_rules: TerrainRules,
     /// Native `[Tiberiums]` definitions in GameMD type order.
@@ -3367,6 +3367,7 @@ impl RuleSet {
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
         rules.general.prerequisite_proc_alternate =
             processed.prerequisite_proc_alternate().map(str::to_owned);
+        rules.prerequisite_lists = processed.prerequisite_lists().clone();
         rules.general.building_types = processed.building_types().clone();
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
@@ -3406,6 +3407,17 @@ impl RuleSet {
                 .find(|object| object.category == category && object.id == name)
             {
                 object.recoil = recoil;
+            }
+        }
+        for (category, name, prerequisite, prerequisite_override) in processed.prerequisite_states()
+        {
+            if let Some(object) = rules
+                .object_list
+                .iter_mut()
+                .find(|object| object.category == category && object.id == name)
+            {
+                object.prerequisite = prerequisite.to_vec();
+                object.prerequisite_override = prerequisite_override.to_vec();
             }
         }
         for (category, name, gunner_turrets) in processed.gunner_turret_states() {
@@ -3901,11 +3913,7 @@ impl RuleSet {
             .collect();
         log::info!("Factory map: {} entries", factory_map.len());
 
-        // Step 7: Parse prerequisite alias groups from [General].
-        let prerequisite_groups: HashMap<String, Vec<String>> = parse_prerequisite_groups(ini);
-        log::info!("Prerequisite groups: {} aliases", prerequisite_groups.len());
-
-        // Step 8: Parse superweapon type registry.
+        // Step 7: Parse superweapon type registry.
         let mut super_weapons: HashMap<String, SuperWeaponType> = HashMap::new();
         let sw_ids: Vec<String> = parse_registry(ini, "SuperWeaponTypes");
         let super_weapon_order: Vec<String> = sw_ids.clone();
@@ -3980,7 +3988,7 @@ impl RuleSet {
                 .count(),
         );
 
-        // Step 9: Two-pass parse for [Particles] and [ParticleSystems].
+        // Step 8: Two-pass parse for [Particles] and [ParticleSystems].
         // Cross-references (NextParticle, HoldsWhat) are resolved in pass 2 so
         // that INI ordering does not matter.
         let (particle_types, particle_types_by_name) = parse_particle_types(ini);
@@ -4077,7 +4085,7 @@ impl RuleSet {
             aircraft_ids,
             building_ids,
             factory_map,
-            prerequisite_groups,
+            prerequisite_lists: Default::default(),
             terrain_rules,
             tiberium_types,
             terrain_object_types,
@@ -4870,12 +4878,9 @@ impl RuleSet {
             .copied()
     }
 
-    /// Look up which building IDs satisfy a prerequisite alias (case-insensitive).
-    /// Returns None if the alias is not a known prerequisite group.
-    pub fn prerequisite_group(&self, alias: &str) -> Option<&[String]> {
-        self.prerequisite_groups
-            .get(&alias.to_ascii_uppercase())
-            .map(|v| v.as_slice())
+    /// `group`'s `[General] Prerequisite*` list.
+    pub(crate) fn prerequisite_list(&self, group: PrerequisiteGroup) -> &[Prerequisite] {
+        &self.prerequisite_lists[group.index()]
     }
 
     /// Whether a structure type is marked as a refinery in rules.ini.
@@ -5469,40 +5474,6 @@ fn collect_weapon_refs(objects: &[ObjectType]) -> HashSet<String> {
     }
 
     weapon_ids
-}
-
-/// The `[General] Prerequisite*` lists, by the name a `Prerequisite=` entry
-/// gives them (`Prerequisite_INI_Parser @ 0x004770E0` reads `POWER`,
-/// `FACTORY`, `BARRACKS`, `RADAR`, `TECH` and `PROC` as these lists and no
-/// other name). For example `PrerequisitePower=GAPOWR,NAPOWR,NANRCT` lets an
-/// on-map building of any of them meet `Prerequisite=POWER`.
-fn parse_prerequisite_groups(ini: &IniFile) -> HashMap<String, Vec<String>> {
-    let mut groups: HashMap<String, Vec<String>> = HashMap::new();
-    let Some(general) = ini.section("General") else {
-        return groups;
-    };
-
-    /// Known [General] keys and the alias name they define.
-    const PREREQ_KEYS: &[(&str, &str)] = &[
-        ("PrerequisitePower", "POWER"),
-        ("PrerequisiteProc", "PROC"),
-        ("PrerequisiteRadar", "RADAR"),
-        ("PrerequisiteTech", "TECH"),
-        ("PrerequisiteBarracks", "BARRACKS"),
-        ("PrerequisiteFactory", "FACTORY"),
-    ];
-
-    for &(ini_key, alias) in PREREQ_KEYS {
-        // `0x004770E0`: ReadString into `char[128]`, then `strtok(",")`.
-        if let Some(list) = general.read_list(ini_key, 0x80) {
-            let ids: Vec<String> = list.into_iter().map(str::to_ascii_uppercase).collect();
-            if !ids.is_empty() {
-                groups.insert(alias.to_string(), ids);
-            }
-        }
-    }
-
-    groups
 }
 
 /// Two-pass parse of `[Particles]`: collect `Pending` entries from each

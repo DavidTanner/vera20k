@@ -27,9 +27,6 @@
 //!   (`0x006CBB8E..0x006CBCA0`; no retail type sets `UseChargeDrain=`) and
 //!   its one-time arm (`0x006CBB3B..0x006CBB8A`; VERA grants no one-time
 //!   Super).
-//! - Presentation: the player's message for a refused Lightning Storm
-//!   (`LightningStorm::PrintMessage @ 0x0053AE00`) or Psychic Dominator
-//!   (`PsyDom::PrintMessage @ 0x0053B410`).
 
 #[cfg(test)]
 #[path = "fire_tests.rs"]
@@ -39,7 +36,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;
-use crate::sim::world::Simulation;
+use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
     /// `HouseClass::Fire_SW @ 0x004FAE50` for `owner`'s Super of type
@@ -85,8 +82,10 @@ impl Simulation {
 
 /// `SuperClass::ClickFire @ 0x006CB920` without charge drain: an admitted
 /// Super launches unless a Lightning Storm finds one raging or counting
-/// down (`0x006CB963`) or a Psychic Dominator finds one active
-/// (`0x006CBAD6`), refusals that keep the charge; then readiness and
+/// down (`0x006CBAA7`) or a Psychic Dominator finds one active
+/// (`0x006CBAD6`), refusals that keep the charge and tell the owner's
+/// player ([`SimSoundEvent::LightningStormRefused`],
+/// [`SimSoundEvent::PsychicDominatorRefused`]); then readiness and
 /// recharge as [`super::SuperWeaponInstance::finish_click_fire`]. Returns
 /// whether it called Launch, whatever the case then did: VERA's answer, as
 /// native returns 0 after Launch outside its one-time arm (`0x006CBB5A`).
@@ -107,9 +106,13 @@ fn click_fire(
         return false;
     }
     if sw.kind == SuperWeaponKind::LightningStorm && super::lightning_storm::has_deferment(sim) {
+        sim.sound_events
+            .push(SimSoundEvent::LightningStormRefused { owner });
         return false;
     }
     if sw.kind == SuperWeaponKind::PsychicDominator && super::psychic_dominator::active(sim) {
+        sim.sound_events
+            .push(SimSoundEvent::PsychicDominatorRefused { owner });
         return false;
     }
     launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
