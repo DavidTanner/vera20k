@@ -64,7 +64,6 @@ fn shp_body_tint(
             grid.body_tint_at(cell, extra_light)
         }
         EntityCategory::Structure => grid.building_body_tint_at(cell),
-        _ => grid.techno_tint_at(cell),
     }
 }
 

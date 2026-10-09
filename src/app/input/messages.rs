@@ -24,8 +24,8 @@ const MESSAGE_RGB_SYSTEM: [f32; 3] = [1.0, 1.0, 1.0];
 const MISSION_TEXT_TIMEOUT_MS: u64 = 4_000;
 /// `0xF0` native 16 ms timer buckets.
 const TYPE_SELECT_MESSAGE_TIMEOUT_MS: u64 = 3_840;
-/// The Lightning Storm's `0x96` native 16 ms timer buckets.
-const LIGHTNING_STORM_MESSAGE_TIMEOUT_MS: u64 = 0x96 * 16;
+/// The Supers' lines' `0x96` native 16 ms timer buckets.
+const SUPER_WEAPON_MESSAGE_TIMEOUT_MS: u64 = 0x96 * 16;
 /// Native falls back to runtime color-scheme 3. Rust stores the undoubled
 /// `[Colors]` entry index, so that scheme is entry 1.
 const TYPE_SELECT_FALLBACK_SCHEME_ENTRY: crate::rules::house_colors::HouseColorIndex =
@@ -132,13 +132,13 @@ pub(crate) fn post_selection_navigation_text(state: &mut AppState, text: &str) {
     );
 }
 
-/// Post one of the Lightning Storm's lines (`LightningStorm::Start @
-/// 0x0053A076`, `Process @ 0x0053AB40`): `MessageListClass::AddMessage(0, 0,
-/// text, PlayerPtr's colour scheme or 3, style, 0x96, not silent)` on every
-/// client, so the line takes the player's colours as TypeSelect's does and
-/// plays IncomingMessage. Its print styles (`0x4046`, `0x46`) are not
-/// represented.
-pub(crate) fn post_lightning_storm_message(state: &mut AppState, csf_key: &str) {
+/// Post one of the Supers' lines (`LightningStorm::Start @ 0x0053A076`,
+/// `Process @ 0x0053AB40`, `LightningStorm::PrintMessage @ 0x0053AE00`,
+/// `PsyDom::PrintMessage @ 0x0053B410`): `MessageListClass::AddMessage(0, 0,
+/// text, PlayerPtr's colour scheme or 3, style, 0x96, not silent)`, so the
+/// line takes the player's colours as TypeSelect's does and plays
+/// IncomingMessage. Its print styles (`0x4046`, `0x46`) are not represented.
+pub(crate) fn post_super_weapon_message(state: &mut AppState, csf_key: &str) {
     sync_view(state);
     let now = message_now_ms(state);
     let rgb = type_select_message_rgb(
@@ -157,7 +157,7 @@ pub(crate) fn post_lightning_storm_message(state: &mut AppState, csf_key: &str) 
             prefix: None,
             text: &text,
             rgb,
-            timeout_ms: Some(LIGHTNING_STORM_MESSAGE_TIMEOUT_MS),
+            timeout_ms: Some(SUPER_WEAPON_MESSAGE_TIMEOUT_MS),
             silent: false,
         },
         now,

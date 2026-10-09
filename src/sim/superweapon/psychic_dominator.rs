@@ -47,8 +47,6 @@
 //! - A negative `DominatorCaptureRange=` indexes before the count table
 //!   (`0x0053B186`); VERA walks only the centre cell. No retail data sets
 //!   one.
-//! - The refusal message for the player (`PsyDom::PrintMessage @ 0x0053B410`,
-//!   `Msg:DominatorActive`) is not posted.
 
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;

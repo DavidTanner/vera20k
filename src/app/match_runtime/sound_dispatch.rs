@@ -320,7 +320,7 @@ pub(super) fn dispatch_sim_sound_events(
                 // (`[Rules+0x730]`) through `VocClass::PlayAtPos @
                 // 0x00750920` (`0x0053A044`) with pan `0x2000` and volume
                 // 1.0, centred rather than at the storm cell. Its line
-                // follows through `lightning_storm_messages`; the EVA line
+                // follows through `super_weapon_messages`; the EVA line
                 // was spoken at launch, the whole countdown earlier.
                 let Some(sound_id) = rules.general.storm_sound.clone() else {
                     continue;
@@ -336,7 +336,7 @@ pub(super) fn dispatch_sim_sound_events(
                 // @ 0x00752700` of `EVA_LightningStormCreated` on every
                 // client; as for the launch's EVA, an app with no local
                 // player plays none (the line follows through
-                // `lightning_storm_messages`).
+                // `super_weapon_messages`).
                 if local_owner_name.is_none() {
                     continue;
                 }
@@ -766,6 +766,10 @@ pub(super) fn dispatch_sim_sound_events(
             // The selection clear is `super_selection`'s; the pass plays
             // nothing.
             SimSoundEvent::SuperWeaponStatusChanged { .. } => continue,
+            // The refusal's line follows through `super_weapon_messages`;
+            // its AddMessage plays the only sound.
+            SimSoundEvent::LightningStormRefused { .. }
+            | SimSoundEvent::PsychicDominatorRefused { .. } => continue,
             SimSoundEvent::SuperWeaponDetected { owner, sw_type } => {
                 // `BuildingClass::OnConstructionComplete
                 // 0x004468AD..0x00446995`; the gates are the
@@ -1060,16 +1064,30 @@ pub(crate) fn superweapon_launch_cue(
     }
 }
 
-/// The lines a frame's storm events post on every client, as CSF labels:
+/// The lines a frame's Super events post, as CSF labels. Every client posts
 /// `TXT_LIGHTNING_STORM` when a storm starts (`LightningStorm::Start @
 /// 0x0053A067`) and `TXT_LIGHTNING_STORM_APPROACHING` at the countdown's
-/// warnings (`LightningStorm::Process @ 0x0053AB31`).
-pub(super) fn lightning_storm_messages(events: &[SimSoundEvent]) -> Vec<&'static str> {
+/// warnings (`LightningStorm::Process @ 0x0053AB31`). Only the client whose
+/// player owns a refused Super posts ClickFire's line for it:
+/// `Msg:LightningStormActive` (`LightningStorm::PrintMessage @ 0x0053AE00`)
+/// or `Msg:DominatorActive` (`PsyDom::PrintMessage @ 0x0053B410`).
+pub(super) fn super_weapon_messages(
+    events: &[SimSoundEvent],
+    interner: &crate::sim::intern::StringInterner,
+    local_owner_name: Option<&str>,
+) -> Vec<&'static str> {
     events
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|event| match *event {
             SimSoundEvent::LightningStormBegan => Some("TXT_LIGHTNING_STORM"),
             SimSoundEvent::LightningStormApproaching => Some("TXT_LIGHTNING_STORM_APPROACHING"),
+            SimSoundEvent::LightningStormRefused { owner } => {
+                owner_is_local(interner, owner, local_owner_name)
+                    .then_some("Msg:LightningStormActive")
+            }
+            SimSoundEvent::PsychicDominatorRefused { owner } => {
+                owner_is_local(interner, owner, local_owner_name).then_some("Msg:DominatorActive")
+            }
             _ => None,
         })
         .collect()
@@ -1970,6 +1988,40 @@ mod tests {
         assert_eq!(empty.sound_id, None);
     }
 
+    /// ClickFire's refusal lines (`LightningStorm::PrintMessage @
+    /// 0x0053AE00`, `PsyDom::PrintMessage @ 0x0053B410`) post only on the
+    /// client whose player owns the refused Super (Fire_SW passes `this ==
+    /// PlayerPtr`, `0x004FAE8E`); the dispatch plays nothing for them, as
+    /// the line's AddMessage plays IncomingMessage.
+    #[test]
+    fn a_refused_super_tells_only_its_own_player() {
+        let mut sim = Simulation::new();
+        let local = sim.interner.intern("Local");
+        let other = sim.interner.intern("Other");
+        let events = [
+            SimSoundEvent::LightningStormRefused { owner: local },
+            SimSoundEvent::PsychicDominatorRefused { owner: other },
+            SimSoundEvent::PsychicDominatorRefused { owner: local },
+            SimSoundEvent::LightningStormRefused { owner: other },
+        ];
+        assert_eq!(
+            super_weapon_messages(&events, &sim.interner, Some("Local")),
+            ["Msg:LightningStormActive", "Msg:DominatorActive"]
+        );
+        assert!(super_weapon_messages(&events, &sim.interner, None).is_empty());
+        let mut output = SoundEventQueue::new();
+        dispatch_sim_sound_events(
+            events.clone(),
+            &sim,
+            &dispatch_rules(),
+            Some("Local"),
+            None,
+            &mut |_| panic!("a refusal is not a radar event"),
+            &mut output,
+        );
+        assert!(output.drain().is_empty());
+    }
+
     /// `StormSound` belongs to the storm *beginning*, not to the launch.
     /// `SuperClass::Launch` case 2 hands `[Rules+0x1794]`
     /// (`LightningDeferment`, stock 250) to `LightningStorm::Start @
@@ -1999,7 +2051,7 @@ mod tests {
             SimSoundEvent::LightningStormApproaching,
         ];
         assert_eq!(
-            lightning_storm_messages(&events),
+            super_weapon_messages(&events, &sim.interner, None),
             ["TXT_LIGHTNING_STORM", "TXT_LIGHTNING_STORM_APPROACHING"]
         );
         let mut output = SoundEventQueue::new();
