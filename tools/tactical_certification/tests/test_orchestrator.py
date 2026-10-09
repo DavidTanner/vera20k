@@ -59,7 +59,7 @@ def _fake_environment(directory: Path) -> EnvironmentInputs:
         config=_small_snapshot(directory, "config.toml", b"[paths]\n"),
         executable=_small_snapshot(directory, "vera20k.exe", b"exe"),
         archive=_small_snapshot(directory, "archive.mix", b"archive"),
-        font=_small_snapshot(directory, "verdana.ttf", b"font"),
+        font_archive=_small_snapshot(directory, "ra2.mix", b"font archive"),
         retail_root=retail.absolute(),
     )
 
@@ -330,12 +330,13 @@ def _render_fixture(profile) -> dict[str, object]:
         "bound_structures_ready": True,
         "cursor": {"x": float(cursor["x"]), "y": float(cursor["y"])},
         "cursor_id": profile.capture["cursor_id"],
-        "egui_ready": True,
+        "bitmap_font_ready": True,
         "expected_theme": "Soviet",
         "no_modal_or_debug": True,
         "panel_contains_aperture": True,
         "power_ready": True,
         "production_render": {
+            "sidebar_text_instances": 5,
             "instance_counts": {
                 "minimap": 1,
                 "radar_animation": 1,
@@ -450,7 +451,7 @@ def _stable_fixture(
             "config": environment.config.public_identity(),
             "executable": environment.executable.public_identity(),
             "archive": environment.archive.public_identity(),
-            "font": environment.font.public_identity(),
+            "font_archive": environment.font_archive.public_identity(),
         },
         "map_source": {
             "archive_name": profile.fixture["archive_name"],
@@ -494,8 +495,20 @@ def _stable_fixture(
             "height": profile.capture["output_height"],
             "window_scale_factor": 1.0,
             "app_ui_scale": profile.capture["app_ui_scale"],
-            "egui_pixels_per_point": 1.0,
-            "selected_font": environment.font.public_identity(),
+            "bitmap_font": {
+                "source": {
+                    key: profile.pixel_inputs["bitmap_font"][key] for key in (
+                        "logical_name", "source_archive", "entry_id", "payload_byte_length", "payload_sha256"
+                    )
+                },
+                "atlas_width": 4096,
+                "atlas_height": 2412,
+                "glyph_count": 34000,
+                "cell_height": 17,
+                "bitmap_rows": 16,
+                "missing_glyph_present": True,
+                "darken_texture_present": True,
+            },
         },
         "contract": {
             "schema_version": "vera20k.tactical-capture-contract.v2",
@@ -569,12 +582,12 @@ def _manifest(
     height = profile.capture["output_height"]
     capture_tick = _fixture_ledger(profile)["capture"]
     manifest: dict[str, object] = {
-        "schema_version": "vera20k.tactical-capture.v2",
+        "schema_version": "vera20k.tactical-capture.v3",
         "status": "COMPLETE",
         "checkpoint": "radar-online-v2",
         "profile": {
             **profile.snapshot.public_identity(),
-            "schema_version": "vera20k.tactical-profile.v2",
+            "schema_version": "vera20k.tactical-profile.v3",
             "profile_id": profile.profile_id,
         },
         "contract": {
@@ -666,13 +679,13 @@ def _set_nested(
 
 class OrchestratorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.profile = load_profile(PROFILES / "soviet-radar-online-v2.json")
+        self.profile = load_profile(PROFILES / "soviet-radar-online-v3.json")
         self.contract = load_contract(repository_contract_path())
 
     def test_current_theme_geometry_and_observed_online_time_classifier(self) -> None:
         from tools.tactical_certification.evidence_validation import _require_render, _require_observed_ledger
         for side in ("soviet", "yuri"):
-            profile = load_profile(PROFILES / f"{side}-radar-online-v2.json")
+            profile = load_profile(PROFILES / f"{side}-radar-online-v3.json")
             render = _render_fixture(profile)
             for count in (1, 2, 3, 4):
                 render["production_render"]["instance_counts"]["viewport_rect"] = count
@@ -1395,6 +1408,40 @@ class OrchestratorTests(unittest.TestCase):
                     )
             self.assertGreaterEqual(inventory_calls, 2)
 
+    def test_bitmap_font_evidence_rejects_fallback_missing_text_and_legacy_egui_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            environment = _fake_environment(root)
+            font_path = ("evidence", "stable", "graphics", "bitmap_font")
+            mutations = (
+                ("source_hash", (*font_path, "source", "payload_sha256"), "0" * 64),
+                ("source_archive", (*font_path, "source", "source_archive"), "loose:GAME.FNT"),
+                ("source_entry", (*font_path, "source", "entry_id"), 0),
+                ("fallback", (*font_path, "darken_texture_present"), False),
+                ("no_glyphs", (*font_path, "glyph_count"), 0),
+                ("no_atlas", (*font_path, "atlas_width"), 0),
+                ("no_text", ("evidence", "stable", "render", "production_render", "sidebar_text_instances"), 0),
+                ("legacy_egui", ("evidence", "stable", "graphics", "egui_pixels_per_point"), 1.0),
+                ("legacy_schema", ("schema_version",), "vera20k.tactical-capture.v2"),
+            )
+            for name, path, value in mutations:
+                capture = root / name
+
+                def mutate(manifest):
+                    target = manifest
+                    for key in path[:-1]:
+                        target = target[key]
+                    target[path[-1]] = value
+
+                _write_capture(
+                    capture, self.profile, self.contract, environment,
+                    _nonuniform_frame(self.profile), mutate=mutate,
+                )
+                with self.subTest(mutation=name), self.assertRaises(ValidationError):
+                    validate_capture_bundle(
+                        capture, self.profile, self.contract, environment
+                    )
+
     def test_real_preflight_hashes_archive_font_and_rejects_loose_shadow(self) -> None:
         if os.environ.get("VERA20K_TEST_RETAIL") != "1":
             self.skipTest("set VERA20K_TEST_RETAIL=1 to check the sealed retail environment")
@@ -1417,8 +1464,8 @@ class OrchestratorTests(unittest.TestCase):
             self.profile.fixture["archive_sha256"],
         )
         self.assertEqual(
-            environment.font.sha256,
-            self.profile.pixel_inputs["font"]["sha256"],
+            environment.font_archive.sha256,
+            self.profile.pixel_inputs["bitmap_font"]["archive_sha256"],
         )
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -1426,6 +1473,10 @@ class OrchestratorTests(unittest.TestCase):
             (working / "config.toml").write_bytes(config.read_bytes())
             (working / "Fight.MAP").write_bytes(b"shadow")
             with self.assertRaisesRegex(ValidationError, "loose map shadow"):
+                validate_environment_inputs(executable, working, self.profile)
+            (working / "Fight.MAP").unlink()
+            (working / "GAME.FNT").write_bytes(b"shadow")
+            with self.assertRaisesRegex(ValidationError, "loose font shadow"):
                 validate_environment_inputs(executable, working, self.profile)
 
     def test_capture_launch_uses_no_shell_devnull_regular_files_and_720_seconds(self) -> None:

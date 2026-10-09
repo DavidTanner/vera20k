@@ -1,7 +1,7 @@
 //! Standalone Bink 1 video player for RA2/YR cutscenes.
 //!
-//! Usage:
-//!   cargo run --bin bik-player <path-or-asset-name>
+//! Build with `python -m tools.cargo_run -- build --features tools-ui --bin bik-player`.
+//! See `tools/README.md` for resolving and launching it with `<path-or-asset-name>`.
 //!
 //! If the argument is a filesystem path it's loaded directly; otherwise it's
 //! looked up via AssetManager (MOVIES*.MIX + movmd03.mix).

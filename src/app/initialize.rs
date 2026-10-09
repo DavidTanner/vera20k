@@ -2,6 +2,9 @@
 
 use std::path::Path;
 
+#[cfg(feature = "dev-ui")]
+use crate::render::egui_integration::EguiIntegration;
+
 use anyhow::Context;
 
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
@@ -10,10 +13,10 @@ use crate::app::persistence::options_profile::{RetailOptionsLoad, RetailOptionsP
 use super::presentation::render;
 use super::{
     ActiveEventLoop, App, AppState, Arc, AssetManager, BTreeMap, BasicSection, BatchRenderer,
-    BitFont, EguiIntegration, GameConfig, GameScreen, GpuContext, HashMap, HashSet, HouseRoster,
-    Instant, ModifiersState, MusicPlayer, PhysicalSize, PlatformState,
-    RandomMapGenerationRetention, Result, SelectionState, SfxPlayer, SidebarChromeLayoutSpec,
-    SidebarTab, StartupAudioDisposition, Window, WindowAttributes, frontend::startup_splash,
+    BitFont, GameConfig, GameScreen, GpuContext, HashMap, HashSet, HouseRoster, Instant,
+    ModifiersState, MusicPlayer, PhysicalSize, PlatformState, RandomMapGenerationRetention, Result,
+    SelectionState, SfxPlayer, SidebarChromeLayoutSpec, SidebarTab, StartupAudioDisposition,
+    Window, WindowAttributes, frontend::startup_splash,
 };
 use crate::map::scenario_sources;
 
@@ -108,7 +111,7 @@ impl App {
         crate::util::version::retail_internal_version().to_owned()
     }
 
-    /// Create window, GPU context, and egui integration. Does NOT load a map —
+    /// Create the window and GPU presentation owners. Does NOT load a map —
     /// starts in MainMenu state. Map loading is deferred to when the user
     /// clicks "Quick Play".
     pub(super) fn initialize(
@@ -158,8 +161,10 @@ impl App {
             icon.set_dock_icon();
         }
         let gpu: GpuContext = GpuContext::new(window.clone())?;
-        let egui: EguiIntegration = EguiIntegration::new(&gpu, &window);
+        #[cfg(feature = "dev-ui")]
+        let debug_ui = EguiIntegration::new(&gpu, &window);
         let batch_renderer: BatchRenderer = BatchRenderer::new(&gpu);
+        let status_screen_fill = batch_renderer.create_texture(&gpu, &[255; 4], 1, 1);
         let mut terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
             &gpu.device,
             &gpu.queue,
@@ -517,8 +522,8 @@ impl App {
                     barrel_image_pitches: Default::default(),
                     building_zshape: None,
                     power_bar_anim: crate::ui::sidebar::PowerBarAnimState::new(),
-                    sidebar_gadget_state:
-                        crate::ui::sidebar::gadget_flash::SidebarGadgetState::new(),
+                    sidebar_gadget_state: crate::ui::sidebar::gadget_flash::SidebarGadgetState::new(
+                    ),
                     in_game_gadgets: crate::app::input::gadget_input::InGameGadgets::new(),
                     sidebar_projection: Default::default(),
                     active_sidebar_tab: SidebarTab::default_active_tab(),
@@ -541,8 +546,8 @@ impl App {
                     saved_game_browser: None,
                     in_game_options: startup_in_game_options,
                     in_game_options_anchor: None,
+                    #[cfg(feature = "dev-ui")]
                     show_hotkey_help: false,
-                    show_save_load_panel: false,
                     combat_lights: Default::default(),
                     line_trails: Default::default(),
                     hidden_super_anims: Default::default(),
@@ -674,7 +679,9 @@ impl App {
                 depth_view,
                 shell_surface_presenter,
                 upscale_pass,
-                egui,
+                #[cfg(feature = "dev-ui")]
+                debug_ui,
+                status_screen_fill,
                 bit_font,
                 vxl_slope_transition_cache: std::cell::RefCell::new(Default::default()),
                 vxl_pose_frame_cache: std::cell::RefCell::new(Default::default()),

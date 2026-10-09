@@ -5,8 +5,8 @@
 
 use super::loading::transitions;
 use super::{
-    ActiveEventLoop, App, AppState, GameScreen, Instant, Result, render, sim_tick,
-    frontend::startup_splash, main_menu,
+    ActiveEventLoop, App, AppState, GameScreen, Instant, Result, frontend::startup_splash, render,
+    sim_tick,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,20 +51,27 @@ impl App {
         // expire against wall time while the world is stopped. Park the clock
         // and skip the expiry pass; `messages::update` closes the span and
         // resumes ownership on the first foreground frame.
-        let message_ms = if state.frontend.screen == GameScreen::InGame && !state.platform.window_active {
-            let wall = crate::app::input::tooltips::now_ms(state);
-            state.match_state.match_presentation.message_clock.set_paused(true, wall);
-            None
-        } else {
-            crate::app::input::messages::update(state)
-        };
+        let message_ms =
+            if state.frontend.screen == GameScreen::InGame && !state.platform.window_active {
+                let wall = crate::app::input::tooltips::now_ms(state);
+                state
+                    .match_state
+                    .match_presentation
+                    .message_clock
+                    .set_paused(true, wall);
+                None
+            } else {
+                crate::app::input::messages::update(state)
+            };
         if state
-            .frontend.startup_splash
+            .frontend
+            .startup_splash
             .as_ref()
             .is_some_and(|splash| splash.is_active(Instant::now()))
         {
             let splash = state
-                .frontend.startup_splash
+                .frontend
+                .startup_splash
                 .as_ref()
                 .expect("active startup splash exists");
             startup_splash::render_and_present(
@@ -75,7 +82,8 @@ impl App {
                 splash,
             )?;
             state
-                .frontend.startup_splash
+                .frontend
+                .startup_splash
                 .as_mut()
                 .expect("active startup splash exists")
                 .mark_presented(Instant::now());
@@ -86,9 +94,13 @@ impl App {
         // HouseClass keeps simulating for SavourDelay, then blocks on the
         // current outcome Vox before it raises the victory/defeat exit global.
         // Drive that gate before deciding whether another sim frame is legal.
-        let scenario_now_ms = crate::app::match_runtime::sim_tick::monotonic_frame_pacer_ms(state, Instant::now());
+        let scenario_now_ms =
+            crate::app::match_runtime::sim_tick::monotonic_frame_pacer_ms(state, Instant::now());
         Self::consume_executed_abort_exit(state, scenario_now_ms);
-        crate::app::match_runtime::sim_tick::drive_local_player_outcome_voice_wait(state, scenario_now_ms);
+        crate::app::match_runtime::sim_tick::drive_local_player_outcome_voice_wait(
+            state,
+            scenario_now_ms,
+        );
 
         // The native victory/defeat handlers synchronously finish their audio
         // teardown before entering the score dialog. Drive the equivalent
@@ -100,15 +112,19 @@ impl App {
         if state.frontend.quit_cascade.is_some() {
             let now = Instant::now();
             let voices_active = state
-                .audio.sfx_player
+                .audio
+                .sfx_player
                 .as_ref()
                 .is_some_and(|sfx| sfx.voices_active());
             let tick = state
-                .frontend.quit_cascade
+                .frontend
+                .quit_cascade
                 .as_mut()
                 .expect("cascade present")
                 .tick(now, voices_active);
-            if let (Some(vol), Some(player)) = (tick.music_volume, state.audio.music_player.as_mut()) {
+            if let (Some(vol), Some(player)) =
+                (tick.music_volume, state.audio.music_player.as_mut())
+            {
                 player.set_volume(vol);
             }
             if tick.stop_music {
@@ -151,7 +167,9 @@ impl App {
             // The SavourDelay expiry is decided in the late house rung of this
             // exact frame. Anchor its 0x78-bucket wall wait to the same observed
             // wall time instead of delaying it to the next render pass.
-            crate::app::match_runtime::sim_tick::drive_local_player_outcome_voice_wait(state, now_ms);
+            crate::app::match_runtime::sim_tick::drive_local_player_outcome_voice_wait(
+                state, now_ms,
+            );
             Self::drive_scenario_exit(state, now_ms);
         }
 
@@ -188,14 +206,16 @@ impl App {
         }
 
         let output: wgpu::SurfaceTexture = state
-            .renderer.gpu
+            .renderer
+            .gpu
             .surface
             .get_current_texture()
             .map_err(|e| anyhow::anyhow!("Surface texture: {}", e))?;
         let view: wgpu::TextureView = output.texture.create_view(&Default::default());
         let mut encoder: wgpu::CommandEncoder =
             state
-                .renderer.gpu
+                .renderer
+                .gpu
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Frame"),
@@ -211,7 +231,8 @@ impl App {
             Some(session) => session.should_capture_current_frame(state)?,
             None => false,
         };
-        let mut game_render_output: Option<crate::app::presentation::render::GameRenderOutput> = None;
+        let mut game_render_output: Option<crate::app::presentation::render::GameRenderOutput> =
+            None;
 
         if state.match_state.match_presentation.in_game_menu.is_open() {
             Self::ensure_skirmish_shell_chrome(state);
@@ -219,7 +240,7 @@ impl App {
         Self::update_saved_game_browser(state, false);
         match &state.frontend.screen {
             GameScreen::MainMenu if state.frontend.main_menu_shell_error.is_some() => {
-                Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                Self::render_shell_error(state, &mut encoder, &view)?;
             }
             _ if state.frontend.keyboard_dialog.is_some() => {
                 crate::app::frontend::skirmish_shell_render::render_keyboard_shell(state, &mut encoder, &output.texture)?;
@@ -277,7 +298,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::MovieList;
                     } else {
-                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view)?;
                     }
                 } else if Self::campaign_active(state) {
                     if crate::app::frontend::campaign_shell_render::render_campaign_page(
@@ -287,7 +308,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::Campaign;
                     } else {
-                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view)?;
                     }
                 } else if Self::wol_welcome_active(state) {
                     if crate::app::frontend::wol_welcome_render::render_wol_welcome_page(
@@ -297,7 +318,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::WolWelcome;
                     } else {
-                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view)?;
                     }
                 } else if Self::load_saved_game_active(state) {
                     if crate::app::frontend::load_saved_game_render::render_load_saved_game_page(
@@ -307,7 +328,7 @@ impl App {
                     )? {
                         presented_shell = PresentedShell::LoadSavedGame;
                     } else {
-                        Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                        Self::render_shell_error(state, &mut encoder, &view)?;
                     }
                 } else if Self::native_launcher_options_active(state) {
                     crate::app::frontend::skirmish_shell_render::render_launcher_options(
@@ -338,23 +359,9 @@ impl App {
                                     PresentedShell::MoviesAndCredits
                                 }
                             };
-                            state.renderer.egui.begin_frame(&state.platform.window);
-                            Self::draw_main_menu_dialogs(state);
-                            state.renderer.egui.end_frame_and_render(
-                                &state.renderer.gpu,
-                                &mut encoder,
-                                &view,
-                                &state.platform.window,
-                                state.use_software_cursor(),
-                            );
                         }
                         crate::app::frontend::menu_page_render::MenuPageRenderResult::Fallback => {
-                            Self::render_shell_error(
-                                state,
-                                &mut encoder,
-                                &view,
-                                event_loop,
-                            )?;
+                            Self::render_shell_error(state, &mut encoder, &view)?;
                         }
                     }
                 } else if state.frontend.main_menu_shell_error.is_none() {
@@ -368,27 +375,13 @@ impl App {
                         } => {
                             pending_main_menu_title_receipt = title_receipt;
                             presented_shell = PresentedShell::MainMenu;
-                            state.renderer.egui.begin_frame(&state.platform.window);
-                            Self::draw_main_menu_dialogs(state);
-                            state.renderer.egui.end_frame_and_render(
-                                &state.renderer.gpu,
-                                &mut encoder,
-                                &view,
-                                &state.platform.window,
-                                state.use_software_cursor(),
-                            );
                         }
                         crate::app::frontend::main_menu_shell_render::MainMenuShellRenderResult::Fallback => {
-                            Self::render_shell_error(
-                                state,
-                                &mut encoder,
-                                &view,
-                                event_loop,
-                            )?;
+                            Self::render_shell_error(state, &mut encoder, &view)?;
                         }
                     }
                 } else {
-                    Self::render_shell_error(state, &mut encoder, &view, event_loop)?;
+                    Self::render_shell_error(state, &mut encoder, &view)?;
                 }
             }
             GameScreen::Loading => {
@@ -402,15 +395,10 @@ impl App {
                         let map_name_display = crate::app::loading::pump::loading_map_name(state)
                             .unwrap_or("auto")
                             .to_string();
-                        transitions::clear_screen(&mut encoder, &view);
-                        state.renderer.egui.begin_frame(&state.platform.window);
-                        main_menu::draw_loading_screen(&state.renderer.egui.ctx, &map_name_display);
-                        state.renderer.egui.end_frame_and_render(
-                            &state.renderer.gpu,
-                            &mut encoder,
-                            &view,
-                            &state.platform.window,
-                            state.use_software_cursor(),
+                        crate::app::frontend::status_screen::render(
+                            state, &mut encoder, &view,
+                            "Loading...", &format!("Map: {map_name_display}"),
+                            crate::app::frontend::status_screen::Buttons::NONE,
                         );
                     }
                     crate::app::loading::pump::LoadingRenderResult::Failed => {
@@ -437,6 +425,20 @@ impl App {
                         state, &mut encoder, &output.texture,
                     )?;
                 }
+            }
+            GameScreen::InGame if state.match_state.match_presentation.in_game_menu.is_open() => {
+                let abort = state.match_state.match_presentation.in_game_menu
+                    == crate::ui::pause_menu::InGameMenuState::AbortConfirm;
+                crate::app::frontend::status_screen::render(
+                    state, &mut encoder, &view,
+                    if abort { "Leave this mission?" } else { "Menu resources unavailable" },
+                    "Required retail dialog artwork could not be loaded. Check your game installation. Full details are in logs/ra2.log.",
+                    if abort {
+                        crate::app::frontend::status_screen::Buttons::ABORT_CONFIRM
+                    } else {
+                        crate::app::frontend::status_screen::Buttons::MISSING_MENU
+                    },
+                );
             }
             GameScreen::InGame => {
                 let times = render::GameRenderTimes {
@@ -469,54 +471,8 @@ impl App {
                         .copy_to(&mut encoder, &output.texture);
                     render_output
                 };
-                // All sidebar text (credits, Ready labels, queue counts) is now
-                // GAME.FNT sprite geometry built in presentation::render; egui in-game
-                // carries only the dev/debug overlays.
-                state.renderer.egui.begin_frame(&state.platform.window);
-                // Debug panels use a light/.NET theme — push light visuals
-                // before rendering, then restore the original after.
-                let any_debug_panel = state.diag.debug_show_pathgrid
-                    || state.diag.debug_unit_inspector
-                    || state.match_state.match_presentation.show_hotkey_help;
-                let prev_visuals = if any_debug_panel {
-                    Some(crate::app::diagnostics::debug_panel::push_debug_light_visuals(
-                        &state.renderer.egui.ctx,
-                    ))
-                } else {
-                    None
-                };
-                if state.diag.debug_show_pathgrid {
-                    crate::app::diagnostics::debug_panel::draw_debug_panel(&state.renderer.egui.ctx, state);
-                }
-                crate::app::diagnostics::debug_panel::draw_event_history_panel(&state.renderer.egui.ctx, state);
-                if state.match_state.match_presentation.show_hotkey_help {
-                    crate::app::diagnostics::debug_panel::draw_hotkey_help(&state.renderer.egui.ctx);
-                }
-                if let Some(prev) = prev_visuals {
-                    crate::app::diagnostics::debug_panel::pop_debug_light_visuals(&state.renderer.egui.ctx, prev);
-                }
-                if state.match_state.match_presentation.show_save_load_panel {
-                    Self::handle_save_load_panel(state);
-                }
-                // The in-scenario modal cards. Options is the native `0xBBB`
-                // overlay drawn above; the menu and the abort confirmation are
-                // drawn here and their routes committed immediately.
-                Self::handle_in_game_menu(state);
-                if state.match_state.paused() {
-                    // The dev overlay rides along with any in-scenario modal —
-                    // push its own light visuals so its chrome matches the
-                    // debug panels.
-                    let prev = crate::app::diagnostics::debug_panel::push_debug_light_visuals(&state.renderer.egui.ctx);
-                    Self::handle_dev_overlay(state);
-                    crate::app::diagnostics::debug_panel::pop_debug_light_visuals(&state.renderer.egui.ctx, prev);
-                }
-                state.renderer.egui.end_frame_and_render(
-                    &state.renderer.gpu,
-                    &mut encoder,
-                    &view,
-                    &state.platform.window,
-                    state.use_software_cursor(),
-                );
+                #[cfg(feature = "dev-ui")]
+                Self::render_diagnostic_ui(state, &mut encoder, &view);
                 game_render_output = Some(game_output);
             }
             GameScreen::MissionResult { title, detail } => {
@@ -543,23 +499,9 @@ impl App {
                 if score_rendered {
                     presented_shell = PresentedShell::Score;
                 } else {
-                    transitions::clear_screen(&mut encoder, &view);
-                    state.renderer.egui.begin_frame(&state.platform.window);
-                    if crate::ui::mission_status::draw_mission_result_screen(
-                        &state.renderer.egui.ctx,
-                        &title,
-                        &detail,
-                    ) {
-                        // Persist the deterministic diagnostic log before the sim
-                        // is torn down, symmetric with return_to_main_menu.
-                        Self::leave_mission_result_screen(state);
-                    }
-                    state.renderer.egui.end_frame_and_render(
-                        &state.renderer.gpu,
-                        &mut encoder,
-                        &view,
-                        &state.platform.window,
-                        state.use_software_cursor(),
+                    crate::app::frontend::status_screen::render(
+                        state, &mut encoder, &view, &title, &detail,
+                        crate::app::frontend::status_screen::Buttons::BACK_TO_MENU,
                     );
                 }
             }
@@ -609,7 +551,8 @@ impl App {
         let retail_screenshot_current_frame =
             std::mem::take(&mut state.match_state.input.retail_screenshot_requested);
         let pending_retail_screenshot = state
-            .renderer.retail_screenshot_frame_cache
+            .renderer
+            .retail_screenshot_frame_cache
             .capture_previous_if_requested(
                 retail_screenshot_current_frame,
                 &state.renderer.gpu.device,
@@ -634,9 +577,20 @@ impl App {
         } else {
             None
         };
-        let submission = state.renderer.gpu.queue.submit(std::iter::once(encoder.finish()));
+        let submission = state
+            .renderer
+            .gpu
+            .queue
+            .submit(std::iter::once(encoder.finish()));
         output.present();
-        state.renderer.retail_screenshot_frame_cache.commit_presented();
+        // wgpu 27 requires released surface references before reconfiguration;
+        // the diagnostic action and loading commit below may resize the window.
+        // https://docs.rs/wgpu/27.0.1/wgpu/struct.Surface.html#method.configure
+        drop(view);
+        state
+            .renderer
+            .retail_screenshot_frame_cache
+            .commit_presented();
         // A family renderer that drew a timer-driven 0x71C frame this pass
         // advances it now that the frame reached the screen.
         state.frontend.shell_monitor.commit_presented();
@@ -666,7 +620,8 @@ impl App {
         if let Some(receipt) = pending_main_menu_title_receipt.take() {
             anyhow::ensure!(
                 state
-                    .frontend.main_menu_shell_state
+                    .frontend
+                    .main_menu_shell_state
                     .title_reveal
                     .record_presented(receipt),
                 "main-menu title receipt was stale at present commit"
@@ -674,7 +629,10 @@ impl App {
         }
         if let Some(dialog) = state.frontend.keyboard_dialog.as_mut() {
             if let Some(receipt) = dialog.title_receipt.take() {
-                anyhow::ensure!(dialog.title.record_presented(receipt), "keyboard title receipt was stale at present commit");
+                anyhow::ensure!(
+                    dialog.title.record_presented(receipt),
+                    "keyboard title receipt was stale at present commit"
+                );
             }
         }
         if let Some(session) = shell_capture.as_deref_mut() {
@@ -719,6 +677,8 @@ impl App {
             }
         }
 
+        #[cfg(feature = "dev-ui")]
+        Self::commit_diagnostic_ui_action(state);
         crate::app::loading::pump::after_loading_frame_presented(state);
 
         Ok(())

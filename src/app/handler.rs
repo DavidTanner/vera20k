@@ -101,7 +101,8 @@ impl App {
         enter_shell_window_mode_with_operations(&mut operations);
         log::info!(
             "Frontend surface {}x{}",
-            state.renderer.gpu.config.width, state.renderer.gpu.config.height,
+            state.renderer.gpu.config.width,
+            state.renderer.gpu.config.height,
         );
     }
 
@@ -125,8 +126,10 @@ impl App {
         apply_window_mode(&mut operations, target, true);
         log::info!(
             "Match surface {}x{} (requested {}x{})",
-            state.renderer.gpu.config.width, state.renderer.gpu.config.height,
-            target.width, target.height,
+            state.renderer.gpu.config.width,
+            state.renderer.gpu.config.height,
+            target.width,
+            target.height,
         );
     }
 }
@@ -420,7 +423,8 @@ impl ApplicationHandler for App {
         // owns the display. Keep close/resize/redraw operational, but discard
         // player input until the post-present deadline has elapsed.
         if state
-            .frontend.startup_splash
+            .frontend
+            .startup_splash
             .as_ref()
             .is_some_and(|splash| splash.is_active(Instant::now()))
             && matches!(
@@ -445,44 +449,42 @@ impl ApplicationHandler for App {
             return;
         }
 
-        // Always let egui see the event first for input handling.
-        let egui_response: egui_winit::EventResponse =
-            state.renderer.egui.on_window_event(&state.platform.window, &event);
-        if state.frontend.screen == GameScreen::MainMenu
-            && state.frontend.main_menu_shell_error.is_some()
+        // Key edges own the modifier views on every screen, including utility
+        // cards that consume command input. A release there must not stay held
+        // after returning to the shell or entering another match.
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && let PhysicalKey::Code(code) = event.physical_key
         {
-            match &event {
-                WindowEvent::KeyboardInput { event, .. } => {
-                    if event.state.is_pressed()
-                        && event.physical_key == PhysicalKey::Code(KeyCode::Escape)
-                    {
-                        event_loop.exit();
-                    }
-                    state.platform.window.request_redraw();
-                    return;
-                }
-                WindowEvent::MouseInput { .. }
-                | WindowEvent::MouseWheel { .. }
-                | WindowEvent::CursorMoved { .. } => {
-                    state.platform.window.request_redraw();
-                    return;
-                }
-                _ => {}
-            }
+            let paused = state.match_state.paused();
+            crate::app::input::hotkeys::record_modifier_key(
+                &mut state.platform.held_modifier_keys,
+                &mut state.platform.live_modifiers,
+                &mut state.match_state.input.hotkey_modifiers,
+                code,
+                event.state.is_pressed(),
+                paused,
+            );
         }
-        if crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(state) {
-            state.renderer.egui.discard_pending_input(&state.platform.window);
+        if crate::app::frontend::status_screen::handle_event(state, &event, event_loop) {
+            return;
         }
-
-        // In InGame mode, egui only renders non-interactive overlays
-        // (mission banner). The custom sidebar handles its own hit-testing.
-        // Ignore egui's `consumed` flag in-game to avoid stale UI state
-        // from the Loading screen blocking mouse/keyboard input.
-        // Exception: when paused or save/load panel is open, egui renders
-        // interactive content.
-        let egui_consumed: bool = egui_response.consumed
-            && !crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(state)
-            && (state.frontend.screen != GameScreen::InGame || state.match_state.paused() || state.match_state.match_presentation.show_save_load_panel);
+        #[cfg(feature = "dev-ui")]
+        let dev_ui_consumed = if state.diagnostic_gui_visible() {
+            state
+                .renderer
+                .debug_ui
+                .on_window_event(&state.platform.window, &event)
+                .consumed
+                && state.match_state.paused()
+        } else {
+            state
+                .renderer
+                .debug_ui
+                .discard_pending_input(&state.platform.window);
+            false
+        };
+        #[cfg(not(feature = "dev-ui"))]
+        let dev_ui_consumed = false;
 
         match event {
             WindowEvent::CloseRequested => {
@@ -526,22 +528,43 @@ impl ApplicationHandler for App {
                     state.match_state.input.tactical_mouse = Default::default();
                     state.match_state.input.selection_state.cancel_drag();
                     state.match_state.input.minimap_dragging = false;
-                    state.match_state.match_presentation.in_game_options.dragging_slider = None;
-                    state.match_state.match_presentation.in_game_options.buttons = Default::default();
-                    state.match_state.match_presentation.pause_menu_interaction = Default::default();
-        state.match_state.match_presentation.abort_buttons = Default::default();
-        if let Some(dialog)=state.match_state.match_presentation.sound_dialog.as_mut() {dialog.reset_interaction();}
-                    if let Some(browser) = state.match_state.match_presentation.saved_game_browser.as_mut() {
+                    state
+                        .match_state
+                        .match_presentation
+                        .in_game_options
+                        .dragging_slider = None;
+                    state.match_state.match_presentation.in_game_options.buttons =
+                        Default::default();
+                    state.match_state.match_presentation.pause_menu_interaction =
+                        Default::default();
+                    state.match_state.match_presentation.abort_buttons = Default::default();
+                    if let Some(dialog) = state.match_state.match_presentation.sound_dialog.as_mut()
+                    {
+                        dialog.reset_interaction();
+                    }
+                    if let Some(browser) = state
+                        .match_state
+                        .match_presentation
+                        .saved_game_browser
+                        .as_mut()
+                    {
                         browser.pressed_control = None;
                         browser.scroll_repeat_at = None;
                         browser.last_list_press = None;
                     }
-                    if let Some(browser) = state.frontend.skirmish_shell_state.saved_seed_browser.as_mut() {
+                    if let Some(browser) = state
+                        .frontend
+                        .skirmish_shell_state
+                        .saved_seed_browser
+                        .as_mut()
+                    {
                         browser.pressed_control = None;
                         browser.scroll_repeat_at = None;
                         browser.last_list_press = None;
                     }
-                    if let Some(dialog) = state.frontend.keyboard_dialog.as_mut() { dialog.reset_interaction(); }
+                    if let Some(dialog) = state.frontend.keyboard_dialog.as_mut() {
+                        dialog.reset_interaction();
+                    }
                     if let Some(dialog) = state.frontend.options_dialog.as_mut() {
                         dialog.shell_cancel_pointer_gesture();
                     }
@@ -567,36 +590,28 @@ impl ApplicationHandler for App {
             WindowEvent::ModifiersChanged(_) => {
                 // Deliberately not a modifier source: winit re-derives this
                 // event from each mouse event's flags, which drop a held
-                // Control on macOS (see `HeldModifierKeys`). The key edges in
-                // the arm below own the modifier state.
+                // Control on macOS (see `HeldModifierKeys`). The key edges
+                // recorded before screen-specific dispatch own this state.
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                // Modifier keys update the held set before any screen-specific
-                // early return below: every screen reads the same two views.
-                // Native's paused input capture admits Escape only and does not
-                // mutate the recorded keyboard state for other input.
-                if let PhysicalKey::Code(code) = event.physical_key {
-                    let paused = state.match_state.paused();
-                    crate::app::input::hotkeys::record_modifier_key(
-                        &mut state.platform.held_modifier_keys,
-                        &mut state.platform.live_modifiers,
-                        &mut state.match_state.input.hotkey_modifiers,
-                        code,
-                        event.state.is_pressed(),
-                        paused,
-                    );
-                }
                 if state.frontend.keyboard_dialog.is_some() {
                     crate::app::input::keyboard::key(state, &event);
                     return;
                 }
                 if Self::native_skirmish_shell_active(state)
-                    && state.frontend.skirmish_shell_state.saved_seed_browser.is_some()
+                    && state
+                        .frontend
+                        .skirmish_shell_state
+                        .saved_seed_browser
+                        .is_some()
                 {
                     if !crate::app::frontend::shell_transition::blocks_shell_input(state)
                         && event.state.is_pressed()
                     {
-                        let code = match event.physical_key { PhysicalKey::Code(code) => Some(code), _ => None };
+                        let code = match event.physical_key {
+                            PhysicalKey::Code(code) => Some(code),
+                            _ => None,
+                        };
                         Self::handle_saved_seed_browser_key(state, code, event.text.as_deref());
                         state.platform.window.request_redraw();
                     }
@@ -604,7 +619,7 @@ impl ApplicationHandler for App {
                 }
                 if let PhysicalKey::Code(code) = event.physical_key {
                     // ESC always reaches the handler when in-game (even when paused)
-                    // so the player can toggle pause regardless of egui focus.
+                    // so the player can toggle pause regardless of diagnostic GUI focus.
                     let is_escape: bool =
                         code == KeyCode::Escape && event.state.is_pressed() && !event.repeat;
                     let in_game: bool = state.frontend.screen == GameScreen::InGame;
@@ -642,7 +657,7 @@ impl ApplicationHandler for App {
                     // campaign select) takes ESC first: close it and stay,
                     // never propagating to the shell-close handlers below.
                     // The exit-confirm modal routes through the controller
-                    // (on_key → LIFO pop, D-B3); the egui-only dialogs are
+                    // (on_key → LIFO pop, D-B3); the retained child dialogs are
                     // not on the stack and keep the direct close.
                     if Self::main_menu_dialog_open(state) {
                         if is_escape {
@@ -736,24 +751,41 @@ impl ApplicationHandler for App {
                         return;
                     }
 
-                    if in_game && matches!(state.match_state.match_presentation.in_game_menu, crate::ui::pause_menu::InGameMenuState::SavedGame(_)) {
+                    if in_game
+                        && matches!(
+                            state.match_state.match_presentation.in_game_menu,
+                            crate::ui::pause_menu::InGameMenuState::SavedGame(_)
+                        )
+                    {
                         if event.state.is_pressed() {
                             Self::saved_game_key(state, Some(code), event.text.as_deref());
                         }
                         state.platform.window.request_redraw();
                         return;
                     }
-                    if in_game && state.match_state.match_presentation.in_game_menu == crate::ui::pause_menu::InGameMenuState::Sound {
+                    if in_game
+                        && state.match_state.match_presentation.in_game_menu
+                            == crate::ui::pause_menu::InGameMenuState::Sound
+                    {
                         // B8 has no IDOK/IDCANCEL close command.
                         return;
                     }
-                    if in_game && state.match_state.match_presentation.in_game_menu == crate::ui::pause_menu::InGameMenuState::AbortConfirm {
+                    if in_game
+                        && state.match_state.match_presentation.in_game_menu
+                            == crate::ui::pause_menu::InGameMenuState::AbortConfirm
+                    {
                         // B6 accepts default IDOK1 as Resume (4F1A59..4F1A65).
                         // Owner buttons reject focus through610CA0:6118BF..DE;
                         // their resource has no WS_TABSTOP. Do not invent a
                         // focused-button Return/Space route. IDCANCEL is ignored.
-                        if event.state.is_pressed() && !event.repeat && matches!(code, KeyCode::Enter | KeyCode::NumpadEnter) {
-                            crate::app::input::abort::activate(state, crate::ui::shell::abort::AbortButton::Resume);
+                        if event.state.is_pressed()
+                            && !event.repeat
+                            && matches!(code, KeyCode::Enter | KeyCode::NumpadEnter)
+                        {
+                            crate::app::input::abort::activate(
+                                state,
+                                crate::ui::shell::abort::AbortButton::Resume,
+                            );
                         }
                         state.platform.window.request_redraw();
                         return;
@@ -796,7 +828,7 @@ impl ApplicationHandler for App {
                                 state: event.state,
                                 repeat: event.repeat,
                             },
-                            egui_consumed,
+                            dev_ui_consumed,
                             paused_at_event,
                         );
                     }
@@ -834,31 +866,31 @@ impl ApplicationHandler for App {
                     Self::handle_launcher_options_mouse(state, None);
                     return;
                 }
-                if !egui_consumed && state.frontend.screen == GameScreen::InGame {
+                if !dev_ui_consumed && state.frontend.screen == GameScreen::InGame {
                     dispatch::handle_cursor_moved_in_game(state);
                 }
-                if !egui_consumed && Self::native_skirmish_shell_active(state) {
+                if !dev_ui_consumed && Self::native_skirmish_shell_active(state) {
                     Self::handle_skirmish_shell_mouse_move(state);
                 }
-                if !egui_consumed && Self::menu_page_active(state) {
+                if !dev_ui_consumed && Self::menu_page_active(state) {
                     Self::handle_menu_page_mouse_move(state);
                 }
-                if !egui_consumed && Self::movie_list_active(state) {
+                if !dev_ui_consumed && Self::movie_list_active(state) {
                     Self::handle_movie_list_mouse_move(state);
                 }
-                if !egui_consumed && Self::campaign_active(state) {
+                if !dev_ui_consumed && Self::campaign_active(state) {
                     Self::handle_campaign_mouse_move(state);
                 }
-                if !egui_consumed && Self::load_saved_game_active(state) {
+                if !dev_ui_consumed && Self::load_saved_game_active(state) {
                     Self::handle_load_saved_game_mouse_move(state);
                 }
-                if !egui_consumed && Self::wol_welcome_active(state) {
+                if !dev_ui_consumed && Self::wol_welcome_active(state) {
                     Self::handle_wol_mouse_move(state);
                 }
                 if Self::score_shell_active(state) {
                     Self::handle_score_shell_mouse_move(state);
                 }
-                if !egui_consumed
+                if !dev_ui_consumed
                     && state.frontend.screen == GameScreen::MainMenu
                     && state.frontend.main_menu_shell_error.is_none()
                     && !Self::menu_page_active(state)
@@ -947,8 +979,7 @@ impl ApplicationHandler for App {
                 }
                 // While a main-menu modal dialog is open, route the click to the
                 // SHP quit-confirm modal's OK/Cancel hit-test on the normal shell
-                // path; the egui fallback and the other egui dialogs (options/movies/
-                // campaign) were already handled by egui above.
+                // path; native child dialogs own their input routes below.
                 if state.frontend.keyboard_dialog.is_some() {
                     crate::app::input::keyboard::mouse(state, button, btn_state.is_pressed());
                     return;
@@ -997,7 +1028,7 @@ impl ApplicationHandler for App {
                     }
                 } else if state.frontend.screen == GameScreen::MainMenu
                     && state.frontend.main_menu_shell_error.is_none()
-                    && !egui_consumed
+                    && !dev_ui_consumed
                 {
                     if button == MouseButton::Left {
                         if btn_state.is_pressed() {
@@ -1006,7 +1037,7 @@ impl ApplicationHandler for App {
                             Self::handle_main_menu_shell_mouse_up(state, event_loop);
                         }
                     }
-                } else if !egui_consumed && state.frontend.screen == GameScreen::InGame {
+                } else if !dev_ui_consumed && state.frontend.screen == GameScreen::InGame {
                     dispatch::handle_mouse_input(state, button, btn_state);
                 }
             }
@@ -1023,7 +1054,7 @@ impl ApplicationHandler for App {
                     state.platform.window.request_redraw();
                     return;
                 }
-                if !egui_consumed
+                if !dev_ui_consumed
                     && state.frontend.screen == GameScreen::MainMenu
                     && Self::native_skirmish_shell_active(state)
                     && Self::handle_skirmish_shell_mouse_wheel(state, lines)
@@ -1031,7 +1062,7 @@ impl ApplicationHandler for App {
                     state.platform.window.request_redraw();
                     return;
                 }
-                if !egui_consumed
+                if !dev_ui_consumed
                     && state.frontend.screen == GameScreen::InGame
                     && !state.match_state.paused()
                 {

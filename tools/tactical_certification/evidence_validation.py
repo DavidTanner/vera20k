@@ -1,4 +1,4 @@
-"""Strict v2 evidence-leaf validation for tactical certification.
+"""Strict v3 evidence-leaf validation for tactical certification.
 
 This module interprets only the immutable manifest objects emitted by the
 tactical child. Process launch, filesystem publication, and report ownership
@@ -65,7 +65,7 @@ class EnvironmentEvidence(Protocol):
     config: FileSnapshot
     executable: FileSnapshot
     archive: FileSnapshot
-    font: FileSnapshot
+    font_archive: FileSnapshot
 
 
 def _exact_object(value: Any, keys: tuple[str, ...], field: str) -> Mapping[str, Any]:
@@ -148,14 +148,14 @@ def _require_inputs(
 ) -> None:
     inputs = _exact_object(
         stable.get("inputs"),
-        ("config", "executable", "archive", "font"),
+        ("config", "executable", "archive", "font_archive"),
         "evidence.stable.inputs",
     )
     for key, snapshot in (
         ("config", environment.config),
         ("executable", environment.executable),
         ("archive", environment.archive),
-        ("font", environment.font),
+        ("font_archive", environment.font_archive),
     ):
         require_identity(
             inputs[key],
@@ -251,8 +251,7 @@ def _require_graphics(
             "height",
             "window_scale_factor",
             "app_ui_scale",
-            "egui_pixels_per_point",
-            "selected_font",
+            "bitmap_font",
         ),
         field,
     )
@@ -286,14 +285,33 @@ def _require_graphics(
         capture["app_ui_scale"],
         f"{field}.app_ui_scale",
     )
-    _positive_number(graphics["egui_pixels_per_point"], f"{field}.egui_pixels_per_point")
-    require_identity(
-        graphics["selected_font"],
-        f"{field}.selected_font",
-        environment.font,
-        extra={},
-    )
+    _require_bitmap_font(graphics["bitmap_font"], f"{field}.bitmap_font", profile)
 
+
+def _require_bitmap_font(value: Any, field: str, profile: ValidatedProfile) -> None:
+    font = _exact_object(
+        value,
+        ("source", "atlas_width", "atlas_height", "glyph_count", "cell_height",
+         "bitmap_rows", "missing_glyph_present", "darken_texture_present"),
+        field,
+    )
+    source = _exact_object(
+        font["source"],
+        ("logical_name", "source_archive", "entry_id", "payload_byte_length", "payload_sha256"),
+        f"{field}.source",
+    )
+    expected = require_object(
+        profile.pixel_inputs["bitmap_font"], "pixel_inputs.bitmap_font"
+    )
+    for key in source:
+        require_value(source[key], expected[key], f"{field}.source.{key}")
+    require_sha256(source["payload_sha256"], f"{field}.source.payload_sha256")
+    for key in ("atlas_width", "atlas_height", "glyph_count"):
+        _positive_int(font[key], f"{field}.{key}")
+    require_value(font["cell_height"], 17, f"{field}.cell_height")
+    require_value(font["bitmap_rows"], 16, f"{field}.bitmap_rows")
+    require_value(font["missing_glyph_present"], True, f"{field}.missing_glyph_present")
+    require_value(font["darken_texture_present"], True, f"{field}.darken_texture_present")
 
 
 def _require_contract(
@@ -1091,7 +1109,7 @@ def _require_render(
             "power_ready",
             "bound_structures_ready",
             "sidebar_values_ready",
-            "egui_ready",
+            "bitmap_font_ready",
             "panel_contains_aperture",
             "no_modal_or_debug",
             "cursor_id",
@@ -1109,7 +1127,7 @@ def _require_render(
         "power_ready",
         "bound_structures_ready",
         "sidebar_values_ready",
-        "egui_ready",
+        "bitmap_font_ready",
         "panel_contains_aperture",
         "no_modal_or_debug",
         "ready",
@@ -1134,8 +1152,13 @@ def _require_render(
             "sidebar_panel",
             "radar_content_insets",
             "instance_counts",
+            "sidebar_text_instances",
         ),
         f"{field}.production_render",
+    )
+    _positive_int(
+        production_render["sidebar_text_instances"],
+        f"{field}.production_render.sidebar_text_instances",
     )
     require_value(
         production_render["sidebar_view_present"],

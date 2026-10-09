@@ -58,7 +58,7 @@ from .profile import (
 )
 
 
-CAPTURE_SCHEMA = "vera20k.tactical-capture.v2"
+CAPTURE_SCHEMA = "vera20k.tactical-capture.v3"
 VALIDATION_SCHEMA = "vera20k.tactical-validation.v1"
 RUN_SCHEMA = "vera20k.tactical-run.v1"
 REPEAT_SCHEMA = "vera20k.tactical-repeat.v1"
@@ -79,7 +79,7 @@ class EnvironmentInputs:
     config: FileSnapshot
     executable: FileSnapshot
     archive: FileSnapshot
-    font: FileSnapshot
+    font_archive: FileSnapshot
     retail_root: Path
 
     def snapshots(self) -> tuple[tuple[str, FileSnapshot], ...]:
@@ -87,7 +87,7 @@ class EnvironmentInputs:
             ("config.toml", self.config),
             ("VERA executable", self.executable),
             ("retail archive", self.archive),
-            ("selected font", self.font),
+            ("bitmap font archive", self.font_archive),
         )
 
 
@@ -183,18 +183,28 @@ def validate_environment_inputs(
         raise ValidationError("canonical retail archive SHA-256 differs from profile")
 
     pixel_inputs = profile.pixel_inputs
-    font_profile = require_object(pixel_inputs["font"], "pixel_inputs.font")
-    font = require_regular_file(
-        Path(require_string(font_profile["path"], "pixel_inputs.font.path")),
-        "selected font",
+    font_profile = require_object(
+        pixel_inputs["bitmap_font"], "pixel_inputs.bitmap_font"
+    )
+    logical_font_name = require_string(
+        font_profile["logical_name"], "pixel_inputs.bitmap_font.logical_name"
+    )
+    _reject_loose_shadow(cwd / logical_font_name, "working-directory loose font shadow")
+    _reject_loose_shadow(retail_root / logical_font_name, "retail-root loose font shadow")
+    font_archive = require_regular_file(
+        retail_root / require_string(
+            font_profile["archive_name"], "pixel_inputs.bitmap_font.archive_name"
+        ),
+        "bitmap font archive",
         exact_length=require_int(
-            font_profile["byte_length"], "pixel_inputs.font.byte_length"
+            font_profile["archive_byte_length"],
+            "pixel_inputs.bitmap_font.archive_byte_length",
         ),
     )
-    if font.sha256 != require_sha256(
-        font_profile["sha256"], "pixel_inputs.font.sha256"
+    if font_archive.sha256 != require_sha256(
+        font_profile["archive_sha256"], "pixel_inputs.bitmap_font.archive_sha256"
     ):
-        raise ValidationError("selected font SHA-256 differs from profile")
+        raise ValidationError("bitmap font archive SHA-256 differs from profile")
 
     executable = require_regular_file(executable_path, "VERA executable")
     return EnvironmentInputs(
@@ -202,7 +212,7 @@ def validate_environment_inputs(
         config=config,
         executable=executable,
         archive=archive,
-        font=font,
+        font_archive=font_archive,
         retail_root=retail_root,
     )
 

@@ -592,7 +592,7 @@ pub(crate) fn build_sidebar_text_instances(
     ready_tint: [f32; 3],
 ) -> Vec<SpriteInstance> {
     if state.renderer.bit_font.darken_texture().is_none() {
-        // No FNT loaded — text will be rendered by egui fallback.
+        // No retail FNT loaded; the native sidebar text path is unavailable.
         return Vec::new();
     }
     let s = state.match_state.match_presentation.ui_scale;

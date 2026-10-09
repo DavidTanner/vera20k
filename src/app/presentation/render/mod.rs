@@ -48,14 +48,21 @@ pub(crate) struct GameRenderInstanceCounts {
     pub minimap: usize,
     pub viewport_rect: usize,
     pub radar_animation: usize,
+    pub sidebar_text: usize,
 }
 
 impl GameRenderInstanceCounts {
-    fn from_lengths(minimap: usize, viewport_rect: usize, radar_animation: usize) -> Self {
+    fn from_lengths(
+        minimap: usize,
+        viewport_rect: usize,
+        radar_animation: usize,
+        sidebar_text: usize,
+    ) -> Self {
         Self {
             minimap,
             viewport_rect,
             radar_animation,
+            sidebar_text,
         }
     }
 }
@@ -444,7 +451,7 @@ mod tests {
             cameo: Vec::new(),
             gclock: Vec::new(),
             cameo_overlay: Vec::new(),
-            text: Vec::new(),
+            text: vec![sprite; 5],
             minimap: vec![sprite],
             viewport_rect: vec![sprite; 4],
             content_boundary: vec![sprite; 4],
@@ -456,6 +463,7 @@ mod tests {
         assert_eq!(counts.minimap, 1);
         assert_eq!(counts.viewport_rect, 4);
         assert_eq!(counts.radar_animation, 2);
+        assert_eq!(counts.sidebar_text, 5);
         assert_eq!(instances.content_boundary.len(), 4);
     }
 }

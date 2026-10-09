@@ -34,7 +34,7 @@ fn is_sentinel(ticks: u64) -> bool {
     ticks as u32 == u32::MAX || (ticks >> 32) as u32 == u32::MAX
 }
 
-#[cfg(any(windows, unix))]
+#[cfg(all(any(windows, unix), any(feature = "dev-ui", test)))]
 pub(crate) fn format_timestamp_parts(unix_secs: u64) -> Option<(String, String)> {
     let ticks = unix_secs
         .checked_add(WINDOWS_EPOCH_SECONDS)?
@@ -208,7 +208,7 @@ pub(crate) fn format_file_time_parts(ticks: u64) -> Option<(String, String)> {
     }
 }
 
-#[cfg(not(any(windows, unix)))]
+#[cfg(all(not(any(windows, unix)), any(feature = "dev-ui", test)))]
 pub(crate) fn format_timestamp_parts(_unix_secs: u64) -> Option<(String, String)> {
     None
 }

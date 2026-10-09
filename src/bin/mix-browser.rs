@@ -1,6 +1,7 @@
 //! GUI browser for RA2 MIX archives and SHP assets.
 //!
-//! Usage: `cargo run --bin mix-browser`
+//! Build with `python -m tools.cargo_run -- build --features tools-ui --bin mix-browser`.
+//! See `tools/README.md` for resolving and launching the built executable.
 //!
 //! Supports browsing individual archives, previewing SHP sprites with smart
 //! palette inference, scanning all archives for SHP entries, and searching

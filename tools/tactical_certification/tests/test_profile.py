@@ -25,8 +25,8 @@ PROFILES = repository_root() / "tools" / "tactical_certification" / "profiles"
 
 class ProfileTests(unittest.TestCase):
     def test_both_sealed_profiles_validate_with_exact_side_specific_fields(self) -> None:
-        soviet = load_profile(PROFILES / "soviet-radar-online-v2.json")
-        yuri = load_profile(PROFILES / "yuri-radar-online-v2.json")
+        soviet = load_profile(PROFILES / "soviet-radar-online-v3.json")
+        yuri = load_profile(PROFILES / "yuri-radar-online-v3.json")
         self.assertEqual(soviet.document["launch"]["player_name"], "VERA-SOVIET")
         self.assertEqual(yuri.document["launch"]["player_name"], "VERA-YURI")
         self.assertEqual(
@@ -60,18 +60,19 @@ class ProfileTests(unittest.TestCase):
 
     def test_current_native_profile_rejects_historical_schema_and_half_scale(self) -> None:
         for side in ("soviet", "yuri"):
-            with self.assertRaisesRegex(ValidationError, "v1 is historical"):
-                load_profile(PROFILES / f"{side}-radar-online-v1.json")
-            profile = load_profile(PROFILES / f"{side}-radar-online-v2.json")
+            for version in (1, 2):
+                with self.assertRaisesRegex(ValidationError, "v1 and v2 are historical"):
+                    load_profile(PROFILES / f"{side}-radar-online-v{version}.json")
+            profile = load_profile(PROFILES / f"{side}-radar-online-v3.json")
             self.assertEqual(profile.capture["app_ui_scale"], 1.0)
-            self.assertEqual(set(profile.pixel_inputs), {"font"})
+            self.assertEqual(set(profile.pixel_inputs), {"bitmap_font"})
             document = json.loads(json.dumps(profile.document))
             document["capture"]["app_ui_scale"] = 0.5
             with self.assertRaisesRegex(ValidationError, "half-scale profiles are historical"):
                 validate_profile_document(document)
 
     def test_profile_rejects_unknown_key_boolean_integer_and_wrong_timeout(self) -> None:
-        profile = load_profile(PROFILES / "soviet-radar-online-v2.json")
+        profile = load_profile(PROFILES / "soviet-radar-online-v3.json")
         for mutation in ("unknown", "boolean", "timeout"):
             document = json.loads(json.dumps(profile.document))
             if mutation == "unknown":
@@ -83,8 +84,21 @@ class ProfileTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ValidationError):
                 validate_profile_document(document)
 
+    def test_bitmap_font_profile_rejects_system_font_and_source_identity_drift(self) -> None:
+        profile = load_profile(PROFILES / "soviet-radar-online-v3.json")
+        for key in profile.pixel_inputs["bitmap_font"]:
+            document = json.loads(json.dumps(profile.document))
+            value = document["pixel_inputs"]["bitmap_font"][key]
+            document["pixel_inputs"]["bitmap_font"][key] = value + 1 if isinstance(value, int) else value + "wrong"
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                validate_profile_document(document)
+        document = json.loads(json.dumps(profile.document))
+        document["pixel_inputs"] = {"font": {"path": "verdana.ttf"}}
+        with self.assertRaises(ValidationError):
+            validate_profile_document(document)
+
     def test_profile_rejects_drifted_evidence_limitations(self) -> None:
-        profile = load_profile(PROFILES / "soviet-radar-online-v2.json")
+        profile = load_profile(PROFILES / "soviet-radar-online-v3.json")
         document = json.loads(json.dumps(profile.document))
         document["evidence_limitations"] = [
             "This profile now claims everything is exact."
@@ -96,16 +110,16 @@ class ProfileTests(unittest.TestCase):
             validate_profile_document(document)
 
     def test_profile_file_rejects_duplicate_and_nonfinite_json(self) -> None:
-        valid = (PROFILES / "soviet-radar-online-v2.json").read_text(
+        valid = (PROFILES / "soviet-radar-online-v3.json").read_text(
             encoding="utf-8"
         )
         with tempfile.TemporaryDirectory() as temporary:
             duplicate = Path(temporary).resolve() / "duplicate.json"
             duplicate.write_text(
                 valid.replace(
-                    '"schema_version": "vera20k.tactical-profile.v2",',
-                    '"schema_version": "vera20k.tactical-profile.v2",'
-                    '"schema_version": "vera20k.tactical-profile.v2",',
+                    '"schema_version": "vera20k.tactical-profile.v3",',
+                    '"schema_version": "vera20k.tactical-profile.v3",'
+                    '"schema_version": "vera20k.tactical-profile.v3",',
                     1,
                 ),
                 encoding="utf-8",

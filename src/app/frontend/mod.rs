@@ -18,6 +18,7 @@ pub(crate) mod shell_transition;
 pub(crate) mod skirmish;
 pub(crate) mod skirmish_session;
 pub(crate) mod state;
+pub(crate) mod status_screen;
 pub(crate) mod skirmish_shell_render;
 pub mod startup_options;
 pub(super) mod startup_splash;

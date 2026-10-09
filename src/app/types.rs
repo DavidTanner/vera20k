@@ -41,6 +41,7 @@ pub(crate) fn tps_for_game_speed(stored_speed: u32) -> u32 {
     ((1000 + bucket_ms / 2) / bucket_ms).max(1)
 }
 
+#[cfg(any(feature = "dev-ui", test))]
 pub(crate) fn default_yr_skirmish_tps() -> u32 {
     tps_for_game_speed(DEFAULT_YR_SKIRMISH_GAME_SPEED)
 }

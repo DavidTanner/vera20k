@@ -1,5 +1,5 @@
 //! Lower-layer bitmap font: atlas, glyph table, measurement, wrap state
-//! machine, missing-glyph fallback. Owned by `AppState.bit_font` and shared
+//! machine, missing-glyph fallback. Owned by `RendererState.bit_font` and shared
 //! by `render::shell_text` (Path A) and `render::sidebar_text` (Path B).
 //!
 //! Glyph data comes from a parsed [`crate::assets::fnt_file::FntFile`]
@@ -62,6 +62,18 @@ pub struct WrapLayout {
     pub lines: Vec<LineSpan>,
 }
 
+/// Immutable atlas observation; `source_identity == None` identifies the
+/// built-in 5x7 fallback (or a GPU-free synthetic test font).
+pub(crate) struct BitFontCaptureObservation<'a> {
+    pub(crate) source_identity: Option<&'a crate::assets::fnt_file::FntSourceIdentity>,
+    pub(crate) atlas_dimensions: Option<[u32; 2]>,
+    pub(crate) glyph_count: usize,
+    pub(crate) cell_height: u32,
+    pub(crate) bitmap_rows: u32,
+    pub(crate) missing_glyph_present: bool,
+    pub(crate) darken_texture_present: bool,
+}
+
 /// Atlas-backed bitmap font + measurement + missing-glyph fallback.
 ///
 /// Texture fields are `Option<BatchTexture>` so pure-measurement tests can
@@ -69,6 +81,7 @@ pub struct WrapLayout {
 /// accessors `expect` Some -- production callers always populate via
 /// `from_fnt`/`fallback_5x7`).
 pub struct BitFont {
+    source_identity: Option<crate::assets::fnt_file::FntSourceIdentity>,
     pub(crate) atlas_texture: Option<BatchTexture>,
     pub(crate) glyphs: HashMap<u16, GlyphEntry>,
     pub(crate) missing_glyph: Option<GlyphEntry>,
@@ -82,6 +95,21 @@ pub struct BitFont {
 }
 
 impl BitFont {
+    pub(crate) fn capture_observation(&self) -> BitFontCaptureObservation<'_> {
+        BitFontCaptureObservation {
+            source_identity: self.source_identity.as_ref(),
+            atlas_dimensions: self
+                .atlas_texture
+                .as_ref()
+                .map(|atlas| [atlas.width, atlas.height]),
+            glyph_count: self.glyphs.len(),
+            cell_height: self.cell_height,
+            bitmap_rows: self.bitmap_rows,
+            missing_glyph_present: self.missing_glyph.is_some(),
+            darken_texture_present: self.darken_texture.is_some(),
+        }
+    }
+
     pub fn atlas(&self) -> &BatchTexture {
         self.atlas_texture
             .as_ref()
@@ -501,6 +529,7 @@ impl BitFont {
         }
 
         Self {
+            source_identity: None,
             atlas_texture: Some(batch.create_texture(gpu, &rgba, atlas_w, atlas_h)),
             glyphs,
             missing_glyph: None,
@@ -637,6 +666,7 @@ impl BitFont {
         );
 
         Self {
+            source_identity: fnt.source_identity().cloned(),
             atlas_texture: Some(atlas_texture),
             glyphs,
             missing_glyph,
@@ -689,6 +719,7 @@ pub(crate) mod tests {
             );
         }
         BitFont {
+            source_identity: None,
             atlas_texture: None,
             glyphs,
             missing_glyph: Some(GlyphEntry {

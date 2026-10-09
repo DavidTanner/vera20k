@@ -24,6 +24,7 @@ path = "src/bin/sim-bench.rs"
 [[bin]]
 name = "mix-browser"
 path = "src/bin/mix-browser.rs"
+required-features = ["tools-ui"]
 
 # Headless, JSON-emitting asset browser for automated callers.
 [[bin]]
@@ -37,6 +38,7 @@ path = "src/bin/extract-ini.rs"
 [[bin]]
 name = "bik-player"
 path = "src/bin/bik-player.rs"
+required-features = ["tools-ui"]
 
 [[bin]]
 name = "extract-bridge-frames"
@@ -46,10 +48,16 @@ path = "src/bin/extract-bridge-frames.rs"
 name = "inspect-water-tiles"
 path = "src/bin/inspect-water-tiles.rs"
 
+[features]
+default = []
+# Optional in-engine diagnostic overlay. Player UI uses the retail UI owners.
+dev-ui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+# Standalone asset/video tools; this does not enable the engine overlay.
+tools-ui = ["dep:eframe", "dep:rfd"]
+
 [dependencies]
 # --- GPU rendering ---
-# wgpu 27 is the latest version compatible with egui-wgpu 0.33 (requires ^27.0.1).
-# wgpu 28 exists but egui-wgpu doesn't support it yet (March 2026).
+# Retain wgpu 27 for the optional diagnostic renderer's egui-wgpu 0.33.
 wgpu = "27"
 # winit 0.30 is the latest stable. 0.31 is still in beta.
 # Uses the ApplicationHandler trait pattern (deferred window creation).
@@ -59,16 +67,16 @@ pollster = "0.4"
 # bytemuck enables safe transmutation of structs to GPU-friendly byte slices.
 bytemuck = { version = "1", features = ["derive"] }
 
-# --- UI (menus and dialogs only — sidebar is custom wgpu) ---
-egui = "0.33"
-egui-wgpu = "0.33"
+# --- Optional development and standalone tool UI ---
+egui = { version = "0.33", optional = true }
+egui-wgpu = { version = "0.33", optional = true }
 # default-features=false drops the `links` feature which pulls in webbrowser → url → icu crates
 # that are currently incompatible with Rust 1.93+. We don't need egui hyperlink-opening.
-egui-winit = { version = "0.33", default-features = false }
+egui-winit = { version = "0.33", default-features = false, optional = true }
 # eframe is egui's standalone app framework — used by tool binaries (mix-browser GUI).
-eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"], optional = true }
 # Native file-open dialog — used by the bik-player binary.
-rfd = "0.14"
+rfd = { version = "0.14", optional = true }
 
 # --- Math ---
 # glam provides fast vector/matrix math for rendering (screen coords, camera).

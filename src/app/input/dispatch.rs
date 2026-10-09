@@ -1740,6 +1740,7 @@ fn handle_dev_hotkey_pressed(state: &mut AppState, code: winit::keyboard::KeyCod
         // The hotkey-help overlay is VERA-only and used to sit on bare F1, which
         // stock YR binds to the first camera bookmark. Moved onto the dev chord,
         // which stock binds nothing to.
+        #[cfg(feature = "dev-ui")]
         KeyCode::F1 => {
             state.match_state.match_presentation.show_hotkey_help =
                 !state.match_state.match_presentation.show_hotkey_help;
@@ -1751,29 +1752,11 @@ fn handle_dev_hotkey_pressed(state: &mut AppState, code: winit::keyboard::KeyCod
             crate::app::persistence::commands::quickload(state);
         }
         KeyCode::F5 => {
-            state.match_state.match_presentation.show_save_load_panel =
-                !state.match_state.match_presentation.show_save_load_panel;
-            if state.match_state.match_presentation.show_save_load_panel {
-                state.persistence.invalidate_save_list();
-                // Show OS cursor for egui interaction.
-                if state
-                    .match_state
-                    .match_presentation
-                    .software_cursor
-                    .is_some()
-                {
-                    state.platform.window.set_cursor_visible(true);
-                }
-            } else if state
-                .match_state
-                .match_presentation
-                .software_cursor
-                .is_some()
-                && !state.match_state.paused()
-            {
-                // Re-hide OS cursor so the software cursor takes over.
-                state.platform.window.set_cursor_visible(false);
-            }
+            // Diagnostic shortcut shares the retail browser and modal owner.
+            crate::app::App::open_saved_game_browser(
+                state,
+                crate::ui::skirmish_shell::SavedSeedMode::Load,
+            );
         }
         // Interim order-mode arms until the stock click modifiers
         // (Ctrl+Shift+click attack move, beacon key) are implemented.

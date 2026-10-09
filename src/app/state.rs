@@ -16,7 +16,7 @@ pub(crate) use platform::PlatformState;
 pub(crate) struct AppState {
     pub(crate) platform: PlatformState,
     /// Process-wide renderer owner (F12): GPU context, batch renderer,
-    /// pools, passes, egui, fonts, and rendering caches.
+    /// pools, passes, fonts, and rendering caches.
     pub(crate) renderer: crate::app::renderer_state::RendererState,
     /// Process diagnostics owner (F12): debug toggles, frame stepper,
     /// parity digest sink, dev-overlay bookkeeping.
@@ -82,7 +82,7 @@ impl AppState {
     }
 
     /// Whether the software cursor (mouse.shp) should be active this frame.
-    /// Returns false when an egui interactive panel is open so the OS cursor shows.
+    /// Asset-independent status cards and diagnostic modals use the OS cursor.
     pub(crate) fn use_software_cursor(&self) -> bool {
         !(self.frontend.screen == crate::ui::game_screen::GameScreen::MainMenu
             && self.frontend.main_menu_shell_error.is_some())
@@ -93,18 +93,25 @@ impl AppState {
                 .is_some()
             && (!self.match_state.paused()
                 || crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(self))
-            && !self.match_state.match_presentation.show_save_load_panel
             && !self.main_menu_dialog_open()
     }
 
-    /// Capture-only observation of the exact font and scale inputs consumed by
-    /// the most recently completed egui pass.
-    pub(crate) fn capture_egui_observation(
-        &self,
-    ) -> crate::render::egui_integration::EguiCaptureObservation<'_> {
-        self.renderer
-            .egui
-            .capture_observation(&self.platform.window)
+    /// Optional GUI visibility, shared by input routing and capture admission.
+    /// Native/world debug overlays remain owned by their existing toggles.
+    pub(crate) fn diagnostic_gui_visible(&self) -> bool {
+        #[cfg(feature = "dev-ui")]
+        {
+            self.frontend.screen == crate::ui::game_screen::GameScreen::InGame
+                && !crate::app::frontend::skirmish_shell_render::native_in_game_shell_active(self)
+                && (self.match_state.debug_pause
+                    || self.diag.debug_show_pathgrid
+                    || self.diag.debug_unit_inspector
+                    || self.match_state.match_presentation.show_hotkey_help)
+        }
+        #[cfg(not(feature = "dev-ui"))]
+        {
+            false
+        }
     }
 
     /// Whether any main-menu modal dialog (exit confirm, options, keyboard)

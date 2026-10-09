@@ -5,7 +5,7 @@
 //! a map or mutates simulation state.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ pub(crate) use super::integrity::{
     validate_new_output_directory,
 };
 
-pub(crate) const PROFILE_SCHEMA: &str = "vera20k.tactical-profile.v2";
+pub(crate) const PROFILE_SCHEMA: &str = "vera20k.tactical-profile.v3";
 pub(crate) const CONTRACT_SCHEMA: &str = "vera20k.tactical-capture-contract.v2";
 pub(crate) const CHECKPOINT_RADAR_ONLINE_V2: &str = "radar-online-v2";
 pub(crate) const EMBEDDED_CONTRACT: &str = include_str!("contract.v2.json");
@@ -33,7 +33,7 @@ const EXPECTED_ARCHIVE_SHA256: &str =
 const EXPECTED_ENTRY_SHA256: &str =
     "d751dce7cd3611077e9228c33235f39c71681fff6ac08ca1f716d963ad6ce070";
 const EXPECTED_FONT_SHA256: &str =
-    "6a8481fe107ee547893c018b13dba291c2020bec3de5da6525d9ac09f6bc2105";
+    "ec8d6d85db3eedf5a862cc6ffb87bfad4c77279dd946bc2d30879ad9140c8d3f";
 
 const ENVIRONMENT_DENYLIST: [&str; 17] = [
     "RA2_QUICKPLAY",
@@ -272,15 +272,20 @@ pub(crate) struct ExpectedLedger {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TacticalPixelInputs {
-    pub(crate) font: AbsolutePixelFile,
+    pub(crate) bitmap_font: BitmapFontInput,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct AbsolutePixelFile {
-    pub(crate) path: PathBuf,
-    pub(crate) byte_length: u64,
-    pub(crate) sha256: String,
+pub(crate) struct BitmapFontInput {
+    pub(crate) logical_name: String,
+    pub(crate) source_archive: String,
+    pub(crate) archive_name: String,
+    pub(crate) archive_byte_length: u64,
+    pub(crate) archive_sha256: String,
+    pub(crate) entry_id: i32,
+    pub(crate) payload_byte_length: u64,
+    pub(crate) payload_sha256: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -308,7 +313,7 @@ impl TacticalCaptureProfile {
         let document: serde_json::Value = parse_strict_json(&bytes, "tactical profile")?;
         ensure!(
             document["schema_version"] == PROFILE_SCHEMA,
-            "unsupported profile schema; current capture requires tactical-profile.v2 (native 1x sidebar); retain v1 only as historical evidence"
+            "unsupported profile schema; current capture requires tactical-profile.v3 (retail GAME.FNT evidence); retain v1 and v2 only as historical evidence"
         );
         let value: Self = serde_json::from_value(document)?;
         value.validate()?;
@@ -324,7 +329,7 @@ impl TacticalCaptureProfile {
     pub(crate) fn validate(&self) -> Result<()> {
         ensure!(
             self.schema_version == PROFILE_SCHEMA,
-            "unsupported profile schema; current capture requires tactical-profile.v2 (native 1x sidebar); retain v1 only as historical evidence"
+            "unsupported profile schema; current capture requires tactical-profile.v3 (retail GAME.FNT evidence); retain v1 and v2 only as historical evidence"
         );
         ensure!(
             self.checkpoint == CHECKPOINT_RADAR_ONLINE_V2,
@@ -334,7 +339,7 @@ impl TacticalCaptureProfile {
         ensure!(
             matches!(
                 self.profile_id.as_str(),
-                "soviet-radar-online-v2" | "yuri-radar-online-v2"
+                "soviet-radar-online-v3" | "yuri-radar-online-v3"
             ),
             "unsupported tactical profile {:?}",
             self.profile_id
@@ -356,7 +361,7 @@ impl TacticalCaptureProfile {
     }
 
     fn is_soviet(&self) -> bool {
-        self.profile_id == "soviet-radar-online-v2"
+        self.profile_id == "soviet-radar-online-v3"
     }
 
     fn validate_fixture(&self) -> Result<()> {
@@ -544,16 +549,24 @@ impl TacticalCaptureProfile {
     }
 
     fn validate_pixel_inputs(&self) -> Result<()> {
-        let font = &self.pixel_inputs.font;
+        let font = &self.pixel_inputs.bitmap_font;
         ensure!(
-            font.path == Path::new(r"C:\Windows\Fonts\verdana.ttf"),
-            "font path differs from the sealed tactical v2 pixel input"
+            font.logical_name == "GAME.FNT"
+                && font.source_archive == "ra2.mix -> local.mix"
+                && font.archive_name == "ra2.mix"
+                && font.entry_id == -1_311_409_470,
+            "bitmap font source differs from the sealed tactical v3 input"
         );
         ensure!(
-            font.byte_length == 243_304 && font.sha256 == EXPECTED_FONT_SHA256,
-            "font identity differs"
+            font.archive_byte_length == 281_888_480
+                && font.archive_sha256
+                    == "896a8b64f9f1bb8ad5e0bc64fc0b8ea8c84112494761ea1a43478d10c5ef9914"
+                && font.payload_byte_length == 1_584_195
+                && font.payload_sha256 == EXPECTED_FONT_SHA256,
+            "bitmap font identity differs"
         );
-        require_lower_sha256(&font.sha256, "font")?;
+        require_lower_sha256(&font.archive_sha256, "font archive")?;
+        require_lower_sha256(&font.payload_sha256, "bitmap font")?;
         Ok(())
     }
 
@@ -759,6 +772,7 @@ fn validate_options(options: &TacticalOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn sha256_matches_known_vectors() {
@@ -792,11 +806,11 @@ mod tests {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         for (file_name, expected_country, expected_harvester) in [
             (
-                "soviet-radar-online-v2.json",
+                "soviet-radar-online-v3.json",
                 LaunchCountry::Russia,
                 Some("HARV"),
             ),
-            ("yuri-radar-online-v2.json", LaunchCountry::Yuri, None),
+            ("yuri-radar-online-v3.json", LaunchCountry::Yuri, None),
         ] {
             let path = root
                 .join("tools/tactical_certification/profiles")
@@ -835,13 +849,15 @@ mod tests {
             ("yuri", SidebarTheme::Yuri),
         ] {
             let directory = root.join("tools/tactical_certification/profiles");
-            let old = TacticalCaptureProfile::load_strict(
-                &directory.join(format!("{side}-radar-online-v1.json")),
-            )
-            .unwrap_err();
-            assert!(old.to_string().contains("v1 only as historical"));
+            for version in [1, 2] {
+                let old = TacticalCaptureProfile::load_strict(
+                    &directory.join(format!("{side}-radar-online-v{version}.json")),
+                )
+                .unwrap_err();
+                assert!(old.to_string().contains("v1 and v2 only as historical"));
+            }
             let mut profile = TacticalCaptureProfile::load_strict(
-                &directory.join(format!("{side}-radar-online-v2.json")),
+                &directory.join(format!("{side}-radar-online-v3.json")),
             )
             .unwrap()
             .value;

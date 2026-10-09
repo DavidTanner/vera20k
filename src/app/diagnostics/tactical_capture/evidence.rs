@@ -6,12 +6,12 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::app::presentation::render::{GameRenderInstanceCounts, GameRenderOutput};
-use crate::render::egui_integration::{EguiCaptureObservation, SelectedSystemFontIdentity};
+use crate::render::bit_font::BitFontCaptureObservation;
 use crate::render::gpu::GpuAdapterObservation;
 use crate::render::sidebar_chrome::{
     ResolvedSidebarChromeIdentity, SidebarChromeAssetIdentity, SidebarChromeAtlasIdentity,
@@ -100,6 +100,71 @@ fn backend_name(backend: wgpu::Backend) -> &'static str {
     }
 }
 
+/// Production GAME.FNT lookup, matched to the bytes consumed by BitFont.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BitmapFontSourceEvidence {
+    pub(crate) logical_name: String,
+    pub(crate) source_archive: String,
+    pub(crate) entry_id: i32,
+    pub(crate) payload_byte_length: u64,
+    pub(crate) payload_sha256: String,
+}
+
+/// The atlas actually installed in the shared production bitmap-font owner.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BitmapFontEvidence {
+    pub(crate) source: BitmapFontSourceEvidence,
+    pub(crate) atlas_width: u32,
+    pub(crate) atlas_height: u32,
+    pub(crate) glyph_count: u64,
+    pub(crate) cell_height: u32,
+    pub(crate) bitmap_rows: u32,
+    pub(crate) missing_glyph_present: bool,
+    pub(crate) darken_texture_present: bool,
+}
+
+impl BitmapFontEvidence {
+    pub(crate) fn from_observations(
+        font: BitFontCaptureObservation<'_>,
+        source: BitmapFontSourceEvidence,
+    ) -> Result<Self> {
+        let consumed = font.source_identity.context(
+            "tactical capture requires retail GAME.FNT; built-in bitmap font is not admitted",
+        )?;
+        ensure!(
+            consumed.byte_length == source.payload_byte_length
+                && consumed.sha256 == source.payload_sha256,
+            "production bitmap atlas consumed different bytes from the selected GAME.FNT asset"
+        );
+        let [atlas_width, atlas_height] = font
+            .atlas_dimensions
+            .context("production bitmap atlas is not populated")?;
+        ensure!(
+            atlas_width > 0
+                && atlas_height > 0
+                && font.glyph_count > 0
+                && font.cell_height > 0
+                && font.bitmap_rows > 0
+                && font.missing_glyph_present
+                && font.darken_texture_present,
+            "production bitmap font is not ready for tactical text"
+        );
+        Ok(Self {
+            source,
+            atlas_width,
+            atlas_height,
+            glyph_count: u64::try_from(font.glyph_count)
+                .context("bitmap glyph count exceeds u64")?,
+            cell_height: font.cell_height,
+            bitmap_rows: font.bitmap_rows,
+            missing_glyph_present: font.missing_glyph_present,
+            darken_texture_present: font.darken_texture_present,
+        })
+    }
+}
+
 /// Stable graphics inputs and identities required by the wrapper validator.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -110,53 +175,30 @@ pub(crate) struct GraphicsEvidence {
     pub(crate) height: u32,
     pub(crate) window_scale_factor: f64,
     pub(crate) app_ui_scale: f64,
-    pub(crate) egui_pixels_per_point: f64,
-    pub(crate) selected_font: ArtifactEvidence,
+    pub(crate) bitmap_font: BitmapFontEvidence,
 }
 
 impl GraphicsEvidence {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_observations(
         adapter: GpuAdapterObservation<'_>,
-        egui: EguiCaptureObservation<'_>,
+        window_scale_factor: f64,
         surface_format: impl Into<String>,
         render_extent: [u32; 2],
         app_ui_scale: f32,
-        selected_font: ArtifactEvidence,
+        bitmap_font: BitmapFontEvidence,
     ) -> Result<Self> {
         ensure!(
             render_extent[0] > 0 && render_extent[1] > 0,
             "tactical graphics extent must be nonzero"
         );
         ensure!(
-            egui.window_scale_factor.is_finite() && egui.window_scale_factor > 0.0,
+            window_scale_factor.is_finite() && window_scale_factor > 0.0,
             "tactical window scale factor must be finite and positive"
         );
         ensure!(
             app_ui_scale.is_finite() && app_ui_scale > 0.0,
             "tactical app UI scale must be finite and positive"
         );
-        let pixels_per_point = egui
-            .pixels_per_point
-            .context("tactical egui pass has not produced pixels_per_point")?;
-        ensure!(
-            pixels_per_point.is_finite() && pixels_per_point > 0.0,
-            "tactical egui pixels_per_point must be finite and positive"
-        );
-        match egui.selected_font {
-            SelectedSystemFontIdentity::SystemFile { path, byte_length } => {
-                let byte_length = u64::try_from(*byte_length)
-                    .context("selected system font length exceeds u64")?;
-                ensure!(
-                    Path::new(path) == Path::new(&selected_font.path)
-                        && byte_length == selected_font.byte_length,
-                    "selected system font differs from the pinned artifact identity"
-                );
-            }
-            SelectedSystemFontIdentity::EguiBuiltIn => {
-                bail!("tactical capture requires the pinned system font, not egui built-in");
-            }
-        }
         let surface_format = surface_format.into();
         ensure!(
             !surface_format.is_empty(),
@@ -168,10 +210,9 @@ impl GraphicsEvidence {
             surface_format,
             width: render_extent[0],
             height: render_extent[1],
-            window_scale_factor: egui.window_scale_factor,
+            window_scale_factor,
             app_ui_scale: f64::from(app_ui_scale),
-            egui_pixels_per_point: f64::from(pixels_per_point),
-            selected_font,
+            bitmap_font,
         })
     }
 }
@@ -333,6 +374,7 @@ pub(crate) struct SidebarRenderEvidence {
     pub(crate) minimap_aperture: ApertureEvidence,
     pub(crate) radar_content_insets: [u32; 4],
     pub(crate) instance_counts: RenderInstanceCountEvidence,
+    pub(crate) sidebar_text_instances: u64,
 }
 
 impl SidebarRenderEvidence {
@@ -353,6 +395,8 @@ impl SidebarRenderEvidence {
             minimap_aperture: ApertureEvidence::from_rect(minimap_aperture, render_extent)?,
             radar_content_insets,
             instance_counts: RenderInstanceCountEvidence::from_counts(output.instance_counts)?,
+            sidebar_text_instances: u64::try_from(output.instance_counts.sidebar_text)
+                .context("tactical sidebar-text instance count exceeds u64")?,
         })
     }
 }
@@ -430,6 +474,60 @@ mod tests {
     }
 
     #[test]
+    fn bitmap_evidence_rejects_fallback_unpopulated_atlas_and_mismatched_bytes() {
+        let source = BitmapFontSourceEvidence {
+            logical_name: "GAME.FNT".to_owned(),
+            source_archive: "fixture.mix".to_owned(),
+            entry_id: 1,
+            payload_byte_length: 17,
+            payload_sha256: "01".repeat(32),
+        };
+        let identity = crate::assets::fnt_file::FntSourceIdentity {
+            byte_length: 17,
+            sha256: source.payload_sha256.clone(),
+        };
+        let observation = |source_identity, atlas_dimensions| BitFontCaptureObservation {
+            source_identity,
+            atlas_dimensions,
+            glyph_count: 1,
+            cell_height: 17,
+            bitmap_rows: 16,
+            missing_glyph_present: true,
+            darken_texture_present: true,
+        };
+        assert!(
+            BitmapFontEvidence::from_observations(
+                observation(None, Some([32, 16])),
+                source.clone()
+            )
+            .is_err()
+        );
+        assert!(
+            BitmapFontEvidence::from_observations(
+                observation(Some(&identity), None),
+                source.clone()
+            )
+            .is_err()
+        );
+        let mut wrong = source.clone();
+        wrong.payload_sha256 = "02".repeat(32);
+        assert!(
+            BitmapFontEvidence::from_observations(
+                observation(Some(&identity), Some([32, 16])),
+                wrong
+            )
+            .is_err()
+        );
+        let evidence = BitmapFontEvidence::from_observations(
+            observation(Some(&identity), Some([32, 16])),
+            source.clone(),
+        )
+        .unwrap();
+        assert_eq!(evidence.source, source);
+        assert_eq!(evidence.glyph_count, 1);
+    }
+
+    #[test]
     fn aperture_must_be_positive_and_inside_the_render_extent() {
         let aperture = ApertureEvidence::from_rect(
             Rect {
@@ -469,6 +567,7 @@ mod tests {
                 minimap: 1,
                 viewport_rect: 4,
                 radar_animation: 1,
+                sidebar_text: 7,
             },
         };
         let evidence = SidebarRenderEvidence::from_render_output(
@@ -488,6 +587,7 @@ mod tests {
         assert_eq!(evidence.instance_counts.minimap, 1);
         assert_eq!(evidence.instance_counts.viewport_rect, 4);
         assert_eq!(evidence.instance_counts.radar_animation, 1);
+        assert_eq!(evidence.sidebar_text_instances, 7);
     }
 
     #[test]

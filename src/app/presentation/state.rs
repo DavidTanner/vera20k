@@ -164,8 +164,7 @@ pub(crate) struct MatchPresentationState {
     /// (the sidebar-anchored button Y is render-derived; see KD-6). None until the
     /// overlay first renders.
     pub(crate) in_game_options_anchor: Option<crate::ui::shell::layout::InGameOptionsAnchor>,
-    /// Show hotkey reference overlay. Toggle with F1.
+    /// Diagnostic hotkey reference overlay, toggled with Ctrl+Shift+F1.
+    #[cfg(feature = "dev-ui")]
     pub(crate) show_hotkey_help: bool,
-    /// Save/load panel visible. Toggle with F5.
-    pub(crate) show_save_load_panel: bool,
 }

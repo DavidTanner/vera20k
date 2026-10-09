@@ -42,6 +42,34 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |
 | Synchronize authoritative skill sources | `python tools/skill_sync.py --write`, then `--check` |
 
+## Optional UI builds
+
+Normal game and headless tool builds use no Cargo features. The standalone
+`mix-browser` and `bik-player` GUIs require `tools-ui`; enabling it does not
+enable the engine's diagnostic overlay. Build either tool through the runner,
+then resolve its executable rather than assuming a `target/` path:
+
+```sh
+python -m tools.cargo_run -- build --locked --release --features tools-ui --bin mix-browser
+python -m tools.cargo_run --resolve mix-browser --profile release
+python -m tools.cargo_run -- build --locked --release --features tools-ui --bin bik-player
+python -m tools.cargo_run --resolve bik-player --profile release
+```
+
+Run the resolved MIX browser directly. The Bink player accepts a filesystem path
+or an asset name as its first argument. `asset render` remains available without
+`tools-ui`, including TMP rendering to PNG and JSON reports.
+
+The in-engine diagnostic overlay is separately opt-in with `dev-ui`:
+
+```sh
+python -m tools.cargo_run -- build --locked --release --features dev-ui --bin vera20k
+```
+
+The release workflow builds `vera20k` with default features. egui, egui-wgpu,
+egui-winit, eframe and rfd belong only to the optional UI builds. Their packages
+remain in `Cargo.lock` so those builds stay reproducible.
+
 ## Cargo ownership and labeled builds
 
 ```sh
@@ -282,7 +310,7 @@ Two existing checks require private sealed evidence and are explicitly skipped
 by default, even when a local `config.toml` happens to exist:
 
 - Tactical environment preflight: the pinned archive and font from
-  `tactical_certification/profiles/soviet-radar-online-v2.json`, a project `config.toml`,
+  `tactical_certification/profiles/soviet-radar-online-v3.json`, a project `config.toml`,
   and that profile's Windows environment. Set `VERA20K_TEST_PROJECT_DIR` to the
   configured checkout (defaults to this checkout).
 - Historical title differential: Windows plus `VERA20K_SHELL_GUARD`,

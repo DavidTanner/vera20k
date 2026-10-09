@@ -23,6 +23,7 @@ pub(crate) fn quicksave(state: &mut AppState) {
 
 /// Save As retains the exact user description in the envelope; only the
 /// filename is sanitized. Quick saves use the map name as their description.
+#[cfg(feature = "dev-ui")]
 pub(crate) fn save_with_name(state: &mut AppState, raw_name: &str) {
     log_save_result("Save As", save_game(state, raw_name, None));
 }
