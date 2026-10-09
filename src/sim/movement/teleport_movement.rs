@@ -381,6 +381,13 @@ impl crate::sim::game_entity::GameEntity {
         self.locomotor.as_ref()?.warp_teleport()?.chrono()
     }
 
+    /// The warp on the active Teleport, whose Process runs its states: this
+    /// Teleport's own state (`+0x38`, `0x0071935F`) or the owner's latch
+    /// (`0x00719351`), which only the active warp Teleport holds.
+    pub(crate) fn active_chrono_warp(&self) -> Option<&ChronoWarp> {
+        self.locomotor.as_ref()?.teleport_runtime()?.chrono()
+    }
+
     /// Techno `+0x27C`, the Chronosphere's warp latch.
     pub(crate) fn chrono_warp_latch(&self) -> bool {
         self.chrono_warp().is_some_and(ChronoWarp::latched)

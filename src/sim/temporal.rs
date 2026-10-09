@@ -1165,8 +1165,7 @@ impl Simulation {
         }
         if category != EntityCategory::Structure
             && self.substrate.entities.get(id).is_some_and(|entity| {
-                entity.chrono_warp().is_some()
-                    && crate::sim::movement::teleport_movement::teleport_process_active(entity)
+                entity.active_chrono_warp().is_some()
                     && (entity.is_warping_in()
                         || (entity.is_warped_out() && entity.chrono_warp_latch()))
             })

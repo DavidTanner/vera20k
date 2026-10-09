@@ -37,14 +37,14 @@
 //!   ported; only Drive's is. Trigger: a naval Unit in the source block.
 //!   Effect: its retained track state is not reset to the destination.
 //! - The Drive the warp hands back keeps `Force_Track`'s head and
-//!   destination. Native Drive::Process runs Process_Movement on it
-//!   (`0x004B0A79`): a path search to the landing cell, and on a failed one
-//!   a scatter request to an ally in the cell ahead and the head cleared
-//!   (`0x004B281C..0x004B2E77`). VERA runs Process_Movement only for a Drive
-//!   with an order adapter or a track (#689). Both keep the destination, so
-//!   the vehicle stays moving and a Chrono Miner stays on its Drive until
-//!   its next order. Trigger: every Drive Unit the warp carries. Effect: no
-//!   scatter in front of a landed vehicle (instruction reading).
+//!   destination, both in its own cell. Native Drive::Process runs
+//!   Process_Movement on it (`0x004B0A79`), whose path search there takes
+//!   the zero-cost-route arm, unexecuted (`movement::track_path`'s residual).
+//!   VERA runs Process_Movement only for a Drive with an order adapter or a
+//!   track (#689), so the Drive keeps both, stays moving and does not end
+//!   until a destination comes. Trigger: every Drive Unit the warp carries.
+//!   Effect: unestablished; native may turn the hull, or end a Chrono
+//!   Miner's Drive, before its next order.
 //! - An off-map cell of either block reads the shared dummy cell's
 //!   coordinates natively; VERA reads the requested cell's.
 //! - The warp latch (`TechnoClass+0x27C`) has two more writers,

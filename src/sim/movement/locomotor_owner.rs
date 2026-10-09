@@ -1,7 +1,7 @@
 //! Entity boundary for active Drive instance installation and retirement.
 //!
 //! Native SetDestination7425F8 reuses an active Drive, otherwise ends an
-//! active piggyback that may end (7425FA..742681), allocates a Drive
+//! active piggyback that may end (7425FE..742681), allocates a Drive
 //! (41C250), links it (7426C9), begins piggyback (74276F) and swaps (74277E).
 //! Constructor4AF540 initializes its own destination/head/track/speed state.
 //! END4AF930 transfers the stashed object; owner742587 / FootAI4DAEC3 then
@@ -15,7 +15,7 @@ use crate::sim::game_entity::GameEntity;
 /// The Unit setter's Drive for a Teleporter (`0x007425E6..0x0074277E`): the
 /// Chrono Miner stays a Teleport unit while a Drive drives it. An active
 /// Drive is reused (`0x007425F8`). Otherwise an active piggyback that may end
-/// ends first (`0x007425FA..0x00742681`), and a fresh Drive then suspends
+/// ends first (`0x007425FE..0x00742681`), and a fresh Drive then suspends
 /// whatever is active without the setter asking its class again: a miner
 /// whose Chrono Warp Teleport ends onto the Drive it suspended gets a second
 /// Drive over that one.
@@ -30,7 +30,7 @@ pub(crate) fn begin_drive_for_teleporter(entity: &mut GameEntity, binary_frame: 
         return true;
     }
     if piggyback_end_admitted(entity) {
-        restore_admitted_primary(entity);
+        end_admitted_piggyback(entity);
     }
     entity
         .locomotor
@@ -38,8 +38,8 @@ pub(crate) fn begin_drive_for_teleporter(entity: &mut GameEntity, binary_frame: 
         .is_some_and(|locomotor| locomotor.begin_piggyback(LocomotorKind::Drive, binary_frame))
 }
 
-pub(crate) fn try_restore_primary(entity: &mut GameEntity) -> bool {
-    piggyback_end_admitted(entity) && restore_admitted_primary(entity)
+pub(crate) fn try_end_piggyback(entity: &mut GameEntity) -> bool {
+    piggyback_end_admitted(entity) && end_admitted_piggyback(entity)
 }
 
 /// The active locomotor's END gate for an entity-level caller. VERA installs
@@ -71,8 +71,14 @@ fn teleport_end_admitted(entity: &GameEntity) -> bool {
 /// and unrelated deploy/teleport adapters cannot add admission gates here.
 /// This same class gate applies at other entity-level END callers. A missing
 /// lazily allocated Drive payload has its constructor's true permission.
+///
+/// Residual: native asks any active IPiggyback (`0x004D831A..0x004D8376`),
+/// so an endable Teleport (a Chrono Warp's after state 7) also ends here;
+/// VERA leaves it to the Foot AI tail of the same frame. Trigger: an idle
+/// entry in the frame a warp ends. Effect: a NavQueue setter in between sees
+/// the Teleport instead of the object it suspended.
 pub(crate) fn try_end_drive_at_foot_idle(entity: &mut GameEntity) -> bool {
-    drive_end_admitted(entity) && restore_admitted_primary(entity)
+    drive_end_admitted(entity) && end_admitted_piggyback(entity)
 }
 
 /// IsMoving here is the Drive's own Is_Moving (`0x004AFB80`, its destination
@@ -88,9 +94,11 @@ fn drive_end_admitted(entity: &GameEntity) -> bool {
         && !entity.foot_locomotor_swap_active
 }
 
-/// The caller has already evaluated its END gate, at its own required point in
-/// the callback sequence. Keep that timing separate from the instance transfer.
-pub(crate) fn restore_admitted_primary(entity: &mut GameEntity) -> bool {
+/// END of the active piggyback, restoring the object it suspended: one link
+/// of the chain. The caller has already evaluated its END gate, at its own
+/// required point in the callback sequence. Keep that timing separate from
+/// the instance transfer.
+pub(crate) fn end_admitted_piggyback(entity: &mut GameEntity) -> bool {
     let physical = super::foot_coordinate::current_coordinate(entity);
     let Some(locomotor) = entity.locomotor.as_mut() else {
         return false;

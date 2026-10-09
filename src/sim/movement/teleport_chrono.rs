@@ -62,10 +62,14 @@
 //!   runs the Unit setter's Teleporter arm, whose Drive suspends the warp's
 //!   Teleport (`locomotor_owner::begin_drive_for_teleporter`), refuses the
 //!   destination while its owner warps (`0x004AFD40`) and ends at the Foot
-//!   AI tail. Natively the class AI prologue runs that Drive's Process too
-//!   (`0x007362A7..0x007362F5`); VERA runs none there. Trigger: a
-//!   destination for a Chrono Miner in the warp's last frames, and state 5's
-//!   NULL one after it. Effect: none seen, as the Drive has nowhere to go.
+//!   AI tail. The NavCom it published stays, so state 5's NULL destination,
+//!   which the prologue runs, installs another Drive: FootClass::AI's
+//!   Process runs that Drive, and state 6's TimerCheck with its scan draw
+//!   waits for the next prologue. That frame and draw order is read, not
+//!   executed. Natively the prologue also runs a Drive active at its call
+//!   (`0x007362A7..0x007362F5`); VERA runs none. Trigger: a destination for
+//!   a Chrono Miner in the warp's last frames. Effect: TimerCheck's draw
+//!   moves a frame and the warp's END up to one; the Drive goes nowhere.
 //! - A landed Aircraft's TimerCheck idle-mode entry does nothing:
 //!   `queue_foot_enter_idle_mode` has no Aircraft arm (its residual).
 //!   Trigger: a landed Aircraft in the source block. Effect: it keeps its

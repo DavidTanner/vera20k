@@ -72,10 +72,9 @@ pub struct LocomotorState {
     /// to on — an unpowered locomotor is a state something must actively put a
     /// unit into.
     pub powered: bool,
-    /// The suspended locomotor object, when a piggyback displaced it.
-    ///
-    /// For CMIN drive phases, `kind` becomes Drive and this stores the complete
-    /// primary Teleport object until the active Drive locomotor is ok to end.
+    /// The suspended locomotor object, when a piggyback displaced it, with any
+    /// stash of its own: a Chrono Miner's Drive holds the miner's Teleport,
+    /// and a Chrono Warp's Teleport holds whatever it displaced.
     #[serde(default)]
     pub piggyback: Option<StashedLocomotor>,
     /// Class-local state of this locomotor object.
@@ -177,9 +176,9 @@ impl LocomotorState {
     /// `LocomotionClass` constructor `0x0055A6C0`) and links it
     /// (`0x007426C9`) before BEGIN (`0x0074276F`).
     /// - It keeps this object's type caches and the Foot's current layer. A
-    ///   BEGIN does not move the Foot, and both classes of the one production
-    ///   BEGIN, a Drive over a Teleport, answer Ground from `In_Which_Layer`
-    ///   (`0x004B4820`, `0x00719E20`).
+    ///   BEGIN does not move the Foot, and the two classes production BEGINs
+    ///   install, the setter's Drive and the Chrono Warp's Teleport, answer
+    ///   Ground from `In_Which_Layer` (`0x004B4820`, `0x00719E20`).
     /// - A Jumpjet or Fly temporary would also need its type's link block and
     ///   its own layer answer. Nothing installs one.
     pub(crate) fn fresh_linked(&self, kind: LocomotorKind, binary_frame: u32) -> Self {

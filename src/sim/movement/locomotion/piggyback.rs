@@ -158,7 +158,8 @@ impl StashedLocomotor {
         self.0.install_ship_state_for_test(retained)
     }
 
-    /// Nothing processes a suspended object; only fixtures write it.
+    /// The suspended object, for fixtures. Production writes only a suspended
+    /// warp Teleport's state ([`Self::warp_teleport_mut`]).
     #[cfg(test)]
     pub(crate) fn suspended_mut_for_test(&mut self) -> &mut LocomotorState {
         &mut self.0
@@ -304,10 +305,10 @@ mod tests {
         assert_eq!(state.piggyback.as_deref(), Some(&driving));
         assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
 
-        let released = end(&mut state).expect("the Drive and its stash");
+        let released = end(&mut state).expect("the Teleport");
         assert_eq!(released.kind, LocomotorKind::Teleport);
         assert_eq!(state, driving);
-        let released = end(&mut state).expect("the Teleport");
+        let released = end(&mut state).expect("the Drive");
         assert_eq!(released.kind, LocomotorKind::Drive);
         assert_eq!(state, before);
         assert!(end(&mut state).is_none());

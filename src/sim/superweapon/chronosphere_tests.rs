@@ -374,9 +374,8 @@ fn chain(sim: &Simulation, id: u64) -> Vec<LocomotorKind> {
 /// A Chrono Miner driving on the Drive its setter installed warps with the
 /// block: the warp's fresh Teleport suspends the Drive with the miner's
 /// Teleport inside it (`0x006CCB4A`; Begin_Piggyback tests only its own
-/// slot, `0x00719EA9`). The warp's END hands the Drive back, still holding
-/// the destination Force_Track gave it at the landing cell (`0x004B0C40`),
-/// so the miner stays on it until its next order ends at a stop.
+/// slot, `0x00719EA9`), and the warp's END hands the Drive back. Its next
+/// order drives it, and it ends back on its Teleport at the stop.
 #[test]
 fn retail_chrono_warp_carries_a_driving_chrono_miner() {
     use LocomotorKind::{Drive, Teleport};
@@ -405,11 +404,18 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
 
     let landing = (TARGET.0 + from.0 - SOURCE.0, TARGET.1 + from.1 - SOURCE.1);
     let mut chains = vec![(chain(&sim, miner), from)];
+    let warping = |sim: &Simulation| {
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        entity.chrono_warp().is_some()
+    };
     for _ in 0..80 {
         step(&mut sim, &rules);
         let now = (chain(&sim, miner), cell(&sim, miner));
         if chains.last() != Some(&now) {
             chains.push(now);
+        }
+        if !warping(&sim) {
+            break;
         }
     }
     assert_eq!(
@@ -421,24 +427,60 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
         ]
     );
     let entity = sim.substrate.entities.get(miner).unwrap();
-    assert!(entity.chrono_warp().is_none() && entity.navigation.nav_com.is_none());
-    assert_eq!(
-        crate::sim::movement::motion_query::is_moving(entity),
-        Some(true)
-    );
+    assert!(!warping(&sim) && entity.navigation.nav_com.is_none());
 
     let next = (landing.0 + 4, landing.1);
     order(&mut sim, next);
     let mut drove = false;
     for _ in 0..200 {
         step(&mut sim, &rules);
-        drove |= chain(&sim, miner) == [Drive, Teleport] && cell(&sim, miner) != landing;
+        drove |= chain(&sim, miner)[0] == Drive && cell(&sim, miner) != landing;
     }
     assert!(drove);
     assert_eq!(
         (chain(&sim, miner), cell(&sim, miner)),
         (vec![Teleport], next)
     );
+}
+
+/// A Chrono Miner on its own Teleport warps on a tank's frames. Arming
+/// drops its NavCom (the warp's Teleport has no Marked coordinate), so the
+/// NULL destinations of states 5 and 7 return before the Unit setter's
+/// Teleporter arm (`0x00741A80..0x00741A9C`), and no Drive comes between.
+/// The tank's frames are the native `chrono_process` rows'
+/// (`retail_chrono_warp_frames_match_native_process`).
+#[test]
+fn retail_chrono_warp_runs_an_idle_chrono_miner_on_a_tanks_frames() {
+    use LocomotorKind::Teleport;
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", SOURCE);
+    let beside = (SOURCE.0 + 1, SOURCE.1);
+    let tank = spawn(&mut sim, &rules, "MTNK", "Americans", beside);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    let state = |sim: &Simulation, id| {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        entity.chrono_warp().map(|warp| warp.state())
+    };
+    let mut ended = false;
+    for frame in 1..=80 {
+        step(&mut sim, &rules);
+        let tank_state = state(&sim, tank);
+        assert_eq!(state(&sim, miner), tank_state, "frame {frame}");
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        assert!(entity.navigation.nav_com.is_none(), "frame {frame}");
+        let expected = if tank_state.is_some() {
+            vec![Teleport, Teleport]
+        } else {
+            vec![Teleport]
+        };
+        assert_eq!(chain(&sim, miner), expected, "frame {frame}");
+        ended |= tank_state.is_none();
+    }
+    assert!(ended);
 }
 
 /// A destination given once the warp has landed (WarpingIn up, the latch
