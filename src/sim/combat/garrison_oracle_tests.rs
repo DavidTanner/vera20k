@@ -17,6 +17,140 @@ use crate::sim::passenger::{PassengerCargo, PassengerRole};
 use serde_json::Value;
 use std::fmt::Write;
 
+/// FireAt advances the occupant at 6FF031..6FF085 before GetROF queries
+/// GetWeapon. The null-weapon arm at 6FCFD2..6FCFDD returns one without a
+/// draw; `techno_rearm.json` executes that arm and records the complete RNG.
+/// The query corpus separately covers normal/elite missing occupant weapons.
+/// This is a production-emission regression with supplied cargo/shot state,
+/// not a native comparison of boarding or the complete FireAt lifecycle.
+#[test]
+fn a_shot_before_an_unarmed_occupant_rearms_without_an_rng_draw() {
+    let rows: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/techno_rearm.json",
+    ))
+    .unwrap();
+    let golden = rows
+        .iter()
+        .find(|row| row["input"]["no_weapon"] == true)
+        .unwrap();
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[BuildingTypes]\n0=HOUSE\n[InfantryTypes]\n0=ARMED\n1=UNARMED\n\
+         [HOUSE]\nStrength=800\nCanBeOccupied=yes\nCanOccupyFire=yes\n\
+         [ARMED]\nStrength=125\nPrimary=Gun\nOccupyWeapon=Gun\n\
+         [UNARMED]\nStrength=125\n\
+         [Gun]\nDamage=5\nROF=120\nRange=6\nProjectile=InvisibleHigh\nWarhead=SA\n\
+         [InvisibleHigh]\nInviso=yes\n\
+         [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+    ))
+    .unwrap();
+
+    for rank in [0, 200] {
+        let mut world = crate::sim::world::Simulation::new();
+        let mut building = GameEntity::test_default_of_category(
+            1,
+            "HOUSE",
+            "Test",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
+        let mut cargo = PassengerCargo::new(5, 0);
+        // The existing cargo writer prepends; establish armed, then unarmed.
+        for (id, kind) in [(3, "UNARMED"), (2, "ARMED")] {
+            let mut occupant = GameEntity::test_default_of_category(
+                id,
+                kind,
+                "Test",
+                10,
+                10,
+                EntityCategory::Infantry,
+            );
+            occupant.set_veterancy_rank(rank);
+            occupant.passenger_role = PassengerRole::Inside {
+                transport_id: 1,
+                open_topped: false,
+            };
+            assert!(cargo.board(id, 1));
+            world.substrate.entities.insert(occupant);
+        }
+        assert_eq!(cargo.passengers, [2, 3]);
+        building.passenger_role = PassengerRole::Transport { cargo };
+        world.substrate.entities.insert(building);
+        world.interner = test_interner();
+        crate::sim::arena_fixture::flat_arena(&mut world, &rules);
+        world.scenario_rng = crate::sim::rng::SimRng::new(31);
+        assert_eq!(world.scenario_rng.native_state_hex(), golden["rng_before"]);
+
+        let building = world.substrate.entities.get(1).unwrap();
+        let obj = rules.object("HOUSE").unwrap();
+        let selected = super::combat_weapon::resolve_weapon_index(
+            &rules,
+            building,
+            obj,
+            0,
+            &world.substrate.entities,
+            &world.interner,
+        )
+        .expect("the armed occupant's gun");
+        let shot = super::world_receiver::AdmittedFire {
+            snap: super::build_attacker_snapshot(
+                building,
+                super::TargetKind::Cell(14, 10),
+                Some(super::GarrisonSnapshot {
+                    fire_index: 0,
+                    occupant_count: 2,
+                }),
+            ),
+            obj,
+            selected,
+            target_coords: (
+                14,
+                10,
+                crate::util::fixed_math::SimFixed::from_num(128),
+                crate::util::fixed_math::SimFixed::from_num(128),
+            ),
+            target_type_ref: building.type_ref(),
+            is_garrison: true,
+        };
+        let mut emitted = super::CombatEmit::default();
+        assert!(
+            super::world_receiver::emit_admitted_fire(
+                &mut world,
+                &rules,
+                shot,
+                17,
+                &mut emitted,
+                None,
+            )
+            .is_some()
+        );
+        assert_eq!(emitted.fire_events.len(), 1);
+        let building = world.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            building.passenger_role.cargo().unwrap().garrison_fire_index,
+            1
+        );
+        assert!(
+            get_weapon(
+                building,
+                obj,
+                0,
+                &world.substrate.entities,
+                &rules,
+                &world.interner
+            )
+            .is_none()
+        );
+        assert_eq!(building.rearm_timer.start_frame(), 17);
+        assert_eq!(
+            i64::from(building.rearm_timer.duration()),
+            golden["output"].as_i64().unwrap(),
+            "missing weapon at occupant rank {rank}"
+        );
+        assert_eq!(world.scenario_rng.native_state_hex(), golden["rng_after"]);
+    }
+}
+
 /// Supply the native corpus's type links and live state through existing
 /// fixture owners. Expected outputs remain in the executed native corpus.
 pub(super) fn for_each_native_case(

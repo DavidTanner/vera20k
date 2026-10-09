@@ -3190,14 +3190,15 @@ fn reveal_on_fire(world: &mut Simulation, rules: &RuleSet, firer_id: u64, target
 /// created the fired weapon's particle systems just before
 /// (`0x006FF15B..0x006FF26E`), so its flags are the live systems GetROF tests;
 /// a system left from an earlier shot matters only when GetWeapon answers a
-/// different weapon, which no retail garrison does.
+/// different weapon. RESIDUAL: retained live systems from an earlier weapon
+/// are not queried here.
 fn fireat_get_rof(
     world: &mut Simulation,
     rules: &RuleSet,
     snap: &AttackerSnapshot,
     obj: &ObjectType,
     weapon: &WeaponType,
-    rof_weapon: &WeaponType,
+    rof_weapon: Option<&WeaponType>,
     next_index: i32,
 ) -> i32 {
     let firer = world.substrate.entities.get(snap.stable_id);
@@ -3206,7 +3207,7 @@ fn fireat_get_rof(
             // RESIDUAL: a building's own Ammo (`+0x2FC`) is not kept;
             // no retail building sets `Ammo=`.
             building_ammo: None,
-            weapon: Some(rof_weapon),
+            weapon: rof_weapon,
             live: super::rof::LiveParticles {
                 spark: weapon.use_spark_particles,
                 fire: weapon.use_fire_particles,
@@ -3339,7 +3340,15 @@ pub(super) fn emit_admitted_fire(
             .get(snap.stable_id)
             .map(|entity| entity.weapon_burst)
             .unwrap_or_default();
-        let rof = fireat_get_rof(world, rules, snap, obj, weapon, weapon, burst.next_index());
+        let rof = fireat_get_rof(
+            world,
+            rules,
+            snap,
+            obj,
+            weapon,
+            Some(weapon),
+            burst.next_index(),
+        );
         if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
             entity.rearm_after_fire(binary_frame as i32, rof);
             entity.weapon_burst.complete_shot(weapon.burst.max(1));
@@ -3722,7 +3731,9 @@ pub(super) fn emit_admitted_fire(
         entity.fire_voxel_recoil(obj.has_turret);
     }
     // GetROF (`0x006FCFA0`) reads its weapon through GetWeapon (vt+0x3F8,
-    // `0x006FCFCA`), after the advance above.
+    // `0x006FCFCA`), after the advance above. Preserve a missing weapon:
+    // `0x006FCFD2..0x006FCFDD` returns 1 without an RNG draw, rather than
+    // reusing the weapon just fired (native `techno_rearm.json` null arm).
     let rof_weapon = world
         .substrate
         .entities
@@ -3736,11 +3747,10 @@ pub(super) fn emit_admitted_fire(
                 rules,
                 &world.interner,
             )
-        })
-        .unwrap_or(weapon);
+        });
 
     let next_index = burst.next_index();
-    let mid_burst = next_index < rof_weapon.burst;
+    let mid_burst = rof_weapon.is_some_and(|weapon| next_index < weapon.burst);
     // `CALL [EDX+0x318]` at `0x006FF289`.
     let rof = fireat_get_rof(world, rules, snap, obj, weapon, rof_weapon, next_index);
 
