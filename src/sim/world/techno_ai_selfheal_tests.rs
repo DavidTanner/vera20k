@@ -25,18 +25,26 @@ use crate::sim::intern::InternedId;
 /// Stock shapes: a `[CAMACH]`-style machine shop and a `[CATHOSP]`-style
 /// hospital carry the gain keys; the four `[General]` keys hold the retail
 /// values. `[E1]` is an organic infantry and `[MTNK]` a non-organic vehicle.
+///
+/// The last three types pin the class admission the two arms share: `[ORCA]` is
+/// an Aircraft, `[NAPOWR]` a Structure that even authors `Organic=yes`, and
+/// `[E2]` an Infantry that authors `Organic=no`.
 fn rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
         "[General]\nRepairRate=.016\nSelfHealInfantryFrames=50\nSelfHealInfantryAmount=20\n\
          SelfHealUnitFrames=75\nSelfHealUnitAmount=5\n\
-         [InfantryTypes]\n0=E1\n\
+         [InfantryTypes]\n0=E1\n1=E2\n\
          [VehicleTypes]\n0=MTNK\n\
-         [BuildingTypes]\n0=GACNST\n1=CAHOSP\n2=CAMACH\n\
+         [AircraftTypes]\n0=ORCA\n\
+         [BuildingTypes]\n0=GACNST\n1=CAHOSP\n2=CAMACH\n3=NAPOWR\n\
          [E1]\nStrength=125\nSpeed=4\nCost=100\n\
+         [E2]\nStrength=125\nSpeed=4\nCost=100\nOrganic=no\n\
          [MTNK]\nStrength=300\nSpeed=7\nCost=700\nROT=5\n\
+         [ORCA]\nStrength=200\nSpeed=14\nCost=1200\n\
          [GACNST]\nStrength=1000\nCost=2000\nFoundation=4x4\n\
          [CAHOSP]\nStrength=800\nCost=1000\nFoundation=2x2\nInfantryGainSelfHeal=1\n\
-         [CAMACH]\nStrength=800\nCost=1000\nFoundation=2x2\nUnitsGainSelfHeal=1\n",
+         [CAMACH]\nStrength=800\nCost=1000\nFoundation=2x2\nUnitsGainSelfHeal=1\n\
+         [NAPOWR]\nStrength=750\nCost=800\nFoundation=2x2\nOrganic=yes\n",
     ))
     .expect("self-heal rules")
 }
@@ -261,6 +269,106 @@ fn each_arm_ignores_the_other_classes_and_an_empty_counter() {
         50
     );
     assert_eq!(sim.substrate.entities.get(tank).unwrap().health.current, 50);
+}
+
+/// A Structure and an Aircraft reach neither arm, whatever their type's
+/// `Organic` byte says: `0x006FA7B9` requires `WhatAmI()==1` for the units arm
+/// and `0x006FA8B5` requires it again for the hospital arm, so a class that is
+/// neither Infantry nor Unit leaves at `0x006FA941`.
+#[test]
+fn only_infantry_and_units_reach_a_house_heal_arm() {
+    let (mut sim, rules, owner) = scene();
+    // Stock both counters, and make the structure's type author Organic=yes:
+    // the class admission is what must exclude it, not the Organic byte.
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(1, 1);
+    let plant = spawn(&mut sim, &rules, "NAPOWR");
+    let aircraft = spawn(&mut sim, &rules, "ORCA");
+    for id in [plant, aircraft] {
+        sim.substrate.entities.get_mut(id).unwrap().health.current = 40;
+    }
+
+    sim.session.binary_frame = 150; // divisible by both 50 and 75
+    house_self_heal_step(&mut sim, plant, &rules);
+    house_self_heal_step(&mut sim, aircraft, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(plant).unwrap().health.current,
+        40,
+        "a Structure never house-heals, Organic=yes included"
+    );
+    assert_eq!(
+        sim.substrate.entities.get(aircraft).unwrap().health.current,
+        40,
+        "an Aircraft never house-heals"
+    );
+}
+
+/// An Infantry whose type authors `Organic=no` still takes the hospital arm and
+/// never the units arm: `0x006FA8A9` tests `WhatAmI()==0xF` and jumps straight
+/// to the cadence test at `0x006FA8D2`, before the `Organic` read at
+/// `0x006FA8CE`.
+#[test]
+fn an_organic_no_infantry_takes_the_hospital_arm() {
+    let (mut sim, rules, owner) = scene();
+    let man = spawn(&mut sim, &rules, "E2");
+    assert!(
+        !rules.object("E2").unwrap().organic,
+        "the fixture this pins is an Organic=no infantry"
+    );
+    sim.substrate.entities.get_mut(man).unwrap().health.current = 100;
+
+    // The hospital counter alone: 20 x 1 on the 50-frame cadence.
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(1, 0);
+    sim.session.binary_frame = 150;
+    house_self_heal_step(&mut sim, man, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(man).unwrap().health.current,
+        120,
+        "0x006FA8A9 admits Infantry before reading Organic"
+    );
+
+    // The machine-shop counter alone must do nothing for it.
+    let house = sim.houses.get_mut(&owner).unwrap();
+    house.revoke_self_heal(1, 0);
+    house.grant_self_heal(0, 1);
+    sim.substrate.entities.get_mut(man).unwrap().health.current = 100;
+    sim.session.binary_frame = 300;
+    house_self_heal_step(&mut sim, man, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(man).unwrap().health.current,
+        100,
+        "an Infantry never takes the units arm, Organic=no included"
+    );
+}
+
+/// `bl` is set for `Health >= Strength` (`0x006FA7A2`, `jl` past the set) and
+/// for `Health == 0` (`0x006FA7AC`, against the `ebp` zeroed at `0x006F9E58`),
+/// and either arm leaves before its heal block (`0x006FA7DA`, `0x006FA8D2`).
+#[test]
+fn an_over_strength_or_dead_object_never_heals() {
+    let (mut sim, rules, owner) = scene();
+    let tank = spawn(&mut sim, &rules, "MTNK");
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(0, 1);
+
+    // Above Strength: the native skips the whole block, so nothing pulls the
+    // object back down to Strength.
+    sim.substrate.entities.get_mut(tank).unwrap().health.current = 320;
+    sim.session.binary_frame = 75;
+    house_self_heal_step(&mut sim, tank, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(tank).unwrap().health.current,
+        320,
+        "an over-strength object is skipped, not clamped down"
+    );
+
+    // Zero Health: a crashing object keeps zero; the heal block never runs.
+    sim.substrate.entities.get_mut(tank).unwrap().health.current = 0;
+    sim.session.binary_frame = 150;
+    house_self_heal_step(&mut sim, tank, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(tank).unwrap().health.current,
+        0,
+        "0x006FA7AC rejects a zero-Health object"
+    );
 }
 
 #[test]

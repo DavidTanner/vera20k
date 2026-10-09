@@ -930,8 +930,29 @@ fn house_self_heal_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
     house_heal_arm(sim, id, rules, true);
 }
 
-/// One arm of [`house_self_heal_step`]. `infantry` selects the organic arm:
-/// its own frame key, house counter, amount key and predicate.
+/// One arm of [`house_self_heal_step`]. `infantry` selects the hospital arm:
+/// its own class admission, frame key, house counter, amount key and predicate.
+///
+/// Admission, straight from `TechnoClass::AI_Update` (`0x006F9E50`):
+///
+/// ```text
+/// 6FA7B9  cmp eax,1 ; jne 6FA8A2     ; the units arm is Unit-only
+/// 6FA7D2  test cl,cl ; jne 6FA8A2    ; and skips an organic type (+0xD97)
+/// 6FA7DA  test bl,bl ; jne 6FA8A2    ; and an at/over-strength or zero-Health object
+/// 6FA8A9  cmp eax,0Fh ; je 6FA8D2    ; Infantry takes the hospital arm directly ...
+/// 6FA8B5  cmp eax,1 ; jne 6FA941     ; ... which otherwise needs a Unit ...
+/// 6FA8CE  test cl,cl ; je 6FA941     ; ... whose type is organic
+/// 6FA8D2  test bl,bl ; jne 6FA941    ; the same guard as the units arm
+/// ```
+///
+/// Only Infantry and Unit reach either arm — a Structure or an Aircraft
+/// house-heals nothing, whatever its type's `Organic` says — and an
+/// `Organic=no` Infantry still takes the hospital arm, because the Infantry
+/// test at `0x6FA8A9` precedes the `Organic` read at `0x6FA8CE`.
+///
+/// `bl` is built at `0x006FA79A..0x006FA7B0` (`ebp` is zeroed at `0x006F9E58`):
+/// it is set when `Health >= Type+0xA0` (`0x006FA7A2`, `jl` past the set) or when
+/// `Health == 0` (`0x006FA7AC`), and either arm leaves before its heal block.
 fn house_heal_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, infantry: bool) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -939,7 +960,18 @@ fn house_heal_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, infantry: bool
     let Some(object) = sim.object_type(entity.type_ref(), rules) else {
         return;
     };
-    if object.organic != infantry {
+    let unit = entity.category == EntityCategory::Unit;
+    let admitted = if infantry {
+        entity.category == EntityCategory::Infantry || (unit && object.organic)
+    } else {
+        unit && !object.organic
+    };
+    if !admitted {
+        return;
+    }
+    let strength = object.strength;
+    let health = entity.health.current;
+    if health >= strength || health == 0 {
         return;
     }
     let interval = if infantry {
@@ -966,7 +998,6 @@ fn house_heal_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, infantry: bool
     } else {
         rules.general.self_heal_unit_amount
     };
-    let strength = object.strength;
     let step = amount.wrapping_mul(count);
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return;
