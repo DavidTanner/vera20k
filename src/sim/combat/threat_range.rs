@@ -193,8 +193,9 @@ pub enum ScanMission {
     ///   57, the Chronosphere's (`0x006F0130`), with the TeamType's
     ///   `OnlyTargetHouseEnemy=` (`+0xF7`) as `Greatest_Threat`'s arg3
     ///   (`0x006ED14C..0x006ED15E`, `0x006F0244..0x006F0253`);
-    /// - `AircraftClass::Mission_Hunt`'s harvester pass, mask `0x40` with
-    ///   arg3 0 (`0x00414AFD..0x00414B24`).
+    /// - `AircraftClass::Mission_Hunt`'s multiplayer pass, the harvester mask
+    ///   `0x40` (any type with `Storage=`) with arg3 0
+    ///   (`0x00414AFD..0x00414B24`).
     ///
     /// No quarry mask carries bit 0 or 1, so it takes Hunt's flat walk,
     /// measured from the scanner's own Coords.

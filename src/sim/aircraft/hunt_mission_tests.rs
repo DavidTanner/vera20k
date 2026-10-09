@@ -6,11 +6,13 @@ use crate::sim::mission::{MissionId, MissionType};
 use serde_json::{Value, json};
 
 /// Answers each call from the row and logs it as the oracle logs the native
-/// call it stands for; keeps the Target as Assign_Target leaves it.
+/// call it stands for; keeps the Target as Assign_Target leaves it and the
+/// current mission as the idle mode leaves it.
 struct Recorder {
     input: Value,
     scans: Vec<Value>,
     target: Option<String>,
+    current: i64,
     calls: Vec<Value>,
 }
 
@@ -39,20 +41,21 @@ impl HuntHost for Recorder {
 
     fn enter_idle_mode(&mut self) {
         self.calls.push(json!(["enter_idle_mode", 0, 1]));
+        if let Some(mission) = self.input["idle_commences"].as_i64() {
+            self.current = mission;
+        }
     }
 
     fn leave_team(&mut self) {
         self.calls.push(json!(["leave_team", "aircraft", -1, 0]));
     }
 
-    fn rate(&mut self) -> i32 {
-        self.calls.push(json!(["rate"]));
-        self.input["rate"].as_i64().unwrap() as i32
-    }
-
-    fn jitter(&mut self) -> i32 {
+    fn epilogue(&mut self) -> i32 {
         self.calls.push(json!(["jitter", 0, 2]));
-        self.input["jitter"].as_i64().unwrap() as i32
+        let rate = self.input["rates"][self.current.to_string()]
+            .as_i64()
+            .unwrap();
+        (rate + self.input["jitter"].as_i64().unwrap()) as i32
     }
 }
 
@@ -63,7 +66,7 @@ fn hunt_matches_the_original() {
     ))
     .expect("aircraft_hunt.json");
     let rows = oracle["mission_hunt"].as_array().unwrap();
-    assert_eq!(rows.len(), 86);
+    assert_eq!(rows.len(), 102);
     for row in rows {
         let input = &row["input"];
         let name = input["name"].as_str().unwrap();
@@ -76,6 +79,7 @@ fn hunt_matches_the_original() {
             input: input.clone(),
             scans: input["scans"].as_array().unwrap().clone(),
             target: input["target"].as_bool().unwrap().then(|| "any".to_owned()),
+            current: i64::from(MissionType::Hunt.id()),
             calls: Vec::new(),
         };
         let delay = hunt_visit(&facts, &mut host);
@@ -91,7 +95,7 @@ fn hunt_matches_the_original() {
 }
 
 const RULES: &str = "[General]\nFlightLevel=1500\n\
-[VehicleTypes]\n0=TANK\n1=MINER\n[AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=POWER\n\
+[VehicleTypes]\n0=TANK\n1=MINER\n[AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=POWER\n1=REFN\n\
 [POWER]\nStrength=750\nPower=100\nFoundation=2x2\n\
 [ORCA]\nStrength=150\nSpeed=14\nAmmo=1\nLandable=yes\nFighter=yes\nPrimary=TestGun\n\
 Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
@@ -99,29 +103,38 @@ Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
 [TestShot]\nROT=0\n[TestWH]\nVerses=100%\n\
 [TANK]\nStrength=1000\nLocomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
 [MINER]\nStrength=1000\nHarvester=yes\nStorage=40\n\
-Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n";
+Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
+[REFN]\nStrength=900\nRefinery=yes\nStorage=200\nFoundation=2x2\n";
 
 /// All_To_Hunt (`0x00501400`), which a computer house's Strategy runs once
 /// it has lost its last factory, queues Hunt on every Foot of the house.
-/// A hunting aircraft in multiplayer goes for the enemy's harvester and
-/// strikes it, passing over a nearer tank; outside multiplayer it finds
-/// nothing and its idle mode picks again.
+/// In multiplayer a hunting computer aircraft goes for an enemy object with
+/// `Storage=`, a harvester or a refinery, passing over a nearer tank, and
+/// strikes it; outside multiplayer it finds nothing and its idle mode picks
+/// again.
 #[test]
-fn a_hunting_aircraft_strikes_the_enemy_harvester_in_multiplayer_only() {
+fn a_hunting_computer_aircraft_strikes_storage_in_multiplayer_only() {
     use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
     use crate::sim::combat::TargetKind;
+    use crate::sim::house_state::HouseState;
     use crate::sim::world::Simulation;
     let rules = RuleSet::from_ini(&IniFile::from_str(RULES)).expect("rules");
-    for game_mode in [true, false] {
+    for (game_mode, quarry) in [(true, "MINER"), (true, "REFN"), (false, "MINER")] {
         let mut sim = Simulation::new();
         sim.session.game_mode_nonzero = game_mode;
         let mut owners = Vec::new();
-        for (index, name) in ["Americans", "Russians"].into_iter().enumerate() {
+        // The hunter's house is a computer one, as All_To_Hunt's caller's,
+        // and passive, so its own Strategy stays out of the run. The enemy
+        // is human and not passive, which would keep its objects out of
+        // every scan (`0x006F826E`).
+        for (index, (name, human)) in [("Americans", false), ("Russians", true)]
+            .into_iter()
+            .enumerate()
+        {
             let id = sim.interner.intern(name);
-            sim.houses.insert(
-                id,
-                crate::sim::house_state::HouseState::new(id, index as u8, None, true, 0, 10),
-            );
+            let mut house = HouseState::new(id, index as u8, None, human, 0, 10);
+            house.multiplay_passive = !human;
+            sim.houses.insert(id, house);
             sim.session.house_order.push(id);
             owners.push(id);
             // Under `ShortGame=` a house without a building is defeated.
@@ -134,9 +147,9 @@ fn a_hunting_aircraft_strikes_the_enemy_harvester_in_multiplayer_only() {
         let tank = sim
             .spawn_object("TANK", "Russians", 14, 10, 0, &rules)
             .expect("tank");
-        let miner = sim
-            .spawn_object("MINER", "Russians", 34, 26, 0, &rules)
-            .expect("miner");
+        let storage = sim
+            .spawn_object(quarry, "Russians", 34, 26, 0, &rules)
+            .expect(quarry);
         crate::sim::house_strategy::all_to_hunt(&mut sim, &rules, owners[0], None);
         let mut hunted = false;
         let mut targets = Vec::new();
@@ -160,21 +173,18 @@ fn a_hunting_aircraft_strikes_the_enemy_harvester_in_multiplayer_only() {
                 break;
             }
         }
-        assert!(hunted, "game mode {game_mode}: the aircraft hunts");
+        let case = format!("{quarry}, game mode {game_mode}");
+        assert!(hunted, "{case}: the aircraft hunts");
         assert!(
             !targets.contains(&TargetKind::Entity(tank)),
-            "never the tank"
+            "{case}: never the tank"
         );
         if game_mode {
-            assert_eq!(
-                targets,
-                [TargetKind::Entity(miner)],
-                "it takes the harvester"
-            );
-            assert!(fired, "and strikes it");
+            assert_eq!(targets, [TargetKind::Entity(storage)], "{case}: its target");
+            assert!(fired, "{case}: it strikes");
         } else {
-            assert!(targets.is_empty(), "outside multiplayer it finds nothing");
-            assert!(!fired);
+            assert!(targets.is_empty(), "{case}: it finds nothing");
+            assert!(!fired, "{case}");
         }
     }
 }

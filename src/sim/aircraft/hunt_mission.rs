@@ -2,8 +2,10 @@
 //!
 //! - Without Ammo (`+0x2FC` 0) the aircraft leaves its team
 //!   (`TeamClass::Remove_Member(this, -1, 0)`, `0x006EA870`), enters idle
-//!   mode (vt+0x484 `(0, 1)`) and returns its Rate epilogue,
-//!   `ftol(Rate * 900) + RandomRanged(0, 2)` (`0x00414AB2..0x00414ADE`).
+//!   mode (vt+0x484 `(0, 1)`) and returns the Rate epilogue,
+//!   `ftol(Rate * 900) + RandomRanged(0, 2)` (`0x00414AB2..0x00414ADE`), of
+//!   the mission current after that call: the idle mode may have commenced
+//!   another (`0x005B3A00` reads `+0xAC`).
 //! - With a Target (`+0x2B4`) it queues Attack (vt+0x1E8 `(Attack, 0)`) and
 //!   returns 1.
 //! - Without one it assigns (vt+0x3C8) what Greatest_Threat (vt+0x3C4,
@@ -14,8 +16,12 @@
 //!
 //! Mask 0 finds nothing for an aircraft: it has no `+0x3C4` override of its
 //! own, so its flags word is 0 (`0x006F8F29..0x006F8F72`) and the class gate
-//! (`0x006F821A`) refuses every candidate. A hunting aircraft only ever takes
-//! a harvester, and only in multiplayer.
+//! (`0x006F821A`) refuses every candidate. Mask `0x40`'s flags word admits
+//! units and buildings, and its quarry gate (`0x006F866D`) only types with
+//! `Storage=`. A hunting aircraft therefore takes only harvesters and
+//! refineries, and only in multiplayer; a human-owned one outside a team
+//! passes over a refinery, as over any unarmed building
+//! (`0x006F85AB..0x006F8601`).
 //!
 //! Callers: the house's All_To_Hunt (`0x00501400`, which Strategy runs when
 //! a computer house loses its last factory), the idle mode's pick for a
@@ -26,9 +32,10 @@
 //! ([`super::dispatch_mission`]).
 //!
 //! Evidence: tools/spatial_oracle/aircraft_hunt.py runs the original
-//! 0x00414A80 over Ammo (0, 1, 3, unlimited -1), team, Target, game mode
-//! and every scan answer; its tests replay every row through
-//! [`hunt_visit`].
+//! 0x00414A80 over Ammo (0, 1, 3, unlimited -1), team, Target, game mode,
+//! every scan answer and, without Ammo, each mission the idle mode may
+//! commence, with the original MissionControl lookup; its tests replay every
+//! row through [`hunt_visit`].
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
@@ -70,10 +77,8 @@ trait HuntHost {
     fn enter_idle_mode(&mut self);
     /// `TeamClass::Remove_Member(this, -1, 0)` (`0x006EA870`).
     fn leave_team(&mut self);
-    /// `ftol(MissionControl[Hunt].Rate * 900)`.
-    fn rate(&mut self) -> i32;
-    /// Scenario `RandomRanged(0, 2)`.
-    fn jitter(&mut self) -> i32;
+    /// The Rate epilogue of the current mission.
+    fn epilogue(&mut self) -> i32;
 }
 
 /// One visit; returns its delay.
@@ -83,7 +88,7 @@ fn hunt_visit<H: HuntHost>(facts: &HuntFacts, host: &mut H) -> i32 {
             host.leave_team();
         }
         host.enter_idle_mode();
-        return host.rate().wrapping_add(host.jitter());
+        return host.epilogue();
     }
     if !host.target() {
         if facts.game_mode {
@@ -186,14 +191,8 @@ impl HuntHost for WorldHunt<'_> {
         self.sim.leave_team(self.id, false, Some(self.rules));
     }
 
-    fn rate(&mut self) -> i32 {
-        self.rules.mission_control.rate_frames(MissionType::Hunt)
-    }
-
-    fn jitter(&mut self) -> i32 {
-        self.sim.scenario_rng.next_range_u32_inclusive(
-            0,
-            crate::sim::mission::authority::RATE_EPILOGUE_JITTER_MAX_FRAMES,
-        ) as i32
+    fn epilogue(&mut self) -> i32 {
+        self.sim
+            .mission_rate_epilogue_for(self.rules, self.id, MissionType::Hunt)
     }
 }
