@@ -8947,16 +8947,88 @@ fn projectile_shrapnel_aims_at_a_building_foundation_center() {
 /// SpawnShrapnel rules: `ShrapnelCount=count` fragments of a child whose
 /// Range walks three rings.
 fn shrapnel_admission_rules(count: i32) -> RuleSet {
+    shrapnel_rules(count, "SubjectToWalls=yes")
+}
+
+/// [`shrapnel_admission_rules`] with the child's projectile body `child`.
+fn shrapnel_rules(count: i32, child: &str) -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(&format!(
         "[VehicleTypes]\n0=MTNK\n\n[BuildingTypes]\n0=HQ\n\n[HQ]\nStrength=100\n\n\
          [MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\n\
          [PARENT]\nDamage=20\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\n\
          [PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount={count}\n\n\
          [CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\n\
-         [CHILDPROJ]\nSubjectToWalls=yes\n\n\
+         [CHILDPROJ]\n{child}\n\n\
          [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n"
     )))
     .expect("shrapnel rules")
+}
+
+/// A world for SpawnShrapnel commits, `entities` marked into the cell lists.
+fn shrapnel_world(rules: &RuleSet, entities: Vec<GameEntity>) -> Simulation {
+    let mut store = EntityStore::new();
+    let mut next_id = 1;
+    for mut entity in entities {
+        entity.lifecycle.cell_marked = true;
+        next_id = next_id.max(entity.stable_id() + 1);
+        store.insert(entity);
+    }
+    let mut sim = Simulation::with_seed(1);
+    sim.interner = test_interner();
+    sim.substrate.occupancy = OccupancyGrid::rebuild(&store);
+    sim.substrate.entities = store;
+    sim.substrate.next_stable_object_id = next_id;
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
+    sim.native_unique_ids =
+        Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
+    sim
+}
+
+/// Entity 1's PARENT bullet `projectile_id` detonating at `impact`,
+/// committed through the receiver: the fragments it spawned.
+fn commit_shrapnel(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    projectile_id: u64,
+    target: crate::sim::projectile::ProjectileTarget,
+    impact: crate::sim::projectile::ProjectileCoord,
+) -> Vec<crate::sim::projectile::ProjectileSpawn> {
+    let payload = crate::sim::projectile::ProjectilePayload::new(
+        20,
+        sim.interner.intern("WH"),
+        sim.interner.intern("PARENT"),
+    );
+    world_receiver::commit_projectiles(
+        sim,
+        &mut world_receiver::ReceiverRun::default(),
+        &[crate::sim::projectile::ProjectileDetonation {
+            projectile_id,
+            source_id: 1,
+            target,
+            impact,
+            payload,
+            reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
+        }],
+        rules,
+        None,
+    )
+    .projectile_spawns
+}
+
+/// [`commit_shrapnel`] for a bullet with no live record (its Location is the
+/// impact) at the centre of cell (5,5).
+fn commit_shrapnel_at_5_5(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+) -> Vec<crate::sim::projectile::ProjectileSpawn> {
+    commit_shrapnel(
+        sim,
+        rules,
+        99,
+        crate::sim::projectile::ProjectileTarget::Cell { rx: 5, ry: 5 },
+        crate::sim::projectile::ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0),
+    )
 }
 
 /// One PARENT bullet of `source_id` detonating at the centre of cell (5,5)
@@ -9079,31 +9151,20 @@ fn projectile_shrapnel_without_a_firer_throws_only_at_random_cells() {
 #[test]
 fn projectile_shrapnel_reads_the_bullets_location_not_its_impact() {
     use crate::sim::projectile::{
-        ProjectileCollisionPolicy, ProjectileCoord, ProjectileDetonation,
-        ProjectileDetonationReason, ProjectilePayload, ProjectileSpawn, ProjectileTarget,
-        ProjectileTrajectory, ProjectileVelocity, ProjectileVisualState, TargetExpiryPolicy,
-        projectile_random_shrapnel_cell,
+        ProjectileCollisionPolicy, ProjectileCoord, ProjectilePayload, ProjectileSpawn,
+        ProjectileTarget, ProjectileTrajectory, ProjectileVelocity, ProjectileVisualState,
+        TargetExpiryPolicy, projectile_random_shrapnel_cell,
     };
     let rules = shrapnel_admission_rules(1);
-    let mut interner = test_interner();
-    let mut entities = EntityStore::new();
-    for mut entity in [
-        make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"),
-        make_entity_owned(2, "MTNK", 5, 5, 100, "Americans"),
-    ] {
-        entity.lifecycle.cell_marked = true;
-        entities.insert(entity);
-    }
-    let payload = ProjectilePayload::new(20, interner.intern("WH"), interner.intern("PARENT"));
-    let mut sim = Simulation::with_seed(1);
-    sim.interner = interner;
-    sim.substrate.occupancy = OccupancyGrid::rebuild(&entities);
-    sim.substrate.entities = entities;
-    sim.substrate.next_stable_object_id = 3;
-    sim.intern_rule_type_ids(&rules);
-    sim.resolve_type_handles(&rules);
-    sim.native_unique_ids =
-        Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![
+            make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"),
+            make_entity_owned(2, "MTNK", 5, 5, 100, "Americans"),
+        ],
+    );
+    let payload =
+        ProjectilePayload::new(20, sim.interner.intern("WH"), sim.interner.intern("PARENT"));
     let location = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
     let target = ProjectileTarget::Cell { rx: 8, ry: 5 };
     let id = sim.allocate_stable_id();
@@ -9136,23 +9197,16 @@ fn projectile_shrapnel_reads_the_bullets_location_not_its_impact() {
     let cell = projectile_random_shrapnel_cell(5, 5, &mut expected);
 
     // The detonation coordinate is three cells east, over bare ground.
-    let commit = world_receiver::commit_projectiles(
+    let fragments = commit_shrapnel(
         &mut sim,
-        &mut world_receiver::ReceiverRun::default(),
-        &[ProjectileDetonation {
-            projectile_id: id,
-            source_id: 1,
-            target,
-            impact: ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
-            payload,
-            reason: ProjectileDetonationReason::ReachedTarget,
-        }],
         &rules,
-        None,
+        id,
+        target,
+        ProjectileCoord::new(8 * 256 + 128, 5 * 256 + 128, 0),
     );
 
-    assert_eq!(commit.projectile_spawns.len(), 1);
-    let fragment = &commit.projectile_spawns[0];
+    assert_eq!(fragments.len(), 1);
+    let fragment = &fragments[0];
     assert_eq!(fragment.origin, location);
     assert_eq!(
         fragment.target,
@@ -9162,6 +9216,121 @@ fn projectile_shrapnel_reads_the_bullets_location_not_its_impact() {
         }
     );
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
+}
+
+/// The bullet cell's first ground object may be a tree, which is no
+/// building: shrapnel is thrown (`0x0046A3F8..0x0046A406`).
+#[test]
+fn projectile_shrapnel_is_admitted_by_a_tree_heading_the_bullets_cell() {
+    let rules = shrapnel_admission_rules(1);
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet")],
+    );
+    assert!(commit_shrapnel_at_5_5(&mut sim, &rules).is_empty());
+    sim.production.terrain_object_cells.insert((5, 5), 900);
+    assert_eq!(commit_shrapnel_at_5_5(&mut sim, &rules).len(), 1);
+}
+
+/// A unit on a bridge deck stands on its cell's other list (`+0xE8`); the
+/// gate reads only the ground list (`+0xE4`), so it admits nothing.
+#[test]
+fn projectile_shrapnel_ignores_a_unit_on_the_bridge_deck() {
+    let rules = shrapnel_admission_rules(1);
+    let mut deck = make_entity_owned(2, "MTNK", 5, 5, 100, "Americans");
+    deck.on_bridge = true;
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"), deck],
+    );
+    assert!(commit_shrapnel_at_5_5(&mut sim, &rules).is_empty());
+}
+
+/// A bullet whose cell has no native CellClass gets the shared dummy from
+/// GetCell (`0x005F6960`), which holds no object: no shrapnel, though the
+/// cell lists VERA keeps by coordinate hold a vehicle there.
+#[test]
+fn projectile_shrapnel_is_refused_in_a_missing_cell() {
+    let rules = shrapnel_admission_rules(1);
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![
+            make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"),
+            make_entity_owned(2, "MTNK", 5, 5, 100, "Americans"),
+        ],
+    );
+    let mut terrain = super::impact_height_tests::terrain_at_level(0);
+    terrain.test_set_native_allocated_cells(&[(5, 5)]);
+    sim.resolved_terrain = Some(terrain.clone());
+    assert_eq!(commit_shrapnel_at_5_5(&mut sim, &rules).len(), 1);
+    terrain.test_set_native_allocated_cells(&[(2, 2)]);
+    sim.resolved_terrain = Some(terrain);
+    assert!(commit_shrapnel_at_5_5(&mut sim, &rules).is_empty());
+}
+
+/// `ShrapnelCount=0` (the key's default) throws a fragment at every hostile
+/// ring head and none at a random cell: the walk tests its count after each
+/// fragment (`0x0046A8D9..0x0046A8E0`), and the random cells only below it
+/// (`0x0046A92C..0x0046A936`).
+#[test]
+fn projectile_shrapnel_count_zero_takes_every_hostile_ring_head() {
+    use crate::sim::projectile::ProjectileTarget;
+    let rules = shrapnel_admission_rules(0);
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![
+            make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"),
+            make_entity_owned(2, "MTNK", 5, 5, 100, "Americans"),
+            make_entity_owned(3, "MTNK", 6, 4, 100, "Americans"),
+            make_entity_owned(4, "MTNK", 8, 5, 100, "Americans"),
+            // The firer's own house: no target.
+            make_entity_owned(5, "MTNK", 4, 6, 100, "Soviet"),
+        ],
+    );
+    let before = sim.scenario_rng.logical_state();
+    let mut targets = commit_shrapnel_at_5_5(&mut sim, &rules)
+        .into_iter()
+        .map(|fragment| fragment.target)
+        .collect::<Vec<_>>();
+    targets.sort_by_key(|target| match target {
+        ProjectileTarget::Entity(id) => *id,
+        _ => u64::MAX,
+    });
+    assert_eq!(
+        targets,
+        [ProjectileTarget::Entity(3), ProjectileTarget::Entity(4)]
+    );
+    assert_eq!(sim.scenario_rng.logical_state(), before);
+}
+
+/// SpawnShrapnel Fires each fragment (vt+0x1F0, `0x0046A875`): an `Inviso=`
+/// one stands on its target's vt+0x58 at once, at speed 0
+/// (`0x004688B7..0x00468986`), instead of flying there from the bullet.
+#[test]
+fn an_inviso_fragment_is_admitted_standing_on_its_target() {
+    use crate::sim::projectile::{ProjectileCoord, ProjectileTarget};
+    let rules = shrapnel_rules(1, "Inviso=yes");
+    let mut sim = shrapnel_world(
+        &rules,
+        vec![
+            make_entity_owned(1, "MTNK", 2, 2, 100, "Soviet"),
+            make_entity_owned(2, "MTNK", 5, 5, 100, "Americans"),
+            make_entity_owned(3, "MTNK", 6, 4, 100, "Americans"),
+        ],
+    );
+    let fragments = commit_shrapnel_at_5_5(&mut sim, &rules);
+    assert_eq!(fragments.len(), 1);
+    assert_eq!(fragments[0].target, ProjectileTarget::Entity(3));
+    let aim = crate::sim::movement::ground_pose::object_get_coords(
+        sim.substrate.entities.get(3).unwrap(),
+        None,
+    );
+
+    let id = sim.substrate.next_stable_object_id;
+    sim.admit_projectile_spawns(fragments, &rules);
+    let fragment = sim.projectiles.get(id).expect("the admitted fragment");
+    assert_eq!(fragment.position, ProjectileCoord::new(aim.x, aim.y, aim.z));
+    assert_eq!(fragment.speed_leptons_per_frame, 0);
 }
 
 #[test]
@@ -9210,7 +9379,8 @@ fn gsi_04_01_projectile_shrapnel_captures_each_shared_dummy_lookup() {
     // random coordinate has a native CellClass pointer. The next two lookups
     // both return and restamp one shared dummy identity.
     let mut terrain = super::impact_height_tests::terrain_at_level(2);
-    // The bullet's own cell exists too: SpawnShrapnel reads its firer there.
+    // The bullet's own cell exists too: its first ground object, the firer,
+    // admits the shrapnel.
     terrain.test_set_native_allocated_cells(&[
         (5, 5),
         (expected_cells[0].0 as u16, expected_cells[0].1 as u16),

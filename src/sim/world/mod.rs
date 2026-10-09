@@ -4127,7 +4127,15 @@ impl Simulation {
 
     /// Admit the bullets a detonation spawned (`BulletClass::SpawnShrapnel
     /// @ 0x0046A310`), each [`Self::construct_bullet_scheme`]d as every
-    /// constructed bullet is.
+    /// constructed bullet is. SpawnShrapnel then Fires each one (vt+0x1F0,
+    /// `0x0046A875`, `0x0046AD24`), whose Inviso arm (`0x004688B7..0x00468986`)
+    /// stands an `Inviso=` child on its target's vt+0x58, the coordinate the
+    /// spawn captured ([`ProjectileStore::fire_inviso`]); its OnBridge stays
+    /// clear, as only FireAt copies one. A `FlakScatter=` child would first be
+    /// scattered, the unported second scatter site (GSI-08.07 in `combat`); no
+    /// retail shrapnel weapon's projectile sets it.
+    ///
+    /// [`ProjectileStore::fire_inviso`]: crate::sim::projectile::ProjectileStore::fire_inviso
     pub(crate) fn admit_projectile_spawns(
         &mut self,
         spawns: impl IntoIterator<Item = crate::sim::projectile::ProjectileSpawn>,
@@ -4135,8 +4143,17 @@ impl Simulation {
     ) {
         for projectile in spawns {
             let stable_id = self.allocate_stable_id();
+            let inviso = rules
+                .weapon(self.interner.resolve(projectile.payload.weapon))
+                .and_then(|weapon| weapon.projectile.as_deref())
+                .and_then(|id| rules.projectile(id))
+                .is_some_and(|kind| kind.inviso);
+            let placement = projectile.initial_target_position;
             self.admit_projectile(stable_id, projectile);
             self.construct_bullet_scheme(stable_id, rules);
+            if inviso {
+                self.projectiles.fire_inviso(stable_id, placement, false);
+            }
         }
     }
 

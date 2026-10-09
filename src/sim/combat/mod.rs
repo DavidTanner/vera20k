@@ -2631,6 +2631,23 @@ pub(crate) fn projectile_impact_cell(
     )
 }
 
+/// The cell whose object lists a Map lookup answered: a real cell, by its own
+/// coordinate. The shared dummy cell never holds an object: `MapClass::
+/// Place_Down @ 0x005683C0`, the one `CellClass::AddContent` caller, skips a
+/// missing cell.
+fn cell_list_position(
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    cell: crate::map::cell_index::NativeCellIdentity,
+) -> Option<(u16, u16)> {
+    match cell {
+        crate::map::cell_index::NativeCellIdentity::Real(_) => {
+            let (x, y) = cells.coord(cell);
+            Some((x as u16, y as u16))
+        }
+        crate::map::cell_index::NativeCellIdentity::Dummy => None,
+    }
+}
+
 /// `BulletClass::SpawnShrapnel @ 0x0046A310` for the bullet at `location`,
 /// its Location (`+0x9C`), which the count, the admission, the ring centre and
 /// every fragment's origin read; the impact coordinate never reaches it.
@@ -2691,47 +2708,56 @@ fn emit_projectile_shrapnel(
             [location.x, location.y, location.z],
         ) / 256
     });
-    let count = projectile_shrapnel_count(
+    let Some(count) = projectile_shrapnel_count(
         parent_projectile.shrapnel_count,
         firer.is_some(),
         distance_cells,
-    );
-    if count == 0 {
+    ) else {
         return;
-    }
+    };
 
-    // The bullet's cell (`vt+0x1B8`, `0x0041BEA0`): the ring centre, and the
-    // cell `0x0046A3D6..0x0046A406` admits. It throws shrapnel only when that
-    // cell (GetCell, vt+0x1BC, `0x005F6960`) holds a first ground object
-    // (`+0xE4`) that is not a building (What_Am_I 6); a missed lookup's dummy
-    // cell holds none.
+    // The bullet's cell (`vt+0x1B8`, `0x0041BEA0`) centres the rings.
     let center_rx = crate::util::lepton::lepton_to_cell(location.x);
     let center_ry = crate::util::lepton::lepton_to_cell(location.y);
-    let admitted = match (u16::try_from(center_rx), u16::try_from(center_ry)) {
-        (Ok(rx), Ok(ry))
-            if terrain.is_none()
-                || matches!(
-                    crate::sim::cell_rect::get_cellclass_fallback(terrain, center_rx, center_ry),
-                    crate::sim::cell_rect::CellRef::Real(_)
-                ) =>
-        {
-            match occupancy
-                .cell_objects(
-                    rx,
-                    ry,
-                    crate::sim::movement::locomotor::MovementLayer::Ground,
-                    terrain_object_cells.get(&(rx, ry)).copied(),
-                )
-                .next()
-            {
-                Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => entities
-                    .get(id)
-                    .is_some_and(|object| object.category != EntityCategory::Structure),
-                Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) => true,
-                None => false,
-            }
-        }
-        _ => false,
+    // `0x0046A3D6..0x0046A406`: shrapnel is thrown only when the bullet's cell
+    // (GetCell, vt+0x1BC, `0x005F6960`) holds a first ground object (`+0xE4`)
+    // that is not a building (What_Am_I 6). The second GetCell (`0x0046A3F2`)
+    // answers the same cell. A missed lookup's dummy cell holds none.
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+    let bullet_cell = match cells.as_ref() {
+        Some(cells) => cell_list_position(
+            cells,
+            crate::sim::movement::ground_pose::query_object_cell(
+                cells,
+                crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                },
+            ),
+        ),
+        // Mapless fixtures read the coordinate's own cell.
+        None => u16::try_from(center_rx)
+            .ok()
+            .zip(u16::try_from(center_ry).ok()),
+    };
+    let ground_head = |cell: Option<(u16, u16)>| {
+        let (rx, ry) = cell?;
+        occupancy
+            .cell_objects(
+                rx,
+                ry,
+                crate::sim::movement::locomotor::MovementLayer::Ground,
+                terrain_object_cells.get(&(rx, ry)).copied(),
+            )
+            .next()
+    };
+    let admitted = match ground_head(bullet_cell) {
+        Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => entities
+            .get(id)
+            .is_some_and(|object| object.category != EntityCategory::Structure),
+        Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) => true,
+        None => false,
     };
     if !admitted {
         return;
@@ -2756,23 +2782,23 @@ fn emit_projectile_shrapnel(
     };
     let source_owner = firer.map(|source| source.owner());
     for &(dx, dy) in ring_cells.iter().skip(1) {
-        if targets.len() == count as usize {
-            break;
-        }
-        let rx = center_rx + i32::from(dx);
-        let ry = center_ry + i32::from(dy);
-        let (Ok(rx), Ok(ry)) = (u16::try_from(rx), u16::try_from(ry)) else {
-            continue;
+        // `0x0046A496..0x0046A4D2`: the ring cell, its packed words added to
+        // the centre's, through `MapClass::operator[] @ 0x005657A0`.
+        let rx = (center_rx as i16).wrapping_add(dx);
+        let ry = (center_ry as i16).wrapping_add(dy);
+        let cell = match cells.as_ref() {
+            Some(cells) => cell_list_position(cells, cells.lookup((rx, ry))),
+            None => u16::try_from(rx).ok().zip(u16::try_from(ry).ok()),
         };
-        let Some(target_id) = occupancy
-            .get(rx, ry)
-            .and_then(|cell| {
-                cell.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
-                    .next()
-            })
-            .map(|occupant| occupant.entity_id)
-        else {
-            continue;
+        // `0x0046A4D7..0x0046A509`: the head of its ground list, unless it is
+        // the firer or the firer's house is allied to it
+        // (`Is_Ally_ByObject @ 0x004F9A90`).
+        let target_id = match ground_head(cell) {
+            Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => id,
+            // A tree heading the list is a native target (a houseless object
+            // is no ally), but a VERA bullet cannot target a TerrainClass:
+            // the cell yields no fragment, and nothing behind the tree is read.
+            Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) | None => continue,
         };
         if target_id == detonation.source_id {
             continue;
@@ -2791,6 +2817,12 @@ fn emit_projectile_shrapnel(
             continue;
         }
         targets.push((ProjectileTarget::Entity(target_id), None));
+        // `0x0046A8D1..0x0046A8E0`: the walk ends once the count is reached,
+        // tested after each fragment, so a zero count walks every ring and
+        // takes no random cell (`0x0046A92C..0x0046A936`).
+        if targets.len() == count as usize {
+            break;
+        }
     }
     while targets.len() < count as usize {
         let (rx, ry) = projectile_random_shrapnel_cell(center_rx, center_ry, scenario_rng);
