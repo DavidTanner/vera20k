@@ -469,9 +469,11 @@ adjustment has separate executed controls in the sidebar oracle. This profile
 observes the removal's sidebar consumer, not native sale or grant timing.
 
 A v2 profile may opt in to `observe_sidebar_steps: [0, 1, 100]`. Each listed
-step records the local retained sidebar view: tabs, ordered visible type/name/
-cost/queue rows, scroll position and hit rectangles. At rendered steps, the
-harness checks that the actual `GameRenderOutput.sidebar_view` matches the
+capture completed step records the local retained sidebar view: tabs, ordered
+visible type/name/cost/queue rows, scroll position and hit rectangles. These
+steps remain monotonic across quickload; a restored simulation tick does not
+repeat an earlier sidebar sample or select a different requested row. At
+rendered steps, the harness checks that the actual `GameRenderOutput.sidebar_view` matches the
 retained projection. Step 0 in a positive-step run is explicitly retained-only.
 
 Sidebar gestures resolve their coordinates from that current view and dispatch

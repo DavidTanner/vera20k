@@ -669,7 +669,10 @@ impl MapCaptureProfile {
             .any(|entry| matches!(entry.gesture, MapGesture::Key { .. }))
     }
 
-    fn observes_sidebar_step(&self, step: u64) -> bool {
+    fn observes_sidebar_step(&self, frame: &MapFrameObservation) -> bool {
+        // Requested rows follow exact-step receipts even when a load rewinds
+        // the simulation clock retained by the same frame observation.
+        let step = frame.completed_steps;
         self.observe_sidebar_steps.as_ref().is_some_and(|steps| {
             u32::try_from(step).is_ok_and(|step| steps.binary_search(&step).is_ok())
         })
@@ -2745,7 +2748,7 @@ impl TacticalCaptureSession {
                 .transpose()?,
         };
         let sidebar = profile
-            .observes_sidebar_step(sim.session.tick)
+            .observes_sidebar_step(&frame)
             .then(|| MapSidebarObservation::capture(state))
             .transpose()?;
         let completed_steps = frame.completed_steps;
@@ -3618,9 +3621,6 @@ mod tests {
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(profile.gesture_policy(), SIDEBAR_GESTURE_POLICY);
-        assert!(profile.observes_sidebar_step(0));
-        assert!(profile.observes_sidebar_step(3));
-        assert!(!profile.observes_sidebar_step(2));
         assert_eq!(serde_json::to_value(&profile).unwrap(), value);
         let transcript = initialized_map().transcript(&profile);
         assert_eq!(
@@ -3656,6 +3656,62 @@ mod tests {
             let profile = serde_json::from_value::<MapCaptureProfile>(invalid);
             assert!(profile.is_err() || profile.unwrap().validate().is_err());
         }
+    }
+
+    #[test]
+    fn sidebar_sampling_uses_completed_steps_across_quickload_rewind() {
+        let mut profile = example();
+        profile.schema_version = PROFILE_V2.to_owned();
+        profile.ticks = 24;
+        profile.allow_load_segments = Some(true);
+        profile.observe_sidebar_steps = Some(vec![0, 1, 2, 4, 8, 9, 16, 17, 24]);
+        profile.validate().unwrap();
+        let mut map = initialized_map();
+        map.allow_load_segments = true;
+        map.observe_load_segment(MapLoadSegment {
+            after_step: 16,
+            gesture_ordinal: 3,
+            before: MapClock {
+                simulation_tick: 16,
+                binary_frame: 16,
+                total_simulation_ms: 352,
+            },
+            after: MapClock {
+                simulation_tick: 4,
+                binary_frame: 4,
+                total_simulation_ms: 88,
+            },
+            restored_audio_state: None,
+        })
+        .unwrap();
+        let mut sampled = Vec::new();
+        for completed_steps in 0..=u64::from(profile.ticks) {
+            let (simulation_tick, binary_frame) = map.expected_clock(completed_steps, false);
+            let frame = MapFrameObservation {
+                completed_steps,
+                simulation_tick,
+                binary_frame,
+                total_simulation_ms: simulation_tick * MAP_PRESENTATION_INTERVAL_MS,
+                actors: vec![],
+                houses: vec![],
+                missing_actor_ids: vec![],
+                terrain: vec![],
+                effects: None,
+                input: None,
+                audio_state: None,
+            };
+            if profile.observes_sidebar_step(&frame) {
+                sampled.push(completed_steps as u32);
+            }
+            map.observe_frame(frame, BTreeSet::new()).unwrap();
+        }
+        assert_eq!(map.frames[17].simulation_tick, 5);
+        assert_eq!(map.frames[20].simulation_tick, 8);
+        assert_eq!(
+            sampled,
+            profile.observe_sidebar_steps.unwrap(),
+            "capture step17 must sample restored tick5; repeated tick8 at step20 must not sample again"
+        );
     }
 
     #[test]
