@@ -36,19 +36,15 @@
 //!   is 0, so the loop adds nothing in play and is not ported.
 //! - The team's Risk (`+0x4C`, the members' `ThreatPosed=` sum) is not kept:
 //!   no ported reader.
-//! - `Remove_Member`'s callers in unported owners do not remove: an aircraft
-//!   hunting without ammo (`AircraftClass::Mission_Hunt`, `0x00414A9F`;
-//!   no aircraft Hunt is dispatched), the Magnetron's lift (`0x00710349`), a
-//!   building's occupant release with Hunt (`0x0045812B`), and script
-//!   actions 8 and 60-64 and the team change and merge (`0x006EF392`,
-//!   `0x006EF416`, `0x006E9E24..0x006E9F38`, `0x006E96FD`, `0x006ECFF8`).
+//! - `Remove_Member`'s callers in unported owners do not remove: the
+//!   Magnetron's lift (`0x00710349`), a building's occupant release with
+//!   Hunt (`0x0045812B`), and script actions 8 and 60-64 and the team change
+//!   and merge (`0x006EF392`, `0x006EF416`, `0x006E9E24..0x006E9F38`,
+//!   `0x006E96FD`, `0x006ECFF8`).
 //! - The removal loops in `0x006ECB50` (`0x006ECB7C..0x006ECCBC`) and
 //!   `0x0070F890` (`0x0070F8C7`) are not ported: neither function has a call
 //!   or a pointer anywhere in the executable (`tools.native_inspect calls`
 //!   and `find-bytes`).
-//!   Trigger: a computer aircraft team's member hunting without ammo.
-//!   Effect: the aircraft stays in its team and counts against its
-//!   TaskForce.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
