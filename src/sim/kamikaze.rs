@@ -35,9 +35,10 @@
 //! - `+0x6CA` has no field here: the tracker's membership stands in for it
 //!   (the slot guard of `SpawnManagerClass::PointerExpired` in
 //!   `spawn_manager`, the only active reader of a missile's;
-//!   `AircraftClass::Fire_At @ 0x0041659E` and
-//!   `TechnoClass::SelectWeaponAgainst @ 0x006F3658` read it for a weapon,
-//!   and no `MissileSpawn=` type in retail rules has one).
+//!   `AircraftClass::Fire_At @ 0x0041659E` (`aircraft::fire_at`, an UnInit
+//!   after the shot) and `TechnoClass::SelectWeaponAgainst @ 0x006F3658`
+//!   read it for a weapon, and no `MissileSpawn=` type in retail rules has
+//!   one).
 //!
 //! Scenario draws: none of its own.
 //!

@@ -303,15 +303,24 @@ fn missing_projectile_fallback() -> &'static crate::rules::projectile_type::Proj
 /// persistent shots the ordinary gravity/collision arm. Scalar FireAt math
 /// retains binary64 velocity; upstream FLH/pivot and homing producers remain
 /// explicitly bounded in their owners.
+/// The BulletType a shot of `weapon` carries: its `Projectile=`, or
+/// [`missing_projectile_fallback`] for one naming none.
+fn bullet_type<'r>(
+    weapon: &crate::rules::weapon_type::WeaponType,
+    rules: &'r RuleSet,
+) -> &'r crate::rules::projectile_type::ProjectileType {
+    weapon
+        .projectile
+        .as_deref()
+        .and_then(|projectile_id| rules.projectile(projectile_id))
+        .unwrap_or_else(|| missing_projectile_fallback())
+}
+
 fn classify_projectile_delivery(
     weapon: &crate::rules::weapon_type::WeaponType,
     rules: &RuleSet,
 ) -> ProjectileDelivery {
-    let projectile = weapon
-        .projectile
-        .as_deref()
-        .and_then(|projectile_id| rules.projectile(projectile_id))
-        .unwrap_or_else(|| missing_projectile_fallback());
+    let projectile = bullet_type(weapon, rules);
     // `BulletClass::AI @ 0x004666E0` selects an arm exactly twice: `ROT < 1` at
     // `0x004668D1`, then `Vertical` (`+0x2C0`) at `0x004671D0`. Nothing else
     // participates.

@@ -830,6 +830,155 @@ pub(super) mod retail_tests {
         );
     }
 
+    /// An Aircraft Carrier on retail Lost Lake force-attacks a Soviet MCV
+    /// ashore through an ordinary command. Its three Hornets
+    /// (`SpawnsNumber=3`) launch, strike, come home, are taken in to reload
+    /// and, the order standing, launch again. The wing launches one Hornet a
+    /// pass and holds the early ones InFlight; the manager's status pass
+    /// (`0x006B796A..`) sends the wing to attack in the pass that launches
+    /// the last, so that one is never seen InFlight. Each bomb (`HornetBomb`,
+    /// `NormalBomb` ROT 1) leaves at the weapon's speed, 76 leptons a frame,
+    /// aimed at the MCV (`AircraftClass::Fire_At`'s ROT 1 course), where
+    /// TechnoClass::FireAt alone would launch it at 1. The pieces' native
+    /// comparisons are Fire_At's (`aircraft::fire_at::tests`), the
+    /// manager's (`spawn_manager::oracle_tests`) and Mission_Attack's
+    /// (`aircraft::attack_mission_tests`); this run claims no whole-sortie
+    /// native comparison.
+    #[test]
+    #[ignore = "requires the configured retail install and stock Lostlake.mmx"]
+    fn retail_carrier_hornets_strike_reload_and_launch_again() {
+        use crate::sim::spawn_manager::SpawnSlotState;
+        let retail = std::env::var("RA2_DIR")
+            .map(std::path::PathBuf::from)
+            .expect("RA2_DIR names the retail install");
+        let mut scenario = crate::headless_scenario::load(&retail, "Lostlake.mmx", 0x0B21_D6E5)
+            .expect("load retail Lost Lake through the production loader");
+        let candidates = naval_sites(&scenario, 12);
+        let owner = scenario.sim().session.current_house.expect("order house");
+        let owner_name = scenario.sim().interner.resolve(owner).to_owned();
+        let runtime = &mut scenario.runtime;
+        let rules = &runtime.resources.rules;
+        let sim = &mut runtime.simulation;
+        let ((carrier_cell, target_cell), carrier, target) = candidates
+            .into_iter()
+            .find_map(|(ship, ashore)| {
+                let mcv = sim.spawn_object("SMCV", &owner_name, ashore.0, ashore.1, 0, rules)?;
+                match sim.spawn_object("CARRIER", &owner_name, ship.0, ship.1, 0, rules) {
+                    Some(carrier) => Some(((ship, ashore), carrier, mcv)),
+                    None => {
+                        sim.uninit(mcv);
+                        None
+                    }
+                }
+            })
+            .expect("Lost Lake admits a Carrier on open water and an MCV ashore");
+        sim.resolve_type_handles(rules);
+        let strength = sim.substrate.entities.get(target).unwrap().health.current;
+        // Each slot's states in order, and each bomb's Hornet and the speed
+        // and heading it was first seen with.
+        let mut states: Vec<Vec<SpawnSlotState>> = Vec::new();
+        let mut bombs = std::collections::BTreeMap::new();
+        // A docked Hornet taking off, seen InFlight or already Attacking.
+        let launches = |seen: &[SpawnSlotState]| {
+            use SpawnSlotState::*;
+            seen.windows(2)
+                .filter(|pair| pair[0] == ReadyDocked && matches!(pair[1], InFlight | Attacking))
+                .count()
+        };
+        for frame in 0..4000u64 {
+            let commands = if frame == 0 {
+                vec![CommandEnvelope::new(
+                    owner,
+                    runtime.simulation.session.tick + 1,
+                    Command::ForceAttack {
+                        attacker_id: carrier,
+                        target_id: target,
+                    },
+                )]
+            } else {
+                Vec::new()
+            };
+            runtime
+                .advance_frame_for_tooling(&commands, SIM_TICK_MS)
+                .expect("advance production frame");
+            let sim = &runtime.simulation;
+            let slots = sim
+                .substrate
+                .entities
+                .get(carrier)
+                .and_then(|e| e.spawn_manager.as_ref())
+                .map(|m| m.slots.clone())
+                .unwrap_or_default();
+            states.resize(slots.len(), Vec::new());
+            for (seen, slot) in states.iter_mut().zip(&slots) {
+                if seen.last() != Some(&slot.state) {
+                    seen.push(slot.state);
+                }
+            }
+            let hornets: BTreeSet<u64> = slots.iter().filter_map(|slot| slot.spawn).collect();
+            let goal = [
+                i32::from(target_cell.0) * 256 + 128,
+                i32::from(target_cell.1) * 256 + 128,
+            ];
+            for (&id, bomb) in sim.projectiles.iter() {
+                if hornets.contains(&bomb.source_id) && !bombs.contains_key(&id) {
+                    let [x, y, z] = bomb.velocity.native().map(|v| f64::from_bits(v.bits()));
+                    let toward = [goal[0] - bomb.position.x, goal[1] - bomb.position.y];
+                    let aim = x * f64::from(toward[0]) + y * f64::from(toward[1]);
+                    bombs.insert(
+                        id,
+                        (frame, bomb.source_id, (x * x + y * y + z * z).sqrt(), aim),
+                    );
+                }
+            }
+            if states.len() == 3 && states.iter().all(|seen| launches(seen) >= 2) {
+                break;
+            }
+        }
+        let sim = &runtime.simulation;
+        let health = sim
+            .substrate
+            .entities
+            .get(target)
+            .filter(|e| e.is_object_alive())
+            .map_or(0, |e| e.health.current);
+        println!(
+            "CARRIER at {carrier_cell:?}, SMCV at {target_cell:?}: slot states {states:?}, \
+             bombs {bombs:?}, MCV {health}/{strength}"
+        );
+        use SpawnSlotState::*;
+        assert_eq!(states.len(), 3, "three Hornets");
+        for seen in &states {
+            let flown: Vec<SpawnSlotState> = seen
+                .iter()
+                .copied()
+                .filter(|&state| state != InFlight)
+                .collect();
+            let sortie = [ReadyDocked, Attacking, ComingHome, Reloading, ReadyDocked];
+            assert!(
+                flown.windows(sortie.len()).any(|window| window == sortie) && launches(seen) >= 2,
+                "each Hornet strikes, comes home, reloads and launches again: {states:?}"
+            );
+        }
+        assert!(
+            states
+                .iter()
+                .filter(|seen| seen.contains(&InFlight))
+                .count()
+                >= 2,
+            "the early launches wait InFlight for the last: {states:?}"
+        );
+        let hornets: BTreeSet<u64> = bombs.values().map(|&(_, hornet, _, _)| hornet).collect();
+        assert_eq!(hornets.len(), 3, "each Hornet bombs: {bombs:?}");
+        for &(frame, _, speed, aim) in bombs.values() {
+            assert!(
+                (speed - 76.0).abs() < 2.0 && aim > 0.0,
+                "a bomb leaves at 76 toward the MCV (frame {frame}): {bombs:?}"
+            );
+        }
+        assert!(health < strength, "the bombs damage the MCV");
+    }
+
     /// Two enemy Flak Tracks beside a V3 Launcher on retail Hills shoot its
     /// rocket down in flight, through an ordinary command and bound runtime
     /// frames. The rocket is a target only once the climb has put it in the

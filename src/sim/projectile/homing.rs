@@ -9,21 +9,8 @@ use super::{
     ProjectileVelocity as Velocity,
 };
 use crate::map::retail_trig::TrigTable;
-use crate::util::native_x87::{NativeF64Bits as D, X87Chop53 as X, X87Ordering, X87Value};
+use crate::util::native_x87::{NativeF64Bits as D, X87Chop53 as X, X87Ordering};
 
-fn square(value: X87Value) -> X87Value {
-    X::mul(value, value)
-}
-fn length2(v: Velocity) -> X87Value {
-    sqrt(X::add(square(d(v.x)), square(d(v.y))))
-}
-fn length3(v: Velocity, order: [usize; 3]) -> X87Value {
-    let t = v.native().map(|x| square(d(x)));
-    sqrt(X::add(X::add(t[order[0]], t[order[1]]), t[order[2]]))
-}
-fn zero(value: D) -> bool {
-    value.bits() & 0x7fff_ffff_ffff_ffff == 0
-}
 fn advance(p: Coord, v: Velocity, scale: i32) -> Coord {
     let step = v.integer_projection();
     Coord::new(
@@ -140,23 +127,6 @@ fn clamp(current: u16, desired: u16, turn: u16) -> u16 {
         current.wrapping_add(turn)
     }
 }
-fn pitch(v: Velocity) -> u16 {
-    angle_word(atan(d(v.z), round(length2(v))))
-}
-fn apply_pitch(mut v: Velocity, desired: u16, order: [usize; 3], trig: &TrigTable) -> Velocity {
-    let current = radians(pitch(v));
-    let magnitude = round(length3(v, order));
-    if !zero(current) {
-        let divisor = cos(trig, current);
-        v.x = store(X::div(d(v.x), divisor).expect("finite native pitch cosine"));
-        v.y = store(X::div(d(v.y), divisor).expect("finite native pitch cosine"));
-    }
-    let angle = radians(desired);
-    v.x = store(X::mul(cos(trig, angle), d(v.x)));
-    v.y = store(X::mul(cos(trig, angle), d(v.y)));
-    v.z = store(X::mul(sin(trig, angle), magnitude));
-    v
-}
 
 pub(super) struct TrackResult {
     pub candidate: Coord,
@@ -198,13 +168,7 @@ pub(super) fn track(
         X::neg(X::load_i32(difference.y)),
         X::load_i32(difference.x),
     ));
-    let yaw = radians(clamp(current_yaw, desired_yaw, turn));
-    if zero(velocity.x) && zero(velocity.y) {
-        velocity.x = Velocity::new(100, 0, 0).x;
-    }
-    let horizontal_speed = round(length2(velocity));
-    velocity.x = store(X::mul(cos(trig, yaw), horizontal_speed));
-    velocity.y = store(X::neg(X::mul(sin(trig, yaw), horizontal_speed)));
+    velocity = turn_xy(velocity, clamp(current_yaw, desired_yaw, turn), trig);
     let current_pitch = pitch(velocity);
     let mut new_pitch = current_pitch;
     let quantum = (((u32::from(turn) >> 7) + 1) >> 1) & 0xff;

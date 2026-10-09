@@ -254,9 +254,10 @@ class ScratchAircraft:
             self.undeclared_reads.add((address, size, u.reg_read(UC_X86_REG_EIP)))
 
     # -- one call
-    def execute(self, entry):
+    def execute(self, entry, args=()):
+        """`args` are the stack arguments the callee pops (RET 4 * len(args))."""
         u, row = self.u, self.row
-        u.mem_write(SP, u32(RET_MAGIC))
+        u.mem_write(SP, u32(RET_MAGIC) + b"".join(u32(arg) for arg in args))
         for register, value in SENTINELS.items():
             u.reg_write(register, value)
         u.reg_write(UC_X86_REG_ECX, OWNER)
@@ -271,7 +272,7 @@ class ScratchAircraft:
             self.auditing = False
         if self.violations:
             raise OracleError(f"{row['name']}: {self.violations}")
-        if u.reg_read(UC_X86_REG_ESP) != SP + 4:
+        if u.reg_read(UC_X86_REG_ESP) != SP + 4 + 4 * len(args):
             raise OracleError(f"{row['name']}: unbalanced stack at return")
         if any(u.reg_read(register) != value for register, value in SENTINELS.items()):
             raise OracleError(f"{row['name']}: callee-saved register not restored")

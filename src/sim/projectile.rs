@@ -1387,6 +1387,17 @@ impl ProjectileStore {
         }
     }
 
+    /// `AircraftClass::Fire_At @ 0x00415EE0`'s course for the bullet
+    /// TechnoClass::FireAt answered: its velocity (`+0xE8`)
+    /// ([`launch::aircraft_bullet_velocity`]), and the speed it implies.
+    pub(crate) fn redirect(&mut self, id: u64, velocity: ProjectileVelocity) {
+        if let Some(projectile) = self.projectiles.get_mut(&id) {
+            projectile.velocity = velocity;
+            projectile.speed_leptons_per_frame =
+                projectile_velocity_magnitude(velocity).clamp(0.0, f64::from(u16::MAX)) as u16;
+        }
+    }
+
     /// `BulletClass::Fire @ 0x00468670` for an `Inviso=` BulletType
     /// (`+0x29E`, `0x004688B7..0x00468A39`), after the common Unlimbo at the
     /// launch source: the bullet stands on `placement`, the target coordinate

@@ -10,7 +10,8 @@ use crate::util::native_x87::{
 };
 
 use super::native_math::{
-    PI_HALF, angle_word, atan, cos, d, f, int, less, radians, round, sin, sqrt, store,
+    PI_HALF, angle_word, apply_pitch, atan, cos, d, f, int, less, radians, round, sin, sqrt,
+    square, store, turn_xy,
 };
 use super::{ProjectileCoord, ProjectileVelocity};
 use crate::sim::rng::SimRng;
@@ -405,10 +406,6 @@ pub(crate) fn shrapnel_launch_velocity(
     shrapnel_launch_with_table(origin, target, speed, random_cell, trig)
 }
 
-fn square(value: X87Value) -> X87Value {
-    X::mul(value, value)
-}
-
 fn shrapnel_launch_with_table(
     origin: ProjectileCoord,
     target: ProjectileCoord,
@@ -483,6 +480,74 @@ fn scale_to_speed(
     let factor =
         X::div(X::load_i32(speed), sqrt(length2(v))).expect("positive shrapnel velocity length");
     v.map(|axis| round(X::mul(factor, axis)))
+}
+
+/// The course `AircraftClass::Fire_At @ 0x00415EE0` sets on the bullet
+/// TechnoClass::FireAt answered, by the bullet type's `ROT=` (`+0x2DC`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AircraftBulletCourse {
+    /// ROT 0 (`0x00415F39..0x004160B5`): the velocity scaled to the
+    /// locomotor's Apparent_Speed, its pitch set to DirStruct `0x4000`
+    /// (pushed as its radians, whose table sine is 0: level), then turned to
+    /// `facing`, SecondaryFacing's Current.
+    Level { apparent_speed: i32, facing: u16 },
+    /// ROT 1 (`0x004160CF..0x00416318`): the velocity turned toward `to`
+    /// from `from` (the aircraft's and the target's GetCoords), pitched to
+    /// that delta, then scaled to `speed`, weapon 0's `Speed=`.
+    AtTarget {
+        from: ProjectileCoord,
+        to: ProjectileCoord,
+        speed: i32,
+    },
+}
+
+/// `velocity` after [`AircraftBulletCourse`]: the Vector3D steps are
+/// `0x0041C3F0`/`0x0041C3C0` (a zero vector seeds X 100.0, then each axis is
+/// scaled by speed over the 3-D length), `0x0041C2E0` with the inline pitch
+/// change ([`apply_pitch`]) and `0x0041C460`/`0x0041C430` (a zero XY seeds X
+/// 100.0, then the XY turns to a heading at its 2-D length).
+pub(crate) fn aircraft_bullet_velocity(
+    velocity: ProjectileVelocity,
+    course: AircraftBulletCourse,
+) -> ProjectileVelocity {
+    let (trig, _) = crate::map::retail_trig::required_math_tables();
+    aircraft_bullet_velocity_with_table(velocity, course, trig)
+}
+
+fn aircraft_bullet_velocity_with_table(
+    velocity: ProjectileVelocity,
+    course: AircraftBulletCourse,
+    trig: &TrigTable,
+) -> ProjectileVelocity {
+    let length3 = |[x, y, z]: [X87Value; 3]| X::add(X::add(square(x), square(y)), square(z));
+    let scaled = |v: ProjectileVelocity, speed| {
+        ProjectileVelocity::from_native(
+            scale_to_speed(v.native().map(d), speed, length3).map(store),
+        )
+    };
+    match course {
+        AircraftBulletCourse::Level {
+            apparent_speed,
+            facing,
+        } => {
+            let v = scaled(velocity, apparent_speed);
+            let v = apply_pitch(v, 0x4000, [0, 1, 2], trig);
+            turn_xy(v, facing, trig)
+        }
+        AircraftBulletCourse::AtTarget { from, to, speed } => {
+            let [dx, dy, dz] = [
+                to.x.wrapping_sub(from.x),
+                to.y.wrapping_sub(from.y),
+                to.z.wrapping_sub(from.z),
+            ]
+            .map(X::load_i32);
+            let heading = angle_word(atan(X::neg(dy), dx));
+            let v = turn_xy(velocity, heading, trig);
+            let pitch = angle_word(atan(dz, round(sqrt(X::add(square(dx), square(dy))))));
+            let v = apply_pitch(v, pitch, [0, 1, 2], trig);
+            scaled(v, speed)
+        }
+    }
 }
 
 /// FireAt 6FE8EE..6FF014 for ordinary ROT<=0 and stock RadialFireSegments=0.

@@ -538,6 +538,12 @@ pub struct GeneralRules {
     /// for a non-retail INI missing the key. A type's own `FlightLevel=`
     /// overrides it through `ObjectType::flight_level`.
     pub flight_level: i32,
+    /// `[General] AttackingAircraftSightRange=` (`Rules+0x18`, ReadInt at
+    /// `0x00670F2E` over the constructor's 5, `0x00665682`): the radius
+    /// `AircraftClass::Fire_At` reveals around the current player's shooting
+    /// aircraft when its Location, a probe near it or its target is shrouded
+    /// (`0x0041651D..0x00416595`). Retail 2.
+    pub attacking_aircraft_sight_range: i32,
     /// Rules+420, [JumpjetControls] CruiseHeight. Object5F4260 uses this
     /// global threshold; linked Jumpjets instead use their own +2C height.
     pub display_cruise_height: i32,
@@ -1818,6 +1824,7 @@ impl Default for GeneralRules {
             safety_altitude: 500,
             line_trail_color_override: [0; 3],
             flight_level: 500,
+            attacking_aircraft_sight_range: 5,
             display_cruise_height: 400, // Rules constructor665C3A
             // Rules constructor 0x00665E2B..0x00665E81.
             hover_height: 120,
@@ -2689,6 +2696,10 @@ impl GeneralRules {
             line_trail_color_override: audio_visual
                 .read_color_rgb("LineTrailColorOverride", defaults.line_trail_color_override),
             flight_level: general.read_int("FlightLevel", 500),
+            attacking_aircraft_sight_range: general.read_int(
+                "AttackingAircraftSightRange",
+                defaults.attacking_aircraft_sight_range,
+            ),
             display_cruise_height,
             // ReadGeneral 0x0066EDC5..0x0066EE83 reads these into their
             // fields with the current value as default (%-aware ReadDouble).
