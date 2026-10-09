@@ -74,8 +74,8 @@ ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten nach Rust und p
 
 Hilfe ist willkommen. Du kannst Code schreiben, die Engine refaktorieren, das Spiel testen,
 Ideen einbringen oder es neben dem Original spielen und uns sagen, was sich falsch anfühlt.
-Öffne einen PR, und wir kümmern uns um den Rest; bei größeren Vorhaben frag vorher in einem
-Issue, auf [Discord](https://discord.gg/kmjRUn5m5F) oder in der QQ-Gruppe (1097193563).
+Öffne einen PR, und wir kümmern uns um den Rest.
+Diskutiert wird auf [Discord](https://discord.gg/kmjRUn5m5F) und in der QQ-Gruppe (1097193563).
 
 Die Spiellogik liegt in `src/sim/`, das Rendering in `src/render/` und Menüs und Eingabe in
 `src/app/` und `src/ui/`; die Python-Werkzeuge in `tools/` brauchst du nicht.

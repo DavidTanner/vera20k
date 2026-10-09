@@ -72,7 +72,7 @@ VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警
 ## 参与贡献
 
 欢迎帮忙。你可以编写代码、重构引擎、测试游戏、提出想法，或对照原版游玩，告诉我们哪些地方感觉不对。
-直接提交 PR 即可，剩下的交给我们；如果改动较大，请先在 issue、[Discord](https://discord.gg/kmjRUn5m5F) 或 QQ 群（1097193563）里问一下。
+直接提交 PR 即可，剩下的交给我们。讨论在 [Discord](https://discord.gg/kmjRUn5m5F) 和 QQ 群（1097193563）进行。
 
 游戏逻辑在 `src/sim/`，渲染在 `src/render/`，菜单和输入在 `src/app/` 和 `src/ui/`；
 你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。

@@ -72,8 +72,8 @@ and playtesting. Agents follow [AGENTS.md](AGENTS.md).
 ## Contributing
 
 Help is welcome. You can write code, refactor the engine, test the game, share ideas, or play
-it next to the original and tell us what feels wrong. Open a PR and we'll take it from there;
-for anything large, ask first in an issue, on [Discord](https://discord.gg/kmjRUn5m5F) or in the QQ group (1097193563).
+it next to the original and tell us what feels wrong. Open a PR and we'll take it from there.
+Discussion is on [Discord](https://discord.gg/kmjRUn5m5F) and in the QQ group (1097193563).
 
 Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/` and
 `src/ui/`; you don't need the Python tools in `tools/`. The
