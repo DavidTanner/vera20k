@@ -18,7 +18,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::command::{Command, CommandEnvelope};
-use crate::sim::components::DriveCoord;
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::superweapon::cell_receiver_tests::test_terrain_cell;
@@ -354,6 +354,152 @@ fn retail_chrono_warp_moves_the_source_block() {
     assert!(!entity.is_warping_in() && !entity.is_warped_out());
     assert!(entity.navigation.nav_com.is_none());
     assert!(!dead(&sim, tank) && !dead(&sim, legionnaire));
+}
+
+/// The locomotor chain from the active object down.
+fn chain(sim: &Simulation, id: u64) -> Vec<LocomotorKind> {
+    let mut kinds = Vec::new();
+    let mut at = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| entity.locomotor.as_ref());
+    while let Some(locomotor) = at {
+        kinds.push(locomotor.active_kind());
+        at = locomotor.piggyback.as_deref();
+    }
+    kinds
+}
+
+/// A Chrono Miner driving on the Drive its setter installed warps with the
+/// block: the warp's fresh Teleport suspends the Drive with the miner's
+/// Teleport inside it (`0x006CCB4A`; Begin_Piggyback tests only its own
+/// slot, `0x00719EA9`). The warp's END hands the Drive back, still holding
+/// the destination Force_Track gave it at the landing cell (`0x004B0C40`),
+/// so the miner stays on it until its next order ends at a stop.
+#[test]
+fn retail_chrono_warp_carries_a_driving_chrono_miner() {
+    use LocomotorKind::{Drive, Teleport};
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", (20, 20));
+    let order = |sim: &mut Simulation, (rx, ry): (u16, u16)| {
+        let command = Command::Move {
+            entity_id: miner,
+            target_rx: rx,
+            target_ry: ry,
+            queue: false,
+        };
+        assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+    };
+    order(&mut sim, (30, 20));
+    step(&mut sim, &rules);
+    assert_eq!(chain(&sim, miner), [Drive, Teleport]);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    step(&mut sim, &rules);
+    let from = cell(&sim, miner);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    assert_eq!(chain(&sim, miner), [Teleport, Drive, Teleport]);
+
+    let landing = (TARGET.0 + from.0 - SOURCE.0, TARGET.1 + from.1 - SOURCE.1);
+    let mut chains = vec![(chain(&sim, miner), from)];
+    for _ in 0..80 {
+        step(&mut sim, &rules);
+        let now = (chain(&sim, miner), cell(&sim, miner));
+        if chains.last() != Some(&now) {
+            chains.push(now);
+        }
+    }
+    assert_eq!(
+        chains,
+        [
+            (vec![Teleport, Drive, Teleport], from),
+            (vec![Teleport, Drive, Teleport], landing),
+            (vec![Drive, Teleport], landing),
+        ]
+    );
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert!(entity.chrono_warp().is_none() && entity.navigation.nav_com.is_none());
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(entity),
+        Some(true)
+    );
+
+    let next = (landing.0 + 4, landing.1);
+    order(&mut sim, next);
+    let mut drove = false;
+    for _ in 0..200 {
+        step(&mut sim, &rules);
+        drove |= chain(&sim, miner) == [Drive, Teleport] && cell(&sim, miner) != landing;
+    }
+    assert!(drove);
+    assert_eq!(
+        (chain(&sim, miner), cell(&sim, miner)),
+        (vec![Teleport], next)
+    );
+}
+
+/// A destination given once the warp has landed (WarpingIn up, the latch
+/// down) runs the Unit setter's Teleporter arm. The warp's Teleport may not
+/// end mid-warp (`0x00719F30`), so a fresh Drive suspends it (`0x0074276F`),
+/// but the Drive refuses the destination while its owner warps
+/// (`0x004AFD40` reads `+0x1D4`/`+0x1D8`) and ends at the Foot AI tail. The
+/// warp then finishes on the landing cell, and state 5's NULL destination
+/// drops the NavCom.
+#[test]
+fn retail_destination_while_warping_in_is_refused_by_the_drive() {
+    use LocomotorKind::{Drive, Teleport};
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", SOURCE);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    let warping_in = |sim: &Simulation| {
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        entity.is_warping_in() && !entity.chrono_warp_latch()
+    };
+    for _ in 0..80 {
+        if warping_in(&sim) {
+            break;
+        }
+        step(&mut sim, &rules);
+    }
+    assert!(warping_in(&sim));
+    let next = NavTargetRef::cell(TARGET.0 + 4, TARGET.1);
+    sim.set_unit_destination(miner, next, &rules, true);
+    assert_eq!(chain(&sim, miner), [Drive, Teleport, Teleport]);
+    assert!(warping_in(&sim));
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert_eq!(entity.navigation.nav_com, Some(next));
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(entity),
+        Some(false)
+    );
+
+    let mut chains = vec![chain(&sim, miner)];
+    for _ in 0..80 {
+        step(&mut sim, &rules);
+        assert_eq!(cell(&sim, miner), TARGET);
+        let now = chain(&sim, miner);
+        if chains.last() != Some(&now) {
+            chains.push(now);
+        }
+    }
+    assert_eq!(
+        chains,
+        [
+            vec![Drive, Teleport, Teleport],
+            vec![Teleport, Teleport],
+            vec![Teleport],
+        ]
+    );
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert!(entity.chrono_warp().is_none() && !entity.is_warping_in());
+    assert!(entity.navigation.nav_com.is_none() && entity.movement_target.is_none());
 }
 
 /// A Foot standing on the destination is killed when the warp tests the

@@ -374,9 +374,11 @@ impl TeleportRuntime {
 }
 
 impl crate::sim::game_entity::GameEntity {
-    /// The Chronosphere warp on the active Teleport.
+    /// The Chronosphere warp, on the active Teleport or one a Drive suspended:
+    /// it holds the owner's bytes (Techno `+0x270`, `+0x271`, `+0x27C`,
+    /// `+0x42C`), whichever locomotor is active.
     pub(crate) fn chrono_warp(&self) -> Option<&ChronoWarp> {
-        self.locomotor.as_ref()?.teleport_runtime()?.chrono()
+        self.locomotor.as_ref()?.warp_teleport()?.chrono()
     }
 
     /// Techno `+0x27C`, the Chronosphere's warp latch.
@@ -725,8 +727,9 @@ pub(crate) fn teleport_stop_moving(entity: &mut crate::sim::game_entity::GameEnt
 }
 
 /// Whether the owner's Teleport Process runs this frame: Teleport is its
-/// active locomotor. A Teleport stashed under a Drive piggyback (the Chrono
-/// Miner's) runs nothing, so a warp it armed waits for End_Piggyback.
+/// active locomotor. A Teleport stashed under a Drive piggyback runs nothing,
+/// so a warp Teleport the Unit setter's Drive suspended waits for
+/// End_Piggyback.
 pub(crate) fn teleport_process_active(entity: &crate::sim::game_entity::GameEntity) -> bool {
     entity
         .locomotor

@@ -350,6 +350,30 @@ impl LocomotorState {
         }
     }
 
+    /// The Teleport that holds a Chronosphere warp, active or suspended.
+    pub(crate) fn warp_teleport(&self) -> Option<&super::teleport_movement::TeleportRuntime> {
+        self.teleport_runtime()
+            .filter(|runtime| runtime.chrono().is_some())
+            .or_else(|| self.piggyback.as_deref()?.warp_teleport())
+    }
+
+    /// [`Self::warp_teleport`] for its Process, which writes its own timer
+    /// and state after the Unit setter's Drive has suspended it: state 5
+    /// after `Set_Destination(NULL)` (`0x00719B0D`) at
+    /// `0x00719B1B..0x00719B85`, state 7 after `0x00719BCC` at
+    /// `0x00719BD2..0x00719BDF`.
+    pub(crate) fn warp_teleport_mut(
+        &mut self,
+    ) -> Option<&mut super::teleport_movement::TeleportRuntime> {
+        if self
+            .teleport_runtime()
+            .is_some_and(|runtime| runtime.chrono().is_some())
+        {
+            return self.teleport_runtime_mut();
+        }
+        self.piggyback.as_mut()?.warp_teleport_mut()
+    }
+
     /// Foot warp-effect readers see an effect held by the complete suspended
     /// instance too. This view stores nothing and does not dispatch Process.
     pub(crate) fn teleport_effect_state(&self) -> Option<&super::teleport_movement::TeleportState> {
@@ -537,22 +561,9 @@ impl LocomotorState {
         self.piggyback.is_none()
     }
 
-    /// Activate Drive over a stashed Teleport locomotor — the Chrono Miner
-    /// bridge model: the unit stays a Teleport unit, Drive temporarily drives it
-    /// for destinations that need ground movement. The setter reuses a Drive
-    /// that is already active (`0x007425F8`).
-    pub fn begin_drive_piggyback_for_teleporter(&mut self, binary_frame: u32) -> bool {
-        if self.effective_kind() != LocomotorKind::Teleport {
-            return false;
-        }
-        self.kind == LocomotorKind::Drive
-            || self.begin_piggyback(LocomotorKind::Drive, binary_frame)
-    }
-
-    /// Begin a piggyback: stash the driving locomotor and install this one.
-    ///
-    /// Refuses, changing nothing, if a stash is already present — the native
-    /// BEGIN returns `E_FAIL` in exactly that case.
+    /// Begin a piggyback: a fresh `kind` object suspends the active one, with
+    /// any stash of its own, and becomes active. Native BEGIN refuses only
+    /// when the fresh object's own slot is occupied, which it never is.
     pub fn begin_piggyback(&mut self, kind: LocomotorKind, binary_frame: u32) -> bool {
         piggyback::begin(self, kind, binary_frame) == piggyback::BeginOutcome::Installed
     }
