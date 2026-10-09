@@ -154,7 +154,14 @@ impl SimRng {
     /// Scenario RNG states in.
     #[cfg(test)]
     pub(crate) fn native_state_hex(&self) -> String {
-        native_random::state_hex(self.disabled, self.index_a, self.index_b, &self.state)
+        let mut bytes = Vec::with_capacity(0x3f4);
+        bytes.extend_from_slice(&u32::from(self.disabled).to_le_bytes());
+        bytes.extend_from_slice(&self.index_a.to_le_bytes());
+        bytes.extend_from_slice(&self.index_b.to_le_bytes());
+        for word in &self.state {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
     /// Import a pinned original Random2Class comparison boundary. This reads
@@ -283,14 +290,61 @@ impl SimRng {
     /// `lo + 0x80000000` guard as the unsigned form stands in for that
     /// unreachable custom-data case.
     pub fn next_range_i32_inclusive(&mut self, low: i32, high: i32) -> i32 {
-        native_random::ranged_i32(low, high, || self.next_u32())
+        let (lo, hi) = if low <= high {
+            (low, high)
+        } else {
+            (high, low)
+        };
+        if lo == hi {
+            return lo;
+        }
+        let span = hi.wrapping_sub(lo) as u32;
+        if span >= 0x7FFF_FFFF {
+            return lo.wrapping_add(i32::MIN);
+        }
+        let mask = u32::MAX >> span.leading_zeros();
+        loop {
+            let sample = self.next_u32() & mask;
+            if sample <= span {
+                return lo.wrapping_add(sample as i32);
+            }
+        }
     }
 
     /// Random integer in `[low, high]` inclusive on both ends.
     /// Sorts reversed bounds and consumes no draw when the bounds are equal.
     /// Mirrors binary `Random__RandomRanged(low, high)` for ordinary spans.
     pub fn next_range_u32_inclusive(&mut self, low: u32, high: u32) -> u32 {
-        native_random::ranged_u32(low, high, || self.next_u32())
+        let (lo, hi) = if low <= high {
+            (low, high)
+        } else {
+            (high, low)
+        };
+        if lo == hi {
+            return lo;
+        }
+
+        let span = hi.wrapping_sub(lo);
+        if span >= 0x7FFF_FFFF {
+            return lo.wrapping_add(0x8000_0000);
+        }
+
+        // Mask one bit wider than the span's highest set bit, matching the
+        // rejection-sampling mask 2^(msb+1)-1. next_power_of_two() is wrong
+        // because it returns the span itself when span is already a power of
+        // two, producing a mask one bit too short (e.g. span=4 -> 3 instead of
+        // 7): that biases the output (the inclusive top is never reached) and
+        // changes how many raw draws are consumed. span is guaranteed in
+        // 1..=0x7FFF_FFFE here (lo==hi early return handles span==0; the
+        // span >= 0x7FFF_FFFF guard above handles the top), so leading_zeros is
+        // 1..=31 and the shift never reaches 32.
+        let mask = u32::MAX >> span.leading_zeros();
+        loop {
+            let sample = self.next_u32() & mask;
+            if sample <= span {
+                return lo.wrapping_add(sample);
+            }
+        }
     }
 
     /// Raw signed-abs remainder draw: `abs((next_u32() as i32) % n)`, one draw.
@@ -589,5 +643,64 @@ mod tests {
             saw_top,
             "RandomRanged(0,4) must be able to return the inclusive top value 4"
         );
+    }
+
+    /// Original Random65C780 / RandomRanged65C7E0 histories execute raw and
+    /// signed ranged calls across rejection and cursor-wrap boundaries.
+    #[test]
+    fn ranged_and_raw_calls_match_native_values_draws_and_complete_state() {
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/rmg_oracle/vectors/rng.json",
+        ))
+        .unwrap();
+        let mut compared = 0;
+        for history in native["ranged_cases"].as_array().unwrap() {
+            let label = history["id"].as_str().unwrap();
+            let mut random = SimRng::new(history["seed"].as_u64().unwrap());
+            for _ in 0..history["advance_raw"].as_u64().unwrap() {
+                let _ = random.next_u32();
+            }
+            assert_eq!(
+                random.native_state_hex(),
+                history["initial_state_hex"].as_str().unwrap(),
+                "{label}"
+            );
+            for (index, step) in history["steps"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(
+                    random.native_state_hex(),
+                    step["before_state_hex"].as_str().unwrap(),
+                    "{label}/{index}"
+                );
+                let (actual, trace) = super::trace_draws(|| match step["kind"].as_str().unwrap() {
+                    "raw" => i64::from(random.next_u32()),
+                    "ranged" => i64::from(random.next_range_i32_inclusive(
+                        step["low"].as_i64().unwrap() as i32,
+                        step["high"].as_i64().unwrap() as i32,
+                    )),
+                    kind => panic!("unhandled native draw {kind}"),
+                });
+                assert_eq!(actual, step["result"].as_i64().unwrap(), "{label}/{index}");
+                assert_eq!(
+                    trace.len() as u64,
+                    step["raw_draw_count"].as_u64().unwrap(),
+                    "trace {label}/{index}"
+                );
+                assert_eq!(
+                    trace
+                        .iter()
+                        .map(|draw| draw["value"].clone())
+                        .collect::<Vec<_>>(),
+                    *step["raw_draws"].as_array().unwrap(),
+                    "raw trace {label}/{index}",
+                );
+                assert_eq!(
+                    random.native_state_hex(),
+                    step["after_state_hex"].as_str().unwrap(),
+                    "{label}/{index}"
+                );
+                compared += 1;
+            }
+        }
+        assert_eq!(compared, 98);
     }
 }

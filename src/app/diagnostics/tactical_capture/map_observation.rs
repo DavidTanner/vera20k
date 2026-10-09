@@ -624,8 +624,8 @@ struct MapTargetingObservation {
     type_id: String,
 }
 
-/// Read-only values from the current input, sidebar and audio owners. Pending
-/// voice requests are observed before playback, not evidence of audible output.
+/// Read-only values from the current input, sidebar, simulation and audio owners.
+/// Pending voice requests are observed before playback, not evidence of audible output.
 #[derive(Debug, Serialize)]
 struct MapLocalInputObservation {
     camera_top_left: [f32; 2],
@@ -634,15 +634,17 @@ struct MapLocalInputObservation {
     repair_mode: bool,
     sell_mode: bool,
     targeting: Option<MapTargetingObservation>,
+    main_rng_cursor: [i32; 2],
     selection_voice_enabled: bool,
     selection_voice_requests: Vec<MapSelectionVoiceRequest>,
 }
 
 impl MapLocalInputObservation {
-    fn capture(state: &AppState) -> Self {
+    fn capture(state: &AppState, sim: &crate::sim::world::Simulation) -> Self {
         use crate::app::types::TargetingMode;
         let input = &state.match_state.input;
         let gadgets = &state.match_state.match_presentation.sidebar_gadget_state;
+        let main_rng = sim.rng_views().main;
         Self {
             camera_top_left: [input.camera_x, input.camera_y],
             camera_zoom: input.zoom_level,
@@ -659,6 +661,7 @@ impl MapLocalInputObservation {
                     type_id: type_id.clone(),
                 }
             }),
+            main_rng_cursor: [main_rng.index_a, main_rng.index_b],
             selection_voice_enabled: input.selection_voice_enabled,
             selection_voice_requests: state
                 .match_state
@@ -699,7 +702,7 @@ impl MapInputObservation {
             selection_pending: state.match_state.input.selection_order_pending,
             target_line_remaining: lines.remaining_frames(sim.session.binary_frame),
             target_line_active: lines.is_selected_action_active(sim.session.binary_frame),
-            local_input: local_input.then(|| MapLocalInputObservation::capture(state)),
+            local_input: local_input.then(|| MapLocalInputObservation::capture(state, sim)),
         })
     }
 

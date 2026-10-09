@@ -17,6 +17,7 @@
     "Dock controls supply native map-table cells and occupiers; original5F6960/565730/47C520 execute. Building lifecycle, collision and aircraft motion are excluded.",
     "Voice lists contain fixture-relative numeric sound IDs. Native sound lookup, original TechnoType INI readers, OS audio playback and device samples are excluded. Direct VoiceSelect disabled/other-owner controls establish receiver ordering, not reachability through the Select wrapper.",
     "Main886B88, Scenario+218 and MapGenABE890 are initialized with original65C6D0 via sharedgen_rng_vectors.seeded_struct. Complete3F4-byte states bracket voice histories; actual raw draw outputs/continuation are independently replayed with the same original65C780 helper. Scenario and MapGen must remain byte-identical.",
+    "The appended unit_multiple_seed1_after248_main_raw history executes 248 original65C780 calls on the same Main886B88 before four708EB0 calls. Prefix draws and full before/after state are observed; no reseeding or cursor replacement occurs between prefix and voices. This supplies an earlier-consumer boundary, not execution of terrain loading, MoveSound, Gattling or death consumers.",
     "Cursor-mode controls execute original power/planning/repair/sell bodies. Planning's saved cursor pointer11BC is null, so its nonempty cursor restoration callback and active planning-group propagation are outside these controls.",
     "Camera4AE290 executes through its singleton/empty reduction; final rendering and full camera bounds/projection are outside the declared6D6070 boundary. Original.text integrity is checked after each invocation."
   ],
@@ -39,5 +40,13 @@
     "rng_seed": "0x0065C6D0"
   },
   "command": "python -m tools.input_oracle.selection_navigation --check",
-  "payload_sha256": "35f9b8b180f0fe5f090b1ac09bcdd50c328949586e16b5ca12e346f953501239"
+  "coverage_counts": {
+    "search_cases": 94,
+    "command_histories": 20,
+    "command_calls": 31,
+    "voice_histories": 29,
+    "voice_calls": 112,
+    "prefix_raw_calls": 248
+  },
+  "payload_sha256": "3b708b549be1dfea8ddee416b9abc45930a5af0e4f4bf8985a9a87799ccb5667"
 }

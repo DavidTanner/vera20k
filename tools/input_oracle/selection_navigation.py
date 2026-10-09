@@ -322,6 +322,19 @@ def voice_history(spec):
         fixture.set_voice_list(1, spec["voice_list"], 0x430)
     if value["robot_offline"]:
         fixture.set_voice_list(1, spec["voice_list"], 0x44C)
+    prefix = {}
+    if advance := spec.get("advance_main_raw", 0):
+        before_prefix = fixture.rng_bytes()
+        fixture.reset_observations()
+        for _ in range(advance):
+            fixture.invoke(0x65C780, fixture.rngs["main"])
+        observed = fixture.observations(before_prefix)
+        prefix["main_prefix"] = dict(
+            draws=observed["main_draws"],
+            before_state_hex=before_prefix["main"].hex(),
+            after_state_hex=fixture.rng_bytes()["main"].hex(),
+        )
+        assert len(observed["main_draws"]) == advance
     initial = fixture.rng_bytes()
     steps = []
     for _ in range(spec.get("calls", 4)):
@@ -331,7 +344,7 @@ def voice_history(spec):
         steps.append(fixture.observations(before))
     after = fixture.rng_bytes()
     continuation, _ = draws(after["main"], 4)
-    return {**spec, "initial_queued_voice": 777, "steps": steps,
+    return {**spec, **prefix, "initial_queued_voice": 777, "steps": steps,
             "rng_before_hex": {name: raw.hex() for name, raw in initial.items()},
             "rng_after_hex": {name: raw.hex() for name, raw in after.items()},
             "main_next_four": continuation}
@@ -432,6 +445,8 @@ def voice_inputs():
                        voice_list=[101, 202, 303], calls=4, **fields)
         yield dict(id=f"{kind}_minus_one_sound", kind=kind, seed=1,
                    voice_list=[-1], calls=2)
+    yield dict(id="unit_multiple_seed1_after248_main_raw", kind="unit", seed=1,
+               voice_list=[101, 202, 303], calls=4, advance_main_raw=248)
 
 
 def generate():
@@ -451,6 +466,7 @@ def metadata():
         "Dock controls supply native map-table cells and occupiers; original5F6960/565730/47C520 execute. Building lifecycle, collision and aircraft motion are excluded.",
         "Voice lists contain fixture-relative numeric sound IDs. Native sound lookup, original TechnoType INI readers, OS audio playback and device samples are excluded. Direct VoiceSelect disabled/other-owner controls establish receiver ordering, not reachability through the Select wrapper.",
         "Main886B88, Scenario+218 and MapGenABE890 are initialized with original65C6D0 via sharedgen_rng_vectors.seeded_struct. Complete3F4-byte states bracket voice histories; actual raw draw outputs/continuation are independently replayed with the same original65C780 helper. Scenario and MapGen must remain byte-identical.",
+        "The appended unit_multiple_seed1_after248_main_raw history executes 248 original65C780 calls on the same Main886B88 before four708EB0 calls. Prefix draws and full before/after state are observed; no reseeding or cursor replacement occurs between prefix and voices. This supplies an earlier-consumer boundary, not execution of terrain loading, MoveSound, Gattling or death consumers.",
         "Cursor-mode controls execute original power/planning/repair/sell bodies. Planning's saved cursor pointer11BC is null, so its nonempty cursor restoration callback and active planning-group propagation are outside these controls.",
         "Camera4AE290 executes through its singleton/empty reduction; final rendering and full camera bounds/projection are outside the declared6D6070 boundary. Original.text integrity is checked after each invocation.",
     ], substitutions=[
@@ -463,6 +479,9 @@ def metadata():
                      "voice_select": 0x708EB0, "queue_voice": 0x708D90,
                      "rng_raw": 0x65C780, "rng_seed": 0x65C6D0})
     result["command"] = "python -m tools.input_oracle.selection_navigation --check"
+    result["coverage_counts"] = dict(search_cases=94, command_histories=20,
+                                    command_calls=31, voice_histories=29,
+                                    voice_calls=112, prefix_raw_calls=248)
     return result
 
 

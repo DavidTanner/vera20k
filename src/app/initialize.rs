@@ -445,22 +445,23 @@ impl App {
             .initialize_music_output
             .then(MusicPlayer::new)
             .flatten();
-        let audio_random = crate::audio::sfx::SfxRng::from_clock();
         let sfx_player = startup_audio
             .initialize_sfx_output
-            .then(|| SfxPlayer::new_with_rng(audio_random.clone()))
+            .then(SfxPlayer::new)
             .flatten();
         let launcher_audio_available = crate::app::audio_runtime::derive_launcher_audio_available(
             startup_options.audio_enabled,
             music_player.is_some(),
             sfx_player.is_some(),
         );
-        let mut startup_audio_runtime = crate::app::audio_runtime::AppAudioRuntime::new(
+        let mut startup_audio_runtime = crate::app::audio_runtime::AppAudioRuntime {
+            theme: crate::audio::theme::ThemeRuntime::default(),
+            last_theme_poll_ms: None,
             music_player,
             sfx_player,
-            audio_random,
             launcher_audio_available,
-        );
+            theme_startup_suppressed: false,
+        };
         if let Some(assets) = startup_asset_manager.as_ref() {
             startup_audio_runtime.initialize_theme(assets);
         }

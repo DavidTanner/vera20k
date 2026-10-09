@@ -61,6 +61,17 @@ hide the mission-only refusal.
   lists, seeds0/1/1234, both ordinary classes, special list branches and queue
   rejection controls. Each history retains full RNG bytes and the next four
   original Main draws. Sound IDs are fixture-relative, not stock registry IDs.
+  The appended `unit_multiple_seed1_after248_main_raw` first executes248 raw
+  draws on the same Main886B88. Its `main_prefix` records those draws and full
+  before/after state; `rng_before_hex.main` is that advanced state. Four voices
+  then cross the250-word cursor wrap before `main_next_four` records the next
+  original raw continuation. The prior28 histories retain their fields/results.
+
+The corpus contains94 searches,20 command histories/31 calls and29 voice
+histories/112 calls, plus the248-call Main prefix. The prefix supplies prior
+consumer activity; it does not execute terrain loading, MoveSound, Gattling or
+death. It distinguishes a retained shared Main cursor from a freshly seeded
+audio-only cursor without introducing a fixture RNG algorithm.
 
 Mouse cursor entries5BDA80/5BDAA0, final Tactical camera application6D6070 and
 Redraw4F42F0 are observed presentation boundaries. All search, candidate, selection,
@@ -87,8 +98,9 @@ Tactical rectangle selection similarly clears it at6DA6F5 and restores it at
 in this fixture. A first successful object with an empty voice list still closes
 the ordinary first-success voice allowance.
 
-The measured selection path does not change Scenario or MapGen RNG. Main is a
-presentation stream; retaining its exact fixture state does not establish whole
-engine determinism. No action-line timer start or Detach is traversed in this
+The measured selection path does not change Scenario or MapGen RNG. Main886B88
+is one shared native stream, including callers outside audio; retaining its
+exact fixture state does not establish whole-engine determinism. No action-line
+timer start or Detach is traversed in this
 bounded untagged path. Arbitrary Tag actions and later audio/renderer consumers
 remain separate behavior.

@@ -4,7 +4,7 @@
 
 use crate::assets::asset_manager::AssetManager;
 use crate::audio::music::MusicPlayer;
-use crate::audio::sfx::{SfxPlayer, SfxRng};
+use crate::audio::sfx::SfxPlayer;
 use crate::audio::theme::{
     MusicOutputState, PreparedTrack, ThemeAction, ThemeAllowContext, ThemeGates, ThemeRuntime,
 };
@@ -65,9 +65,6 @@ fn apply_theme_action_to_output(
 }
 
 pub(crate) struct AppAudioRuntime {
-    /// Main RNG survives matches and device failures. SfxPlayer holds a
-    /// handle to this same stream; simulation owns a separate generator.
-    random: SfxRng,
     /// Always-present device-independent Theme owner.
     pub(crate) theme: ThemeRuntime,
     /// Last wall time the Theme AI ran (the audio pump's own > 33 ms gate).
@@ -91,35 +88,6 @@ pub(crate) struct AppAudioRuntime {
 /// `FUN_00407000` (`DAT_0087E728 != 0`) alongside Theme initialization
 /// `DAT_00A8EC74 != 0` and startup suppression `DAT_00A8ED64 == 0`.
 impl AppAudioRuntime {
-    pub(crate) fn new(
-        music_player: Option<MusicPlayer>,
-        sfx_player: Option<SfxPlayer>,
-        random: SfxRng,
-        launcher_audio_available: bool,
-    ) -> Self {
-        Self {
-            theme: ThemeRuntime::new(random.clone()),
-            random,
-            last_theme_poll_ms: None,
-            music_player,
-            sfx_player,
-            launcher_audio_available,
-            theme_startup_suppressed: false,
-        }
-    }
-
-    pub(crate) fn random_mut(&mut self) -> &mut SfxRng {
-        &mut self.random
-    }
-
-    /// MainPrepareSession52E619 reaches Init_Random_Number_System before
-    /// Start_Scenario. Both native seed tails use resolved g_RngSeedA8ED94
-    /// (52FE33..52FE51 / 52FE82..52FEAB), independently of Scenario's cursor.
-    /// Saved-game restore does not enter this fresh-loading boundary.
-    pub(crate) fn begin_scenario_random(&mut self, seed: u32) {
-        self.random.reseed(seed);
-    }
-
     fn theme_gates(&self) -> ThemeGates {
         ThemeGates {
             launcher_audio_available: self.launcher_audio_available,
@@ -185,19 +153,19 @@ impl AppAudioRuntime {
         logical_started
     }
 
-    /// Start_Scenario tail: pin the local player's side, then `Stop(1)` /
-    /// `Queue_Song([Basic] Theme)`. The session already seeded Main before
-    /// loading; keep every draw made during the read and its audio pumps.
+    /// Start_Scenario tail: seed the presentation shuffle stream, pin the
+    /// local player's side, then `Stop(1)` / `Queue_Song([Basic] Theme)`.
     pub(crate) fn request_scenario_theme(
         &mut self,
         requested_section: Option<&str>,
         assets: &AssetManager,
+        match_seed: u32,
         context: ThemeAllowContext,
         resolve_side: impl Fn(&str) -> Option<i32>,
         wall_ms: u64,
     ) {
         self.theme.initialize_catalog(assets);
-        self.theme.begin_scenario(context, resolve_side);
+        self.theme.begin_scenario(match_seed, context, resolve_side);
         let gates = self.theme_gates();
         let physical = self.music_output_state();
         let action =
@@ -356,7 +324,14 @@ mod tests {
     #[test]
     fn theme_poll_carries_the_audio_pump_rate_gate_independent_of_screen() {
         let assets = empty_assets("poll-gate");
-        let mut runtime = AppAudioRuntime::new(None, None, SfxRng::seeded(1), true);
+        let mut runtime = AppAudioRuntime {
+            theme: ThemeRuntime::default(),
+            last_theme_poll_ms: None,
+            music_player: None,
+            sfx_player: None,
+            launcher_audio_available: true,
+            theme_startup_suppressed: false,
+        };
         runtime.update_theme(&assets, 100);
         assert_eq!(runtime.last_theme_poll_ms, Some(100));
         runtime.update_theme(&assets, 133);

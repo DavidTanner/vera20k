@@ -27,10 +27,8 @@
 //!   rules/sound_ini (SoundRegistry for ID→filename mapping).
 //! - Does NOT depend on render/, ui/, sim/.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::num::NonZero;
-use std::rc::Rc;
 
 use rodio::buffer::SamplesBuffer;
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
@@ -43,12 +41,7 @@ use crate::audio::vox::{VoxNode, VoxQueue, VoxRequest};
 use crate::rules::sound_ini::{
     EvaRegistry, EvaSide, EvaType, SoundEntry, SoundRegistry, VOLUME_SCALE, control, sound_type,
 };
-use crate::util::native_random;
 use crate::util::native_x87::X87Chop53;
-
-#[cfg(test)]
-#[path = "sfx_rng_tests.rs"]
-mod sfx_rng_tests;
 
 /// How many passes of a sustaining cue are kept queued on its rodio player:
 /// the one that is sounding plus one waiting behind it.
@@ -64,8 +57,8 @@ mod sfx_rng_tests;
 /// so its final pass is decoded (and its `Control=random` order drawn) one
 /// pass earlier. Player effect: none audible; the same passes play in the
 /// same order. Frequency: every looping cue. Downstream risk: the extra draw
-/// shifts VERA's presentation RNG (`g_MainRng @ 0x00886B88`), kept apart
-/// from deterministic simulation state.
+/// shifts VERA's presentation RNG, which is a clock-seeded non-scenario
+/// generator (`g_MainRng @ 0x00886B88`) and feeds no deterministic state.
 const LOOP_QUEUE_DEPTH: usize = 2;
 
 /// `VocClass::CalcVolumeAndPan @ 0x00750AC0` (`0x00750B0F..0x00750B17`):
@@ -439,40 +432,27 @@ fn apply_pan(samples: &mut [f32], pan: i32) {
 }
 
 /// The audio RNG contract: `Random::RandomRanged @ 0x0065C7E0` on the
-/// non-scenario `g_MainRng @ 0x00886B88`. Init_Random_Number_System52FC20
-/// seeds it from the resolved session seed alongside, but independently of,
-/// Scenario+218. Presentation calls do not affect simulation. Inclusive
-/// bounds; equal bounds return without drawing.
+/// non-scenario `g_MainRng @ 0x00886B88`, seeded from resolved g_RngSeed by
+/// Init_Random_Number_System52FC20. Inclusive bounds; equal bounds return
+/// without drawing. See SfxRng's existing stream residual below.
 pub trait SampleRng {
     fn ranged(&mut self, low: i32, high: i32) -> i32;
 }
 
-/// One presentation stream for voice-list choice, sample choice, pitch and
-/// volume shift. `Random::Random @ 0x0065C780` and `RandomRanged @ 0x0065C7E0`
-/// operate on the same non-scenario Main RNG. Cloning this handle shares its
-/// private state; it never forks the stream. The app keeps it across matches
-/// and even when the output device is absent.
+/// Existing separate presentation RNG for sample choice, pitch and volume
+/// shift: clock-seeded SplitMix64 with unbiased inclusive range reduction.
+/// RESIDUAL: native uses Main886B88. This older audio owner does not reproduce
+/// its values or shared continuation; consolidating sample/device/pump order
+/// is a separate audio mechanism. Unit selection consumes Simulation's
+/// existing Main owner and does not seed or copy this presentation stream.
 #[derive(Debug, Clone)]
 pub struct SfxRng {
-    state: Rc<RefCell<SfxRandomState>>,
-}
-
-#[derive(Debug)]
-struct SfxRandomState {
-    words: [u32; native_random::STATE_WORDS],
-    lead: usize,
-    lagged: usize,
+    state: u64,
 }
 
 impl SfxRng {
     pub fn seeded(seed: u64) -> Self {
-        Self {
-            state: Rc::new(RefCell::new(SfxRandomState {
-                words: native_random::seeded_words(seed as u32),
-                lead: 0,
-                lagged: native_random::LAG,
-            })),
-        }
+        Self { state: seed }
     }
 
     pub fn from_clock() -> Self {
@@ -482,37 +462,29 @@ impl SfxRng {
         Self::seeded(nanos)
     }
 
-    /// Init_Random_Number_System52FE33..52FE51 / 52FE82..52FEAB rebuilds
-    /// the process Main RNG from the resolved seed. Mutate the existing owner
-    /// so every audio handle sees the reset, including Theme and SfxPlayer.
-    pub(crate) fn reseed(&mut self, seed: u32) {
-        *self.state.borrow_mut() = SfxRandomState {
-            words: native_random::seeded_words(seed),
-            lead: 0,
-            lagged: native_random::LAG,
-        };
-    }
-
-    pub(crate) fn next_u32(&mut self) -> u32 {
-        let mut state = self.state.borrow_mut();
-        let SfxRandomState {
-            words,
-            lead,
-            lagged,
-        } = &mut *state;
-        native_random::draw(words, lead, lagged)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn native_state_hex(&self) -> String {
-        let state = self.state.borrow();
-        native_random::state_hex(0, state.lead as i32, state.lagged as i32, &state.words)
+    fn next_u64(&mut self) -> u64 {
+        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
     }
 }
 
 impl SampleRng for SfxRng {
     fn ranged(&mut self, low: i32, high: i32) -> i32 {
-        native_random::ranged_i32(low, high, || self.next_u32())
+        if low == high {
+            return low;
+        }
+        let (low, high) = if high < low { (high, low) } else { (low, high) };
+        let span = (i64::from(high) - i64::from(low) + 1) as u64;
+        let zone = u64::MAX - (u64::MAX % span);
+        loop {
+            let draw = self.next_u64();
+            if draw < zone {
+                return (i64::from(low) + (draw % span) as i64) as i32;
+            }
+        }
     }
 }
 
@@ -1007,12 +979,6 @@ fn open_sfx_sink() -> Result<MixerDeviceSink, rodio::DeviceSinkError> {
 impl SfxPlayer {
     /// Create a new SfxPlayer. Returns None if audio output cannot be opened.
     pub fn new() -> Option<Self> {
-        Self::new_with_rng(SfxRng::from_clock())
-    }
-
-    /// Use the process audio owner's stream so selection and playback draws
-    /// keep their native order, including when selection predates playback.
-    pub(crate) fn new_with_rng(rng: SfxRng) -> Option<Self> {
         let device = open_sfx_sink()
             .map_err(|e| log::error!("Failed to initialize SFX audio: {}", e))
             .ok()?;
@@ -1035,7 +1001,7 @@ impl SfxPlayer {
             output_scale: 1.0,
             focus_output_scale: 1.0,
             paused: false,
-            rng,
+            rng: SfxRng::from_clock(),
         })
     }
 

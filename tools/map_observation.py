@@ -903,7 +903,7 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
 def _local_input_observation(value: Any, label: str) -> int:
     row = require_object(value, label)
     require_exact_keys(row, ('camera_top_left', 'camera_zoom', 'follow_target', 'repair_mode',
-                             'sell_mode', 'targeting', 'selection_voice_enabled',
+                             'sell_mode', 'targeting', 'main_rng_cursor', 'selection_voice_enabled',
                              'selection_voice_requests'), label)
     position = require_array(row['camera_top_left'], f'{label}.camera_top_left')
     if len(position) != 2:
@@ -913,6 +913,11 @@ def _local_input_observation(value: Any, label: str) -> int:
             raise ValidationError(f'{label} camera component {index} must be finite')
     if row['camera_zoom'] <= 0:
         raise ValidationError(f'{label}.camera_zoom must be positive')
+    cursor = require_array(row['main_rng_cursor'], f'{label}.main_rng_cursor')
+    if len(cursor) != 2:
+        raise ValidationError(f'{label}.main_rng_cursor must contain exactly two indices')
+    for index, number in enumerate(cursor):
+        _bounded_int(number, f'{label}.main_rng_cursor[{index}]', -(1 << 31), (1 << 31) - 1)
     if row['follow_target'] is not None:
         _bounded_int(row['follow_target'], f'{label}.follow_target', 1, (1 << 64) - 1)
     for key in ('repair_mode', 'sell_mode', 'selection_voice_enabled'):

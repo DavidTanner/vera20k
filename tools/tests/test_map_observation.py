@@ -283,6 +283,7 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['gesture_input']['equal_step_order'], 'commands_then_gestures')
         self.assertEqual(transcript['frames'][1]['input']['selected_ids'], [7, 3])
         self.assertEqual(transcript['frames'][1]['input']['target_line_remaining'], 24)
+        self.assertNotIn('local_input', transcript['frames'][1]['input'])
         self.assertEqual(transcript['commands'][0]['payload'], {'Stop': {'entity_id': 7}})
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
@@ -290,7 +291,7 @@ class MapObservationTests(unittest.TestCase):
     def local_input_observation():
         return {'camera_top_left': [100.0, -50.0], 'camera_zoom': 1.0,
                 'follow_target': None, 'repair_mode': False, 'sell_mode': False,
-                'targeting': None, 'selection_voice_enabled': True,
+                'targeting': None, 'main_rng_cursor': [0, 103], 'selection_voice_enabled': True,
                 'selection_voice_requests': []}
 
     def keyboard_profile(self):
@@ -321,9 +322,10 @@ class MapObservationTests(unittest.TestCase):
 
     def test_literal_keys_preserve_same_step_order_loaded_binding_and_pending_voice_receipts(self):
         self.keyboard_profile()
+        self.gesture_receipts[0]['after']['local_input']['main_rng_cursor'] = [1, 104]
         self.gesture_receipts[1]['before'] = deepcopy(self.gesture_receipts[0]['after'])
         self.gesture_receipts[1]['after']['local_input'].update(
-            follow_target=8, camera_top_left=[150.0, -20.0])
+            follow_target=8, camera_top_left=[150.0, -20.0], main_rng_cursor=[2, 105])
         self.gesture_receipts[2]['keyboard']['binding_command'] = None  # Unbound is observable.
         report = self.run_capture()
         self.assertEqual(report['status'], 'VALID', report['errors'])
@@ -417,6 +419,14 @@ class MapObservationTests(unittest.TestCase):
                    lambda row: row.update(camera_top_left=[True, 0]),
                    lambda row: row.update(camera_zoom=0),
                    lambda row: row.update(camera_zoom='1'),
+                   lambda row: row.pop('main_rng_cursor'),
+                   lambda row: row.update(main_rng_cursor=None),
+                   lambda row: row.update(main_rng_cursor=[0]),
+                   lambda row: row.update(main_rng_cursor=[0, 103, 1]),
+                   lambda row: row.update(main_rng_cursor=[True, 103]),
+                   lambda row: row.update(main_rng_cursor=[0, 103.0]),
+                   lambda row: row.update(main_rng_cursor=[-(1 << 31) - 1, 103]),
+                   lambda row: row.update(main_rng_cursor=[0, 1 << 31]),
                    lambda row: row.update(follow_target=0),
                    lambda row: row.update(follow_target=True),
                    lambda row: row.update(repair_mode=1),

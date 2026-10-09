@@ -15,8 +15,9 @@
 
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::aud_file;
-use crate::audio::sfx::{SampleRng, SfxRng, decode_wav};
+use crate::audio::sfx::decode_wav;
 use crate::rules::ini_parser::{IniFile, IniSection};
+use crate::sim::rng::SimRng;
 
 /// Theme fade length. Native is rate-based, not duration-based: the stream's
 /// own `VolumeInterp` (`stream+0x14 -> +0x10`) is initialised by
@@ -175,20 +176,17 @@ pub(crate) struct ThemeRuntime {
     /// Whether Start_Scenario owns the pending slot (scenario reset cancel).
     scenario_owns_pending: bool,
     allow_context: ThemeAllowContext,
-    /// ThemeNext720AB5 uses Main886B88, shared with selection and sample
-    /// playback. AppAudioRuntime owns its seed lifetime; Theme holds only a
-    /// handle to that presentation stream, never the simulation RNG.
-    random: SfxRng,
+    /// RESIDUAL: the existing presentation shuffle stream remains separate
+    /// from Simulation's Main owner. Native ThemeNext720AB5 draws Main886B88,
+    /// seeded from g_RngSeed by Init_Random_Number_System52FC20. VERA reseeds
+    /// this older stream at Start_Scenario; complete audio-pump and session
+    /// continuation is a separate mechanism. N/M selection's native Main
+    /// comparisons do not establish the full Theme/SFX sequence.
+    shuffle_rng: SimRng,
 }
 
 impl Default for ThemeRuntime {
     fn default() -> Self {
-        Self::new(SfxRng::seeded(0))
-    }
-}
-
-impl ThemeRuntime {
-    pub(crate) fn new(random: SfxRng) -> Self {
         // ctor 0x00720960: slots -1, repeat 0, fading 0, shuffle 0.
         Self {
             catalog_loaded: false,
@@ -200,10 +198,12 @@ impl ThemeRuntime {
             shuffle: false,
             scenario_owns_pending: false,
             allow_context: ThemeAllowContext::default(),
-            random,
+            shuffle_rng: SimRng::new(0),
         }
     }
+}
 
+impl ThemeRuntime {
     /// Catalog load `0x00720590` + scan `0x007207F0`, once per process.
     pub(crate) fn initialize_catalog(&mut self, assets: &AssetManager) {
         if self.catalog_loaded {
@@ -263,14 +263,15 @@ impl ThemeRuntime {
         self.shuffle = shuffle;
     }
 
-    /// Start_Scenario-time context pins the local player's side for
-    /// `Is_Allowed`. The process audio owner already seeded Main before the
-    /// scenario read; this late Theme transition must not rewind it.
+    /// Start_Scenario-time context: reseed the presentation shuffle stream
+    /// from the match seed and pin the local player's side for `Is_Allowed`.
     pub(crate) fn begin_scenario(
         &mut self,
+        match_seed: u32,
         context: ThemeAllowContext,
         resolve_side: impl Fn(&str) -> Option<i32>,
     ) {
+        self.shuffle_rng = SimRng::new(u64::from(match_seed));
         self.allow_context = context;
         for entry in &mut self.entries {
             entry.side = match entry.side_name.as_deref() {
@@ -342,7 +343,7 @@ impl ThemeRuntime {
             let mut tries = 0u32;
             let mut draw;
             loop {
-                draw = self.random.ranged(0, count - 1);
+                draw = self.shuffle_rng.next_range_i32_inclusive(0, count - 1);
                 tries += 1;
                 if tries >= SHUFFLE_TRIES {
                     break;
@@ -1079,6 +1080,7 @@ mod tests {
         assert!(theme.is_allowed(5));
         // Side= resolved against the local player's side.
         theme.begin_scenario(
+            7,
             ThemeAllowContext {
                 local_side: Some(0),
                 campaign_scenario: None,
@@ -1088,6 +1090,7 @@ mod tests {
         assert!(!theme.is_allowed(7));
         assert!(theme.is_allowed(8), "Scenario= ignored outside campaign");
         theme.begin_scenario(
+            7,
             ThemeAllowContext {
                 local_side: Some(1),
                 campaign_scenario: Some(2),
@@ -1097,6 +1100,7 @@ mod tests {
         assert!(theme.is_allowed(7));
         assert!(!theme.is_allowed(8), "campaign scenario 2 < Scenario=3");
         theme.begin_scenario(
+            7,
             ThemeAllowContext {
                 local_side: Some(1),
                 campaign_scenario: None,
@@ -1104,7 +1108,7 @@ mod tests {
             |_| None,
         );
         assert!(!theme.is_allowed(7), "unknown Side= never matches");
-        theme.begin_scenario(ThemeAllowContext::default(), |_| None);
+        theme.begin_scenario(7, ThemeAllowContext::default(), |_| None);
         assert!(
             theme.is_allowed(7),
             "no player (shell) skips the Side= gate"
@@ -1132,15 +1136,14 @@ mod tests {
     fn shuffle_rejects_prev_and_disallowed_with_a_fixed_presentation_rng() {
         let mut theme = stock_runtime();
         theme.set_score_options(false, true);
-        theme.random.reseed(0x1234);
-        theme.begin_scenario(ThemeAllowContext::default(), |_| None);
-        let mut expected = SfxRng::seeded(0x1234);
+        theme.begin_scenario(0x1234, ThemeAllowContext::default(), |_| None);
+        let mut expected = SimRng::new(0x1234);
         let count = theme.entries().len() as i32;
         let mut prev = -1;
         for _ in 0..16 {
             let mut want;
             loop {
-                want = expected.ranged(0, count - 1);
+                want = expected.next_range_i32_inclusive(0, count - 1);
                 if want != prev && (5..=8).contains(&want) {
                     break;
                 }
@@ -1165,67 +1168,6 @@ mod tests {
         }]);
         none.set_score_options(false, true);
         assert_eq!(none.next_song(-1), 0);
-    }
-
-    #[test]
-    fn theme_shuffle_and_app_sound_consumer_share_native_main_rng_continuation() {
-        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
-            "tools/rmg_oracle/vectors/rng.json",
-        ))
-        .unwrap();
-        let history = native["ranged_cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|row| row["id"] == "seed_1_after_0_raw")
-            .unwrap();
-        let mut runtime =
-            crate::app::audio_runtime::AppAudioRuntime::new(None, None, SfxRng::seeded(99), false);
-        runtime.theme.entries = (0..5)
-            .map(|index| ThemeEntry {
-                key: format!("Track{index}"),
-                sound: format!("track{index}"),
-                name_key: String::new(),
-                duration_seconds: 0,
-                scenario: 0,
-                normal: true,
-                repeat: false,
-                side_name: None,
-                side: -1,
-                available: true,
-            })
-            .collect();
-        runtime.theme.set_score_options(false, true);
-        runtime.begin_scenario_random(1);
-        let steps = history["steps"].as_array().unwrap();
-        assert_eq!(
-            runtime.random_mut().native_state_hex(),
-            steps[0]["before_state_hex"].as_str().unwrap()
-        );
-        assert_eq!(
-            i64::from(runtime.theme.next_song(-1)),
-            steps[0]["result"].as_i64().unwrap()
-        );
-        assert_eq!(
-            runtime.random_mut().native_state_hex(),
-            steps[0]["after_state_hex"].as_str().unwrap()
-        );
-        assert_eq!(
-            i64::from(runtime.random_mut().next_u32()),
-            steps[1]["result"].as_i64().unwrap()
-        );
-        assert_eq!(
-            runtime.theme.random.native_state_hex(),
-            steps[1]["after_state_hex"].as_str().unwrap()
-        );
-        runtime
-            .theme
-            .begin_scenario(ThemeAllowContext::default(), |_| None);
-        assert_eq!(
-            runtime.random_mut().native_state_hex(),
-            steps[1]["after_state_hex"].as_str().unwrap(),
-            "late Theme context cannot reset the shared stream"
-        );
     }
 
     #[test]

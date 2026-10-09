@@ -2359,17 +2359,12 @@ mod item83_selection_order_tests {
                 ));
         }
         let candidate_order = [2, 1];
-        let emitted = |policy| {
-            let mut random = crate::audio::sfx::SfxRng::seeded(1);
+        let mut emitted = |policy| {
             selection_voice_recipients(policy, true, &candidate_order)
                 .iter()
                 .filter_map(|id| {
                     crate::app::match_runtime::sound_dispatch::selection_voice_event(
-                        &sim,
-                        &rules,
-                        *id,
-                        true,
-                        &mut random,
+                        &mut sim, &rules, *id, true,
                     )
                 })
                 .map(|event| match event {
@@ -2820,15 +2815,14 @@ fn apply_selection_action_line_policy_at_frame(
 
 /// Emit the modeled VoiceSelect side effect for one successful Select call.
 fn emit_selection_voice(state: &mut AppState, entity_id: u64) {
-    let Some(runtime) = state.match_state.sim_runtime.as_ref() else {
+    let Some(runtime) = state.match_state.sim_runtime.as_mut() else {
         return;
     };
     if let Some(event) = crate::app::match_runtime::sound_dispatch::selection_voice_event(
-        &runtime.simulation,
+        &mut runtime.simulation,
         &runtime.resources.rules,
         entity_id,
         state.match_state.input.selection_voice_enabled,
-        state.audio.random_mut(),
     ) {
         state.match_state.match_audio.sound_events.push(event);
     }

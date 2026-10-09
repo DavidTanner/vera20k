@@ -365,8 +365,12 @@ keep placement or repair cursors out of the tactical viewport during observation
 Profiles containing a key gesture use `map-local-gesture-v3`. Their existing
 per-frame and before/after input receipts add `local_input`: current camera
 top-left and zoom, follow target, repair/sell modes, targeting kind and type,
-the selection-voice gate, and ordered pending `UnitSelected` voice requests.
-These values come from the existing input/sidebar/audio owners. Voice requests
+`main_rng_cursor: [index_a, index_b]`, the selection-voice gate, and ordered
+pending `UnitSelected` voice requests. The required cursor pair is read from
+`Simulation::rng_views().main` without advancing or copying the RNG state. Its
+before/after values can witness immediate Main stream draws during an input
+gesture; they do not establish equality of the whole RNG state. These values
+come from the existing input/sidebar/simulation/audio owners. Voice requests
 are observed without draining the queue and do not prove audible playback.
 They count toward the retained-sample budget. Ordered `selected_ids` and
 `selection_pending` continue to report the existing optimistic input selection,
