@@ -485,8 +485,8 @@ impl FireQuery for WorldQuery<'_, '_> {
                 };
                 // Cell 0x00486840 reads the receiver's *current* packed coordinate;
                 // a retained Dummy is not the originally requested coordinate.
-                let (x, y) = cells.coord(cell);
-                (i32::from(x) * 256 + 128, i32::from(y) * 256 + 128)
+                let [x, y] = crate::sim::cell_kernel::native_cell_own_xy(cell, cells);
+                (x, y)
             }
             None => return,
         };
@@ -527,9 +527,9 @@ impl FireQuery for WorldQuery<'_, '_> {
                 range,
             )
         };
-        // RESIDUAL (line of fire): a garrison shot measures flat distance with
-        // the garrison range and never runs InRange's wall/cliff walk; the
-        // override-aware range chain (M8) is recorded at the old range gate.
+        // RESIDUAL: a garrison shot measures flat distance with the garrison
+        // range, so it never runs InRange's wall/cliff walk or adds its
+        // elevation bonus; see RESIDUAL 2 at `is_within_range_leptons`.
         if let Some((_, range)) = subject.garrison {
             return flat(range);
         }

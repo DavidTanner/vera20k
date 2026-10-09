@@ -3321,10 +3321,12 @@ pub(crate) fn lepton_distance_sq_raw(
 /// migration onto `compute_in_range`, not with a second sentinel test bolted
 /// on here.
 ///
-/// RESIDUAL 2 — this twin also has no line-of-fire walk. `TechnoClass::InRange`
-/// ends in `CALL 0x004CC310` at 0x006F7642 and refuses the shot when a wall or
-/// a cliff sits on the line; `compute_in_range` runs that walk (see
-/// `sim::combat::line_of_fire`) and this function does not.
+/// RESIDUAL 2 — this twin also has no line-of-fire walk and no elevation
+/// bonus. `TechnoClass::InRange` ends in `CALL 0x004CC310` at 0x006F7642 and
+/// refuses the shot when a wall or a cliff sits on the line, and it adds
+/// `0x006F6F60`'s bonus for a `SubjectToElevation=` projectile fired down at a
+/// lower target; `compute_in_range` does both (see `sim::combat::line_of_fire`
+/// and `in_range::elevation_bonus_leptons`) and this function does neither.
 ///
 /// Pursuit no longer reaches it: `World::tick_attack_pursuit` measures through
 /// `pursuit_in_range` → `compute_in_range`, matching the approach search
@@ -3342,10 +3344,13 @@ pub(crate) fn lepton_distance_sq_raw(
 /// agree with each other rather than diverging.
 ///
 /// - Trigger: a garrisoned occupant firing, or a garrison passive scan
-///   choosing a candidate, across a wall or a ≥4-Level step.
+///   choosing a candidate, across a wall or a ≥4-Level step, or down at a
+///   lower target.
 /// - Player effect: garrisoned infantry shoot through a wall the identical
 ///   infantry standing in the open is refused; the passive scan can pick a
-///   candidate behind one.
+///   candidate behind one. Every retail `OccupyWeapon=` fires `InvisibleHigh`
+///   (`SubjectToElevation=yes`), so a garrison four levels above its target
+///   reaches 659 leptons farther in gamemd than here.
 /// - Frequency: routine on urban maps, where garrisoning is a normal opening.
 /// - Downstream risk: none to deterministic state; both stages agree with each
 ///   other, so it is a uniformly wrong answer, not a stall. The cure is

@@ -3,8 +3,7 @@
 Rows with `target_object` range an Infantry object through CanFireAt 0x6F77B0
 instead. Rows with `subject_to_elevation` add InRange's elevation bonus
 (0x6F6F60 on both arms, 0x6F70E0 on the arcing arm). Rows that supply
-`elevation` or `arcing` also record `bonuses`, each bonus returned, and
-`bound`, the distance and range InRange compares.
+`elevation` or `arcing` also record `bonuses`, each bonus InRange computed.
 
 The weapon slot and object fields are supplied. No range verdict, Cell getter,
 map lookup, distance calculation or line-of-fire callable is substituted.
@@ -12,7 +11,7 @@ map lookup, distance calculation or line-of-fire callable is substituted.
 from pathlib import Path
 import struct
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE
-from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_FPCW
+from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESP, UC_X86_REG_EIP, UC_X86_REG_FPCW
 from tools.native_oracle import load_image, run_checked, STACK_BASE, STACK_SIZE, SCRATCH, RET_MAGIC, finish_vectors, provenance
 from tools.spatial_oracle.map_queries import dwords, packed
 
@@ -93,18 +92,13 @@ def query(row):
     events = []
     geometry = None
     bonuses = []
-    bound = None
     def observe(_u, address, _size, _data):
-        nonlocal geometry, bound
+        nonlocal geometry
         sp = u.reg_read(UC_X86_REG_ESP)
-        def signed(value): return struct.unpack('<i', dwords(value))[0]
         # Returns of the direct (0x6F72FF) and arcing (0x6F746B) bonus calls.
         if address in (0x6F7304, 0x6F7470):
-            bonuses.append(['direct' if address == 0x6F7304 else 'arcing', signed(u.reg_read(UC_X86_REG_EAX))])
-        elif address == 0x6F75F2:
-            bound = [signed(u.reg_read(UC_X86_REG_EAX)), signed(u.reg_read(UC_X86_REG_EBX))]
-        elif address == 0x6F7474:
-            bound = [signed(read32(sp + 0x18)), signed(u.reg_read(UC_X86_REG_EBX))]
+            bonus = struct.unpack('<i', dwords(u.reg_read(UC_X86_REG_EAX)))[0]
+            bonuses.append(['direct' if address == 0x6F7304 else 'arcing', bonus])
         if address == read32(VT + 0x3F8):
             events.append(['weapon', read32(sp + 4)])
             ret(4, SLOT)
@@ -135,7 +129,7 @@ def query(row):
     assert u.reg_read(UC_X86_REG_ESP) == sp + 12
     out = {'input': row, 'result': bool(u.reg_read(UC_X86_REG_EAX) & 255), 'target_geometry': geometry, 'events': events, 'dummy_coord': cell_coord(DUMMY)}
     if 'elevation' in row or row.get('arcing'):
-        out.update(bonuses=bonuses, bound=bound)
+        out.update(bonuses=bonuses)
     return out
 
 

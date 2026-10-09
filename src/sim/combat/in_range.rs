@@ -132,8 +132,8 @@ enum ElevationArm {
 /// (`BulletType+0x297`) fired down at a lower target, in leptons.
 ///
 /// 0 unless the firer and the target both answer vt+0x50: an object on the
-/// map below two levels of height (`0x005F6B60`), a Cell outside the WaterSet
-/// window (`0x004867E0`). The cells under both GetCoords points (vt+0x48, a
+/// map below two levels of height (`0x005F6B60`; Aircraft `0x0041B980`), a
+/// Cell outside the WaterSet window (`0x004867E0`). The cells under both GetCoords points (vt+0x48, a
 /// signed /256 into `MapClass::operator[] @ 0x005657A0`, firer first) give the
 /// drop in `CellClass::GetEffectiveHeight @ 0x00487D50` levels, at least 0.
 /// Each whole `[ElevationModel] ElevationIncrement=` of drop adds
@@ -170,20 +170,9 @@ fn elevation_bonus_leptons(
             if cells.terrain().native_cell_is_water_set_tile(cell) {
                 return 0;
             }
-            // CellClass::GetCoords (`0x00486840`): the centre of the cell's
-            // own coordinate, which a Dummy holds from its last stamp.
-            let (x, y) = cells.coord(cell);
-            let centre = crate::sim::cell_kernel::cell_center(
-                crate::sim::cell_kernel::CellCoordinate {
-                    x: i32::from(x),
-                    y: i32::from(y),
-                },
-                0,
-            );
-            [centre.x, centre.y]
+            crate::sim::cell_kernel::native_cell_own_xy(cell, cells)
         }
-        // A Cell target without a cell identity has no coordinate; InRange
-        // refuses it once it reads the target's coordinates.
+        // Unreached: `RangeTarget::from_target` gives every Cell its identity.
         RangeTarget::Abstract(TargetKind::Cell(..)) => return 0,
     };
     let height = |[x, y]: [i32; 2]| {
@@ -1069,7 +1058,8 @@ mod tests {
                 .find(|event| event[0] == "range")
                 .unwrap();
             // Each bonus InRange computed (`0x006F6F60`, `0x006F70E0`), from
-            // the Dummy state the call saw.
+            // the target lookup's Dummy state: no elevation row's source
+            // lookups (CellRangefinding) restamp it first.
             let assert_bonuses =
                 |target: RangeTarget<'_>, objects: &EntityStore, cells: &NativeCellQuery<'_>| {
                     for bonus in row["bonuses"].as_array().into_iter().flatten() {

@@ -2149,9 +2149,10 @@ pub struct ElevationModel {
     /// `0x006F705A` and `0x006F71D6`).
     ///
     /// RESIDUAL: at 0, the constructor's value, that division faults natively
-    /// on the first `SubjectToElevation=` shot between two grounded objects;
-    /// VERA adds no bonus. Dormant: retail `rulesmd.ini` sets 4, so only a map
-    /// or mode that sets 0 reaches it.
+    /// on the first `SubjectToElevation=` shot that passes both vt+0x50 checks
+    /// (a grounded firer at a grounded object or a dry cell), even with no
+    /// drop; VERA adds no bonus. Dormant: retail `rulesmd.ini` sets 4, so only
+    /// a map or mode that sets 0 reaches it.
     pub increment: i32,
     /// `ElevationIncrementBonus=` (`Rules+0x1840`, ReadDouble `0x0066D1AA`):
     /// cells of range per step.
@@ -2162,7 +2163,7 @@ pub struct ElevationModel {
 }
 
 impl Default for ElevationModel {
-    /// The constructor's stores (`0x00667807..0x00667819`): `EBX` is 0 and
+    /// The constructor's stores (`0x00667807..0x0066781F`): `EBX` is 0 and
     /// `EBP` holds `0x3FF00000`, the high dword of 1.0.
     fn default() -> Self {
         Self {
