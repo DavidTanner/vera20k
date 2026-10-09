@@ -235,6 +235,9 @@ fn immediate_bullet_commits_before_return_with_its_original_sound_order() {
         sim.interner.intern("CoilBolt"),
     );
     sim.admit_projectile(projectile, spawn);
+    // Supply the already-arrived Bullet AI boundary: this consequence-order
+    // fixture detonates at the receiver, after native launch placement.
+    sim.projectiles.get_mut(projectile).unwrap().position = impact;
     assert!(sim.object_ai_visit_one(projectile, Some(&rules), ObjectAiCtx::default()));
     let ids = delivered_ids(&sim);
     assert_eq!(ids, vec![projectile + 1, projectile + 2, projectile + 3]);

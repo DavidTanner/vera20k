@@ -23,7 +23,7 @@ exec(src,impact.__dict__)
 def generate():
  r=impact.execute();assert 'failure' not in r,r.get('failure');m,b,t=last;r['trail_after']=dict(owner=hex(m.read32(t+4)),owner_slot=hex(m.read32(b+0xa8)),registry_count=m.read32(0xabcb88));return dict(native_sha256=NATIVE_SHA256,row=r)
 def metadata():
- return provenance(scope='Native admitted-Unlimbo LineTrail creation joined to full selected Bullet impact and deferred destructor detach',assumptions=[
+ return provenance(scope='Native admitted-Unlimbo LineTrail creation joined to selected Bullet impact and Conceal/DetachAll detachment before drain',assumptions=[
   'Reuses ifv_impact selected rise_live case. Explicitly enters already-admitted Unlimbo tail5F514B..5F5210 after launch: this is not prior world admission proof. Native DRAGON ARTUseLineTrail/RGB/decrement drive allocation/constructor and Bullet+A8 owner attachment.',
   'Original LineTrail zero-coordinate/registry initializer and Options constructor prefix establish DetailLevel2. Full Bullet impact/UnInit/expiry/Conceal/enqueue/drain/Release/destructor then execute.',
   'The corrected shared launch admission state makes UnInit/Conceal traverse DetachAll5F5280: original5F528E calls556B30 and clears Bullet+A8 before pending drain. ObjectDtor later sees the cleared slot and does not detach again. The earlier raw-copy launch boundary incorrectly retained constructor InLimbo and delayed this detach to ObjectDtor5F3D56. Detached trail remains registered with owner0 and Bullet slot0; no subsequent trail fade/draw or failed/re-Fire claim.',

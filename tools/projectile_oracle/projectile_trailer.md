@@ -154,7 +154,8 @@ PYTHONDONTWRITEBYTECODE=1 python -m tools.projectile_oracle.projectile_trailer -
 
 Default invocation also checks without writing. `--write` explicitly replaces
 the corpus and sidecar. Imports and `--help` do not execute native code or
-write output. Shared fixture changes preserve existing guided/impact outputs;
-their native replay is separate from this new corpus and from Rust and
-production-rendering validation. No retail file bodies or validation receipts
-belong in this directory.
+write output. Existing guided/impact witnesses are re-executed separately;
+the corrected admission histories are described above. Those replays are
+distinct from this new corpus and from Rust and production-rendering
+validation. No retail file bodies or validation receipts belong in this
+directory.
