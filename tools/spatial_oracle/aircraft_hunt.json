@@ -1,0 +1,4154 @@
+{
+  "mission_hunt": [
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm0.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm0.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm0.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm0.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm1.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm1.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm1.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg0.gm1.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm0.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm0.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm0.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm0.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm1.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm1.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm1.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t0.tg1.gm1.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm0.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm0.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm0.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm0.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm1.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm1.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm1.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg0.gm1.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm0.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm0.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm0.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm0.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 0,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm1.rate30.j0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 30,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm1.rate30.j2",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 32,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 1,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm1.rate0.j1",
+        "rate": 0,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "leave_team",
+          "aircraft",
+          -1,
+          0
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ],
+        [
+          "rate"
+        ],
+        [
+          "jitter",
+          0,
+          2
+        ]
+      ],
+      "input": {
+        "ammo": 0,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "empty.t1.tg1.gm1.rate450.j2",
+        "rate": 450,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 452,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo1.t0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t0.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo1.t1",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo1.t1.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo-1.t0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t0.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo-1.t1",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": -1,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo-1.t1.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo3.t0",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t0.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": false
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "held.ammo3.t1",
+        "rate": 30,
+        "ready": 2,
+        "scans": [],
+        "state": 0,
+        "target": true,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm0.any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 0,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm0.none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm1.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm1.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 1,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm1.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          "harvester"
+        ],
+        [
+          "target"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm2.harvester",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          "harvester"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "harvester"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          "any"
+        ],
+        [
+          "target"
+        ],
+        [
+          "queue",
+          1,
+          0
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm2.none_any",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          "any"
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": "any"
+    },
+    {
+      "calls": [
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          64,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "greatest_threat",
+          0,
+          0
+        ],
+        [
+          "assign_target",
+          null
+        ],
+        [
+          "target"
+        ],
+        [
+          "enter_idle_mode",
+          0,
+          1
+        ]
+      ],
+      "input": {
+        "ammo": 3,
+        "game_mode": 2,
+        "jitter": 2,
+        "location": [
+          15488,
+          16512,
+          600
+        ],
+        "name": "scan.ammo3.t1.gm2.none_none",
+        "rate": 30,
+        "ready": 2,
+        "scans": [
+          null,
+          null
+        ],
+        "state": 0,
+        "target": false,
+        "team": true
+      },
+      "ready": 2,
+      "ret": 1,
+      "state": 0,
+      "target": null
+    }
+  ]
+}

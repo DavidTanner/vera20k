@@ -499,6 +499,55 @@ fn a_computer_team_gathers_outside_the_enemy_base() {
     );
 }
 
+/// Script action 53 with aircraft members: the team's `Set_Destination`
+/// (vt+0x480) is `AircraftClass::Assign_Destination @ 0x0041AA80`, so the
+/// aircraft fly to the gathering cell and the script goes on (#1111).
+#[test]
+fn a_computer_aircraft_team_flies_to_its_gathering_cell() {
+    let (mut sim, rules, team_id, members, _) = team_fixture(
+        "[General]\nAISafeDistance=4\n\
+         [AircraftTypes]\n0=ORCA\n[ORCA]\nStrength=150\nSpeed=14\nAmmo=1\nPrimary=Gun\n\
+         Landable=yes\nMovementZone=Fly\nSpeedType=Winged\n\
+         Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n\
+         [BuildingTypes]\n0=PLANTA\n1=PLANTB\n\
+         [PLANTA]\nStrength=750\nPower=100\nFoundation=2x2\n\
+         [PLANTB]\nStrength=750\nPower=200\nFoundation=2x2\n\
+         [Gun]\nDamage=15\nROF=20\nRange=4\nWarhead=SA\n[SA]\nVerses=100%\n",
+        "ORCA",
+        [("PLANTA", 18, 8), ("PLANTB", 18, 13)],
+        "0=53,0\n1=49,0",
+    );
+    // 4 cells from the enemy's centre (18,11) towards the house's (10,11).
+    let seed = (14, 11);
+    let near_seed = |rx: u16, ry: u16| {
+        (i32::from(rx) - seed.0).abs() <= 2 && (i32::from(ry) - seed.1).abs() <= 2
+    };
+    let mut sent = false;
+    let mut arrived = [false; 2];
+    for _ in 0..900 {
+        sim.advance_tick(&[], Some(&rules), None, None, 67);
+        for (n, &member) in members.iter().enumerate() {
+            let Some(entity) = sim.entities().get(member) else {
+                continue;
+            };
+            sent |= matches!(
+                entity.navigation.nav_com,
+                Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) if near_seed(rx, ry)
+            );
+            arrived[n] |= near_seed(entity.position.rx, entity.position.ry);
+        }
+        if sim.team_script_vm.team(team_id).is_none() {
+            break;
+        }
+    }
+    assert!(sent, "a member was sent near {seed:?}");
+    assert_eq!(arrived, [true; 2], "both aircraft flew there");
+    assert!(
+        sim.team_script_vm.team(team_id).is_none(),
+        "the team arrived and its script ran to the end"
+    );
+}
+
 /// `Evaluate_Candidate`'s building gate (`0x006F85AB..0x006F8601`) holds
 /// only for a human scanner outside a team: a computer E1 on Guard takes
 /// the enemy's unarmed power plant, a human E1 beside the computer's own
@@ -515,7 +564,7 @@ fn only_a_human_scanner_passes_over_an_unarmed_building() {
         .spawn_object_at_height("E1", "Human", 5, 15, 0, 0, &rules)
         .expect("E1 spawns");
     let mut scan = |id| {
-        crate::sim::world::team_leader_greatest_threat(
+        crate::sim::world::direct_greatest_threat(
             &mut sim,
             &rules,
             None,

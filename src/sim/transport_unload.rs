@@ -4,8 +4,8 @@
 //! Vehicle: the `Type+0x5E0 > 0` branch of `UnitClass::Mission_Unload @
 //! 0x0073D630` (vtable `+0x23C` at `0x007F5EAC`), states on `unit+0xBC`
 //! through the jump table at `0x0073E5C0`, body `0x0073D70E`..`0x0073DCCE`.
-//! Aircraft: the Aircraft Unload slot `0x004151E0` (vtable `+0x23C` at
-//! `0x007E24E0`; the Ghidra label `AircraftClass__Mission_Hunt` is wrong).
+//! Aircraft: `AircraftClass::Mission_Unload @ 0x004151E0` (vtable `+0x23C`
+//! at `0x007E24E0`).
 //!
 //! Every dispatch that does not `return 10` / `return 1` early exits through
 //! the common epilogue `ftol([Unload] Rate × 900) + RandomRanged(0, 2)`

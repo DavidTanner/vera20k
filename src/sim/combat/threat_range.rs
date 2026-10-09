@@ -188,13 +188,17 @@ pub enum ScanMission {
     /// object array. [`super::greatest_threat`] owns that branch; this variant
     /// only names which mask the caller pushed.
     Hunt,
-    /// Team script actions 0, Attack quarry (`TeamClass @ 0x006ED090`), and
-    /// 57, the Chronosphere's (`0x006F0130`): the quarry's mask
-    /// (`0x00645BB0`) and the TeamType's `OnlyTargetHouseEnemy=` (`+0xF7`),
-    /// pushed as `Greatest_Threat`'s arg3 (`0x006ED14C..0x006ED15E`,
-    /// `0x006F0244..0x006F0253`). No quarry mask carries bit 0 or 1, so it
-    /// takes Hunt's flat walk, measured from the leader's own Coords.
-    TeamQuarry {
+    /// A quarry's mask (`Quarry_To_Threat @ 0x00645BB0`) pushed directly:
+    /// - team script actions 0, Attack quarry (`TeamClass @ 0x006ED090`), and
+    ///   57, the Chronosphere's (`0x006F0130`), with the TeamType's
+    ///   `OnlyTargetHouseEnemy=` (`+0xF7`) as `Greatest_Threat`'s arg3
+    ///   (`0x006ED14C..0x006ED15E`, `0x006F0244..0x006F0253`);
+    /// - `AircraftClass::Mission_Hunt`'s harvester pass, mask `0x40` with
+    ///   arg3 0 (`0x00414AFD..0x00414B24`).
+    ///
+    /// No quarry mask carries bit 0 or 1, so it takes Hunt's flat walk,
+    /// measured from the scanner's own Coords.
+    Quarry {
         mask: u32,
         only_target_house_enemy: bool,
     },
@@ -202,14 +206,14 @@ pub enum ScanMission {
 
 impl ScanMission {
     /// The literal the caller pushes as `Greatest_Threat`'s arg1: Guard `1`
-    /// (the passive block), Area Guard `2`, Hunt `0` (`0x004D5373`), a team
+    /// (the passive block), Area Guard `2`, Hunt `0` (`0x004D5373`), a
     /// quarry its own mask.
     pub(crate) const fn literal_mask(self) -> u32 {
         match self {
             Self::Guard => 1,
             Self::AreaGuard => 2,
             Self::Hunt => 0,
-            Self::TeamQuarry { mask, .. } => mask,
+            Self::Quarry { mask, .. } => mask,
         }
     }
 
@@ -217,7 +221,7 @@ impl ScanMission {
     pub(crate) const fn only_target_house_enemy(self) -> bool {
         matches!(
             self,
-            Self::TeamQuarry {
+            Self::Quarry {
                 only_target_house_enemy: true,
                 ..
             }
