@@ -44,6 +44,15 @@ pub(crate) type ParachuteBodyDepths = std::collections::HashMap<u64, f32>;
 
 /// `extra_light` is the class's
 /// [`crate::app::presentation::lighting::body_extra_light`].
+///
+/// RESIDUAL: an aircraft type without a voxel draws no body in gamemd.
+/// AircraftClass::Draw_It branches (`0x00414673`, `0x00414681`) past its
+/// light block to `0x004149E5`, whose call `0x004DB250` is a bare `RET 8`;
+/// VERA draws its SHP body here, lit as a voxel aircraft. Trigger: an
+/// AircraftType whose art lacks `Voxel=yes`. Frequency: none in retail data;
+/// the one such type, APACHE, has no art section, and VERA sends a type
+/// without art to the voxel draw (`world_spawn.rs` `object_uses_voxel`).
+/// Effect: the aircraft is visible. Downstream: presentation only.
 fn shp_body_tint(
     grid: &crate::map::lighting::CellLightGrid,
     cell: (u16, u16),
@@ -51,7 +60,9 @@ fn shp_body_tint(
     extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit | EntityCategory::Infantry => grid.body_tint_at(cell, extra_light),
+        EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft => {
+            grid.body_tint_at(cell, extra_light)
+        }
         EntityCategory::Structure => grid.building_body_tint_at(cell),
         _ => grid.techno_tint_at(cell),
     }
@@ -1226,11 +1237,15 @@ mod tests {
 
         let unit = shp_body_tint(&grid, (4, 5), EntityCategory::Unit, 200);
         let infantry = shp_body_tint(&grid, (4, 5), EntityCategory::Infantry, 300);
+        let aircraft = shp_body_tint(&grid, (4, 5), EntityCategory::Aircraft, 424);
         let structure = shp_body_tint(&grid, (4, 5), EntityCategory::Structure, 300);
         for (actual, expected) in unit.into_iter().zip([1.2, 1.056, 1.056]) {
             assert!((actual - expected).abs() < 0.0001);
         }
         for (actual, expected) in infantry.into_iter().zip([1.3, 1.144, 1.144]) {
+            assert!((actual - expected).abs() < 0.0001);
+        }
+        for (actual, expected) in aircraft.into_iter().zip([1.424, 1.25312, 1.25312]) {
             assert!((actual - expected).abs() < 0.0001);
         }
         for (actual, expected) in structure.into_iter().zip([1.0, 0.88, 0.88]) {
