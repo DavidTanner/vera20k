@@ -1543,6 +1543,16 @@ pub struct ObjectType {
     /// Triggers `TogglePower` cursor when hovering this building in power-toggle mode.
     pub toggle_power: bool,
 
+    /// `InfantryGainSelfHeal=` (`BuildingTypeClass+0x1564`, read by the
+    /// BuildingType reader). `BuildingClass::OnConstructionComplete` adds it to
+    /// the house's infantry count (`+0x164`, `0x00446392..0x00446398`), Limbo
+    /// and ChangeOwner take it back. Non-zero on the retail Tech Hospital.
+    pub infantry_gain_self_heal: i32,
+    /// `UnitsGainSelfHeal=` (`BuildingTypeClass+0x1568`). The same three sites
+    /// move it through the house's unit count (`+0x168`). Non-zero on the
+    /// retail Tech Machine Shop.
+    pub units_gain_self_heal: i32,
+
     /// Whether this building is affected by low-power situations.
     /// Parsed from `Powered=yes`; native constructor45E04B defaults false.
     /// When true and the owner is in low power, the building deactivates:
@@ -2665,6 +2675,10 @@ impl ObjectType {
             number_of_docks: section.read_int("NumberOfDocks", 1),
             // TogglePower defaults to true for buildings, false for units.
             toggle_power: section.read_bool("TogglePower", category == ObjectCategory::Building),
+            // BuildingType+0x1564/+0x1568. The native constructor does not write
+            // them, so an absent key keeps the reader's argument (zero).
+            infantry_gain_self_heal: section.read_int("InfantryGainSelfHeal", 0),
+            units_gain_self_heal: section.read_int("UnitsGainSelfHeal", 0),
             powered: section.read_bool("Powered", false),
             powered_special: section.read_bool("PoweredSpecial", false),
             can_disguise: section.read_bool("CanDisguise", false),

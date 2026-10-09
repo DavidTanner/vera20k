@@ -4542,6 +4542,92 @@ impl Simulation {
         }
     }
 
+    /// `BuildingClass::OnConstructionComplete`'s self-heal grant
+    /// (`0x00446382..0x004463B4`): a structure joins its owner's house with the
+    /// type's `InfantryGainSelfHeal` (`+0x1564` → house `+0x164`) and
+    /// `UnitsGainSelfHeal` (`+0x1568` → house `+0x168`). Each arm skips its add
+    /// when the type's count is zero; both use a plain wrapping `add`.
+    pub(crate) fn grant_house_self_heal(&mut self, stable_id: u64, rules: &RuleSet) {
+        let Some((owner, infantry, units)) = self.structure_self_heal_gain(stable_id, rules) else {
+            return;
+        };
+        if infantry == 0 && units == 0 {
+            return;
+        }
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house.self_heal_infantry = house.self_heal_infantry.wrapping_add(infantry);
+            house.self_heal_units = house.self_heal_units.wrapping_add(units);
+        }
+    }
+
+    /// `BuildingClass::Limbo`'s self-heal share (`0x004459AE..0x004459CA`, the
+    /// unit arm at `0x004459E0`): subtract the type's counts from the owner's
+    /// house, then raise a negative count to zero.
+    pub(crate) fn remove_house_self_heal(&mut self, stable_id: u64, rules: &RuleSet) {
+        let Some((owner, infantry, units)) = self.structure_self_heal_gain(stable_id, rules) else {
+            return;
+        };
+        if let Some(house) = self.houses.get_mut(&owner) {
+            house.self_heal_infantry = house.self_heal_infantry.wrapping_sub(infantry).max(0);
+            house.self_heal_units = house.self_heal_units.wrapping_sub(units).max(0);
+        }
+    }
+
+    /// `BuildingClass::ChangeOwner`'s self-heal share
+    /// (`0x00448AC8..0x00448B04` for infantry, `0x00448B0A..` for units): the
+    /// old owner loses the counts (clamped at zero) and the new owner gains
+    /// them. Every arm first tests the type's count and the building's own
+    /// `+0x6E4` "actually placed on the map" byte.
+    pub(crate) fn transfer_house_self_heal(
+        &mut self,
+        stable_id: u64,
+        old_owner: InternedId,
+        new_owner: InternedId,
+        rules: &RuleSet,
+    ) {
+        let Some((owner, infantry, units)) = self.structure_self_heal_gain(stable_id, rules) else {
+            return;
+        };
+        if owner != old_owner {
+            return;
+        }
+        let placed = self
+            .substrate
+            .entities
+            .get(stable_id)
+            .is_some_and(|entity| entity.building_actually_placed);
+        if !placed || (infantry == 0 && units == 0) {
+            return;
+        }
+        if let Some(house) = self.houses.get_mut(&old_owner) {
+            house.self_heal_infantry = house.self_heal_infantry.wrapping_sub(infantry).max(0);
+            house.self_heal_units = house.self_heal_units.wrapping_sub(units).max(0);
+        }
+        if let Some(house) = self.houses.get_mut(&new_owner) {
+            house.self_heal_infantry = house.self_heal_infantry.wrapping_add(infantry);
+            house.self_heal_units = house.self_heal_units.wrapping_add(units);
+        }
+    }
+
+    /// Owner, `InfantryGainSelfHeal` and `UnitsGainSelfHeal` of a structure,
+    /// or `None` for a missing entity or a non-structure.
+    fn structure_self_heal_gain(
+        &self,
+        stable_id: u64,
+        rules: &RuleSet,
+    ) -> Option<(InternedId, i32, i32)> {
+        let entity = self.substrate.entities.get(stable_id)?;
+        if entity.category != EntityCategory::Structure {
+            return None;
+        }
+        let object = self.object_type(entity.type_ref(), rules)?;
+        Some((
+            entity.owner(),
+            object.infantry_gain_self_heal,
+            object.units_gain_self_heal,
+        ))
+    }
+
     /// `HouseClass::Added_To_Game @ 0x00502A80` (`adding`) or
     /// `Removed_From_Game @ 0x005025F0` for an object on its owner's house,
     /// priced with that house's current `Cost_Of` factors.
@@ -4952,6 +5038,14 @@ impl Simulation {
                     house.tracking.add_airport_docks(delta);
                 }
             }
+        }
+        // A hospital's or machine shop's self-heal counts leave the old house
+        // and join the new one (`0x00448AC8..0x00448B04`), each arm gated on
+        // the type's count and the building's own `+0x6E4` byte.
+        if category == EntityCategory::Structure
+            && let Some(rules) = rules
+        {
+            self.transfer_house_self_heal(stable_id, old_owner, new_owner, rules);
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.

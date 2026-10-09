@@ -892,6 +892,95 @@ fn refresh_mover_speed_after_promotion(sim: &mut Simulation, id: u64, rules: &Ru
     }
 }
 
+/// The house self-heal pulse of `TechnoClass::AI_Update`, read from the
+/// disassembly. It is a second, independent heal beside [`self_heal_step`]'s
+/// per-object `+1`, and it has **two arms** in one `AI_Update` body:
+///
+/// ```text
+/// // units: 0x6FA7D2..0x6FA857
+/// if (Type->Organic(+0xD97) != 0) goto infantry arm;
+/// if (bl != 0) return;
+/// if (Frame % Rules->SelfHealUnitFrames(+0x38)) return;
+/// if (!House->HasUnitSelfHeal()) return;          // 0x0050D9D0: +0x168 > 0
+/// step = House->GetUnitSelfHealStep();            // 0x0050D9F0: (+0x3C) * +0x168
+/// Health += min(step, Strength - Health);         // then the smoke tail
+///
+/// // infantry: 0x6FA8C8..0x6FA93E
+/// if (Type->Organic(+0xD97) == 0) return;
+/// if (bl != 0) return;
+/// if (Frame % Rules->SelfHealInfantryFrames(+0x30)) return;
+/// if (!House->HasInfantrySelfHeal()) return;      // 0x0050D9C0: +0x164 > 0
+/// step = House->GetInfSelfHealStep();             // 0x0050D9E0: (+0x34) * +0x164
+/// Health += min(step, Strength - Health);
+/// ```
+///
+/// `+0xD97` is `Organic=`, which the InfantryType constructor stores
+/// (`0x00523911`) and the other classes leave clear, so the first arm serves
+/// vehicles and aircraft off the house unit count `UnitsGainSelfHeal` feeds,
+/// and the second serves infantry off the house infantry count
+/// `InfantryGainSelfHeal` feeds. Both run after the per-object pulse and before
+/// the cloak tick (`vt+0x410` at `0x006FA946`), so a same-frame heal is visible
+/// to the cloak's health branch.
+///
+/// The unit arm's tail after the add (`0x6FA85A..0x6FA89D`) retires the damage
+/// smoke when the object holds one; [`Simulation::retire_damage_smoke_after_self_heal`]
+/// is that owner, which [`self_heal_step`] already drives.
+fn house_self_heal_step(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+    house_heal_arm(sim, id, rules, false);
+    house_heal_arm(sim, id, rules, true);
+}
+
+/// One arm of [`house_self_heal_step`]. `infantry` selects the organic arm:
+/// its own frame key, house counter, amount key and predicate.
+fn house_heal_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, infantry: bool) {
+    let Some(entity) = sim.substrate.entities.get(id) else {
+        return;
+    };
+    let Some(object) = sim.object_type(entity.type_ref(), rules) else {
+        return;
+    };
+    if object.organic != infantry {
+        return;
+    }
+    let interval = if infantry {
+        rules.general.self_heal_infantry_frames
+    } else {
+        rules.general.self_heal_unit_frames
+    };
+    if interval == 0 || (sim.session.binary_frame as i32) % interval != 0 {
+        return;
+    }
+    let owner = entity.owner();
+    let count = sim.houses.get(&owner).map_or(0, |house| {
+        if infantry {
+            house.self_heal_infantry
+        } else {
+            house.self_heal_units
+        }
+    });
+    if count <= 0 {
+        return;
+    }
+    let amount = if infantry {
+        rules.general.self_heal_infantry_amount
+    } else {
+        rules.general.self_heal_unit_amount
+    };
+    let strength = object.strength;
+    let step = amount.wrapping_mul(count);
+    let Some(entity) = sim.substrate.entities.get_mut(id) else {
+        return;
+    };
+    let missing = strength.wrapping_sub(entity.health.current);
+    let heal = if step < missing { step } else { missing };
+    entity.health.current = entity.health.current.wrapping_add(heal);
+    // Only the unit arm carries the damage-smoke tail before the cloak tick;
+    // the infantry arm rejoins the common flow at 0x006FA941.
+    if !infantry {
+        sim.retire_damage_smoke_after_self_heal(id, rules);
+    }
+}
+
 /// The self-heal pulse of `TechnoClass::AI_Update @ 0x006FA743..0x006FA757`:
 /// when the eligibility virtual (`vtable+0x294` → `FUN_0070BE80`) holds,
 /// `Health += 1` — a raw `INC` on `+0x6C`, no amount key.
@@ -1065,6 +1154,10 @@ fn techno_common_steps(
         return false;
     }
     self_heal_step(sim, id, rules);
+    // Techno6FA8D2..6FA93E: the house self-heal pulse follows the per-object
+    // one and precedes the door advance and the cloak tick (0x006FA946), so a
+    // same-frame house heal is visible to the cloak's health branch.
+    house_self_heal_step(sim, id, rules);
     //Techno6FA5BE..6FA5D6, before Mission AI: every Techno finishes its own
     //due Door transition here. Gate/Factory mission work observes this change
     //inside the same LogicVector visit; no global phase advances Door clocks.
@@ -7131,6 +7224,10 @@ ConditionRedSparkingProbability=1.0\nConditionYellowSparkingProbability=1.0\n\n\
 #[cfg(test)]
 #[path = "techno_ai_veterancy_tests.rs"]
 mod veterancy_tests;
+
+#[cfg(test)]
+#[path = "techno_ai_selfheal_tests.rs"]
+mod selfheal_tests;
 
 #[path = "bounce_terrain.rs"]
 mod bounce_terrain;

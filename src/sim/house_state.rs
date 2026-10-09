@@ -376,6 +376,22 @@ pub struct HouseState {
     /// owner change.
     #[serde(default)]
     pub(crate) tracking: crate::sim::house_tracking::HouseTracking,
+    /// Tech Hospital self-heal capacity — `HouseClass+0x164`.
+    ///
+    /// `BuildingClass::OnConstructionComplete` adds the built type's
+    /// `InfantryGainSelfHeal` here (`0x0044638E..0x00446398`), Limbo and
+    /// ChangeOwner subtract it again. `TechnoClass::AI_Update`'s infantry pulse
+    /// runs while it is above zero (`0x0050D9C0`) and heals
+    /// `SelfHealInfantryAmount × this` (`0x0050D9E0`); `0x0070A534` reads the
+    /// same predicate for the status pip. Stock source: `[CATHOSP]`.
+    #[serde(default)]
+    pub(crate) self_heal_infantry: i32,
+    /// Tech Machine Shop self-heal capacity — `HouseClass+0x168`. The unit
+    /// counterpart of [`Self::self_heal_infantry`], fed by
+    /// `UnitsGainSelfHeal` and read by `0x0050D9D0`/`0x0050D9F0`. Stock source:
+    /// `[CAMACH]`.
+    #[serde(default)]
+    pub(crate) self_heal_units: i32,
     /// Historical House4FD150 primary base cell; updates at native building
     /// lifecycle boundaries rather than when a consumer requests a destination.
     /// The existing House base owner publishes this with its private radius;
@@ -912,6 +928,8 @@ impl HouseState {
             map_is_clear: false,
             spy_sat_active: false,
             tracking: Default::default(),
+            self_heal_infantry: 0,
+            self_heal_units: 0,
             base_center: None,
             base_projection: crate::sim::world::HouseBaseState::default(),
             alternate_base_center: (0, 0),

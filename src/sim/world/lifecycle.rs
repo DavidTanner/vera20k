@@ -2551,6 +2551,12 @@ impl Simulation {
                 stable_id,
                 crate::sim::house_tracking::HouseTracking::recount,
             );
+            // 0x004459AE..0x004459CA (infantry) and the unit arm after it:
+            // the building's self-heal counts leave its house on the same
+            // first Limbo, each clamped at zero.
+            if let Some(rules) = context.rules() {
+                self.remove_house_self_heal(stable_id, rules);
+            }
         }
         // Building445DA6 precedes Techno Limbo445DDA, including its pointer
         // expiry and InLimbo write. Building4458CE skips it on repeated Limbo;

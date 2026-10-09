@@ -415,6 +415,23 @@ pub struct GeneralRules {
     /// `ftol(RepairRate * 900)` (`0x0070BEFE..0x0070BF0A`, constant 900.0 at
     /// `0x007E27F8`); stock `.016` gives a 14-frame pulse.
     pub repair_rate_minutes: f64,
+    /// `[General] SelfHealInfantryFrames=` — `RulesClass+0x30`, read by the
+    /// General reader at `0x0066D530`. The house pulse of
+    /// `TechnoClass::AI_Update @ 0x006FA8E2` divides the global frame counter
+    /// by it (`idiv`) and runs only on an exact remainder of zero. Stock 50.
+    pub self_heal_infantry_frames: i32,
+    /// `[General] SelfHealInfantryAmount=` — `RulesClass+0x34`, read by the
+    /// same reader. `HouseClass::GetInfSelfHealStep @ 0x0050D9E0` multiplies it
+    /// by the house's infantry count (`+0x164`). Stock 20.
+    pub self_heal_infantry_amount: i32,
+    /// `[General] SelfHealUnitFrames=` — `RulesClass+0x38`, same reader. The
+    /// unit pulse of `TechnoClass::AI_Update @ 0x006FA8E2` divides the frame
+    /// counter by it. Stock 75.
+    pub self_heal_unit_frames: i32,
+    /// `[General] SelfHealUnitAmount=` — `RulesClass+0x3C`, same reader.
+    /// `HouseClass::GetUnitSelfHealStep @ 0x0050D9F0` multiplies it by the
+    /// house's unit count (`+0x168`). Stock 5.
+    pub self_heal_unit_amount: i32,
     /// `[General] VeteranRatio=` — how many times its own cost an object must
     /// destroy to gain one rank. `RulesClass+0x668`, read at `0x0066EEB0`.
     pub veteran_ratio: f64,
@@ -1791,6 +1808,12 @@ impl Default for GeneralRules {
             veteran_armor: 1.0,
             curley_shuffle: false,
             repair_rate_minutes: 0.016,
+            // The native constructor never writes Rules+0x30/+0x34/+0x38/+0x3C,
+            // so the reader's argument stands when the key is absent.
+            self_heal_infantry_frames: 0,
+            self_heal_infantry_amount: 0,
+            self_heal_unit_frames: 0,
+            self_heal_unit_amount: 0,
             veteran_ratio: VETERAN_RATIO_DEFAULT,
             veteran_cap: VETERAN_CAP_DEFAULT,
             computer_base_defense_response: 3,
@@ -2625,6 +2648,17 @@ impl GeneralRules {
             veteran_armor: general.read_double("VeteranArmor", 1.0),
             curley_shuffle: general.read_bool("CurleyShuffle", defaults.curley_shuffle),
             repair_rate_minutes: general.read_double("RepairRate", defaults.repair_rate_minutes),
+            // `RulesClass+0x30/+0x34/+0x38/+0x3C`, read by the General reader at
+            // `0x0066D530`. The native constructor leaves them untouched, so a
+            // rules set without the key keeps the reader's argument: zero.
+            self_heal_infantry_frames: general
+                .read_int("SelfHealInfantryFrames", defaults.self_heal_infantry_frames),
+            self_heal_infantry_amount: general
+                .read_int("SelfHealInfantryAmount", defaults.self_heal_infantry_amount),
+            self_heal_unit_frames: general
+                .read_int("SelfHealUnitFrames", defaults.self_heal_unit_frames),
+            self_heal_unit_amount: general
+                .read_int("SelfHealUnitAmount", defaults.self_heal_unit_amount),
             veteran_ratio: general.read_double("VeteranRatio", VETERAN_RATIO_DEFAULT),
             veteran_cap: general.read_double("VeteranCap", VETERAN_CAP_DEFAULT),
             computer_base_defense_response: ai.read_int(
@@ -6938,13 +6972,19 @@ MutateWarhead=MyMutate\n\
             Some("UpgradeElite")
         );
         assert_eq!(rules.general.elite_flash_timer, 150);
-
         let bare = RuleSet::from_ini(&IniFile::from_str(
             "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n[General]\nFixtureOnly=1\n",
         ))
         .unwrap();
         assert_eq!(bare.general.veteran_rof, 1.0);
         assert_eq!(bare.general.upgrade_veteran_sound, None);
+        // `RulesClass+0x30/+0x34/+0x38/+0x3C` are never written by the native
+        // constructor, so a rules set without the keys keeps the reader's
+        // argument: zero, which the heal arms decline to divide by.
+        assert_eq!(bare.general.self_heal_infantry_frames, 0);
+        assert_eq!(bare.general.self_heal_infantry_amount, 0);
+        assert_eq!(bare.general.self_heal_unit_frames, 0);
+        assert_eq!(bare.general.self_heal_unit_amount, 0);
     }
 
     #[test]
