@@ -3259,6 +3259,9 @@ fn fireat_get_rof(
 
 /// Existing FireAt delivery and bookkeeping, shared by the world receiver.
 /// The caller still owns legality, fire-action timing and inline damage commit.
+/// Answers the bullet `TechnoClass::FireAt @ 0x006FDD50` returns: the one
+/// launched, or `None` where it returns NULL (a refused sonic shot, the
+/// spawner, drain and DiskLaser arms, and a launch with no solution).
 pub(super) fn emit_admitted_fire(
     world: &mut Simulation,
     rules: &RuleSet,
@@ -3266,7 +3269,7 @@ pub(super) fn emit_admitted_fire(
     binary_frame: u32,
     out: &mut CombatEmit,
     overlay_registry: Option<&OverlayTypeRegistry>,
-) {
+) -> Option<u64> {
     // Infantry51DF70 clears68D for every direct FireAt caller, including
     // Guard521432 and a launch subsequently refused by Techno6FDD50.
     if shot.snap.category == EntityCategory::Infantry {
@@ -3285,7 +3288,7 @@ pub(super) fn emit_admitted_fire(
     let snap = &snap;
     let weapon = selected.weapon;
     if weapon.is_sonic && world.active_wave_links.contains_key(&snap.stable_id) {
-        return;
+        return None;
     }
 
     // Spawner weapon: gamemd's Fire_At short-circuits here. It calls
@@ -3309,7 +3312,7 @@ pub(super) fn emit_admitted_fire(
         if alive > 0 {
             out.spawn_target_updates.push((snap.stable_id, snap.target));
         }
-        return;
+        return None;
     }
 
     // `TechnoClass::Fire_At @ 0x006FDF5D..0x006FDF9D`: a `DrainWeapon=yes`
@@ -3329,7 +3332,7 @@ pub(super) fn emit_admitted_fire(
         {
             out.drain_links.push((snap.stable_id, target_id));
         }
-        return;
+        return None;
     }
 
     // `TechnoClass::FireAt`'s DiskLaser arm (`0x006FE460..0x006FE4EF`): a
@@ -3357,7 +3360,7 @@ pub(super) fn emit_admitted_fire(
             entity.rearm_after_fire(binary_frame as i32, rof);
             entity.weapon_burst.complete_shot(weapon.burst.max(1));
         }
-        return;
+        return None;
     }
 
     // Fire one shot!
@@ -3665,7 +3668,7 @@ pub(super) fn emit_admitted_fire(
     // `0x006FF749` still runs.
     if !launched {
         fireat_tail(world, rules, snap, weapon, None, overlay_registry);
-        return;
+        return None;
     }
 
     let sequence = world
@@ -3807,6 +3810,7 @@ pub(super) fn emit_admitted_fire(
         Some(bullet_id),
         overlay_registry,
     );
+    Some(bullet_id)
 }
 
 /// `TechnoClass::FireAt 0x006FF749..0x006FF939`, which runs after a launched

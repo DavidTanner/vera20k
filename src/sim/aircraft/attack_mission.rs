@@ -95,7 +95,8 @@ pub(crate) struct StrikeFacts {
     pub state: u8,
     /// Target `+0x2B4` is non-NULL.
     pub target: bool,
-    /// Ammo `+0x2FC`; -1 is unlimited.
+    /// Ammo `+0x2FC` as the visit opens; -1 is unlimited. The reads after a
+    /// shot ask [`StrikeHost::ammo`].
     pub ammo: i32,
     /// IFlyControl `+0x18` (`0x0041B7F0`): weapon 0 fires a projectile with
     /// `ROT<=1` and no `Inviso=` (`combat_weapon::aircraft_strafes`).
@@ -134,6 +135,10 @@ pub(crate) trait StrikeHost {
     /// `0x00418D1D`: `ftol(MissionControl[Mission].Rate * 900)` plus Scenario
     /// `RandomRanged(0, 2)`.
     fn epilogue(&mut self) -> i32;
+    /// Ammo `+0x2FC` as it stands after a shot, which states 4 and 5 read
+    /// again (`0x00418506`, `0x00418720`): Fire_At's passenger arm
+    /// (Drop_Payload) spends one.
+    fn ammo(&mut self) -> i32;
 }
 
 /// `0x00418BC5`: a refused strafe shot polls next frame; at Ammo 0 the run
@@ -186,7 +191,7 @@ pub(crate) fn strike_visit(facts: &StrikeFacts, host: &mut impl StrikeHost) -> V
                         }
                     } else if facts.fighter {
                         Visit {
-                            state: if facts.ammo > 0 { 1 } else { 10 },
+                            state: if host.ammo() > 0 { 1 } else { 10 },
                             delay: facts.weapon0_rof,
                             latch: Some(true),
                         }
@@ -235,7 +240,7 @@ pub(crate) fn strike_visit(facts: &StrikeFacts, host: &mut impl StrikeHost) -> V
                 Ok => {
                     host.fire_at();
                     host.scatter();
-                    let state = if facts.ammo == 0 { 10 } else { shuffle };
+                    let state = if host.ammo() == 0 { 10 } else { shuffle };
                     Visit::to(state, host.epilogue())
                 }
                 // `0x00418634`.

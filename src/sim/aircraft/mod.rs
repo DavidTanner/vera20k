@@ -12,6 +12,7 @@ mod airfield;
 pub mod attack_mission;
 pub mod drop_payload;
 pub(crate) mod enter_mission;
+pub(crate) mod fire_at;
 pub(crate) mod guard_mission;
 mod hunt_mission;
 mod idle_entry;

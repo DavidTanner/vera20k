@@ -1,6 +1,7 @@
 //! `AircraftClass::Drop_Payload @ 0x00415C60`: one passenger out of the
 //! paradrop plane, each visit of Mission_ParadropOverfly within the radius
-//! ([`super::paradrop_mission`]).
+//! ([`super::paradrop_mission`]), and out of any aircraft whose Fire_At finds
+//! a passenger aboard ([`super::fire_at`]).
 //!
 //! In order:
 //! - The cargo's head leaves (`CargoClass::RemoveFirstPassenger @

@@ -91,6 +91,8 @@ struct Replay<'a> {
     rng: SimRng,
     events: Vec<&'static str>,
     released: bool,
+    /// The row's Ammo: the oracle's FireAt stub spends none.
+    ammo: i32,
 }
 
 impl StrikeHost for Replay<'_> {
@@ -127,6 +129,9 @@ impl StrikeHost for Replay<'_> {
     fn epilogue(&mut self) -> i32 {
         self.events.push("draw");
         crate::sim::mission::authority::rate_epilogue(self.rules, self.mission, &mut self.rng)
+    }
+    fn ammo(&mut self) -> i32 {
+        self.ammo
     }
 }
 
@@ -210,6 +215,7 @@ fn original_attack_state_rows() {
                 rng: SimRng::new(get("seed").as_u64().unwrap()),
                 events: Vec::new(),
                 released: false,
+                ammo,
             };
             let visit = strike_visit(&facts, &mut host);
             let name = &input["name"];

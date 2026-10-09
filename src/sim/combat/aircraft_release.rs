@@ -1,13 +1,17 @@
 //! Aircraft Mission_Attack's strike states 4..9 (`0x00417FE0`) in the combat
 //! phase, where VERA's FireAt lives: the host [`aircraft::attack_mission`]'s
 //! [`strike_visit`] asks for GetFireError, IsClose, the facings, the state-4
-//! burst and the single shots of states 5..9. The shots reuse the receiver's
+//! burst and the single shots of states 5..9. Each shot is
+//! [`aircraft::fire_at`], whose TechnoClass::FireAt is the receiver's
 //! emission.
 //!
 //! [`aircraft::attack_mission`]: crate::sim::aircraft::attack_mission
+//! [`aircraft::fire_at`]: crate::sim::aircraft::fire_at
 
 use super::*;
 use crate::sim::aircraft::attack_mission::{self, StrikeFacts, StrikeHost, strike_visit};
+use crate::sim::aircraft::fire_at::{AircraftShot, FireAtHost};
+use crate::sim::projectile::ProjectileVelocity;
 
 #[cfg(test)]
 #[path = "aircraft_release_tests.rs"]
@@ -103,23 +107,6 @@ pub(super) fn visit(
     let Some(obj) = rules.object(world.interner.resolve(snap.type_id)) else {
         return;
     };
-    // `AircraftClass::FireAt` drops a passenger instead of firing while its
-    // cargo has a first one (`0x00415EEE..0x00415EFD`: Drop_Payload,
-    // `aircraft::drop_payload`) and answers no bullet.
-    // RESIDUAL: that arm is blocked here: the carrier fires nothing, stays in
-    // its strike state and re-requests every due visit. Wiring it needs the
-    // strike states' handling of FireAt's empty answer. No stock AircraftType
-    // has Passengers=, and PDPLANE's cargo flies the paradrop missions, so
-    // this arm is unreachable with retail data.
-    if world
-        .substrate
-        .entities
-        .get(id)
-        .and_then(|e| e.passenger_role.cargo())
-        .is_some_and(|cargo| !cargo.is_empty())
-    {
-        return;
-    }
     let entity = world.substrate.entities.get(id).unwrap();
     let weapon0 = combat_weapon::primary_for_tier(obj, entity.veterancy())
         .and_then(|name| rules.weapon(name));
@@ -246,28 +233,253 @@ impl CombatStrike<'_, '_> {
         }))
     }
 
-    /// `vt+0x3CC FireAt(Target, SelectWeapon(Target))` once through the
-    /// shared emission, its inline damage committed after the shot.
+    /// `vt+0x3CC FireAt(Target, SelectWeapon(Target))` once:
+    /// `AircraftClass::Fire_At @ 0x00415EE0`.
     fn shoot(&mut self) {
-        let id = self.id();
-        let boundary = FireCommitBoundary::capture(self.out);
-        if let Some((_, Some(shot))) = live_shot(self.world, self.rules, id) {
-            emit_admitted_fire(
-                self.world,
-                self.rules,
+        crate::sim::aircraft::fire_at::fire_at(&mut AircraftFireAt {
+            strike: self,
+            target: None,
+            bullet: None,
+        });
+    }
+}
+
+/// The combat phase's side of one `AircraftClass::Fire_At`.
+struct AircraftFireAt<'s, 'w, 'r> {
+    strike: &'s mut CombatStrike<'w, 'r>,
+    /// Fire_At's target, Mission_Attack's Target as the shot read it.
+    target: Option<TargetKind>,
+    /// The bullet TechnoClass::FireAt answered.
+    bullet: Option<u64>,
+}
+
+impl AircraftFireAt<'_, '_, '_> {
+    fn entity(&self) -> Option<&GameEntity> {
+        self.strike.world.substrate.entities.get(self.strike.id())
+    }
+}
+
+impl FireAtHost for AircraftFireAt<'_, '_, '_> {
+    fn carries_passenger(&mut self) -> bool {
+        self.entity()
+            .and_then(|entity| entity.passenger_role.cargo())
+            .is_some_and(|cargo| !cargo.is_empty())
+    }
+
+    fn drop_payload(&mut self) {
+        let strike = &mut *self.strike;
+        crate::sim::aircraft::drop_payload::drop_payload(
+            strike.world,
+            strike.snap.stable_id,
+            strike.rules,
+            strike.overlay_registry,
+        );
+    }
+
+    /// The shared emission, its inline damage committed after the shot.
+    fn techno_fire_at(&mut self) -> Option<AircraftShot> {
+        let strike = &mut *self.strike;
+        let id = strike.id();
+        self.target = strike.target();
+        let boundary = FireCommitBoundary::capture(strike.out);
+        let mut fired = None;
+        if let Some((_, Some(shot))) = live_shot(strike.world, strike.rules, id) {
+            let rot = bullet_type(shot.selected.weapon, strike.rules).rot;
+            fired = emit_admitted_fire(
+                strike.world,
+                strike.rules,
                 shot,
-                self.binary_frame,
-                self.out,
-                self.overlay_registry,
-            );
+                strike.binary_frame,
+                strike.out,
+                strike.overlay_registry,
+            )
+            .map(|bullet| (bullet, rot));
         }
         boundary.commit(
-            self.world,
-            self.run,
-            self.rules,
-            self.overlay_registry,
-            self.out,
-            self.under_attack_events,
+            strike.world,
+            strike.run,
+            strike.rules,
+            strike.overlay_registry,
+            strike.out,
+            strike.under_attack_events,
+        );
+        let (bullet, rot) = fired?;
+        self.bullet = Some(bullet);
+        let velocity = strike
+            .world
+            .projectiles
+            .get(bullet)
+            .map_or(ProjectileVelocity::new(0, 0, 0), |bullet| bullet.velocity);
+        Some(AircraftShot::new(rot, velocity))
+    }
+
+    /// Fly's Apparent_Speed (`0x004CFE20`). RESIDUAL: another Locomotor
+    /// answers its own speed natively and 0 here; no aircraft that fires
+    /// flies one (the Rocket missiles carry no weapon).
+    fn apparent_speed(&mut self) -> i32 {
+        let fraction = self
+            .entity()
+            .and_then(|entity| entity.locomotor.as_ref())
+            .and_then(|locomotor| locomotor.fly_runtime())
+            .map_or(crate::util::fixed_math::SIM_ZERO, |fly| fly.current_speed);
+        crate::sim::movement::air_movement::current_fly_speed(
+            crate::util::fixed_math::ra2_speed_to_leptons_per_frame(self.strike.obj.speed),
+            fraction,
+        )
+    }
+
+    /// An aircraft's SecondaryFacing is its `barrel_facing`, which every
+    /// aircraft gets at construction (`world_spawn::construction`); a
+    /// fixture without one stands in with its body.
+    fn facing(&mut self) -> u16 {
+        let frame = self.strike.binary_frame;
+        self.entity().map_or(0, |entity| {
+            entity
+                .barrel_facing
+                .as_ref()
+                .unwrap_or(&entity.body_facing)
+                .current(frame)
+        })
+    }
+
+    fn coords(&mut self) -> ProjectileCoord {
+        object_get_coords(self.strike.world, self.strike.id())
+            .unwrap_or(ProjectileCoord::new(0, 0, 0))
+    }
+
+    fn target_coords(&mut self) -> ProjectileCoord {
+        let world = &*self.strike.world;
+        let cells = world
+            .resolved_terrain
+            .as_ref()
+            .map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+        self.target
+            .and_then(|target| {
+                crate::sim::movement::ground_pose::target_get_coords(
+                    target,
+                    &world.substrate.entities,
+                    cells.as_ref(),
+                )
+            })
+            .map_or(ProjectileCoord::new(0, 0, 0), |coord| {
+                ProjectileCoord::new(coord.x, coord.y, coord.z)
+            })
+    }
+
+    /// GetWeapon(0) at the aircraft's rank, whatever slot fired. A type
+    /// without one faults natively (`0x004162ED` reads its NULL type); VERA
+    /// scales to 0.
+    fn weapon0_speed(&mut self) -> i32 {
+        let strike = &*self.strike;
+        self.entity()
+            .and_then(|entity| combat_weapon::primary_for_tier(strike.obj, entity.veterancy()))
+            .and_then(|name| strike.rules.weapon(name))
+            .map_or(0, |weapon| weapon.speed)
+    }
+
+    fn set_velocity(&mut self, velocity: ProjectileVelocity) {
+        if let Some(bullet) = self.bullet {
+            self.strike.world.projectiles.redirect(bullet, velocity);
+        }
+    }
+
+    /// `0x0050B6F0` asks whether the owner is the local player; each human
+    /// house's map takes what its own client would. RESIDUAL: in a campaign
+    /// (GameMode 0) it also admits a `PlayerControl=` house, whose shot then
+    /// asks and maps the player's map (through RevealArea's house gate,
+    /// `0x00567AB0..0x00567B12`); VERA asks and maps that house's own.
+    fn owner_is_player(&mut self) -> bool {
+        self.entity()
+            .is_some_and(|entity| self.strike.world.owner_is_human(entity.owner()))
+    }
+
+    fn location(&mut self) -> ProjectileCoord {
+        let world = &*self.strike.world;
+        self.entity()
+            .map_or(ProjectileCoord::new(0, 0, 0), |entity| {
+                let location = crate::sim::movement::ground_pose::object_location(
+                    entity,
+                    world.resolved_terrain.as_ref(),
+                );
+                ProjectileCoord::new(location.x, location.y, location.z)
+            })
+    }
+
+    /// On the owner's map, as [`Self::owner_is_player`] reads it. A world
+    /// without a map (a fixture) has nothing to ask.
+    fn is_shrouded(&mut self, point: ProjectileCoord) -> bool {
+        let world = &*self.strike.world;
+        let (Some(owner), Some(terrain)) = (
+            self.entity().map(GameEntity::owner),
+            world.resolved_terrain.as_ref(),
+        ) else {
+            return false;
+        };
+        crate::sim::vision::point_is_shrouded(
+            &world.fog,
+            &crate::map::resolved_terrain::NativeCellQuery::canonical(terrain),
+            owner,
+            crate::sim::components::DriveCoord {
+                x: point.x,
+                y: point.y,
+                z: point.z,
+            },
+        )
+    }
+
+    /// On the owner's map only: the other houses' clients do not run it.
+    /// RESIDUAL: a negative `AttackingAircraftSightRange=` indexes before
+    /// RevealArea's count table natively; VERA reveals nothing. Retail is 2.
+    fn reveal_area(&mut self, final_pass: bool) {
+        let strike = &mut *self.strike;
+        let world = &mut *strike.world;
+        let Some(entity) = world.substrate.entities.get(strike.snap.stable_id) else {
+            return;
+        };
+        let owner = entity.owner();
+        let location = crate::sim::movement::ground_pose::object_location(
+            entity,
+            world.resolved_terrain.as_ref(),
+        );
+        let radius = strike
+            .rules
+            .general
+            .attacking_aircraft_sight_range
+            .clamp(0, i32::from(u16::MAX)) as u16;
+        let config = world.sight_reveal_config(Some(strike.rules));
+        let heights = config
+            .reveal_by_height()
+            .then(|| {
+                world
+                    .path_grid()
+                    .map(crate::sim::pathfinding::PathGrid::ground_height_grid)
+            })
+            .flatten();
+        crate::sim::vision::reveal_area(
+            &mut world.fog,
+            &[owner],
+            (
+                location.x.div_euclid(256) as u16,
+                location.y.div_euclid(256) as u16,
+            ),
+            location.z,
+            radius,
+            heights.as_deref(),
+            final_pass,
+            &config,
+        );
+    }
+
+    /// The kamikaze tracker's membership stands for `+0x6CA`.
+    fn destroy_after_firing(&mut self) -> bool {
+        self.strike.world.kamikaze.contains(self.strike.id())
+    }
+
+    fn uninit(&mut self) {
+        let strike = &mut *self.strike;
+        strike.world.uninit_with_context(
+            strike.snap.stable_id,
+            crate::sim::world::UninitContext::new(Some(strike.rules), strike.overlay_registry),
         );
     }
 }
@@ -365,5 +577,14 @@ impl StrikeHost for CombatStrike<'_, '_> {
     fn epilogue(&mut self) -> i32 {
         self.world
             .mission_rate_epilogue(self.rules, crate::sim::mission::MissionType::Attack)
+    }
+
+    fn ammo(&mut self) -> i32 {
+        self.world
+            .substrate
+            .entities
+            .get(self.snap.stable_id)
+            .and_then(|entity| entity.aircraft_ammo.as_ref())
+            .map_or(-1, |ammo| ammo.current)
     }
 }
