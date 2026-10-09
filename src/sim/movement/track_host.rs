@@ -1011,9 +1011,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        // Foot4D833D..8376 queries/ends the active Drive before NavQueue.
+        // Foot4D831A..8376 asks the active IPiggyback, whatever its class,
+        // and ends it before NavQueue when its Is_Ok_To_End allows.
         // Unit saves the base return but still executes its own receiver tail.
-        let ended_drive = super::locomotor_owner::try_end_drive_at_foot_idle(entity);
+        let ended = super::locomotor_owner::try_end_piggyback(entity);
         // Foot4D8382..83E2 takes NavQueue even with an existing NavCom.
         // Preserve its saved return independently from the resulting NavCom.
         // Non-Cell targets and other class END remain bounded base-receiver
@@ -1090,7 +1091,7 @@ impl Simulation {
         }
         // A consumed NavQueue or ended piggyback returns true before
         // the Infantry Archive arm and final zero-speed setter.
-        if ended_drive || queued_cell.is_some() {
+        if ended || queued_cell.is_some() {
             return true;
         }
         // Foot4D8472..852A: Archive belongs to Techno, and +2DC is
