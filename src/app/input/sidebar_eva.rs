@@ -17,8 +17,6 @@
 //! `EVA_SelectTarget` (`0x006AAFA7`) is the superweapon cameo click — VERA's
 //! `SidebarAction::ArmSuperWeapon` (`select_target_line`).
 
-use std::collections::BTreeSet;
-
 use crate::sim::intern::InternedId;
 use crate::sim::production::{BuildQueueState, ProductionCategory, QueueItemView};
 
@@ -211,24 +209,6 @@ pub(crate) fn select_target_line(
 ) -> Option<&'static str> {
     let targeted = action.is_some_and(|action| !action.eq_ignore_ascii_case("none"));
     (is_ready && is_online && targeted).then_some(EVA_SELECT_TARGET)
-}
-
-/// `SidebarClass::AddCameo 0x006A63F0..0x006A6415`: an entry not already in
-/// the strip (`piVar4[1] == rtti && *piVar4 == index` scan), when
-/// `[0xA8E7AC] == 0` (not inside scenario init) and the RTTI is not
-/// `0x1F` (SuperWeaponType, `0x006A6406 CMP ESI,0x1F`), speaks
-/// `EVA_NewConstructionOptions` once per insertion; the VoxClass same-type
-/// duplicate rule folds a burst into one line.
-///
-/// `previous` is `None` on the first observation after a scenario starts —
-/// that is the init-nesting window, so the seed is silent. Returns the new
-/// set and whether at least one non-superweapon cameo was inserted.
-pub(crate) fn new_construction_options(
-    previous: Option<&BTreeSet<InternedId>>,
-    current: BTreeSet<InternedId>,
-) -> (BTreeSet<InternedId>, bool) {
-    let inserted = previous.is_some_and(|prev| current.iter().any(|id| !prev.contains(id)));
-    (current, inserted)
 }
 
 #[cfg(test)]
@@ -471,22 +451,5 @@ mod tests {
             None,
             "`Action=None` fires through event 0x12 and stays silent"
         );
-    }
-
-    #[test]
-    fn new_cameo_speaks_only_after_the_silent_seed() {
-        let a = InternedId::from_index(1);
-        let b = InternedId::from_index(2);
-        let (seed, spoke) = new_construction_options(None, BTreeSet::from([a]));
-        assert!(!spoke, "the scenario-init window is silent");
-        let (same, spoke) = new_construction_options(Some(&seed), BTreeSet::from([a]));
-        assert!(!spoke, "an unchanged strip inserts nothing");
-        let (grown, spoke) = new_construction_options(Some(&same), BTreeSet::from([a, b]));
-        assert!(spoke);
-        // A cameo that leaves and comes back is a fresh insertion.
-        let (shrunk, spoke) = new_construction_options(Some(&grown), BTreeSet::from([a]));
-        assert!(!spoke);
-        let (_, spoke) = new_construction_options(Some(&shrunk), BTreeSet::from([a, b]));
-        assert!(spoke);
     }
 }

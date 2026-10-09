@@ -13,10 +13,9 @@
 use std::collections::HashMap;
 
 use crate::app::AppState;
-use crate::assets::csf_file::CsfFile;
+use crate::assets::csf_file::{CsfFile, type_ui_name};
 use crate::render::batch::SpriteInstance;
 use crate::rules::house_colors::{HouseColorIndex, NO_REMAP, house_text_rgb};
-use crate::rules::superweapon_type::SuperWeaponType;
 use crate::sim::intern::InternedId;
 use crate::sim::superweapon::SuperTimerView;
 use crate::ui::game_screen::GameScreen;
@@ -203,14 +202,6 @@ fn localized(csf: Option<&CsfFile>, key: &str) -> String {
     csf.map_or_else(|| key.to_string(), |csf| csf.text(key).into_owned())
 }
 
-/// A Super's label, its type's name (`Type+0x60`): `UIName=` through the
-/// string table, or the constructor's empty name for a type without one
-/// (`0x004108EE`, `0x00410B69`).
-fn super_label(sw: Option<&SuperWeaponType>, csf: Option<&CsfFile>) -> String {
-    sw.and_then(|sw| sw.ui_name.as_deref())
-        .map_or_else(String::new, |key| localized(csf, key))
-}
-
 /// The timer lines as UI sprites: the black boxes, drawn first, and the text.
 /// The tactical view starts at the screen's origin.
 pub(crate) fn build_super_timer_instances(
@@ -262,8 +253,10 @@ pub(crate) fn build_super_timer_instances(
                 TimerSource::Scenario => (sim.session.current_house, String::new()),
                 TimerSource::Super(view) => (
                     Some(view.owner()),
-                    super_label(
-                        rules.super_weapon(sim.interner.resolve(view.sw_type())),
+                    type_ui_name(
+                        rules
+                            .super_weapon(sim.interner.resolve(view.sw_type()))
+                            .and_then(|sw| sw.ui_name.as_deref()),
                         csf,
                     ),
                 ),

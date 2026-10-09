@@ -67,6 +67,8 @@ mod random_map_lifecycle_tests;
 pub(crate) mod shell_route;
 mod shell_skirmish;
 pub(crate) mod sidebar_projection;
+#[cfg(test)]
+mod sidebar_projection_tests;
 mod state;
 mod window_icon;
 

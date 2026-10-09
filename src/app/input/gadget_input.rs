@@ -589,12 +589,20 @@ fn apply_gadget_result(state: &mut AppState, view: &SidebarView, result: u16) {
         // consumed release, including clamped no-op scrolls at either end.
         ID_SCROLL_DOWN => {
             let page = view.layout.side2_tile_count.max(1);
-            state.match_state.match_presentation.sidebar_scroll_rows = (view.scroll_rows + page).min(view.max_scroll_rows);
+            let presentation = &mut state.match_state.match_presentation;
+            presentation.sidebar_projection.set_scroll_row(
+                presentation.active_sidebar_tab,
+                (view.scroll_rows + page).min(view.max_scroll_rows),
+            );
             play_gui_tab_sound(state);
         }
         ID_SCROLL_UP => {
             let page = view.layout.side2_tile_count.max(1);
-            state.match_state.match_presentation.sidebar_scroll_rows = view.scroll_rows.saturating_sub(page);
+            let presentation = &mut state.match_state.match_presentation;
+            presentation.sidebar_projection.set_scroll_row(
+                presentation.active_sidebar_tab,
+                view.scroll_rows.saturating_sub(page),
+            );
             play_gui_tab_sound(state);
         }
         // Cameo press (A2): map the fired id back to its SidebarItem and run the

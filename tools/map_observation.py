@@ -2,6 +2,13 @@
 
 The Rust map_observation profile and capture manifest own the runtime schema.
 This wrapper binds their receipts to immutable inputs and actual frame bytes.
+
+Profiles may request retained sidebar snapshots with ``observe_sidebar_steps``.
+A ``sidebar`` gesture names a current ``tab``, ``cameo`` (logical ``type_id``),
+``scroll_up`` or ``scroll_down`` target. Rust resolves the retained hit area and
+sends ordinary mouse edges; the receipt includes the resolved position and
+before/after views. A nonzero run's L0 snapshot is retained-only; later requested
+snapshots must match the actual view submitted to the renderer.
 """
 from __future__ import annotations
 
@@ -39,6 +46,9 @@ LEGACY_CHILD_SCHEMA = 'vera20k.map-observation.v2'
 CLOCK_POLICY = 'map-exact-step-presentation-v1'
 OBSERVATION_POLICY = 'map-ordinary-command-observation-v4'
 GESTURE_POLICY = 'map-tactical-left-gesture-v1'
+SIDEBAR_GESTURE_POLICY = 'map-local-left-gesture-v2'
+SIDEBAR_POLICY = 'map-retained-sidebar-observation-v1'
+SIDEBAR_TABS = ('building', 'defense', 'infantry', 'vehicle')
 DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
 BUILDING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v2'
 TRAJECTORY_OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
@@ -52,7 +62,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
                             'LaunchSuperWeapon'))
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types', 'observe_action_line_inputs', 'camera_cell',
-                              'cursor_position', 'terrain_cells', 'observe_super_weapons'))
+                              'cursor_position', 'terrain_cells', 'observe_super_weapons', 'observe_sidebar_steps'))
 COPIES = {'profile': 'profile.json', 'config': 'config.toml', 'contract': 'contract.json'}
 
 
@@ -230,8 +240,29 @@ def _gesture(value: Any, label: str, extent: tuple[int, int]) -> None:
         end = _screen_point(gesture['to'], f'{label}.to', extent)
         if start == end:
             raise ValidationError(f'{label} drag endpoints must differ')
+    elif gesture.get('kind') == 'sidebar':
+        require_exact_keys(gesture, ('kind', 'target'), label)
+        target = require_object(gesture['target'], f'{label}.target')
+        kind = target.get('kind')
+        if kind == 'tab':
+            require_exact_keys(target, ('kind', 'tab'), f'{label}.target')
+            if target['tab'] not in SIDEBAR_TABS:
+                raise ValidationError(f'{label}.target.tab is unknown')
+        elif kind == 'cameo':
+            require_exact_keys(target, ('kind', 'type_id'), f'{label}.target')
+            if not require_string(target['type_id'], f'{label}.target.type_id'):
+                raise ValidationError(f'{label}.target.type_id is empty')
+        elif kind in ('scroll_up', 'scroll_down'):
+            require_exact_keys(target, ('kind',), f'{label}.target')
+        else:
+            raise ValidationError(f'{label}.target.kind must be tab, cameo, scroll_up or scroll_down')
     else:
-        raise ValidationError(f'{label}.kind must be click or drag')
+        raise ValidationError(f'{label}.kind must be click, drag or sidebar')
+
+
+def _gesture_policy(profile: Mapping[str, Any]) -> str:
+    return (SIDEBAR_GESTURE_POLICY if any(row['gesture']['kind'] == 'sidebar'
+            for row in profile.get('gestures', [])) else GESTURE_POLICY)
 
 
 def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool = True) -> None:
@@ -287,6 +318,16 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
                 raise ValidationError(f'{label}.issue_after_step must be ordered before the final step')
             previous = step
             _gesture(row['gesture'], f'{label}.gesture', extent)
+    if 'observe_sidebar_steps' in profile:
+        steps = require_array(profile['observe_sidebar_steps'], 'profile.observe_sidebar_steps')
+        if len(steps) > 1024:
+            raise ValidationError('profile.observe_sidebar_steps exceeds 1024 rows')
+        previous = -1
+        for index, value in enumerate(steps):
+            step = _bounded_int(value, f'profile.observe_sidebar_steps[{index}]', 0, ticks)
+            if step <= previous:
+                raise ValidationError('profile.observe_sidebar_steps must be strictly increasing')
+            previous = step
     owners = require_array(profile.get('observe_owners', []), 'profile.observe_owners')
     if len(owners) > 30:
         raise ValidationError('profile.observe_owners exceeds 30 Houses')
@@ -862,11 +903,132 @@ def _input_observation(value: Any, label: str) -> int:
     return len(selected)
 
 
+def _sidebar_observation(value: Any, label: str) -> int:
+    """Check retained view receipts without rebuilding production options or layout."""
+    row = require_object(value, label)
+    require_exact_keys(row, ('active_tab', 'scroll_rows', 'max_scroll_rows', 'tabs', 'items',
+                             'scroll_up', 'scroll_down'), label)
+    if row['active_tab'] not in SIDEBAR_TABS:
+        raise ValidationError(f'{label}.active_tab is unknown')
+    maximum = _bounded_int(row['max_scroll_rows'], f'{label}.max_scroll_rows', 0, (1 << 64) - 1)
+    _bounded_int(row['scroll_rows'], f'{label}.scroll_rows', 0, maximum)
+
+    def flag(value, name):
+        if type(value) is not bool:
+            raise ValidationError(f'{name} must be boolean')
+
+    def finite(value, name):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            raise ValidationError(f'{name} must be finite')
+
+    def rect(value, name):
+        coordinates = require_array(value, name)
+        if len(coordinates) != 4:
+            raise ValidationError(f'{name} must contain x, y, width and height')
+        for index, number in enumerate(coordinates):
+            finite(number, f'{name}[{index}]')
+        if coordinates[2] < 0 or coordinates[3] < 0:
+            raise ValidationError(f'{name} has a negative extent')
+
+    tabs = require_array(row['tabs'], f'{label}.tabs')
+    if len(tabs) != len(SIDEBAR_TABS):
+        raise ValidationError(f'{label}.tabs must contain all four tabs')
+    for index, (value, name) in enumerate(zip(tabs, SIDEBAR_TABS)):
+        tab_label = f'{label}.tabs[{index}]'
+        tab = require_object(value, tab_label)
+        require_exact_keys(tab, ('tab', 'rect', 'active', 'disabled'), tab_label)
+        require_value(tab['tab'], name, f'{tab_label}.tab')
+        require_value(tab['active'], name == row['active_tab'], f'{tab_label}.active')
+        flag(tab['disabled'], f'{tab_label}.disabled')
+        rect(tab['rect'], f'{tab_label}.rect')
+    items = require_array(row['items'], f'{label}.items')
+    identities = set()
+    for index, value in enumerate(items):
+        item_label = f'{label}.items[{index}]'
+        item = require_object(value, item_label)
+        flags = ('enabled', 'is_building_this_type', 'is_ready', 'is_on_hold', 'is_armed', 'is_superweapon')
+        require_exact_keys(item, ('slot', 'type_id', 'super_weapon_section', 'display_name', 'rect', 'cost',
+                                  'queue_category', 'progress', 'queued_count', *flags), item_label)
+        require_value(item['slot'], index, f'{item_label}.slot')
+        for key in flags:
+            flag(item[key], f'{item_label}.{key}')
+        identity = require_string(item['type_id'], f'{item_label}.type_id')
+        require_string(item['display_name'], f'{item_label}.display_name')
+        if item['super_weapon_section'] is not None:
+            identity = require_string(item['super_weapon_section'], f'{item_label}.super_weapon_section')
+        if not identity or identity in identities:
+            raise ValidationError(f'{item_label} has an empty or repeated cameo identity')
+        identities.add(identity)
+        require_value(item['is_superweapon'], item['super_weapon_section'] is not None,
+                      f'{item_label}.is_superweapon')
+        rect(item['rect'], f'{item_label}.rect')
+        if item['cost'] is not None:
+            _bounded_int(item['cost'], f'{item_label}.cost', -(1 << 31), (1 << 31) - 1)
+        if item['queue_category'] not in ('Building', 'Defense', 'Infantry', 'Vehicle', 'Aircraft', 'Ship'):
+            raise ValidationError(f'{item_label}.queue_category is unknown')
+        finite(item['progress'], f'{item_label}.progress')
+        _bounded_int(item['queued_count'], f'{item_label}.queued_count', 0, (1 << 64) - 1)
+    for key in ('scroll_up', 'scroll_down'):
+        control = require_object(row[key], f'{label}.{key}')
+        require_exact_keys(control, ('rect', 'disabled'), f'{label}.{key}')
+        rect(control['rect'], f'{label}.{key}.rect')
+        flag(control['disabled'], f'{label}.{key}.disabled')
+    return len(tabs) + len(items) + 2
+
+
+def _sidebar_gesture(value: Any, target: Mapping[str, Any], label: str,
+                     extent: tuple[int, int]) -> int:
+    receipt = require_object(value, label)
+    require_exact_keys(receipt, ('resolved_position', 'before', 'after'), label)
+    count = sum(_sidebar_observation(receipt[key], f'{label}.{key}') for key in ('before', 'after'))
+    before = receipt['before']
+    kind = target['kind']
+    if kind == 'tab':
+        control = next(tab for tab in before['tabs'] if tab['tab'] == target['tab'])
+    elif kind == 'cameo':
+        found = [item for item in before['items']
+                 if (item['super_weapon_section'] or item['type_id']) == target['type_id']]
+        if len(found) != 1:
+            raise ValidationError(f'{label} target must occur once in the current visible strip')
+        control = found[0]
+    else:
+        control = before[kind]
+    if control.get('disabled', False):
+        raise ValidationError(f'{label} target is disabled')
+    x, y, width, height = control['rect']
+    if width <= 0 or height <= 0:
+        raise ValidationError(f'{label} target has no hit area')
+    expected = [math.floor(x + width / 2), math.floor(y + height / 2)]
+    _screen_point(receipt['resolved_position'], f'{label}.resolved_position', extent)
+    _require_equal(receipt['resolved_position'], expected, f'{label}.resolved_position')
+    return count
+
+
+def _sidebar_frames(value: Any, profile: Mapping[str, Any]) -> int:
+    label = 'observations.sidebar'
+    observation = require_object(value, label)
+    require_exact_keys(observation, ('policy', 'frames'), label)
+    require_value(observation['policy'], SIDEBAR_POLICY, f'{label}.policy')
+    frames = require_array(observation['frames'], f'{label}.frames')
+    requested = profile['observe_sidebar_steps']
+    if len(frames) != len(requested):
+        raise ValidationError(f'{label}.frames differs from requested sidebar observation count')
+    count = 0
+    for index, (value, step) in enumerate(zip(frames, requested)):
+        row_label = f'{label}.frames[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('completed_steps', 'rendered', 'sidebar'), row_label)
+        require_value(row['completed_steps'], step, f'{row_label}.completed_steps')
+        require_value(row['rendered'], step > 0 or profile['ticks'] == 0, f'{row_label}.rendered')
+        count += _sidebar_observation(row['sidebar'], f'{row_label}.sidebar')
+    return count
+
+
 def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
     label = 'observations.gesture_input'
     observation = require_object(value, label)
     require_exact_keys(observation, ('policy', 'equal_step_order', 'tactical_extent', 'receipts'), label)
-    require_value(observation['policy'], GESTURE_POLICY, f'{label}.policy')
+    require_value(observation['policy'], _gesture_policy(profile), f'{label}.policy')
     require_value(observation['equal_step_order'], 'commands_then_gestures', f'{label}.equal_step_order')
     dimensions = require_array(observation['tactical_extent'], f'{label}.tactical_extent')
     if len(dimensions) != 2:
@@ -881,10 +1043,12 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
     for index, (value, request) in enumerate(zip(receipts, requested)):
         row_label = f'{label}.receipts[{index}]'
         row = require_object(value, row_label)
+        sidebar = request['gesture']['kind'] == 'sidebar'
         require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
                                  'issued_binary_frame', 'gesture', 'before', 'after',
                                  'left_press_captured', 'band_box_before_release',
-                                 'neutral_input_restored', 'queued_commands'), row_label)
+                                 'neutral_input_restored', 'queued_commands',
+                                 *(('sidebar',) if sidebar else ())), row_label)
         for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
                               ('issued_simulation_tick', request['issue_after_step']),
                               ('issued_binary_frame', request['issue_after_step'])):
@@ -896,6 +1060,9 @@ def _gesture_observations(value: Any, profile: Mapping[str, Any]) -> int:
             require_value(row[key], expected, f'{row_label}.{key}')
         for key in ('before', 'after'):
             sample_count += _input_observation(row[key], f'{row_label}.{key}')
+        if sidebar:
+            sample_count += _sidebar_gesture(row['sidebar'], request['gesture']['target'],
+                f'{row_label}.sidebar', (profile['width'], profile['height']))
         commands = require_array(row['queued_commands'], f'{row_label}.queued_commands')
         sample_count += len(commands)
         for number, value in enumerate(commands):
@@ -923,10 +1090,12 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
     label = 'observations'
     observations = require_object(value, label)
     gesture_input = 'gestures' in profile
-    if gesture_input and not walk_state:
-        raise ValidationError('gesture observations require the current observation policy')
+    sidebar = 'observe_sidebar_steps' in profile
+    if (gesture_input or sidebar) and not walk_state:
+        raise ValidationError('gesture/sidebar observations require the current observation policy')
     require_exact_keys(observations, ('policy', 'owners', 'commands', 'frames',
                                      *(('gesture_input',) if gesture_input else ()),
+                                     *(('sidebar',) if sidebar else ()),
                                      *(('type_filter',) if 'observe_types' in profile else ()),
                                      *(('rule_types',) if building_state else ())), label)
     policy = (OBSERVATION_POLICY if walk_state else DOCKING_OBSERVATION_POLICY if docking_state else
@@ -964,6 +1133,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         raise ValidationError(f'observations.frames must contain exactly {ticks + 1} rows including L0')
     seen = set()
     sample_count = _gesture_observations(observations['gesture_input'], profile) if gesture_input else 0
+    if sidebar:
+        sample_count += _sidebar_frames(observations['sidebar'], profile)
     previous_ms = -1
     expected_cells = profile.get('terrain_cells', [])
     for step, value in enumerate(frames):

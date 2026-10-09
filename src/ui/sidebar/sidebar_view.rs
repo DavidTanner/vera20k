@@ -9,6 +9,7 @@ use crate::sim::production::{
 };
 use crate::sim::superweapon::SuperWeaponView;
 
+use super::cameo_order::{CameoId, CameoStrips};
 use super::gadget_flash::SidebarGadgetState;
 
 /// The armed targeting selection as the sidebar consumes it (F06): exactly
@@ -64,6 +65,8 @@ pub(crate) fn build_sidebar_view(
     repair_button_size: Option<[f32; 2]>,
     sell_button_size: Option<[f32; 2]>,
 ) -> SidebarView {
+    let mut cameos = CameoStrips::layout_fixture(build_options, ready_buildings, &[]);
+    cameos.set_scroll_row(active_tab, scroll_rows);
     build_sidebar_view_with_spec(
         SidebarChromeLayoutSpec::stock(),
         screen_w,
@@ -78,7 +81,6 @@ pub(crate) fn build_sidebar_view(
         ready_buildings,
         armed,
         producer_focus,
-        scroll_rows,
         interner,
         &[],
         gadget_state,
@@ -87,7 +89,7 @@ pub(crate) fn build_sidebar_view(
         None,
         None,
         [None; 2],
-        [0; 4],
+        &cameos,
     )
 }
 
@@ -105,7 +107,6 @@ pub(crate) fn build_sidebar_view_with_spec(
     ready_buildings: &[ReadyBuildingView],
     armed: Option<&ArmedSidebarEntry>,
     producer_focus: &[ProducerFocusView],
-    scroll_rows: usize,
     interner: Option<&crate::sim::intern::StringInterner>,
     sw_views: &[SuperWeaponView],
     gadget_state: &SidebarGadgetState,
@@ -114,13 +115,13 @@ pub(crate) fn build_sidebar_view_with_spec(
     scroll_down_button_size: Option<[f32; 2]>,
     scroll_up_button_size: Option<[f32; 2]>,
     top_button_sizes: [Option<[f32; 2]>; 2],
-    parked_scroll_rows: [usize; 4],
+    cameo_order: &CameoStrips,
 ) -> SidebarView {
     // Native6A6300/6A6820 and6AA600 enable tabs from retained strip entries,
     // including ready buildings and superweapons. Use the very same entries
     // for availability and the selected strip, independent of enabled/cost.
     let mut strips = SidebarTab::all().map(|tab| {
-        collect_build_entries(
+        let entries = collect_build_entries(
             tab.category(),
             queue_items,
             build_options,
@@ -128,10 +129,22 @@ pub(crate) fn build_sidebar_view_with_spec(
             armed,
             interner,
             sw_views,
-        )
+        );
+        let mut entries: std::collections::HashMap<_, _> = entries
+            .into_iter()
+            .map(|entry| (entry.identity, entry))
+            .collect();
+        cameo_order
+            .items(tab)
+            .iter()
+            .filter_map(|cameo| {
+                let mut entry = entries.remove(&cameo.id)?;
+                entry.display_name = cameo.key.name().to_string();
+                Some(entry)
+            })
+            .collect::<Vec<_>>()
     });
     let available = strips.each_ref().map(|entries| !entries.is_empty());
-    let requested_tab = active_tab;
     let active_tab = if available[active_tab.tab_index()] {
         active_tab
     } else {
@@ -140,11 +153,7 @@ pub(crate) fn build_sidebar_view_with_spec(
             .find(|tab| available[tab.tab_index()])
             .unwrap_or(active_tab)
     };
-    let scroll_rows = if active_tab == requested_tab {
-        scroll_rows
-    } else {
-        parked_scroll_rows[active_tab.tab_index()]
-    };
+    let scroll_rows = cameo_order.scroll_row(active_tab);
     let selected_category = active_tab.category();
     let mut all_entries = std::mem::take(&mut strips[active_tab.tab_index()]);
     let total_items = all_entries.len();
@@ -412,12 +421,7 @@ fn category_is_on_tab(
     selected_category: ProductionCategory,
     actual_category: ProductionCategory,
 ) -> bool {
-    actual_category == selected_category
-        || (selected_category == ProductionCategory::Vehicle
-            && matches!(
-                actual_category,
-                ProductionCategory::Aircraft | ProductionCategory::Ship
-            ))
+    SidebarTab::for_category(actual_category) == SidebarTab::for_category(selected_category)
 }
 
 fn unique_category_for_tab(
@@ -439,6 +443,7 @@ fn unique_category_for_tab(
 }
 
 struct BuildEntry {
+    identity: CameoId,
     type_id: String,
     display_name: String,
     cost: Option<i32>,
@@ -477,7 +482,8 @@ fn collect_build_entries(
         interner.map_or(format!("#{}", id.index()), |i| i.resolve(id).to_string())
     };
 
-    // Superweapon cameos go first on the Defense tab, sorted before regular items.
+    // Resolve presentation for Super entries. Retained strip order above
+    // determines their position together with ordinary build cameos.
     let mut sw_entries: Vec<BuildEntry> = Vec::new();
     if category == ProductionCategory::Defense {
         for sw in sw_views {
@@ -488,6 +494,7 @@ fn collect_build_entries(
                 .unwrap_or(&sw.display_name)
                 .to_string();
             sw_entries.push(BuildEntry {
+                identity: CameoId::SuperWeapon(sw.type_id),
                 type_id,
                 display_name: sw.display_name.clone(),
                 cost: None,
@@ -520,6 +527,7 @@ fn collect_build_entries(
             if is_ready {
                 // Building is done — show as ready for placement.
                 BuildEntry {
+                    identity: CameoId::Object(opt.type_id),
                     type_id: resolve(opt.type_id),
                     display_name: opt.display_name.clone(),
                     cost: Some(opt.cost),
@@ -564,6 +572,7 @@ fn collect_build_entries(
                     .unwrap_or(0.0)
                     .clamp(0.0, 1.0);
                 BuildEntry {
+                    identity: CameoId::Object(opt.type_id),
                     type_id: resolve(opt.type_id),
                     display_name: opt.display_name.clone(),
                     cost: Some(opt.cost),
@@ -595,6 +604,7 @@ fn collect_build_entries(
         if !already_listed {
             let is_armed = armed_building_id == Some(r.type_id);
             entries.push(BuildEntry {
+                identity: CameoId::Object(r.type_id),
                 type_id: r_type_str,
                 display_name: r.display_name.clone(),
                 cost: None,
@@ -612,12 +622,7 @@ fn collect_build_entries(
         }
     }
 
-    // Prepend superweapon entries before regular defense items.
-    if !sw_entries.is_empty() {
-        sw_entries.append(&mut entries);
-        return sw_entries;
-    }
-
+    entries.extend(sw_entries);
     entries
 }
 
@@ -625,7 +630,7 @@ fn collect_build_entries(
 mod tests {
     use super::super::gadget_flash::SidebarGadgetState;
     use super::super::{SidebarAction, SidebarTab};
-    use super::build_sidebar_view;
+    use super::{CameoStrips, build_sidebar_view};
     use crate::rules::object_type::ObjectCategory;
     use crate::sim::intern::StringInterner;
     use crate::sim::production::{
@@ -760,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_entries_drive_tabs_and_fallback_restores_parked_scroll() {
+    fn retained_entries_drive_tabs_and_fallback_uses_the_strip_scroll() {
         use super::{SidebarChromeLayoutSpec, build_sidebar_view_with_spec};
         let mut interner = StringInterner::new();
         let options: Vec<_> = (0..30)
@@ -774,6 +779,8 @@ mod tests {
             })
             .collect();
         let build = |options: &[BuildOption]| {
+            let mut cameos = CameoStrips::layout_fixture(options, &[], &[]);
+            cameos.set_scroll_row(SidebarTab::Building, 3);
             build_sidebar_view_with_spec(
                 SidebarChromeLayoutSpec::stock(),
                 800.,
@@ -788,7 +795,6 @@ mod tests {
                 &[],
                 None,
                 &[],
-                0,
                 Some(&interner),
                 &[],
                 &SidebarGadgetState::default(),
@@ -797,7 +803,7 @@ mod tests {
                 None,
                 None,
                 [None; 2],
-                [3, 0, 0, 0],
+                &cameos,
             )
         };
         let empty = build(&[]);

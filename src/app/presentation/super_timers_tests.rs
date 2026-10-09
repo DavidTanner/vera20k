@@ -220,9 +220,26 @@ fn a_type_without_a_ui_name_has_an_empty_label() {
          [InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n",
     );
     let rules = RuleSet::from_ini(&ini).expect("superweapon label rules should parse");
-    assert_eq!(super_label(rules.super_weapon("NukeSpecial"), None), "");
     assert_eq!(
-        super_label(rules.super_weapon("StormSpecial"), None),
+        type_ui_name(
+            rules
+                .super_weapon("NukeSpecial")
+                .unwrap()
+                .ui_name
+                .as_deref(),
+            None
+        ),
+        ""
+    );
+    assert_eq!(
+        type_ui_name(
+            rules
+                .super_weapon("StormSpecial")
+                .unwrap()
+                .ui_name
+                .as_deref(),
+            None
+        ),
         "Name:Storm"
     );
 }

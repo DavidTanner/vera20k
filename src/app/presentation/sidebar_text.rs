@@ -221,7 +221,9 @@ mod tests {
     #[test]
     fn view_wrapper_places_credits_inside_the_sidebar_panel() {
         use crate::ui::sidebar::gadget_flash::SidebarGadgetState;
-        use crate::ui::sidebar::{SidebarChromeLayoutSpec, SidebarTab, build_sidebar_view_with_spec};
+        use crate::ui::sidebar::{
+            SidebarChromeLayoutSpec, SidebarTab, build_sidebar_view_with_spec,
+        };
 
         let view = build_sidebar_view_with_spec(
             SidebarChromeLayoutSpec::stock(),
@@ -237,7 +239,6 @@ mod tests {
             &[],
             None,
             &[],
-            0,
             None,
             &[],
             &SidebarGadgetState::new(),
@@ -246,7 +247,7 @@ mod tests {
             None,
             None,
             [None; 2],
-            [0; 4],
+            &crate::ui::sidebar::cameo_order::CameoStrips::default(),
         );
         let font = digit_font();
         let inst = build_sidebar_credits_instances(&font, &view, 1.0, [1.0, 1.0, 0.0], [0.0, 0.0]);

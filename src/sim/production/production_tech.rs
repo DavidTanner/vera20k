@@ -107,8 +107,10 @@ fn sidebar_state(
     None
 }
 
-/// Every rules type's build option for `owner`, by category.
-pub(super) fn all_build_options_for_owner(
+/// Every rules type's build option for `owner`, by category, including rejected
+/// options. Retained sidebar insertions need current comparison keys before
+/// Recalculate removes an entry; admission-only consumers filter the same query.
+pub(crate) fn all_build_options_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: &str,

@@ -130,18 +130,6 @@ pub(crate) struct MatchPresentationState {
     pub(crate) sidebar_layout_spec: SidebarChromeLayoutSpec,
     /// Ordinary retail artwork uses one render pixel per source pixel.
     pub(crate) ui_scale: f32,
-    /// Scroll offset for the current sidebar tab's item list.
-    ///
-    /// gamemd's sidebar keeps this row per build strip, not one shared value —
-    /// its scroll command indexes the strip by column. This holds the live row
-    /// for the active tab; the parked rows for the other tabs live in
-    /// `sidebar_scroll_rows_parked` and swap in and out on a tab change, which
-    /// keeps every consumer reading one field while the position stops bleeding
-    /// across tabs.
-    pub(crate) sidebar_scroll_rows: usize,
-    /// Parked scroll row per sidebar tab, indexed by `input::dispatch::tab_scroll_slot`.
-    /// One entry per `SidebarTab` variant.
-    pub(crate) sidebar_scroll_rows_parked: [usize; 4],
     /// Shared tooltip service (study S1) — the model is clock-injected; only
     /// `input::tooltips` reads the wall clock.
     pub(crate) tooltips: crate::ui::tooltips::TooltipService,

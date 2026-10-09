@@ -50,6 +50,7 @@ class MapObservationTests(unittest.TestCase):
         self.terrain_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
+        self.sidebar_frames = []
         self.tactical_extent = None
         self.change = lambda manifest: None
         self.result = ChildResult(42, 0, False, b'child output\n', b'', ())
@@ -134,9 +135,13 @@ class MapObservationTests(unittest.TestCase):
             manifest['observations']['type_filter'] = deepcopy(self.profile['observe_types'])
         if 'gestures' in self.profile:
             manifest['observations']['gesture_input'] = {
-                'policy': observation.GESTURE_POLICY, 'equal_step_order': 'commands_then_gestures',
+                'policy': observation._gesture_policy(self.profile), 'equal_step_order': 'commands_then_gestures',
                 'tactical_extent': self.tactical_extent or [width, height],
                 'receipts': deepcopy(self.gesture_receipts),
+            }
+        if 'observe_sidebar_steps' in self.profile:
+            manifest['observations']['sidebar'] = {
+                'policy': observation.SIDEBAR_POLICY, 'frames': deepcopy(self.sidebar_frames),
             }
         self.change(manifest)
         (directory / 'capture.json').write_text(json.dumps(manifest))
@@ -277,6 +282,134 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(transcript['frames'][1]['input']['target_line_remaining'], 24)
         self.assertEqual(transcript['commands'][0]['payload'], {'Stop': {'entity_id': 7}})
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    @staticmethod
+    def sidebar_observation():
+        # A retained-view fixture, not a second option-sort or layout implementation.
+        return {
+            'active_tab': 'building', 'scroll_rows': 0, 'max_scroll_rows': 2,
+            'tabs': [{'tab': name, 'rect': [6.0, 1.0, 1.0, 1.0],
+                      'active': name == 'building', 'disabled': False}
+                     for name in observation.SIDEBAR_TABS],
+            'items': [{'slot': index, 'type_id': name, 'super_weapon_section': None, 'display_name': name,
+                       'rect': [6.0, float(2 + index), 1.0, 1.0], 'cost': cost,
+                       'queue_category': 'Building', 'enabled': True, 'progress': 0.0,
+                       'queued_count': 0, 'is_building_this_type': False, 'is_ready': False,
+                       'is_on_hold': False, 'is_armed': False, 'is_superweapon': False}
+                      for index, (name, cost) in enumerate((('GAPILE', 500), ('GAPOWR', 800)))],
+            'scroll_up': {'rect': [6.0, 5.0, 1.0, 1.0], 'disabled': False},
+            'scroll_down': {'rect': [6.0, 6.0, 1.0, 1.0], 'disabled': False},
+        }
+
+    def sidebar_profile(self):
+        self.gesture_profile()
+        targets = [{'kind': 'tab', 'tab': 'building'}, {'kind': 'cameo', 'type_id': 'GAPOWR'},
+                   {'kind': 'scroll_down'}, {'kind': 'scroll_up'}]
+        self.profile['gestures'] = [{'issue_after_step': 0,
+                                     'gesture': {'kind': 'sidebar', 'target': target}} for target in targets]
+        self.profile['observe_sidebar_steps'] = [0, 1, 3]
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.gesture_receipts = [
+            {'ordinal': index, 'issue_after_step': 0, 'issued_simulation_tick': 0, 'issued_binary_frame': 0,
+             'gesture': deepcopy(row['gesture']), 'before': self.input_observation(),
+             'after': self.input_observation(), 'left_press_captured': True,
+             'band_box_before_release': False, 'neutral_input_restored': True, 'queued_commands': [],
+             'sidebar': {'resolved_position': [6, y], 'before': self.sidebar_observation(),
+                         'after': self.sidebar_observation()}}
+            for index, (row, y) in enumerate(zip(self.profile['gestures'], (1, 3, 6, 5)))]
+        self.gesture_receipts[1]['queued_commands'] = [
+            {'owner': 'VERA-OBSERVER', 'execute_tick': 0,
+             'payload': {'QueueProduction': {'type_id': 41}}}]
+        self.sidebar_frames = [{'completed_steps': step, 'rendered': step > 0,
+                                'sidebar': self.sidebar_observation()} for step in (0, 1, 3)]
+
+    def test_sidebar_targets_use_visible_identity_and_keep_queue_and_render_receipts(self):
+        self.sidebar_profile()
+        # GAPOWR occupies slot 1; a stale assumption that it is first would miss it.
+        self.gesture_receipts[1]['sidebar']['after']['items'][1]['queued_count'] = 1
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        data = report['capture']['observations']
+        self.assertEqual(data['gesture_input']['policy'], observation.SIDEBAR_GESTURE_POLICY)
+        self.assertEqual(data['gesture_input']['receipts'], self.gesture_receipts)
+        self.assertEqual(data['sidebar']['frames'], self.sidebar_frames)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_sidebar_profile_rejects_unknown_targets_and_bad_snapshot_schedules(self):
+        self.sidebar_profile()
+        cases = []
+        for target in (None, {}, {'kind': 'tab', 'tab': 'weapons'}, {'kind': 'cameo', 'type_id': ''},
+                       {'kind': 'cameo', 'type_id': 41}, {'kind': 'scroll_down', 'count': 2},
+                       {'kind': 'tab', 'tab': 'building', 'position': [6, 1]}):
+            candidate = deepcopy(self.profile)
+            candidate['gestures'][0]['gesture']['target'] = target
+            cases.append(candidate)
+        for steps in (None, [True], [1.0], [-1], [4], [1, 0], [1, 1], [0] * 1025):
+            cases.append(dict(self.profile, observe_sidebar_steps=steps))
+        cases.append(dict(self.profile, schema_version=observation.PROFILE_V1))
+        for index, candidate in enumerate(cases):
+            with self.subTest(case=index), patch.object(observation, 'run_child') as child:
+                self.profile_path.write_text(json.dumps(candidate))
+                with self.assertRaises(ValidationError):
+                    self.run_capture()
+                child.assert_not_called()
+
+    def test_sidebar_receipts_reject_stale_targets_untyped_fields_and_unrendered_frames(self):
+        self.sidebar_profile()
+        changes = [lambda data: data['gesture_input'].update(policy=observation.GESTURE_POLICY),
+                   lambda data: data['gesture_input']['receipts'][1].pop('sidebar'),
+                   lambda data: data['gesture_input']['receipts'][1]['sidebar'].update(resolved_position=[6, 2]),
+                   lambda data: data['gesture_input']['receipts'][1]['sidebar']['before']['items'][1].update(type_id='GAREFN'),
+                   lambda data: data['gesture_input']['receipts'][2]['sidebar']['before']['scroll_down'].update(disabled=True),
+                   lambda data: data['sidebar']['frames'].pop(),
+                   lambda data: data['sidebar']['frames'].reverse(),
+                   lambda data: data['sidebar']['frames'][1].update(rendered=False),
+                   lambda data: data['sidebar']['frames'][0].update(rendered=True),
+                   lambda data: data.pop('sidebar')]
+        for key, value in (('slot', 1), ('cost', True), ('queue_category', 'unknown'),
+                           ('progress', True), ('queued_count', -1), ('is_ready', 1),
+                           ('super_weapon_section', 'NukeSpecial'), ('rect', [6, 2, -1, 1])):
+            changes.append(lambda data, key=key, value=value:
+                data['sidebar']['frames'][1]['sidebar']['items'][0].update({key: value}))
+        for index, change in enumerate(changes):
+            with self.subTest(case=index):
+                self.output = self.root / f'bad-sidebar-{index}'
+                self.change = lambda manifest, f=change: f(manifest['observations'])
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+                self.assertIn('observations', report['errors'][0])
+
+    def test_sidebar_observation_is_opt_in_allows_empty_and_checks_sample_budget(self):
+        report = self.run_capture()
+        self.assertNotIn('sidebar', report['capture']['observations'])
+        self.profile.update(schema_version=observation.PROFILE_V2, observe_sidebar_steps=[])
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'empty-sidebar'
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(report['capture']['observations']['sidebar']['frames'], [])
+        self.sidebar_profile()
+        self.output = self.root / 'sidebar-budget'
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 10):
+            self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_sidebar_l0_only_snapshot_is_rendered_and_superweapon_uses_section_identity(self):
+        self.profile.update(schema_version=observation.PROFILE_V2, ticks=0, observe_sidebar_steps=[0])
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.sidebar_frames = [{'completed_steps': 0, 'rendered': True, 'sidebar': self.sidebar_observation()}]
+        self.assertEqual(self.run_capture()['status'], 'VALID')
+        self.sidebar_profile()
+        receipt = self.gesture_receipts[1]
+        target = {'kind': 'cameo', 'type_id': 'NukeSpecial'}
+        self.profile['gestures'][1]['gesture']['target'] = target
+        receipt['gesture']['target'] = target
+        for key in ('before', 'after'):
+            receipt['sidebar'][key]['items'][1].update(type_id='NUKEICON',
+                super_weapon_section='NukeSpecial', is_superweapon=True)
+        self.profile['ticks'] = 3
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.output = self.root / 'superweapon-sidebar'
+        self.assertEqual(self.run_capture()['status'], 'VALID')
 
     def test_gesture_presence_is_optional_and_empty_list_still_records_input_state(self):
         report = self.run_capture()
