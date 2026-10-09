@@ -19,6 +19,7 @@
 use super::*;
 use crate::map::playfield::PlayfieldBounds;
 use crate::rules::ini_parser::IniFile;
+use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 
@@ -44,7 +45,9 @@ fn rules() -> RuleSet {
          [GACNST]\nStrength=1000\nCost=2000\nFoundation=4x4\n\
          [CAHOSP]\nStrength=800\nCost=1000\nFoundation=2x2\nInfantryGainSelfHeal=1\n\
          [CAMACH]\nStrength=800\nCost=1000\nFoundation=2x2\nUnitsGainSelfHeal=1\n\
-         [NAPOWR]\nStrength=750\nCost=800\nFoundation=2x2\nOrganic=yes\n",
+         [NAPOWR]\nStrength=750\nCost=800\nFoundation=2x2\nOrganic=yes\n\
+         [Warheads]\n0=AP\n\
+         [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
     ))
     .expect("self-heal rules")
 }
@@ -174,6 +177,67 @@ fn the_old_owners_share_requires_the_placed_byte() {
         sim.houses[&owner].self_heal_infantry(),
         1,
         "the old house keeps its count while the building is not placed"
+    );
+}
+
+/// Shares stack, and losing one building releases exactly one of them: the
+/// counts are a plain integer on the house, so three hospitals are three counts
+/// and the loss of one leaves two still healing.
+///
+/// Every route that takes a building off the map converges on the same
+/// first-Limbo owner (`0x004459AE..0x004459CA`): a sale through
+/// `BuildingClass::Sell_Back`'s stages (`production_sell.rs`, which calls
+/// `techno_limbo_with_rules`), and destruction through `ObjectClass::UnInit`
+/// (`0x005F65F3` at `lifecycle.rs:4191`). This drives the destruction route
+/// through the live receiver, as a weapon would.
+#[test]
+fn losing_one_of_three_hospitals_releases_one_share() {
+    let (mut sim, rules, owner) = scene();
+    let second = spawn(&mut sim, &rules, "CAHOSP");
+    let _third = spawn(&mut sim, &rules, "CAHOSP");
+    let fourth = spawn(&mut sim, &rules, "CAHOSP");
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 3);
+
+    let man = spawn(&mut sim, &rules, "E1");
+    sim.substrate.entities.get_mut(man).unwrap().health.current = 20;
+    sim.session.binary_frame = 50;
+    house_self_heal_step(&mut sim, man, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(man).unwrap().health.current,
+        80,
+        "three shares pay SelfHealInfantryAmount(20) x 3"
+    );
+
+    // Destroy one of the three: one 1000-point AP hit on the 800-strength type.
+    let warhead = sim.intern("AP");
+    for target in [fourth, second] {
+        let hit = EntityDamageEvent::direct_receiver(
+            target,
+            1000,
+            0,
+            RAD_NO_ATTACKER,
+            None,
+            warhead,
+            ReceiverCallFlags {
+                ignore_defenses: false,
+                arg6: false,
+            },
+        );
+        sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+    }
+    assert_eq!(
+        sim.houses[&owner].self_heal_infantry(),
+        1,
+        "each destroyed hospital takes one share off the house"
+    );
+
+    sim.substrate.entities.get_mut(man).unwrap().health.current = 20;
+    sim.session.binary_frame = 100;
+    house_self_heal_step(&mut sim, man, &rules);
+    assert_eq!(
+        sim.substrate.entities.get(man).unwrap().health.current,
+        40,
+        "one share left: 20 x 1"
     );
 }
 
