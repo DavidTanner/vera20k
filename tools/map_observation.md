@@ -382,7 +382,10 @@ retail type rules and assets. They disable starting MCVs and starting units, pla
 a construction yard, power plant and barracks for the local player, and retain an
 opponent power plant. No refinery or automatic starting army adds another local
 selection candidate. The ordinary map reader creates one MTNK and two E1s at
-distinct cells; the singleton variant creates just one E1.
+distinct cells; the singleton variant creates just one local E1 and one distant
+enemy MTNK. The enemy supplies the voxel atlas required by the capture resource
+check while remaining outside local selection eligibility. The sealed cursor
+`[620,250]` lies inside the retained sidebar panel; its right edge x630 is excluded.
 
 | Profile | Input route and observations to check |
 | --- | --- |
