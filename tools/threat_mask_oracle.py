@@ -220,18 +220,16 @@ def cutoff_row(*, high_flying, scanner, candidate, range_):
     emu.write32(CANDIDATE, CANDIDATE_VTABLE)
     emu.write32(CANDIDATE_VTABLE + 0x48, STUB_CANDIDATE_COORDS)
     emu.write32(CANDIDATE_VTABLE + 0x54, STUB_HIGH_FLYING)
-    calls = []
 
-    def coords(name, values):
+    def coords(values):
         def answer(e):
             out = e.arg(0)
             e.uc.mem_write(out, struct.pack('<iii', *values))
-            calls.append(name)
             return out
         return answer
 
-    emu.hook(STUB_SCANNER_COORDS, coords('scanner', scanner), 4)
-    emu.hook(STUB_CANDIDATE_COORDS, coords('candidate', candidate), 4)
+    emu.hook(STUB_SCANNER_COORDS, coords(scanner), 4)
+    emu.hook(STUB_CANDIDATE_COORDS, coords(candidate), 4)
     emu.hook(STUB_HIGH_FLYING, lambda _e: int(high_flying), 0)
     emu.write32(SP + 0x48, range_)
     uc.reg_write(UC_X86_REG_EDI, SCANNER)
@@ -239,7 +237,7 @@ def cutoff_row(*, high_flying, scanner, candidate, range_):
     stop = run_checked(uc, CUTOFF, CUTOFF_ADMIT + CUTOFF_REJECT, count=400,
                        required_addresses=[0x4CAC40, 0x7C5F00])
     return dict(high_flying=high_flying, scanner=list(scanner), candidate=list(candidate),
-                range=range_, calls=calls, distance=i32(uc.reg_read(UC_X86_REG_EBP)),
+                range=range_, distance=i32(uc.reg_read(UC_X86_REG_EBP)),
                 admitted=stop in CUTOFF_ADMIT)
 
 

@@ -2,10 +2,6 @@
   "cutoff": [
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -22,10 +18,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -42,10 +34,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -62,10 +50,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -82,10 +66,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -102,10 +82,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -122,10 +98,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -142,12 +114,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -164,12 +130,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -186,12 +146,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -208,12 +162,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -230,12 +178,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -252,12 +194,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -274,12 +210,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -296,10 +226,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -316,10 +242,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -336,10 +258,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -356,10 +274,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -376,10 +290,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -396,10 +306,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -416,10 +322,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -436,12 +338,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -458,12 +354,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -480,12 +370,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -502,12 +386,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -524,12 +402,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -546,12 +418,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -568,12 +434,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         6248,
         7744,
@@ -590,10 +450,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -610,10 +466,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -630,10 +482,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -650,10 +498,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -670,10 +514,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -690,10 +530,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -710,10 +546,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -730,12 +562,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -752,12 +578,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -774,12 +594,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -796,12 +610,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -818,12 +626,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -840,12 +642,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -862,12 +658,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         6744,
@@ -884,10 +674,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -904,10 +690,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -924,10 +706,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -944,10 +722,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -964,10 +738,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -984,10 +754,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1004,10 +770,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1024,12 +786,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1046,12 +802,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1068,12 +818,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1090,12 +834,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1112,12 +850,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1134,12 +866,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1156,12 +882,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5503,
         7744,
@@ -1178,10 +898,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1198,10 +914,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1218,10 +930,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1238,10 +946,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1258,10 +962,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1278,10 +978,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1298,10 +994,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1318,12 +1010,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1340,12 +1026,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1362,12 +1042,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1384,12 +1058,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1406,12 +1074,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1428,12 +1090,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1450,12 +1106,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7999,
@@ -1472,10 +1122,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1492,10 +1138,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1512,10 +1154,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1532,10 +1170,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1552,10 +1186,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1572,10 +1202,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1592,10 +1218,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1612,12 +1234,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1634,12 +1250,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1656,12 +1266,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1678,12 +1282,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1700,12 +1298,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1722,12 +1314,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1744,12 +1330,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1766,10 +1346,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1786,10 +1362,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1806,10 +1378,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1826,10 +1394,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1846,10 +1410,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1866,10 +1426,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1886,10 +1442,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1906,12 +1458,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1928,12 +1474,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1950,12 +1490,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1972,12 +1506,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -1994,12 +1522,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -2016,12 +1538,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -2038,12 +1554,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5972,
         8468,
@@ -2060,10 +1570,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2080,10 +1586,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2100,10 +1602,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2120,10 +1618,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2140,10 +1634,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2160,10 +1650,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2180,10 +1666,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2200,12 +1682,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2222,12 +1698,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2244,12 +1714,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2266,12 +1730,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2288,12 +1746,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2310,12 +1762,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2332,12 +1778,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5245,
         7748,
@@ -2354,10 +1794,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2374,10 +1810,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2394,10 +1826,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2414,10 +1842,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2434,10 +1858,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2454,10 +1874,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2474,10 +1890,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2494,12 +1906,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2516,12 +1922,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2538,12 +1938,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2560,12 +1954,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2582,12 +1970,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2604,12 +1986,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2626,12 +2002,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         8248,
         9744,
@@ -2648,10 +2018,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2668,10 +2034,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2688,10 +2050,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2708,10 +2066,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2728,12 +2082,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2750,12 +2098,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2772,12 +2114,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2794,12 +2130,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2816,10 +2146,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2836,10 +2162,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2856,10 +2178,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2876,10 +2194,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2896,10 +2210,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2916,10 +2226,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2936,10 +2242,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2956,12 +2258,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -2978,12 +2274,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -3000,12 +2290,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -3022,12 +2306,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5248,
         7744,
@@ -3044,10 +2322,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3064,10 +2338,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3084,10 +2354,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3104,10 +2370,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3124,10 +2386,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3144,10 +2402,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3164,10 +2418,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3184,12 +2434,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3206,12 +2450,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3228,12 +2466,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3250,12 +2482,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3272,12 +2498,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3294,12 +2514,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3316,12 +2530,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         51588,
         7744,
@@ -3338,10 +2546,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3358,10 +2562,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3378,10 +2578,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3398,10 +2594,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3418,10 +2610,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3438,10 +2626,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3458,10 +2642,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3478,12 +2658,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3500,12 +2674,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3522,12 +2690,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3544,12 +2706,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3566,12 +2722,6 @@
     },
     {
       "admitted": false,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3588,12 +2738,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
@@ -3610,12 +2754,6 @@
     },
     {
       "admitted": true,
-      "calls": [
-        "candidate",
-        "scanner",
-        "candidate",
-        "scanner"
-      ],
       "candidate": [
         5120,
         7617,
