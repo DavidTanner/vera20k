@@ -61,8 +61,8 @@ static WARNED_SLOPE_GE_17: AtomicBool = AtomicBool::new(false);
 const NATIVE_TURRET_FIRST_START: u8 = 32;
 const NATIVE_TURRET_FIRST_END_EXCLUSIVE: u8 = 160;
 
-/// `extra_light` is the class's own: ExtraUnitLight= for a unit, the
-/// aircraft's [`crate::app::presentation::lighting::aircraft_extra_light`].
+/// `extra_light` is the class's
+/// [`crate::app::presentation::lighting::body_extra_light`].
 fn vxl_body_tint(
     grid: &lighting::CellLightGrid,
     cell: (u16, u16),
@@ -70,8 +70,7 @@ fn vxl_body_tint(
     extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit => grid.unit_tint_at(cell, extra_light),
-        EntityCategory::Aircraft => grid.aircraft_tint_at(cell, extra_light),
+        EntityCategory::Unit | EntityCategory::Aircraft => grid.body_tint_at(cell, extra_light),
         _ => grid.techno_tint_at(cell),
     }
 }
@@ -279,8 +278,6 @@ pub(crate) fn build_unit_instances(
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
         state.rules().map(|rules| rules.art());
-    let extra_unit_light = state.rules().map_or(0, |r| r.general.extra_unit_light);
-    let extra_aircraft_light = state.rules().map_or(0, |r| r.general.extra_aircraft_light);
     let terrain = state
         .match_state
         .sim_runtime
@@ -369,16 +366,9 @@ pub(crate) fn build_unit_instances(
         };
         let interp_z = pos.z;
         let draw_state = draw_decision.state;
-        let extra_light = if entity.category == EntityCategory::Aircraft {
-            crate::app::presentation::lighting::aircraft_extra_light(
-                extra_aircraft_light,
-                crate::sim::movement::air_movement::current_fly_height(entity, terrain),
-                crate::sim::superweapon::lightning_storm::raging(sim),
-                &sim.session.lighting,
-            )
-        } else {
-            extra_unit_light
-        };
+        let extra_light = state.rules().map_or(0, |rules| {
+            crate::app::presentation::lighting::body_extra_light(entity, rules, sim, terrain)
+        });
         let tint = vxl_body_tint(
             state.match_state.match_presentation.lighting.grid(),
             (pos.rx, pos.ry),
@@ -398,8 +388,9 @@ pub(crate) fn build_unit_instances(
         // 256x256 surface of one byte per pixel, `0x007473FA..0x0074741C`),
         // where TechnoClass::Draw's own arm lights nothing. The harvest
         // overlay keeps the unscaled light: UnitClass::Draw blits it with its
-        // own intensity (`0x0073D283`). A voxel aircraft's body takes
-        // TechnoClass::Draw's arm (`0x0070678D..0x007067E2`), the same scale.
+        // own intensity (`0x0073D283`). Every other voxel body, such as an
+        // aircraft's, takes TechnoClass::Draw's arm (`0x0070678D..
+        // 0x007067E2`), the same scale.
         //
         // RESIDUAL: the rest of DrawVoxelBody's block
         // (`0x0073BF7B..0x0073C15F`). The curtain ORs the `IronCurtainColor=`
@@ -408,14 +399,8 @@ pub(crate) fn build_unit_instances(
         // (retail IronCurtainColor=0 selects None, whose OR is zero); VERA
         // hands that blit no colour word. A Deactivated unit (`+0x1C8`,
         // `0x0070FBD0`) draws at half the intensity.
-        let (body_tint, body_light) = if matches!(
-            entity.category,
-            EntityCategory::Unit | EntityCategory::Aircraft
-        ) {
-            crate::app::presentation::lighting::curtain_light(entity, tint, palette_light, sim)
-        } else {
-            (tint, palette_light)
-        };
+        let (body_tint, body_light) =
+            crate::app::presentation::lighting::curtain_light(entity, tint, palette_light, sim);
         let center_x: f32 = sx;
         let center_y: f32 = sy;
 

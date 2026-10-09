@@ -42,8 +42,8 @@ use crate::sim::animation;
 /// Only ever read by key, never iterated, so the hash order is not observable.
 pub(crate) type ParachuteBodyDepths = std::collections::HashMap<u64, f32>;
 
-/// `extra_light` is the class's own: ExtraUnitLight= for a unit,
-/// ExtraInfantryLight= for infantry.
+/// `extra_light` is the class's
+/// [`crate::app::presentation::lighting::body_extra_light`].
 fn shp_body_tint(
     grid: &crate::map::lighting::CellLightGrid,
     cell: (u16, u16),
@@ -51,8 +51,7 @@ fn shp_body_tint(
     extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit => grid.unit_tint_at(cell, extra_light),
-        EntityCategory::Infantry => grid.infantry_tint_at(cell, extra_light),
+        EntityCategory::Unit | EntityCategory::Infantry => grid.body_tint_at(cell, extra_light),
         EntityCategory::Structure => grid.building_body_tint_at(cell),
         _ => grid.techno_tint_at(cell),
     }
@@ -99,6 +98,11 @@ pub(crate) fn build_shp_instances(
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
         state.rules().map(|rules| rules.art());
+    let terrain = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| rt.view().resolved_terrain());
     let canopy_owners = super::overlays::parachute_canopy_owners(state, sim);
 
     // Drawing borrows live map fields but uses its own small Dummy identity,
@@ -380,10 +384,8 @@ pub(crate) fn build_shp_instances(
         if canopy_owners.contains(&entity.stable_id()) {
             parachute_body_depths.insert(entity.stable_id(), depth);
         }
-        let extra_light = state.rules().map_or(0, |rules| match entity.category {
-            EntityCategory::Unit => rules.general.extra_unit_light,
-            EntityCategory::Infantry => rules.general.extra_infantry_light,
-            _ => 0,
+        let extra_light = state.rules().map_or(0, |rules| {
+            crate::app::presentation::lighting::body_extra_light(entity, rules, sim, terrain)
         });
         let tint = shp_body_tint(
             state.match_state.match_presentation.lighting.grid(),

@@ -9,14 +9,12 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 
 /// An ordinary Techno draw's light: the intensity of the cell under it (its
-/// `+0x10A` word, the top scalar) plus the class's `extra`, through a
-/// ColorScheme Convert selected independently of the cell scalar: 00705D70
-/// -> 0070720E; Init_Theater 00534D77 gives schemes neutral RGB. Ion
-/// propagation 0053C280 -> 0053AD00 substitutes global RGB. The extra is
-/// ExtraUnitLight= for a unit (`0x0073CEC0`), ExtraInfantryLight= for
-/// infantry (`0x00518F90`), [`aircraft_extra_light`] for an aircraft and 0
-/// for a building's voxel turret. Trigger-driven palette rebuild history
-/// remains unresolved.
+/// `+0x10A` word, the top scalar) plus `extra`, the class's
+/// [`body_extra_light`], through a ColorScheme Convert selected
+/// independently of the cell scalar: 00705D70 -> 0070720E; Init_Theater
+/// 00534D77 gives schemes neutral RGB. Ion propagation 0053C280 -> 0053AD00
+/// substitutes global RGB. Trigger-driven palette rebuild history remains
+/// unresolved.
 pub(crate) fn body_palette_light(
     grid: &CellLightGrid,
     scenario: &crate::sim::scenario_session::ScenarioLightingState,
@@ -28,6 +26,38 @@ pub(crate) fn body_palette_light(
         color_scheme_rgb(Some(scenario)),
         top.wrapping_add(extra),
     )
+}
+
+/// The light a Techno's body draw adds to its cell's intensity:
+/// ExtraUnitLight= for a unit (UnitClass::DrawIt `0x0073D0C3`),
+/// ExtraInfantryLight= for infantry (`0x00518F90`), [`aircraft_extra_light`]
+/// for an aircraft, and none for a building's voxel turret.
+///
+/// RESIDUAL (YuriPlanet/vera20k#1215): UnitClass::DrawIt's arms ahead of
+/// its extra. On a bridge it adds four of the lighting profile's Level
+/// (`0x0073CFA7..0x0073D073`), and on a cell whose `+0x140` holds 0x10000 a
+/// unit that is not high-flying takes 500 off (`0x0073D078..0x0073D0BB`).
+/// Trigger: a vehicle on a bridge deck or on such a cell, at every crossing.
+/// Effect: VERA draws it four Levels darker (128 at Level=.032) or 500
+/// brighter. Downstream: presentation only.
+pub(crate) fn body_extra_light(
+    entity: &crate::sim::game_entity::GameEntity,
+    rules: &RuleSet,
+    sim: &Simulation,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> i32 {
+    use crate::map::entities::EntityCategory;
+    match entity.category {
+        EntityCategory::Unit => rules.general.extra_unit_light,
+        EntityCategory::Infantry => rules.general.extra_infantry_light,
+        EntityCategory::Aircraft => aircraft_extra_light(
+            rules.general.extra_aircraft_light,
+            crate::sim::movement::air_movement::current_fly_height(entity, terrain),
+            crate::sim::superweapon::lightning_storm::raging(sim),
+            &sim.session.lighting,
+        ),
+        _ => 0,
+    }
 }
 
 /// What AircraftClass::Draw_It (`0x004148D1..0x0041493C`) adds to the
@@ -723,6 +753,46 @@ mod palette_producer_tests {
                 .brightness(),
             1000
         );
+    }
+
+    /// Each class's draw adds its own extra light, so no class's key reaches
+    /// another's draw: ExtraUnitLight= for a unit, ExtraInfantryLight= for
+    /// infantry, ExtraAircraftLight= and the height's Levels for an aircraft
+    /// (IonLevel= while a storm rages), and none for a building.
+    #[test]
+    fn each_class_adds_its_own_extra_light() {
+        use crate::map::entities::EntityCategory;
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nFixtureOnly=1\n[AudioVisual]\nExtraUnitLight=.1\nExtraInfantryLight=.2\n\
+             ExtraAircraftLight=.3\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        sim.session.lighting.normal.level_units = 32;
+        sim.session.lighting.ion.level_units = 20;
+        let extra = |sim: &Simulation, category| {
+            let mut entity = crate::sim::game_entity::GameEntity::test_default_of_category(
+                1,
+                "HTNK",
+                "Americans",
+                10,
+                10,
+                category,
+            );
+            entity.position.exact_z_leptons = Some(1500);
+            body_extra_light(&entity, &rules, sim, None)
+        };
+        assert_eq!(extra(&sim, EntityCategory::Unit), 100);
+        assert_eq!(extra(&sim, EntityCategory::Infantry), 200);
+        assert_eq!(extra(&sim, EntityCategory::Aircraft), 300 + 7 * 32);
+        assert_eq!(extra(&sim, EntityCategory::Structure), 0);
+        let owner = sim.interner.intern("Americans");
+        sim.lightning_storm =
+            crate::sim::superweapon::lightning_storm::LightningStorm::raging_for_test(
+                owner,
+                (0, 0),
+            );
+        assert_eq!(extra(&sim, EntityCategory::Aircraft), 300 + 7 * 20);
     }
 
     /// Each `aircraft_light` row (AircraftClass::Draw_It `0x004148D1..

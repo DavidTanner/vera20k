@@ -34,12 +34,13 @@ fn timer(value: &Value) -> CdTimer {
 
 /// A Techno of the row's class under the row's curtain, at its tint stage.
 fn curtained(row: &Value) -> GameEntity {
-    let mut entity = GameEntity::test_default(1, "GAPOWR", "Americans", 10, 10);
-    entity.category = match row["kind"].as_str() {
+    let category = match row["kind"].as_str() {
         Some("unit") => EntityCategory::Unit,
         Some("aircraft") => EntityCategory::Aircraft,
         _ => EntityCategory::Structure,
     };
+    let mut entity =
+        GameEntity::test_default_of_category(1, "GAPOWR", "Americans", 10, 10, category);
     entity.invulnerability = Some(InvulnerabilityState::with_tint(
         timer(&row["curtain"]),
         InvulnKind::ForceShield,
