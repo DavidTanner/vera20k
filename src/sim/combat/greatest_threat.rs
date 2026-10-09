@@ -122,6 +122,7 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::vision::FogState;
+use crate::util::lepton::{lepton_to_cell, lepton_to_cell_packed};
 use crate::util::native_x87::{MaskedX87Chop53 as ScoreX87, MaskedX87Value, NativeF64Bits};
 
 /// `TechnoClass::Calculate_Threat_Score`'s additive base, `DAT_007F4E90`.
@@ -268,8 +269,10 @@ pub(crate) enum ThreatReference {
     /// aircraft pre-walk).
     ///
     /// Native then measures scorer-to-candidate through both objects' own
-    /// `vt+0x48` (`ObjectClass::GetCoords @ 0x005F65A0`, a verbatim copy of
-    /// `ObjectClass+0x9C/+0xA0/+0xA4`) and converts to **whole CELLS**:
+    /// `vt+0x48` (`0x0070D02C`, `0x0070D03A`): a building's foundation centre
+    /// (`BuildingClass::GetCoords @ 0x00447AC0`), any other object's Location
+    /// (`ObjectClass::GetCoords @ 0x005F65A0`), both from
+    /// [`object_get_coords`]. It converts the distance to **whole CELLS**:
     /// `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at
     /// `0x0070D094`-`0x0070D09D`.
     NullCoord,
@@ -410,7 +413,7 @@ pub(crate) fn calculate_threat_score(
     ]);
     let distance = if null_coord {
         // `CDQ ; AND EDX,0xff ; ADD EAX,EDX ; SAR EAX,0x8` at `0x0070D094`.
-        crate::util::lepton::lepton_to_cell(distance_leptons)
+        lepton_to_cell(distance_leptons)
     } else {
         // `JMP 0x0070D0A0 @ 0x0070D021` — the shift is on the other branch.
         distance_leptons
@@ -494,7 +497,8 @@ fn is_early_return_ring(ring: i32, radius: i32) -> bool {
 
 /// Walk bound in cells, `iStack_34` in `Greatest_Threat`.
 ///
-/// A non-zero `Threat_Range` result is itself the bound (`range >> 8`). A zero
+/// A non-zero `Threat_Range` result is itself the bound, truncated to cells
+/// toward zero (`0x006F9042..0x006F904D`). A zero
 /// one — plain Guard on a type with no `GuardRange=` — bounds the walk at
 /// `wider weapon range + 1 + AirRangeBonus` cells instead, which is a SEARCH
 /// bound, deliberately wider than the acceptance the candidate gate applies.
@@ -508,7 +512,7 @@ fn is_early_return_ring(ring: i32, radius: i32) -> bool {
 /// scan. Risk: a candidate the native walk reaches is missed, or the reverse.
 fn scan_radius_cells(obj: &ObjectType, range: ScanRange, weapon_ranges: [i32; 2]) -> i32 {
     match range {
-        ScanRange::Hard(leptons) => leptons >> 8,
+        ScanRange::Hard(leptons) => lepton_to_cell(leptons),
         ScanRange::CanFireAt => {
             let weapon_cells = max_weapon_range(weapon_ranges).to_num::<i32>();
             let air_bonus_cells = obj.air_range_bonus.map_or(0, |bonus| bonus.to_num::<i32>());
@@ -1562,7 +1566,10 @@ fn evaluate_candidate(
     // predicate that can be deferred until after those gates or G27.
     // A mask with `0x18200` (Capturable, occupants, NeedsEngineer) skips it
     // (`0x006F7CD7`). Native's null-weapon continuation remains a separate
-    // gap in the early selection ladder.
+    // gap in the early selection ladder: VERA refuses every candidate of an
+    // unarmed scanner at the `?` above, so the zero-range arm's unarmed
+    // comparison with `GuardRange=` (`TechnoType+0x5B8`,
+    // `0x006F817A..0x006F8198`) is never reached.
     if ctx.mask & 0x18200 == 0
         && let Some(world) = ctx.fire_world
         && probe_is_illegal(ctx, world, candidate, selected.index)
@@ -1594,10 +1601,13 @@ fn evaluate_candidate(
             .as_ref()
             .is_some_and(|cloak| cloak.is_fully_cloaked()),
         ctx.fog.is_some_and(|fog_state| {
+            // The cell `MapClass[] @ 0x00565730` finds at the candidate's
+            // GetCoords (`0x006F7DC4`): a building's centre cell.
+            let coords = object_get_coords(candidate, ctx.terrain);
             fog_state.has_sensor_for_house(
                 ctx.attacker.owner,
-                candidate.position.rx,
-                candidate.position.ry,
+                lepton_to_cell(coords.x) as u16,
+                lepton_to_cell(coords.y) as u16,
             )
         }),
         candidate.owner() == ctx.attacker.owner,
@@ -1657,10 +1667,15 @@ fn evaluate_candidate(
     // not square. Player effect in production: none — `rebuild_zone_grid_full`
     // always builds from resolved terrain. Frequency: nil in a real match.
     if let Some(scanner_zone) = walk.zone {
+        let coords = object_get_coords(candidate, ctx.terrain);
+        let cell = (
+            lepton_to_cell_packed(coords.x) as u16,
+            lepton_to_cell_packed(coords.y) as u16,
+        );
         let candidate_zone = ctx.zone_grid.zip(ctx.terrain).and_then(|(zones, terrain)| {
             zones.get_zone_id_native(
                 terrain,
-                (candidate.position.rx, candidate.position.ry),
+                cell,
                 ctx.attacker_obj.movement_zone,
                 candidate.on_bridge,
             )
@@ -2887,16 +2902,6 @@ mod tests {
         );
     }
 
-    /// Mask 0 is a different scan TOPOLOGY, not a wider radius: `TEST AL,0x3 ;
-    /// JZ 0x006F9B6E` at `0x006F8FE0` skips the radius block and the ring walk
-    /// outright, and the walk that runs instead enumerates the global object
-    /// array with a literal `-1` in the range slot (`PUSH -0x1 @ 0x006F9D70`).
-    ///
-    /// 30 cells is far outside anything the ring walk could reach for this
-    /// type: `105mm Range=5` with no `GuardRange=` bounds the Guard walk at
-    /// `5 + 1 + 0 = 6` rings, and even the Area Guard formula caps at
-    /// [`AREA_GUARD_MAX_SCAN_CELLS`] = 16. Both are asserted, so the Hunt result
-    /// cannot be explained by a radius the walk happened to compute.
     /// Area Guard's cutoff (`Evaluate_Candidate`, `0x006F80F4..0x006F8170`)
     /// measures a building from its GetCoords, the foundation centre, not its
     /// Location. The Grizzly's Area Guard range is its doubled 5-cell weapon,
@@ -2936,6 +2941,210 @@ mod tests {
         }
     }
 
+    /// The cutoff measures a ground candidate in 3-D (`0x006F80F4..0x006F815F`):
+    /// a Scout 9 cells north of the Grizzly, 2304 leptons flat, is taken on
+    /// Area Guard (2560) 10 levels up (2527 leptons) and refused 11 levels up
+    /// (2572 leptons).
+    #[test]
+    fn area_guard_cutoff_measures_a_ground_candidate_in_3d() {
+        let rules = scan_rules();
+        for (level, expected) in [(10, Some(2)), (11, None)] {
+            let mut entities = EntityStore::new();
+            place(
+                &mut entities,
+                1,
+                "GRIZZLY",
+                "Americans",
+                20,
+                20,
+                EntityCategory::Unit,
+            );
+            place(
+                &mut entities,
+                2,
+                "SCOUT",
+                "Soviets",
+                20,
+                11,
+                EntityCategory::Unit,
+            );
+            entities.get_mut(2).unwrap().position.z = level;
+            assert_eq!(
+                pick_with_mask(&entities, &rules, 1, super::super::ScanMission::AreaGuard),
+                expected,
+                "Scout {level} levels up"
+            );
+        }
+    }
+
+    /// A high-flying candidate is measured flat (the candidate's vt+0x54,
+    /// `0x006F805A..0x006F80CD`): a jumpjet 1200 leptons up and 9 cells north,
+    /// 2304 leptons flat but 2597 in 3-D, is taken on Area Guard (2560).
+    #[test]
+    fn area_guard_cutoff_measures_a_high_flying_candidate_flat() {
+        use crate::rules::locomotor_type::LocomotorKind;
+        use crate::sim::movement::locomotor::LocomotorState;
+        use crate::sim::world::Simulation;
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=TANK\n[InfantryTypes]\n0=JUMPJET\n\
+             [TANK]\nStrength=300\nPrimary=FLAK\n[JUMPJET]\nStrength=100\n\
+             [WeaponTypes]\n0=FLAK\n[FLAK]\nDamage=100\nRange=5\nProjectile=SHOT\nWarhead=WH\n\
+             [SHOT]\nAA=yes\nAG=no\n\
+             [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::with_seed(0);
+        sim.session.map_width = 40;
+        sim.session.map_height = 40;
+        place(
+            &mut sim.substrate.entities,
+            1,
+            "TANK",
+            "Americans",
+            20,
+            20,
+            EntityCategory::Unit,
+        );
+        place(
+            &mut sim.substrate.entities,
+            2,
+            "JUMPJET",
+            "Soviet",
+            20,
+            11,
+            EntityCategory::Infantry,
+        );
+        sim.interner = test_interner();
+        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+        locomotor.layer = MovementLayer::Air;
+        locomotor.altitude = SimFixed::from_num(1200);
+        sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
+        sim.add_entity_occupancy(1);
+        sim.aircraft_tracker_add(2);
+        let target = super::super::acquire_best_target_for_entity(
+            &sim.substrate.entities,
+            &sim.substrate.occupancy,
+            &rules,
+            &sim.interner,
+            1,
+            None,
+            None,
+            false,
+            super::super::ScanMission::AreaGuard,
+            None,
+            crate::sim::combat::line_of_fire::LineOfFireInputs::default(),
+            Some(&sim),
+            None,
+        )
+        .target();
+        assert_eq!(target, Some(2));
+    }
+
+    /// A building's passive scan centres on its GetCoords and measures the
+    /// cutoff from there. A 3x3 pillbox at Location cell (10, 10) with
+    /// `GuardRange=4` (1024 leptons) has its centre on cell (11, 11). A Scout on
+    /// (11, 14) is 768 leptons from that centre, in ring 3, and is taken. From
+    /// the Location it would be 1055 leptons away, in ring 4, which a 4-ring
+    /// walk never reaches.
+    #[test]
+    fn guard_range_cutoff_measures_from_a_building_scanners_centre() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[VehicleTypes]\n0=SCOUT\n[BuildingTypes]\n0=PILLBOX\n[WeaponTypes]\n0=Vulcan\n\
+             [SCOUT]\nStrength=300\nArmor=heavy\n\
+             [PILLBOX]\nStrength=400\nArmor=wood\nFoundation=3x3\nPrimary=Vulcan\nGuardRange=4\n\
+             [Vulcan]\nDamage=15\nROF=10\nRange=5\nWarhead=AP\n\
+             [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+        ))
+        .expect("building scanner fixture");
+        let mut entities = EntityStore::new();
+        place(
+            &mut entities,
+            1,
+            "PILLBOX",
+            "Americans",
+            10,
+            10,
+            EntityCategory::Structure,
+        );
+        entities.get_mut(1).unwrap().foundation = "3x3".to_string();
+        place(
+            &mut entities,
+            2,
+            "SCOUT",
+            "Soviets",
+            11,
+            14,
+            EntityCategory::Unit,
+        );
+        assert_eq!(
+            pick_with_mask(&entities, &rules, 1, super::super::ScanMission::Guard),
+            Some(2)
+        );
+    }
+
+    /// The score's distance term reads a building candidate's GetCoords
+    /// (`0x0070D03A`): a 3x3 pillbox at Location cell (10, 18) scores as a 1x1
+    /// one on its centre cell (11, 19), 9 cells from the Grizzly, not as one on
+    /// its Location cell, 8 cells away.
+    #[test]
+    fn threat_score_measures_a_building_candidate_from_its_centre() {
+        let rules = scan_rules();
+        let attacker_obj = rules.object("GRIZZLY").expect("attacker type");
+        let coefficients =
+            ThreatCoefficients::resolve(&rules, attacker_obj, HOUSE_SELECTS_OWN_COEFFICIENTS);
+        let score = |rx: u16, ry: u16, foundation: &str| {
+            let mut entities = EntityStore::new();
+            place(
+                &mut entities,
+                1,
+                "GRIZZLY",
+                "Americans",
+                10,
+                10,
+                EntityCategory::Unit,
+            );
+            place(
+                &mut entities,
+                2,
+                "PILLBOX",
+                "Soviets",
+                rx,
+                ry,
+                EntityCategory::Structure,
+            );
+            entities.get_mut(2).unwrap().foundation = foundation.to_string();
+            let interner = test_interner();
+            truncate_score(
+                calculate_threat_score(
+                    &entities,
+                    1,
+                    2,
+                    &rules,
+                    &interner,
+                    None,
+                    None,
+                    coefficients,
+                    ThreatReference::NullCoord,
+                    None,
+                )
+                .expect("scored"),
+            )
+        };
+        assert_eq!(score(10, 18, "3x3"), score(11, 19, "1x1"));
+        assert_ne!(score(10, 18, "3x3"), score(10, 18, "1x1"));
+    }
+
+    /// Mask 0 is a different scan TOPOLOGY, not a wider radius: `TEST AL,0x3 ;
+    /// JZ 0x006F9B6E` at `0x006F8FE0` skips the radius block and the ring walk
+    /// outright, and the walk that runs instead enumerates the global object
+    /// array with a literal `-1` in the range slot (`PUSH -0x1 @ 0x006F9D70`).
+    ///
+    /// 30 cells is far outside anything the ring walk could reach for this
+    /// type: `105mm Range=5` with no `GuardRange=` bounds the Guard walk at
+    /// `5 + 1 + 0 = 6` rings, and even the Area Guard formula caps at
+    /// [`AREA_GUARD_MAX_SCAN_CELLS`] = 16. Both are asserted, so the Hunt result
+    /// cannot be explained by a radius the walk happened to compute.
     #[test]
     fn gsi_07_20_mask_zero_reaches_past_every_ring_the_walk_could_compute() {
         let rules = scan_rules();
