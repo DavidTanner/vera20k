@@ -538,7 +538,8 @@ class MapObservationTests(unittest.TestCase):
                    for index, kind in enumerate(('submitted', 'started', 'release', 'completed'))]
         self.audio_receipt = {'policy': observation.AUDIO_POLICY, 'point': 'post_player_pre_device_mixer',
             'completion_tail_ms': 100, 'tail_draw_count': 4, 'settled': True, 'truncated': False,
-            'outputs': [{'submission': 0, 'event': 1, 'owner': 7, 'sound_id': 'SQUIDMOVE', 'resolved_samples': ['vsqumova'],
+            'voice_actions': [],
+            'outputs': [{'submission': 0, 'event': 1, 'owner': 7, 'owner_role': 'positional', 'sound_id': 'SQUIDMOVE', 'resolved_samples': ['vsqumova'],
                 'source_sample_count': 4, 'source_ended': True, 'actions': actions,
                 'pcm': {'encoding': 'f32le', 'sample_count': 4, 'finite_count': 4, 'nonzero_count': 2,
                     'formats': [{'first_sample': 0, 'channels': 2, 'sample_rate': 22050}],
@@ -589,6 +590,44 @@ class MapObservationTests(unittest.TestCase):
             mutate(candidate)
             with self.subTest(index=index), self.assertRaises(ValidationError):
                 observation._audio_observation(candidate, self.profile)
+
+    def test_audio_v2_retains_typed_voice_owners_and_bounded_reached_heads(self):
+        self.audio_profile()
+        receipt = deepcopy(self.audio_receipt)
+        receipt['policy'] = 'map-device-pulled-player-pcm-v2'
+        receipt['outputs'][0]['owner_role'] = 'unit_voice'
+        receipt['voice_actions'] = [{
+            'owner': 7,
+            'action': {'kind': 'reached_head', 'service_ms': 34,
+                       'context': {'completed_steps': 1, 'simulation_tick': 1, 'binary_frame': 1}},
+            'before': {'pending': 'SQUIDMOVE', 'playing': None},
+            'after': {'pending': None, 'playing': 'SQUIDMOVE'},
+            'live_event_before': None, 'submitted_event': 1}]
+        observation._audio_observation(receipt, self.profile)
+        mutations = [
+            lambda r: r['outputs'][0].update(owner_role='unknown'),
+            lambda r: r['outputs'][0].update(owner=None),
+            lambda r: r['voice_actions'][0].update(owner=0),
+            lambda r: r['voice_actions'][0]['action'].update(kind='invented_visit'),
+            lambda r: r['voice_actions'][0]['action']['context'].update(completed_steps=10000),
+            lambda r: r['voice_actions'][0]['after'].update(pending='x' * 129),
+            lambda r: r['voice_actions'][0].update(submitted_event=1 << 32),
+            lambda r: r.update(voice_actions=r['voice_actions'] * 129),
+            lambda r: r.pop('voice_actions'),
+        ]
+        for index, mutate in enumerate(mutations):
+            candidate = deepcopy(receipt)
+            mutate(candidate)
+            with self.subTest(index=index), self.assertRaises(ValidationError):
+                observation._audio_observation(candidate, self.profile)
+
+    def test_audio_v1_receipts_remain_readable_without_voice_extension(self):
+        self.audio_profile()
+        legacy = deepcopy(self.audio_receipt)
+        legacy['policy'] = 'map-device-pulled-player-pcm-v1'
+        legacy.pop('voice_actions', None)
+        legacy['outputs'][0].pop('owner_role', None)
+        observation._audio_observation(legacy, self.profile)
 
     def test_audio_profile_budget_presence_and_modifier_keys_are_explicit(self):
         self.audio_profile()

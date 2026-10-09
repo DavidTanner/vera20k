@@ -10,9 +10,9 @@
 //!
 //! RESIDUAL: enslaved and offline Robot receivers choose type+430/+44C in
 //! VoiceSelect708EB0. Their lifecycle and separate voice lists remain outside
-//! this normal type+414 path. The older SFX/Theme presentation streams also
-//! remain separate from Main; full audio pump/device/queue continuation is a
-//! larger existing mechanism, so these comparisons do not claim its sequence.
+//! this normal type+414 path. The process audio service borrows this same Main
+//! continuation through Simulation's RNG capability; these selection controls
+//! alone do not establish its device/queue behavior.
 
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;

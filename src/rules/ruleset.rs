@@ -3586,6 +3586,9 @@ impl RuleSet {
             object.voice_special_attack = section.map_or_else(Vec::new, |section| {
                 sounds.read_rules_sound_list(section, "VoiceSpecialAttack")
             });
+            object.voice_feedback = section.map_or_else(Vec::new, |section| {
+                sounds.read_rules_sound_list(section, "VoiceFeedback")
+            });
             if object.category == crate::rules::object_type::ObjectCategory::Building {
                 object.buildup_sound = section
                     .and_then(|section| sounds.read_rules_reference(section, "BuildupSound"));
@@ -4618,6 +4621,7 @@ impl RuleSet {
                         &object.voice_select,
                         &object.move_sound,
                         &object.voice_special_attack,
+                        &object.voice_feedback,
                     ),
                 )
             })

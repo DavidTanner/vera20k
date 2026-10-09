@@ -1119,6 +1119,10 @@ fn techno_common_steps(
     overlay_registry: Option<&OverlayTypeRegistry>,
 ) -> bool {
     iron_tint_step(sim, id);
+    // Techno6F9EBB follows the tint head and precedes veterancy/drain work.
+    // A queued voice probes its handle only when this actor really reaches
+    // this slot; recording final Logic membership would lose early exits.
+    sim.record_unit_voice_visit(id);
     veterancy_promotion_step(sim, id, rules);
     crate::sim::credit_income::drain_common_step(sim, id, rules);
     allied_target_drop_step(sim, id, rules);
@@ -1415,6 +1419,10 @@ pub(super) fn dying_infantry_techno_ai(
     rules: &RuleSet,
     ctx: ObjectAiCtx<'_>,
 ) {
+    // Infantry51BC9F -> Foot4DA539 still reaches Techno6F9EBB for ordinary
+    // Die1/Die2, before Foot's later alive test. This existing death-body
+    // owner must not add a health-zero voice filter.
+    sim.record_unit_voice_visit(id);
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity
             .estimated_health
@@ -1843,6 +1851,119 @@ mod tests {
         entity.owner = sim.interner.intern("Americans");
         entity.type_ref = sim.interner.intern("TEST");
         sim.substrate.entities.insert(entity);
+    }
+
+    fn unit_voice_fixture() -> (Simulation, RuleSet) {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n0=TEST\n[TEST]\nStrength=100\n",
+        ))
+        .expect("supplied unarmed Infantry type");
+        let mut sim = Simulation::new();
+        for id in [3, 5, 7, 9] {
+            let mut entity = GameEntity::test_default_of_category(
+                id,
+                "TEST",
+                "Americans",
+                5,
+                5,
+                EntityCategory::Infantry,
+            );
+            // Supply placed, ordinary AI boundaries; id7 remains off Logic.
+            entity.lifecycle.in_limbo = false;
+            register_entity(&mut sim, entity);
+        }
+        sim.set_logic_order_for_test(vec![9, 5, 3]);
+        (sim, rules)
+    }
+
+    fn unit_voice_facts(sim: &Simulation) -> Vec<(u64, bool)> {
+        sim.sound_events
+            .iter()
+            .filter_map(|event| match event {
+                super::super::SimSoundEvent::UnitVoiceVisit { owner } => Some((*owner, false)),
+                super::super::SimSoundEvent::UnitVoiceDestroyed { owner } => Some((*owner, true)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn unit_voice_interest_follows_reached_logic_heads_without_sorted_or_unvisited_owners() {
+        let (mut sim, rules) = unit_voice_fixture();
+        sim.prepare_unit_voice_visits([3, 7, 9, 404].into());
+        // Taking the interest projection without an AI pass (including a
+        // paused app pass) cannot create a visit or consume any voice latch.
+        assert!(unit_voice_facts(&sim).is_empty());
+        sim.object_ai_stage_with(Some(&rules), ObjectAiCtx::default());
+        assert_eq!(unit_voice_facts(&sim), vec![(9, false), (3, false)]);
+
+        // No pending owners means no per-actor output for the whole live walk.
+        sim.sound_events.clear();
+        sim.prepare_unit_voice_visits(Default::default());
+        sim.object_ai_stage_with(Some(&rules), ObjectAiCtx::default());
+        assert!(unit_voice_facts(&sim).is_empty());
+    }
+
+    #[test]
+    fn unit_voice_dying_infantry_still_reaches_its_techno_head() {
+        let (mut sim, rules) = unit_voice_fixture();
+        sim.prepare_unit_voice_visits([9].into());
+        sim.substrate.entities.get_mut(9).unwrap().health.current = 0;
+        sim.begin_infantry_death_sequence(
+            9,
+            super::super::infantry_terminal::InfantryDeathSequence::Die1,
+            &rules,
+        );
+        sim.object_ai_stage_with(Some(&rules), ObjectAiCtx::default());
+        assert_eq!(unit_voice_facts(&sim), vec![(9, false)]);
+    }
+
+    #[test]
+    fn unit_voice_disposal_stays_ordered_after_visits_and_before_a_removed_owners_slot() {
+        let (mut sim, rules) = unit_voice_fixture();
+        sim.prepare_unit_voice_visits([3, 9].into());
+        // Ordinary UnInit removes id3 before its slot; the common physical
+        // destructor must still clear a pending, never-visited voice owner.
+        sim.uninit_with_rules(3, &rules);
+        sim.process_pending_delete_with(Some(&rules), None);
+        sim.object_ai_stage_with(Some(&rules), ObjectAiCtx::default());
+        sim.uninit_with_rules(9, &rules);
+        sim.process_pending_delete_with(Some(&rules), None);
+        assert_eq!(
+            unit_voice_facts(&sim),
+            vec![(3, true), (9, false), (9, true)]
+        );
+
+        // Repeating the drain cannot publish a second destructor marker.
+        sim.process_pending_delete_with(Some(&rules), None);
+        assert_eq!(
+            unit_voice_facts(&sim),
+            vec![(3, true), (9, false), (9, true)]
+        );
+    }
+
+    #[test]
+    fn unit_voice_interest_is_not_snapshot_or_hash_state_and_expires_after_a_frame() {
+        let mut sim = Simulation::new();
+        let baseline = GameSnapshot::save(&sim, 0, 0, "voice_interest", 0);
+        let hash = sim.state_hash();
+        sim.prepare_unit_voice_visits([3, 9].into());
+        assert_eq!(sim.state_hash(), hash);
+        assert_eq!(
+            GameSnapshot::save(&sim, 0, 0, "voice_interest", 0),
+            baseline
+        );
+        let mut restored = GameSnapshot::load(&baseline).expect("snapshot").sim;
+        restored.record_unit_voice_visit(3);
+        assert!(unit_voice_facts(&restored).is_empty());
+
+        sim.advance_app_frame(&[], None, None, 67, super::super::TickLane::Ordinary, None)
+            .expect("empty authoritative frame");
+        sim.record_unit_voice_visit(3);
+        assert!(
+            unit_voice_facts(&sim).is_empty(),
+            "no stale interest after a frame"
+        );
     }
 
     fn mission_test_fixture(mission: &MissionCom) -> MissionTestFixture {

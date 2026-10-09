@@ -110,7 +110,7 @@ fn native_effects(step: &Value, coordinates: bool) -> Vec<Value> {
         .collect()
 }
 
-fn effects(sim: &Simulation, id: u64, events: &[SimSoundEvent], coordinates: bool) -> Vec<Value> {
+fn effects(id: u64, events: &[SimSoundEvent], coordinates: bool) -> Vec<Value> {
     events
         .iter()
         .filter_map(|event| match event {
@@ -126,14 +126,11 @@ fn effects(sim: &Simulation, id: u64, events: &[SimSoundEvent], coordinates: boo
                 anim_id,
                 sound_id,
                 world,
-            } if *anim_id == id => {
-                let name = sim.interner.resolve(*sound_id);
-                Some(if coordinates {
-                    json!(["playback", name, [world.x, world.y, world.z]])
-                } else {
-                    json!(["playback", name])
-                })
-            }
+            } if *anim_id == id => Some(if coordinates {
+                json!(["playback", sound_id, [world.x, world.y, world.z]])
+            } else {
+                json!(["playback", sound_id])
+            }),
             SimSoundEvent::ObjectSoundReleased { owner } if *owner == id => {
                 Some(json!(["release"]))
             }
@@ -199,7 +196,7 @@ fn visit(sim: &mut Simulation, rules: &RuleSet, id: u64, step: &Value, context: 
         native_draws,
         "{context}: raw draw count/order"
     );
-    let actual = effects(sim, id, &sim.sound_events, true);
+    let actual = effects(id, &sim.sound_events, true);
     assert_eq!(
         actual.len(),
         sim.sound_events.len(),
@@ -351,7 +348,7 @@ fn ordinary_uninit_then_physical_destruction_detaches_without_a_foot_hard_stop()
             MoveSoundState::from_raw_for_test(active, 3);
         sim.uninit_with_rules(id, &rules);
         assert_eq!(
-            effects(&sim, id, &sim.sound_events, true),
+            effects(id, &sim.sound_events, true),
             native_effects(original_limbo, true)
         );
         assert!(sim.substrate.pending_delete.contains(&id));
@@ -359,7 +356,7 @@ fn ordinary_uninit_then_physical_destruction_detaches_without_a_foot_hard_stop()
         expected.extend(native_effects(original_destructor, true));
         sim.process_pending_delete_with(Some(&rules), None);
         assert_eq!(
-            effects(&sim, id, &sim.sound_events, true),
+            effects(id, &sim.sound_events, true),
             expected,
             "latch {active}: original Limbo then physical Foot release; Object+3C/+50 are different handles"
         );
@@ -461,7 +458,7 @@ fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
             "{name}: paid original frame {native_frame}"
         );
         assert_eq!(
-            effects(sim, id, &output.sound_events, false),
+            effects(id, &output.sound_events, false),
             native_effects(step, false),
             "{name}: paid original frame {native_frame}: captured-before-Process counter reaches sound owner"
         );

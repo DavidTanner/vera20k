@@ -96,10 +96,9 @@ impl Simulation {
                 });
             }
             if let Some(sound) = sound {
-                let sound_id = self.interner.intern(&sound);
                 self.sound_events.push(SimSoundEvent::AnimationStarted {
                     anim_id: id,
-                    sound_id,
+                    sound_id: sound,
                     world: AnimWorldCoord {
                         x: coord.x,
                         y: coord.y,

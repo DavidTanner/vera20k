@@ -290,7 +290,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
                     world,
                 } => {
                     assert_eq!(*anim_id, id);
-                    assert_eq!(sim.interner.resolve(*sound_id), sound_name);
+                    assert_eq!(sound_id, sound_name);
                     serde_json::json!(["sound_boundary", "Foot+544", [world.x, world.y, world.z]])
                 }
                 SimSoundEvent::VocAt {

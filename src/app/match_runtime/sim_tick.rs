@@ -389,29 +389,25 @@ pub(crate) fn monotonic_frame_pacer_ms(state: &AppState, now: Instant) -> u64 {
 /// the SFX pause, so the sources are combined here, one frame after the movie
 /// starts and ends.
 pub(crate) fn pump_audio_service(state: &mut AppState, now_ms: u64) {
-    // `AudioSystem__Pump @ 0x00406F70` reaches `ThemeClass__AI @ 0x007209D0`
-    // on every screen (menu, loading, in-game, pause, score, inactive window);
-    // the Theme owner carries the pump's own > 33 ms gate. While the loading
-    // job holds the process asset-manager lease, the poll goes through the
-    // leased manager so the looping LOADING theme keeps being serviced.
-    if let Some(assets) = crate::app::loading::pump::audio_service_asset_manager(
+    // The process audio service remains live while the loading job holds the
+    // asset-manager lease. Retained simulations still own Main on the shell;
+    // only the process before its first scenario uses the frontend cursor.
+    let paused = state.match_state.paused() || state.frontend.fullscreen_movie.is_some();
+    let assets = crate::app::loading::pump::audio_service_asset_manager(
         &state.process_assets,
         state.frontend.loading_session.as_ref(),
-    ) {
-        state.audio.update_theme(assets, now_ms);
-    }
-    let paused = state.match_state.paused() || state.frontend.fullscreen_movie.is_some();
-    let (Some(sfx), Some(assets), Some(catalog)) = (
-        &mut state.audio.sfx_player,
-        state.process_assets.manager(),
+    );
+    let mut main = crate::app::state::process_main_draws(
+        state.match_state.sim_runtime.as_mut(),
+        &mut state.frontend.frontend_main_rng,
+    );
+    state.audio.service_audio(
+        now_ms,
+        paused,
+        assets,
         state.process_assets.audio_catalog(),
-    ) else {
-        return;
-    };
-    let registry = catalog.sounds();
-    let audio_indices = catalog.index();
-    sfx.set_paused(paused, now_ms);
-    sfx.pump(now_ms, registry, assets, audio_indices);
+        &mut main,
+    );
 }
 
 /// Front-end session mode, as the modal pump reads it to decide whether the
@@ -812,6 +808,10 @@ fn advance_one_simulation_frame(
     if !runtime_active {
         return false;
     }
+    // Input QueueVoice requests precede this Logic pass. This shared consumer
+    // only admits queued requests; positional redrive/EVA service remain at
+    // their existing owners, and voices wait for actual Techno-head markers.
+    crate::app::presentation::building_anim::drain_pending_sound_events(state);
     let mut frame_committed = state.match_state.sim_runtime.is_none();
 
     if let Some(rt) = state.match_state.sim_runtime.as_ref() {
@@ -833,6 +833,12 @@ fn advance_one_simulation_frame(
     }
 
     for _ in 0..1 {
+        let unit_voice_owners = state
+            .audio
+            .sfx_player
+            .as_ref()
+            .map(|sfx| sfx.pending_unit_voice_owners())
+            .unwrap_or_default();
         // Compute local owner before mutable borrow of simulation.
         let local_owner_for_fog = preferred_local_owner_name(state);
         // Cache local owner name before mutable sim borrow (avoids borrow conflict).
@@ -848,6 +854,7 @@ fn advance_one_simulation_frame(
         let mut census_tick: Option<u64> = None;
         if let Some(rt) = state.match_state.sim_runtime.as_mut() {
             let sim = &mut rt.simulation;
+            sim.prepare_unit_voice_visits(unit_voice_owners);
             // Delay-zero AnimClass construction can emit StartSound during the
             // final map-load sweep. Keep it until this first tactical drain;
             // `drain(..)` below still consumes every event exactly once.
@@ -948,11 +955,6 @@ fn advance_one_simulation_frame(
                 sim,
                 &resources.rules,
                 local_owner_name.as_deref(),
-                state
-                    .audio
-                    .sfx_player
-                    .as_mut()
-                    .map(|player| player as &mut dyn super::sound_dispatch::SoundEventRandom),
                 &mut admit_radar,
                 &mut state.match_state.match_audio.sound_events,
             );

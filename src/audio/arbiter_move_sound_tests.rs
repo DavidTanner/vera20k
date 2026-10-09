@@ -32,7 +32,6 @@ fn native_request(corpus: &Value, name: &str) -> PlayRequest {
         },
         volume_linear: VOLUME_SCALE / 2,
         pan: VOLUME_SCALE / 2,
-        predelay_ms: 0,
     }
 }
 
@@ -42,7 +41,7 @@ fn event_state(event: &EventRec) -> Value {
         EventState::Ready => 1,
         EventState::PreDelay => 2,
         EventState::Playing => 3,
-        EventState::Dead => 4,
+        EventState::Finished => 4,
     };
     json!({"state": state, "flags": event.flags, "serial": event.serial})
 }
@@ -57,7 +56,7 @@ fn supplied_state(value: &Value) -> EventState {
         1 => EventState::Ready,
         2 => EventState::PreDelay,
         3 => EventState::Playing,
-        4 => EventState::Dead,
+        4 => EventState::Finished,
         other => panic!("unrepresented supplied event state {other}"),
     }
 }
@@ -93,8 +92,11 @@ fn move_sound_handle_cleanup_matches_original_tagged_records() {
         event.flags = before["flags"].as_u64().unwrap() as u32;
         event.serial = before["serial"].as_u64().unwrap() as u32;
         event.state = supplied_state(&before["state"]);
-        arbiter.set_loop_handle(7, Some(id), &request.key);
-        let handle = arbiter.handles.get_mut(&7).unwrap();
+        arbiter.set_loop_handle(super::HandleOwner::Positional(7), Some(id), &request.key);
+        let handle = arbiter
+            .handles
+            .get_mut(&super::HandleOwner::Positional(7))
+            .unwrap();
         handle.serial = row["before"]["handle_fields"]["serial"].as_u64().unwrap() as u32;
         match input["invalid"].as_str() {
             Some("entry") => handle.entry = u32::MAX,
@@ -108,15 +110,20 @@ fn move_sound_handle_cleanup_matches_original_tagged_records() {
             "{name}: supplied record"
         );
         match row["operation"].as_str().unwrap() {
-            "decay_stop" | "foot_limbo_tail" => arbiter.detach_owner(7),
-            "release" | "foot_destructor_tail" => arbiter.release_owner(7),
+            "decay_stop" | "foot_limbo_tail" => {
+                arbiter.detach_owner(super::HandleOwner::Positional(7))
+            }
+            "release" | "foot_destructor_tail" => {
+                arbiter.release_owner(super::HandleOwner::Positional(7))
+            }
             "hard_stop" => {
                 // SfxPlayer::stop_animation_sound's existing handle adapter;
                 // the native expected state includes the actual Stop body.
-                if let Some(event) = arbiter.validate_loop_handle(7) {
+                if let Some(event) = arbiter.validate_loop_handle(super::HandleOwner::Positional(7))
+                {
                     arbiter.stop(event);
                 }
-                arbiter.clear_loop_handle(7);
+                arbiter.clear_loop_handle(super::HandleOwner::Positional(7));
             }
             other => panic!("{name}: unexpected native operation {other}"),
         }
@@ -126,7 +133,9 @@ fn move_sound_handle_cleanup_matches_original_tagged_records() {
             "{name}: event lifetime"
         );
         assert_eq!(
-            arbiter.handle_sound_key(7).is_some(),
+            arbiter
+                .handle_sound_key(super::HandleOwner::Positional(7))
+                .is_some(),
             row["after"]["handle_fields"]["sound_present"]
                 .as_bool()
                 .unwrap(),
@@ -135,7 +144,11 @@ fn move_sound_handle_cleanup_matches_original_tagged_records() {
         // Native may retain an inert event pointer/serial after clearing the
         // sound pointer. VERA removes the handle instead; neither can name a
         // playable event or restart a loop. This is not raw-layout parity.
-        assert_eq!(arbiter.validate_loop_handle(7), None, "{name}");
+        assert_eq!(
+            arbiter.validate_loop_handle(super::HandleOwner::Positional(7)),
+            None,
+            "{name}"
+        );
         compared += 1;
     }
     assert_eq!((compared, excluded), (40, 10));
@@ -183,10 +196,14 @@ fn queued_move_sound_admission_and_preemption_match_original_start_iteration() {
             arbiter.buckets[slot].push(entry);
             arbiter.entries[entry as usize].bucket_slot = Some(slot);
         }
-        arbiter.set_loop_handle(7, Some(current), &request.key);
+        arbiter.set_loop_handle(
+            super::HandleOwner::Positional(7),
+            Some(current),
+            &request.key,
+        );
         match input["operation"].as_str() {
-            Some("0x405fd0") => arbiter.detach_owner(7),
-            Some("0x406060") => arbiter.release_owner(7),
+            Some("0x405fd0") => arbiter.detach_owner(super::HandleOwner::Positional(7)),
+            Some("0x406060") => arbiter.release_owner(super::HandleOwner::Positional(7)),
             None => {}
             other => panic!("{name}: unmapped handle operation {other:?}"),
         }
@@ -196,7 +213,7 @@ fn queued_move_sound_admission_and_preemption_match_original_start_iteration() {
             "{name}: original handle writes before the start iteration"
         );
         let mut actions = Vec::new();
-        arbiter.start_pass(100, &mut actions);
+        arbiter.start_pass(100, &mut super::TestPlayback::default(), &mut actions);
         let native_events = row["events"].as_array().unwrap();
         assert_eq!(
             actions.iter().any(|action| matches!(action,
@@ -245,14 +262,14 @@ fn queued_move_sound_admission_and_preemption_match_original_start_iteration() {
             // UpdateTick phases. No test-only preemption invocation.
             let mut full = SoundArbiter::new(0);
             let event = full.submit(&request, 0).unwrap();
-            full.set_loop_handle(7, Some(event), &request.key);
+            full.set_loop_handle(super::HandleOwner::Positional(7), Some(event), &request.key);
             match input["operation"].as_str() {
-                Some("0x405fd0") => full.detach_owner(7),
-                Some("0x406060") => full.release_owner(7),
+                Some("0x405fd0") => full.detach_owner(super::HandleOwner::Positional(7)),
+                Some("0x406060") => full.release_owner(super::HandleOwner::Positional(7)),
                 None => {}
                 _ => unreachable!(),
             }
-            let actions = full.update_tick(100);
+            let actions = full.update_tick(100, &mut super::TestPlayback::default());
             assert_eq!(
                 actions
                     .iter()
@@ -281,22 +298,29 @@ fn world_replacement_discards_live_and_inaudible_handles_before_pool_reuse() {
     let mut arbiter = SoundArbiter::new(0);
     let mut request = stock_request(&native());
     let outgoing = arbiter.submit(&request, 0).unwrap();
-    arbiter.set_loop_handle(7, Some(outgoing), &request.key);
+    arbiter.set_loop_handle(
+        super::HandleOwner::Positional(7),
+        Some(outgoing),
+        &request.key,
+    );
     request.key = "AUTHOREDLOOP".to_owned();
     request.facts.control = control::LOOP;
     let looped = arbiter.submit(&request, 0).unwrap();
-    arbiter.set_loop_handle(8, Some(looped), &request.key);
-    arbiter.keep_loop_sound(9, &request.key, true);
-    arbiter.update_tick(100);
+    arbiter.set_loop_handle(
+        super::HandleOwner::Positional(8),
+        Some(looped),
+        &request.key,
+    );
+    arbiter.keep_loop_sound(super::HandleOwner::Positional(9), &request.key, true);
+    arbiter.update_tick(100, &mut super::TestPlayback::default());
     assert_eq!(arbiter.busy_channel_count(), 2);
-    assert_eq!(arbiter.kept_loop_key(9), Some("AUTHOREDLOOP"));
+    assert_eq!(
+        arbiter.kept_loop_key(super::HandleOwner::Positional(9)),
+        Some("AUTHOREDLOOP")
+    );
     let serial = arbiter.serial;
     let catalog = arbiter.names.clone();
-    let epochs = (
-        arbiter.limit_epoch,
-        arbiter.rank_epoch,
-        arbiter.last_pump_ms,
-    );
+    let epochs = (arbiter.limit_epoch, arbiter.rank_epoch);
 
     // Rust integration regression for Load's original global Clear404E70.
     // Native control-flow evidence establishes all-event teardown; this test
@@ -308,23 +332,22 @@ fn world_replacement_discards_live_and_inaudible_handles_before_pool_reuse() {
     assert!(arbiter.loop_handle_owners().is_empty());
     assert_eq!(arbiter.serial, serial);
     assert_eq!(arbiter.names, catalog);
-    assert_eq!(
-        (
-            arbiter.limit_epoch,
-            arbiter.rank_epoch,
-            arbiter.last_pump_ms
-        ),
-        epochs
-    );
+    assert_eq!((arbiter.limit_epoch, arbiter.rank_epoch,), epochs);
 
     request.facts.control = 0;
     let loaded = arbiter.submit(&request, 101).unwrap();
     assert_eq!(loaded, outgoing, "exercise actual pool-slot reuse");
     for owner in [7, 8, 9] {
-        assert_eq!(arbiter.validate_loop_handle(owner), None);
-        assert_eq!(arbiter.kept_loop_key(owner), None);
+        assert_eq!(
+            arbiter.validate_loop_handle(super::HandleOwner::Positional(owner)),
+            None
+        );
+        assert_eq!(
+            arbiter.kept_loop_key(super::HandleOwner::Positional(owner)),
+            None
+        );
     }
-    let actions = arbiter.update_tick(140);
+    let actions = arbiter.update_tick(140, &mut super::TestPlayback::default());
     assert_eq!(
         actions
             .iter()

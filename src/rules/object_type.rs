@@ -580,14 +580,11 @@ pub struct ObjectType {
     /// (`"VoiceFeedback"`) into `CCINIClass::ReadSoundList @ 0x00525430`
     /// (`0x00712DCB`), so the vector is at `+0x4D8` with items `+0x4DC` and
     /// count `+0x4E8` — the exact fields
-    /// `TechnoClass::ReceiveDamage @ 0x00702695` reads. Consumed through
-    /// `SimSoundEvent::VoiceFeedback`.
-    ///
-    /// RESIDUAL: native holds a comma list, VERA one id. All 133 stock authors
-    /// are single-entry (0 contain a comma), so the `rand % count` pick at
-    /// `0x007026E7` is 0 either way; a modded list would diverge. Same
-    /// divergence as the `VoiceMove=` one on `voice_id_for_key`.
-    pub voice_feedback: Option<String>,
+    /// `TechnoClass::ReceiveDamage @ 0x00702695` reads. The fixed SOUNDMD
+    /// binder retains resolved order and duplicates. The constructor starts
+    /// empty; accepted damage consumes a percent draw followed by one raw
+    /// Main draw even for a singleton, then emits a positional Voc request.
+    pub voice_feedback: Vec<String>,
     /// Ordered default command-voice list at TechnoType+4A0. Constructor
     /// 710E13..710E49 creates an empty vector; ReadINI712CC5..712D2A uses
     /// ReadSoundList525430. QueueMegaMission6FFD42 draws once for a nonempty
@@ -2269,7 +2266,12 @@ impl ObjectType {
             impact_land_sound: section
                 .read_name("ImpactLandSound", 0x80)
                 .map(str::to_owned),
-            voice_feedback: first_sound("VoiceFeedback"),
+            voice_feedback: section
+                .read_sound_list("VoiceFeedback")
+                .unwrap_or_default()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
             voice_special_attack: section
                 .read_sound_list("VoiceSpecialAttack")
                 .unwrap_or_default()

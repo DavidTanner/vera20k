@@ -96,10 +96,9 @@ impl Simulation {
                     world,
                 });
                 let index = self.main_rng.next_u32() as usize % sounds.len();
-                let sound_id = self.interner.intern(&sounds[index]);
                 self.sound_events.push(SimSoundEvent::AnimationStarted {
                     anim_id: stable_id,
-                    sound_id,
+                    sound_id: sounds[index].clone(),
                     world,
                 });
                 // 0x4DAAE7 does not depend on PlayAt's device/admission result.
