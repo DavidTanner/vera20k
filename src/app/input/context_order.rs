@@ -1490,7 +1490,7 @@ fn engineer_capture_orders(
         //mechanism. They must not silently enqueue ordinary capture/repair.
         consumed = true;
         // Foot4D7716 calls Infantry+A0/Techno700C40 before enqueue.
-        if admitted && sim.infantry_player_controllable(id, rules) {
+        if admitted && sim.techno_player_controllable(id, rules) {
             orders.push(Command::CaptureBuilding {
                 engineer_id: id,
                 target_building_id: hover.stable_id,
@@ -2850,7 +2850,7 @@ mod tests {
                 sim.mapgen_rng.logical_state(),
             );
             assert_eq!(
-                sim.infantry_player_controllable(engineer, &rules),
+                sim.techno_player_controllable(engineer, &rules),
                 row["native"]["output"]["returned_al"] == 1,
                 "{name}"
             );

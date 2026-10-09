@@ -1,9 +1,116 @@
-//! HealthNav: 536950 -> 733380, health classifier 5F5DD0.
-//! See docs/research/skirmish-ui/2026-09-12-keyboard-command-evidence.md.
+//! Next/Previous536610/536A80 and HealthNav536950 ->733380.
+//! Executed N/M controls: tools/input_oracle/selection_navigation.json.
 
 use super::{AppState, SelectionMutation};
 use crate::assets::csf_file::{CsfArg, format_csf};
 use crate::map::entities::EntityCategory;
+
+#[cfg(test)]
+#[path = "selection_navigation_tests.rs"]
+mod object_tests;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ObjectDirection {
+    Next,
+    Previous,
+}
+
+/// Display4AA2B0/4AA380 walk retained Ground/Air/Top vectors, reversing
+/// both the layer and member order for Previous. No navigation cache or sort.
+fn next_object(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    anchor: Option<u64>,
+    direction: ObjectDirection,
+) -> Option<u64> {
+    use crate::sim::world::display_layers::DisplayLayer;
+    let layers = sim.display_layers();
+    let ids = layers
+        .members(DisplayLayer::GROUND)
+        .iter()
+        .chain(layers.members(DisplayLayer::AIR))
+        .chain(layers.members(DisplayLayer::TOP))
+        .copied();
+    let eligible = |id| {
+        let Some(entity) = sim.entities().get(id) else {
+            return false;
+        };
+        crate::app::input::entity_pick::is_local_player_selectable_object(sim, rules, entity)
+            && crate::app::input::entity_pick::selection_dynamic_prefix(
+                entity,
+                sim.entities(),
+                rules,
+                Some(&sim.interner),
+            )
+            && sim.object_is_selectable(id, rules)
+    };
+    match direction {
+        ObjectDirection::Next => after_anchor(ids, anchor, eligible),
+        ObjectDirection::Previous => after_anchor(ids.rev(), anchor, eligible),
+    }
+}
+
+fn after_anchor(
+    ids: impl Iterator<Item = u64>,
+    anchor: Option<u64>,
+    mut eligible: impl FnMut(u64) -> bool,
+) -> Option<u64> {
+    let mut first = None;
+    let mut passed_anchor = anchor.is_none();
+    for id in ids {
+        if !eligible(id) {
+            continue;
+        }
+        first.get_or_insert(id);
+        if passed_anchor {
+            return Some(id);
+        }
+        passed_anchor = anchor == Some(id);
+    }
+    // Missing and ineligible anchors wrap just like the final eligible member.
+    first
+}
+
+pub(super) fn execute_object_navigation(state: &mut AppState, direction: ObjectDirection) {
+    let placement = state.armed_building_type().is_some();
+    state
+        .match_state
+        .match_presentation
+        .sidebar_gadget_state
+        .disable_selection_modes(placement);
+    let Some(sim) = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .map(|rt| &rt.simulation)
+    else {
+        return;
+    };
+    let current = super::selected_stable_ids_in_order(
+        Some(sim),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
+    let Some(id) = next_object(sim, state.rules(), current.first().copied(), direction) else {
+        return;
+    };
+    // UnselectAll is unconditional after a found candidate, including a
+    // singleton wrap. Select may refuse (e.g. pending building placement).
+    super::apply_selection_mutation(
+        state,
+        SelectionMutation {
+            clear: true,
+            select: vec![id],
+            ..Default::default()
+        },
+        true,
+        super::SelectionVoicePolicy::EveryAdded,
+    );
+    crate::app::input::camera::center_view_on_selection(state);
+    state.platform.window.request_redraw();
+    // No selected-action-line timer start, Scenario draw or Detach in this path.
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct HealthNavigation {

@@ -30,7 +30,6 @@ use crate::app::input::hotkeys::{HotkeyCommand, HotkeyFallback, HotkeyResolution
 use crate::app::input::sidebar_eva;
 use crate::app::presentation::sidebar_render::current_sidebar_view;
 use crate::app::types::OrderMode;
-use crate::audio::events::GameSoundEvent;
 use crate::map::entities::EntityCategory;
 use crate::sim::command::Command;
 use crate::sim::selection::SelectAction;
@@ -1468,6 +1467,14 @@ pub(crate) mod selection_navigation;
 fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
     match command {
         HotkeyCommand::HealthNav => selection_navigation::execute_health_navigation(state),
+        HotkeyCommand::NextObject => selection_navigation::execute_object_navigation(
+            state,
+            selection_navigation::ObjectDirection::Next,
+        ),
+        HotkeyCommand::PreviousObject => selection_navigation::execute_object_navigation(
+            state,
+            selection_navigation::ObjectDirection::Previous,
+        ),
         HotkeyCommand::CursorCheat => {
             // 537EF0: flag only; the next mouse move refreshes the tooltip.
             state.match_state.input.cursor_coordinates =
@@ -1591,7 +1598,7 @@ fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
         // nodes before committing, and cannot loop a path.
         HotkeyCommand::PlanningMode => {}
         // DEFERRED (row 86, GSI-14.05's selection-cycling half). Control groups
-        // themselves are implemented; these four verbs are not, and each needs
+        // themselves are implemented; these two verbs are not, and each needs
         // its own mechanism rather than a shared one.
         //
         // `CombatantSelect` (P, Execute 0x005367F0) and `VeterancyNav`
@@ -1607,22 +1614,12 @@ fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
         // "reuse `compute_type_select_tap`'s scope machinery with a combatant
         // predicate", not new infrastructure.
         //
-        // `NextObject` (N, Execute 0x00536610) and `PreviousObject`
-        // (M, Execute 0x00536A80) share an identical opening — 0x004AC820(0)
-        // then 0x004AC700(0, 0), which cancel the armed cursor modes — and
-        // differ only in a tail this session did not read. Their cycling order
-        // and wrap behaviour are UNCHECKED.
-        //
-        // Trigger: pressing P, Y, N or M. Player effect: the key does nothing.
+        // Trigger: pressing P or Y. Player effect: the key does nothing.
         // Frequency: occasional — control groups carry this load in ordinary
-        // play, and none of the four is a reflex. Downstream risk: none for
-        // Next/Previous/Veterancy, which are pure app-side selection changes;
+        // play. Downstream risk: none for Veterancy's app-side selection;
         // CombatantSelect touches the shared TypeSelect scope latch, so it
         // should land beside that machinery rather than duplicating it.
-        HotkeyCommand::PreviousObject
-        | HotkeyCommand::NextObject
-        | HotkeyCommand::CombatantSelect
-        | HotkeyCommand::VeterancyNav => {}
+        HotkeyCommand::CombatantSelect | HotkeyCommand::VeterancyNav => {}
         // UNCHECKED residual, all still no-ops. Three of them are audio
         // triggers whose rules keys VERA already parses or could:
         // `PlaceBeacon` should place the beacon and play `[AudioVisual]
@@ -2102,45 +2099,26 @@ fn apply_selection_mutation(
     else {
         return false;
     };
-    let mut ordered = if mutation.clear {
-        Vec::new()
-    } else {
-        selected_stable_ids_in_order(
-            Some(sim),
-            state.rules(),
-            &state.match_state.input.selection_order,
-            state.match_state.input.selection_order_pending,
-        )
-    };
-    let mut native_selection_mode_reset = mutation.clear;
-    let before_deselect = ordered.len();
-    let deselected: HashSet<_> = mutation.deselect.into_iter().collect();
-    ordered.retain(|id| !deselected.contains(id));
-    native_selection_mode_reset |= ordered.len() != before_deselect;
-    let mut members: HashSet<_> = ordered.iter().copied().collect();
-    let mut ordered = VecDeque::from(ordered);
-
-    let mut successful_adds = Vec::new();
-    for id in mutation.select {
-        let Some(entity) = sim.entities().get(id) else {
-            continue;
-        };
-        let type_id = sim.interner.resolve(entity.type_ref());
-        let admitted = entity.lifecycle.object_alive
-            && !entity.lifecycle.in_limbo
-            && !entity.is_warped_out()
-            && state
-                .rules()
-                .is_none_or(|rules| rules.object(type_id).is_none_or(|object| object.selectable));
-        if !admitted || !members.insert(id) {
-            continue;
-        }
-        successful_adds.push(id);
-        native_selection_mode_reset = true;
-        insert_selected_id(&mut ordered, id, sim, state.rules());
-    }
-
-    let ordered: Vec<_> = ordered.into();
+    let current = selected_stable_ids_in_order(
+        Some(sim),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
+    let SelectionMutationEffects {
+        ordered,
+        successful_adds,
+        follow_target,
+        native_selection_mode_reset,
+    } = resolve_selection_mutation(
+        sim,
+        state.rules(),
+        current,
+        state.match_state.input.follow_target,
+        state.armed_building_type().is_some(),
+        &mutation,
+    );
+    state.match_state.input.follow_target = follow_target;
 
     if reset_type_select_scope {
         state.match_state.input.type_select.reset_scope();
@@ -2170,6 +2148,60 @@ fn apply_selection_mutation(
         },
     );
     true
+}
+
+/// Object5F44A0/5F4520 effects on the immediate local selection ledger. This
+/// is also the read-only native-comparison seam; the command receiver commits
+/// the final membership through the same Simulation admission owner.
+struct SelectionMutationEffects {
+    ordered: Vec<u64>,
+    successful_adds: Vec<u64>,
+    follow_target: Option<u64>,
+    native_selection_mode_reset: bool,
+}
+
+fn resolve_selection_mutation(
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+    current: Vec<u64>,
+    mut follow_target: Option<u64>,
+    placement_armed: bool,
+    mutation: &SelectionMutation,
+) -> SelectionMutationEffects {
+    let deselected: HashSet<_> = mutation.deselect.iter().copied().collect();
+    let mut native_selection_mode_reset = mutation.clear;
+    let mut ordered: VecDeque<_> = current
+        .into_iter()
+        .filter(|id| {
+            let remove = mutation.clear || deselected.contains(id);
+            if remove {
+                native_selection_mode_reset = true;
+                // Deselect's Follow clear precedes Select, even for a singleton
+                // that will immediately be reselected. A final-set diff loses it.
+                if follow_target == Some(*id) {
+                    follow_target = None;
+                }
+            }
+            !remove
+        })
+        .collect();
+    let mut members: HashSet<_> = ordered.iter().copied().collect();
+    let mut successful_adds = Vec::new();
+    for &id in &mutation.select {
+        if placement_armed || members.contains(&id) || !sim.can_select_object(id, rules) {
+            continue;
+        }
+        members.insert(id);
+        successful_adds.push(id);
+        native_selection_mode_reset = true;
+        insert_selected_id(&mut ordered, id, sim, rules);
+    }
+    SelectionMutationEffects {
+        ordered: ordered.into(),
+        successful_adds,
+        follow_target,
+        native_selection_mode_reset,
+    }
 }
 
 fn insert_selected_id(
@@ -2223,7 +2255,7 @@ mod item83_selection_order_tests {
         ORDINARY_SELECTION_VOICE_POLICY, TYPE_SELECT_TAP_ACTION_LINE_POLICY,
         TYPE_SELECT_TAP_VOICE_POLICY, apply_selection_action_line_policy_at_frame,
         insert_selected_id_by_role, selected_stable_ids_in_order, selection_membership_committed,
-        selection_voice_event, selection_voice_recipients,
+        selection_voice_recipients,
     };
     use crate::app::presentation::target_lines::TargetLineState;
     use crate::audio::events::GameSoundEvent;
@@ -2306,6 +2338,8 @@ mod item83_selection_order_tests {
         .expect("item83 voice rules");
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
+        sim.session.game_mode_nonzero = true;
+        sim.session.current_house = Some(owner);
         for (id, type_name) in [(1, "E1"), (2, "E2")] {
             let type_ref = sim.interner.intern(type_name);
             sim.entities_mut()
@@ -2325,10 +2359,14 @@ mod item83_selection_order_tests {
                 ));
         }
         let candidate_order = [2, 1];
-        let emitted = |policy| {
+        let mut emitted = |policy| {
             selection_voice_recipients(policy, true, &candidate_order)
                 .iter()
-                .filter_map(|id| selection_voice_event(&sim, &rules, *id))
+                .filter_map(|id| {
+                    crate::app::match_runtime::sound_dispatch::selection_voice_event(
+                        &mut sim, &rules, *id, true,
+                    )
+                })
                 .map(|event| match event {
                     GameSoundEvent::UnitSelected { sound_id, .. } => sound_id,
                     other => panic!("unexpected selection event: {other:?}"),
@@ -2777,34 +2815,17 @@ fn apply_selection_action_line_policy_at_frame(
 
 /// Emit the modeled VoiceSelect side effect for one successful Select call.
 fn emit_selection_voice(state: &mut AppState, entity_id: u64) {
-    let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    else {
+    let Some(runtime) = state.match_state.sim_runtime.as_mut() else {
         return;
     };
-    let Some(rules) = state.rules().map(|r| r) else {
-        return;
-    };
-
-    if let Some(event) = selection_voice_event(sim, rules, entity_id) {
+    if let Some(event) = crate::app::match_runtime::sound_dispatch::selection_voice_event(
+        &mut runtime.simulation,
+        &runtime.resources.rules,
+        entity_id,
+        state.match_state.input.selection_voice_enabled,
+    ) {
         state.match_state.match_audio.sound_events.push(event);
     }
-}
-
-fn selection_voice_event(
-    sim: &crate::sim::world::Simulation,
-    rules: &crate::rules::ruleset::RuleSet,
-    entity_id: u64,
-) -> Option<GameSoundEvent> {
-    let entity = sim.entities().get(entity_id)?;
-    let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
-    Some(GameSoundEvent::UnitSelected {
-        speaker_id: entity_id,
-        sound_id: object.voice_select.clone()?,
-    })
 }
 
 /// Jump camera to the local player's base.

@@ -14,6 +14,26 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 #[path = "bridge_child_sound_tests.rs"]
 mod bridge_child_sound_tests;
 
+#[cfg(test)]
+#[path = "selection_voice_tests.rs"]
+mod selection_voice_tests;
+
+/// Adapt the Simulation-owned normal Select voice request to the existing
+/// audio event queue. Its Main RNG admission and draw belong to Simulation;
+/// device playback and pending voice replacement remain in audio.
+pub(crate) fn selection_voice_event(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    entity_id: u64,
+    voices_enabled: bool,
+) -> Option<GameSoundEvent> {
+    let sound_id = sim.selection_voice_request(rules, entity_id, voices_enabled)?;
+    Some(GameSoundEvent::UnitSelected {
+        speaker_id: entity_id,
+        sound_id: sound_id.to_string(),
+    })
+}
+
 /// The two presentation draws used while interpreting a simulation event.
 /// Production delegates to the existing player RNG; absence of that player
 /// still suppresses the same random-dependent cues.

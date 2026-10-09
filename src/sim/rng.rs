@@ -644,4 +644,63 @@ mod tests {
             "RandomRanged(0,4) must be able to return the inclusive top value 4"
         );
     }
+
+    /// Original Random65C780 / RandomRanged65C7E0 histories execute raw and
+    /// signed ranged calls across rejection and cursor-wrap boundaries.
+    #[test]
+    fn ranged_and_raw_calls_match_native_values_draws_and_complete_state() {
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/rmg_oracle/vectors/rng.json",
+        ))
+        .unwrap();
+        let mut compared = 0;
+        for history in native["ranged_cases"].as_array().unwrap() {
+            let label = history["id"].as_str().unwrap();
+            let mut random = SimRng::new(history["seed"].as_u64().unwrap());
+            for _ in 0..history["advance_raw"].as_u64().unwrap() {
+                let _ = random.next_u32();
+            }
+            assert_eq!(
+                random.native_state_hex(),
+                history["initial_state_hex"].as_str().unwrap(),
+                "{label}"
+            );
+            for (index, step) in history["steps"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(
+                    random.native_state_hex(),
+                    step["before_state_hex"].as_str().unwrap(),
+                    "{label}/{index}"
+                );
+                let (actual, trace) = super::trace_draws(|| match step["kind"].as_str().unwrap() {
+                    "raw" => i64::from(random.next_u32()),
+                    "ranged" => i64::from(random.next_range_i32_inclusive(
+                        step["low"].as_i64().unwrap() as i32,
+                        step["high"].as_i64().unwrap() as i32,
+                    )),
+                    kind => panic!("unhandled native draw {kind}"),
+                });
+                assert_eq!(actual, step["result"].as_i64().unwrap(), "{label}/{index}");
+                assert_eq!(
+                    trace.len() as u64,
+                    step["raw_draw_count"].as_u64().unwrap(),
+                    "trace {label}/{index}"
+                );
+                assert_eq!(
+                    trace
+                        .iter()
+                        .map(|draw| draw["value"].clone())
+                        .collect::<Vec<_>>(),
+                    *step["raw_draws"].as_array().unwrap(),
+                    "raw trace {label}/{index}",
+                );
+                assert_eq!(
+                    random.native_state_hex(),
+                    step["after_state_hex"].as_str().unwrap(),
+                    "{label}/{index}"
+                );
+                compared += 1;
+            }
+        }
+        assert_eq!(compared, 98);
+    }
 }

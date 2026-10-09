@@ -609,6 +609,11 @@ impl SoundEventQueue {
         self.events.push(event);
     }
 
+    /// Inspect pending requests in producer order without consuming them.
+    pub fn iter(&self) -> impl Iterator<Item = &GameSoundEvent> {
+        self.events.iter()
+    }
+
     /// Drain all pending events for playback.
     pub fn drain(&mut self) -> Vec<GameSoundEvent> {
         std::mem::take(&mut self.events)

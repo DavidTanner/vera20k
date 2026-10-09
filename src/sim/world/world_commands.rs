@@ -2099,34 +2099,67 @@ impl Simulation {
         true
     }
 
-    /// `TechnoClass::Select` then `ObjectClass::Select` — commit one object into
-    /// the selection group.
-    ///
-    /// Caller-specific TechnoClass paths own their owner gate: bandbox and
-    /// TypeSelect admit only the local house, while an ordinary click may pass
-    /// a discovered nonlocal object. The final ObjectClass gates reject an
-    /// object that is dead, in limbo, already selected, leaving through a
-    /// chrono warp, or whose type answers no to
-    /// `CanBeSelected` — i.e. `Selectable=no`, which is how the scripted
-    /// paradrop/spy planes stay out of the player's hands. Without rules loaded
-    /// the type answer is unknown, and the type default is yes.
-    pub(crate) fn try_select_object(&mut self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
+    /// Object5F6C30 (+138), with Foot4DFA50's +6AD guard for mobile objects.
+    /// Native +D0(1) is the disguise House: Unit7465F0 may return NULL;
+    /// Infantry5226C0 defaults it to the current House. Reuse the existing
+    /// +C8 disguise owner instead of treating current fog as selectability.
+    pub(crate) fn object_is_selectable(&self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
         };
-        if !entity.lifecycle.object_alive
-            || entity.lifecycle.in_limbo
-            || entity.selected
-            || entity.is_warped_out()
+        if entity.category != crate::map::entities::EntityCategory::Structure
+            && entity.foot_locomotor_swap_active
         {
             return false;
         }
-        let type_ref = entity.type_ref();
-        let selectable = rules.is_none_or(|r| {
-            r.object(self.interner.resolve(type_ref))
-                .is_none_or(|obj| obj.selectable)
-        });
-        if !selectable {
+        if entity.category == crate::map::entities::EntityCategory::Unit
+            && entity
+                .disguise
+                .as_ref()
+                .is_some_and(|d| d.disguised_as_house.is_none())
+            && self.session.current_house.is_some_and(|house| {
+                crate::sim::cloak_disguise::object_disguised_to(
+                    entity,
+                    house,
+                    Some(&self.fog),
+                    Some(&self.house_alliances),
+                    &self.interner,
+                )
+            })
+        {
+            return false;
+        }
+        rules.is_none_or(|r| {
+            r.object(self.interner.resolve(entity.type_ref()))
+                .is_none_or(|object| object.selectable)
+        })
+    }
+
+    /// Object5F4520's state/type admission, shared by provisional local input
+    /// and committed selection. Membership and pending placement are caller
+    /// state: input checks its newest ledger/placement, the sim its stored bit.
+    /// Original does not read Alive or Health here; search/click callers do.
+    pub(crate) fn can_select_object(&self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
+        let Some(entity) = self.substrate.entities.get(stable_id) else {
+            return false;
+        };
+        !entity.lifecycle.in_limbo
+            && self.object_is_selectable(stable_id, rules)
+            && !(entity.is_mission_only()
+                && rules.is_some_and(|rules| self.techno_player_controllable(stable_id, rules)))
+            && !entity.is_warped_out()
+    }
+
+    /// Commit one admitted Object5F4520 selection. Caller-specific owner gates
+    /// remain with the command producer; enemy click-selection is legitimate.
+    pub(crate) fn try_select_object(&mut self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
+        if !self.can_select_object(stable_id, rules)
+            || self
+                .substrate
+                .entities
+                .get(stable_id)
+                .is_some_and(|e| e.selected)
+        {
             return false;
         }
         match self.substrate.entities.get_mut(stable_id) {

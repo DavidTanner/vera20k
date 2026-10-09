@@ -176,14 +176,12 @@ pub(crate) struct ThemeRuntime {
     /// Whether Start_Scenario owns the pending slot (scenario reset cancel).
     scenario_owns_pending: bool,
     allow_context: ThemeAllowContext,
-    /// VERA-internal: the shuffle draw. Native draws `g_MainRng @ 0x00886B88`
-    /// (`MOV ECX,0x886B88` @ `0x00720AB5`), which `Init_Random_Number_System @
-    /// 0x0052FC20` seeds from `g_RngSeed` right after `Scen->Random`, and which
-    /// sim bodies (`TechnoClass__ReceiveDamage`, `FootClass__AI`,
-    /// `HouseClass__Update`) also consume. Drawing it from the wall-clock audio
-    /// pump would make sim RNG consumption depend on audio timing, so VERA
-    /// keeps a presentation-side copy seeded from the same match seed at
-    /// Start_Scenario; the gamemd draw sequence is deliberately not reproduced.
+    /// RESIDUAL: the existing presentation shuffle stream remains separate
+    /// from Simulation's Main owner. Native ThemeNext720AB5 draws Main886B88,
+    /// seeded from g_RngSeed by Init_Random_Number_System52FC20. VERA reseeds
+    /// this older stream at Start_Scenario; complete audio-pump and session
+    /// continuation is a separate mechanism. N/M selection's native Main
+    /// comparisons do not establish the full Theme/SFX sequence.
     shuffle_rng: SimRng,
 }
 

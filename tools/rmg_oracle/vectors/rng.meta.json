@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "Random seed and first 16 draws for five selected seeds, plus seven mixed raw/ranged histories (98 calls) at ordinary audio bounds. Includes equal/reversed bounds, rejection and cursor-wrap continuation; not exhaustive signed-range or full generator parity.",
+  "assumptions": [
+    "A zero-initialized 0x3f4-byte generator is supplied to Random__Seed.",
+    "Legacy raw calls use fresh emulators and carry only generator bytes forward.",
+    "Each mixed history retains one emulator and native-produced RNG state; optional 146/249 raw prefixes execute before the recorded initial state.",
+    "Source RNG initialization and supplied bounds are fixture inputs, not a whole application audio/theme scheduling claim.",
+    "Raw draw counts and values are observed at native word stores65C79D/65C84B; RandomRanged inlines the draw instead of calling65C780.",
+    "Disabled RNG objects and signed spans at or above 0x7fffffff are outside these controls."
+  ],
+  "substitutions": [],
+  "entry_points": {
+    "Random__Seed": "0x0065C6D0",
+    "Random__Next": "0x0065C780",
+    "Random__RandomRanged": "0x0065C7E0"
+  },
+  "command": "python -m tools.rmg_oracle.gen_rng_vectors --check",
+  "source_normalized_lf_sha256": {
+    "generator": "c1e75b4eade453c1331ddc140365eb687a70e06d64852a9b786856fd5bb530ad",
+    "checked_runner": "67a69b8e446a8134fbff1128c1fe15025350f329fc25585af29ea725746f2ceb"
+  },
+  "payload_sha256": "bc37db27193f5618884245f91b96a200c92d25a73d760616a836d2a39577468c"
+}

@@ -79,9 +79,9 @@ impl VoiceQueue {
     ///
     /// The two gates ahead of the latch — `g_SelectionVoice_Enable @
     /// 0x00822CF2` and `HouseClass::IsHumanPlayer @ 0x0050B6F0` — are already
-    /// upstream in VERA: the app input layer issues selection and order voices
-    /// only for the local player's own objects, and only one object per
-    /// dispatch batch speaks.
+    /// upstream in VERA. Selection uses app sound_dispatch's native Select /
+    /// VoiceSelect admission; ordinary mouse batches admit the first success,
+    /// whereas other native selection commands have their own latch scope.
     pub fn queue(&mut self, owner: u64, sound_id: &str) {
         if sound_id.is_empty() {
             return;
@@ -98,8 +98,9 @@ impl VoiceQueue {
     /// Native visits objects in the active-object scheduler's order; VERA
     /// walks the map in ascending stable-id order so the pass is deterministic.
     /// The two only differ when two objects both have a voice latched in the
-    /// same pass, which the one-voice-per-batch latch above already prevents
-    /// for player input.
+    /// same pass. Ordinary mouse selection batches produce at most one;
+    /// group-select commands and repeated commands before this drain can
+    /// still expose the existing scheduler-order residual.
     pub fn drain(&mut self, mut handle_live: impl FnMut(u64) -> bool) -> Vec<VoiceDecision> {
         // VERA-internal, gamemd has no counterpart: native stores the playing
         // index inside the techno (`+0x4F4`), so it dies with the object and a

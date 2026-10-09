@@ -85,7 +85,7 @@ impl Simulation {
         }
     }
 
-    /// Infantry virtual+A0, original Techno700C40 IsControllable. This is
+    /// Unit/Infantry/Aircraft virtual+A0, original Techno700C40 IsControllable. This is
     /// producer-side control admission; Event/lifecycle admission is separate.
     /// House50B6F0, bunker link, Spawned, paralysis, warp, slave ownership and
     /// launched-missile count remain with their existing authoritative owners.
@@ -97,13 +97,15 @@ impl Simulation {
     /// Its UnitType pointer cannot match an ordinary InfantryType; the other
     /// established writer is UnitPerCell739F59. This is not a generic EMP or
     /// Robot implementation and makes no unreachable claim for50E1C0.
+    /// Unit+6D8 death-frame and Robot/EMP lifecycle producers remain separate
+    /// residuals; ordinary live Unit controls use their constructor -1/0/0.
     /// Arbitrary authored native raw-save bytes are outside this producer.
     /// See engineer_bridge_cursor_caller.md for executed gate controls/bounds.
-    pub(crate) fn infantry_player_controllable(&self, id: u64, rules: &RuleSet) -> bool {
+    pub(crate) fn techno_player_controllable(&self, id: u64, rules: &RuleSet) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        if actor.category != EntityCategory::Infantry
+        if actor.category == EntityCategory::Structure
             || !self.house_is_human_player(actor.owner())
             || actor.bunker_link.installed_in().is_some()
         {
