@@ -61,29 +61,17 @@ static WARNED_SLOPE_GE_17: AtomicBool = AtomicBool::new(false);
 const NATIVE_TURRET_FIRST_START: u8 = 32;
 const NATIVE_TURRET_FIRST_END_EXCLUSIVE: u8 = 160;
 
+/// `extra_light` is the class's own: ExtraUnitLight= for a unit, the
+/// aircraft's [`crate::app::presentation::lighting::aircraft_extra_light`].
 fn vxl_body_tint(
     grid: &lighting::CellLightGrid,
     cell: (u16, u16),
     category: EntityCategory,
-    extra_unit_light: i32,
-    extra_aircraft_light: i32,
+    extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit => grid.unit_tint_at(cell, extra_unit_light),
-        EntityCategory::Aircraft => {
-            // AircraftClass adds a separate altitude/Scenario-Level term in
-            // gamemd. Until that term is represented, preserve this existing
-            // compatibility RGB path while consuming the native i32 parser
-            // value at its normalized scale.
-            let mut tint = grid.aircraft_tint_at(cell);
-            let glow = extra_aircraft_light as f32 / lighting::LIGHT_UNIT as f32;
-            if glow > 0.0 {
-                tint[0] = (tint[0] + glow).min(lighting::TOTAL_AMBIENT_CAP);
-                tint[1] = (tint[1] + glow).min(lighting::TOTAL_AMBIENT_CAP);
-                tint[2] = (tint[2] + glow).min(lighting::TOTAL_AMBIENT_CAP);
-            }
-            tint
-        }
+        EntityCategory::Unit => grid.unit_tint_at(cell, extra_light),
+        EntityCategory::Aircraft => grid.aircraft_tint_at(cell, extra_light),
         _ => grid.techno_tint_at(cell),
     }
 }
@@ -291,6 +279,13 @@ pub(crate) fn build_unit_instances(
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
         state.rules().map(|rules| rules.art());
+    let extra_unit_light = state.rules().map_or(0, |r| r.general.extra_unit_light);
+    let extra_aircraft_light = state.rules().map_or(0, |r| r.general.extra_aircraft_light);
+    let terrain = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| rt.view().resolved_terrain());
     state
         .match_state
         .match_presentation
@@ -374,24 +369,27 @@ pub(crate) fn build_unit_instances(
         };
         let interp_z = pos.z;
         let draw_state = draw_decision.state;
+        let extra_light = if entity.category == EntityCategory::Aircraft {
+            crate::app::presentation::lighting::aircraft_extra_light(
+                extra_aircraft_light,
+                crate::sim::movement::air_movement::current_fly_height(entity, terrain),
+                crate::sim::superweapon::lightning_storm::raging(sim),
+                &sim.session.lighting,
+            )
+        } else {
+            extra_unit_light
+        };
         let tint = vxl_body_tint(
             state.match_state.match_presentation.lighting.grid(),
             (pos.rx, pos.ry),
             entity.category,
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_unit_light),
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_aircraft_light),
+            extra_light,
         );
         let palette_light = crate::app::presentation::lighting::body_palette_light(
             state.match_state.match_presentation.lighting.grid(),
             &sim.session.lighting,
             (pos.rx, pos.ry),
-            entity.category,
-            state.rules().map_or(0, |r| r.general.extra_unit_light),
-            state.rules().map_or(0, |r| r.general.extra_infantry_light),
+            extra_light,
         );
         // UnitClass::DrawVoxelBody's curtain arm (`0x0073BF9C..0x0073BFB8`):
         // the intensity of the hull, turret and barrel composite, whose blit
@@ -400,9 +398,8 @@ pub(crate) fn build_unit_instances(
         // 256x256 surface of one byte per pixel, `0x007473FA..0x0074741C`),
         // where TechnoClass::Draw's own arm lights nothing. The harvest
         // overlay keeps the unscaled light: UnitClass::Draw blits it with its
-        // own intensity (`0x0073D283`). Voxel aircraft draw through
-        // TechnoClass::Draw's arm instead (a residual in
-        // `sim/superweapon/invulnerability.rs`).
+        // own intensity (`0x0073D283`). A voxel aircraft's body takes
+        // TechnoClass::Draw's arm (`0x0070678D..0x007067E2`), the same scale.
         //
         // RESIDUAL: the rest of DrawVoxelBody's block
         // (`0x0073BF7B..0x0073C15F`). The curtain ORs the `IronCurtainColor=`
@@ -411,7 +408,10 @@ pub(crate) fn build_unit_instances(
         // (retail IronCurtainColor=0 selects None, whose OR is zero); VERA
         // hands that blit no colour word. A Deactivated unit (`+0x1C8`,
         // `0x0070FBD0`) draws at half the intensity.
-        let (body_tint, body_light) = if entity.category == EntityCategory::Unit {
+        let (body_tint, body_light) = if matches!(
+            entity.category,
+            EntityCategory::Unit | EntityCategory::Aircraft
+        ) {
             crate::app::presentation::lighting::curtain_light(entity, tint, palette_light, sim)
         } else {
             (tint, palette_light)
@@ -2294,24 +2294,23 @@ mod tests {
     }
 
     #[test]
-    fn gsi_13_10_vxl_selector_uses_unit_scalar_and_keeps_aircraft_compatibility_path() {
+    fn gsi_13_10_vxl_selector_adds_the_class_extra_to_the_top_scalar() {
         let mut grid = lighting::CellLightGrid::new();
         grid.insert_profiled_light((4, 5), [1.0, 0.88, 0.88], 1.0);
 
-        let unit = vxl_body_tint(&grid, (4, 5), EntityCategory::Unit, 200, 200);
-        let aircraft = vxl_body_tint(&grid, (4, 5), EntityCategory::Aircraft, 200, 200);
-        let structure = vxl_body_tint(&grid, (4, 5), EntityCategory::Structure, 200, 200);
+        let unit = vxl_body_tint(&grid, (4, 5), EntityCategory::Unit, 200);
+        let aircraft = vxl_body_tint(&grid, (4, 5), EntityCategory::Aircraft, 424);
+        let structure = vxl_body_tint(&grid, (4, 5), EntityCategory::Structure, 200);
 
         for (actual, expected) in unit.into_iter().zip([1.2, 1.056, 1.056]) {
             assert!((actual - expected).abs() < 0.0001);
         }
-        for (actual, expected) in aircraft.into_iter().zip([1.2, 1.08, 1.08]) {
+        for (actual, expected) in aircraft.into_iter().zip([1.424, 1.25312, 1.25312]) {
             assert!((actual - expected).abs() < 0.0001);
         }
         for (actual, expected) in structure.into_iter().zip([1.0, 0.88, 0.88]) {
             assert!((actual - expected).abs() < 0.0001);
         }
-        assert_ne!(unit, aircraft);
     }
 
     #[test]

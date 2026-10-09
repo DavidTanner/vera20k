@@ -42,16 +42,17 @@ use crate::sim::animation;
 /// Only ever read by key, never iterated, so the hash order is not observable.
 pub(crate) type ParachuteBodyDepths = std::collections::HashMap<u64, f32>;
 
+/// `extra_light` is the class's own: ExtraUnitLight= for a unit,
+/// ExtraInfantryLight= for infantry.
 fn shp_body_tint(
     grid: &crate::map::lighting::CellLightGrid,
     cell: (u16, u16),
     category: EntityCategory,
-    extra_unit_light: i32,
-    extra_infantry_light: i32,
+    extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit => grid.unit_tint_at(cell, extra_unit_light),
-        EntityCategory::Infantry => grid.infantry_tint_at(cell, extra_infantry_light),
+        EntityCategory::Unit => grid.unit_tint_at(cell, extra_light),
+        EntityCategory::Infantry => grid.infantry_tint_at(cell, extra_light),
         EntityCategory::Structure => grid.building_body_tint_at(cell),
         _ => grid.techno_tint_at(cell),
     }
@@ -379,24 +380,22 @@ pub(crate) fn build_shp_instances(
         if canopy_owners.contains(&entity.stable_id()) {
             parachute_body_depths.insert(entity.stable_id(), depth);
         }
+        let extra_light = state.rules().map_or(0, |rules| match entity.category {
+            EntityCategory::Unit => rules.general.extra_unit_light,
+            EntityCategory::Infantry => rules.general.extra_infantry_light,
+            _ => 0,
+        });
         let tint = shp_body_tint(
             state.match_state.match_presentation.lighting.grid(),
             (pos.rx, pos.ry),
             entity.category,
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_unit_light),
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_infantry_light),
+            extra_light,
         );
         let selected_palette_light = crate::app::presentation::lighting::body_palette_light(
             state.match_state.match_presentation.lighting.grid(),
             &sim.session.lighting,
             (pos.rx, pos.ry),
-            entity.category,
-            state.rules().map_or(0, |r| r.general.extra_unit_light),
-            state.rules().map_or(0, |r| r.general.extra_infantry_light),
+            extra_light,
         );
         let palette_light = if entity.category == EntityCategory::Structure {
             let obj = state.rules().and_then(|r| r.object(type_str));
@@ -1219,13 +1218,13 @@ mod tests {
     use crate::sim::building_art::occupied_body_frame;
 
     #[test]
-    fn gsi_13_10_shp_selector_keeps_unit_and_infantry_extras_distinct() {
+    fn gsi_13_10_shp_selector_adds_the_class_extra_except_for_buildings() {
         let mut grid = CellLightGrid::new();
         grid.insert_profiled_light((4, 5), [1.0, 0.88, 0.88], 1.0);
 
-        let unit = shp_body_tint(&grid, (4, 5), EntityCategory::Unit, 200, 300);
-        let infantry = shp_body_tint(&grid, (4, 5), EntityCategory::Infantry, 200, 300);
-        let structure = shp_body_tint(&grid, (4, 5), EntityCategory::Structure, 200, 300);
+        let unit = shp_body_tint(&grid, (4, 5), EntityCategory::Unit, 200);
+        let infantry = shp_body_tint(&grid, (4, 5), EntityCategory::Infantry, 300);
+        let structure = shp_body_tint(&grid, (4, 5), EntityCategory::Structure, 300);
         for (actual, expected) in unit.into_iter().zip([1.2, 1.056, 1.056]) {
             assert!((actual - expected).abs() < 0.0001);
         }
@@ -1235,10 +1234,6 @@ mod tests {
         for (actual, expected) in structure.into_iter().zip([1.0, 0.88, 0.88]) {
             assert!((actual - expected).abs() < 0.0001);
         }
-        assert_ne!(
-            unit, infantry,
-            "Unit and Infantry extras must not cross-feed"
-        );
     }
 
     // Civilian (TechLevel == -1) — matches CABHUT, CALA01, CAGAS01, CABUNK01, etc.

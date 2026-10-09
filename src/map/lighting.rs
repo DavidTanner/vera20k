@@ -21,9 +21,6 @@ use crate::rules::ini_parser::IniFile;
 #[cfg(test)]
 use crate::rules::ruleset::RuleSet;
 
-/// Maximum combined lighting value per channel in current compatibility tint output.
-pub const TOTAL_AMBIENT_CAP: f32 = 2.0;
-
 /// Internal light unit scale. `1000 == 1.0`.
 pub const LIGHT_UNIT: i32 = 1000;
 
@@ -444,8 +441,11 @@ impl CellLightGrid {
         self.tint_for_top_scalar_with_extra_or_default(cell, extra_light)
     }
 
-    pub fn aircraft_tint_at(&self, cell: (u16, u16)) -> [f32; 3] {
-        self.techno_tint_at(cell)
+    /// AircraftClass::Draw_It (`0x004148D1..0x0041493C`) signed-adds its
+    /// extra light, ExtraAircraftLight= and an altitude term, to the cell's
+    /// top scalar.
+    pub fn aircraft_tint_at(&self, cell: (u16, u16), extra_light: i32) -> [f32; 3] {
+        self.tint_for_top_scalar_with_extra_or_default(cell, extra_light)
     }
 
     pub fn building_body_tint_at(&self, cell: (u16, u16)) -> [f32; 3] {
@@ -1857,7 +1857,7 @@ mod tests {
         assert_eq!(grid.techno_tint_at((4, 5)), [0.7, 0.8, 0.9]);
         assert_eq!(grid.unit_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
         assert_eq!(grid.infantry_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
-        assert_eq!(grid.aircraft_tint_at((4, 5)), [0.7, 0.8, 0.9]);
+        assert_eq!(grid.aircraft_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
         assert_eq!(grid.overlay_tint_at((4, 5)), [0.7, 0.8, 0.9]);
         assert_eq!(grid.terrain_object_tint_at((4, 5)), [0.7, 0.8, 0.9]);
         assert_eq!(grid.anim_tint_at((4, 5), None), [0.7, 0.8, 0.9]);
@@ -2148,7 +2148,7 @@ mod tests {
 
         let center = grid.tint_or_default((2, 2));
         // 1.8 + 1.0 = 2.8 → clamped to 2.0
-        assert!((center[0] - TOTAL_AMBIENT_CAP).abs() < 0.001);
+        assert!((center[0] - LIGHT_CLAMP_MAX as f32 / LIGHT_UNIT as f32).abs() < 0.001);
     }
 
     #[test]
