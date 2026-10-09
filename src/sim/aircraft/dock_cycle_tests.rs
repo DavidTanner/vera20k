@@ -140,6 +140,50 @@ fn a_guarding_aircraft_with_a_target_leaves_its_pad_to_attack() {
     assert!(relaunched, "a guarding aircraft holding a Target attacks");
 }
 
+/// TechnoClass::AI_Update's passive block (`0x006FA65A..0x006FA6EE`) runs
+/// for an aircraft too (AircraftClass::AI reaches it through FootClass::AI,
+/// `0x00414DA3`). Guarding on its pad, an Orca whose type may acquire
+/// passively scans on the targeting timer, with its Scenario draw, but takes
+/// nothing: an aircraft has no `+0x3C4` override, so the mask-1 scan's flags
+/// word is 0 and the class gate (`0x006F821A`) refuses every candidate.
+/// `CanPassiveAquire=no`, which the retail Harrier and Black Eagle carry,
+/// refuses the scan at CanAcquireTarget (`0x007091D0`).
+#[test]
+fn a_guarding_aircraft_scans_passively_unless_its_type_may_not_and_takes_nothing() {
+    for passive in [true, false] {
+        let text = if passive {
+            RULES.to_owned()
+        } else {
+            RULES.replace("Fighter=yes\n", "Fighter=yes\nCanPassiveAquire=no\n")
+        };
+        let rules = RuleSet::from_ini(&IniFile::from_str(&text)).expect("rules");
+        let (mut sim, orca, airfield) = spent_orca(&rules, true);
+        let enemy = sim.interner.intern("Russians");
+        sim.houses.insert(
+            enemy,
+            crate::sim::house_state::HouseState::new(enemy, 1, None, true, 0, 10),
+        );
+        let seen = run_cycle(&mut sim, &rules, orca, airfield);
+        assert_eq!(seen.guarding_frames, 300, "the aircraft reloads and guards");
+        sim.spawn_object("VICTIM", "Russians", 13, 12, 0, &rules)
+            .expect("enemy in range");
+        let mut scans = std::collections::BTreeSet::new();
+        for _ in 0..300 {
+            let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
+            let entity = sim.substrate.entities.get(orca).expect("aircraft survives");
+            assert_eq!(mission(&sim, orca), Some(MissionType::Guard));
+            assert!(entity.attack_target.is_none(), "the scan takes nothing");
+            scans.insert(entity.last_target_scan_frame);
+        }
+        // Each scan re-arms the timer for the Guard delay plus RandomRanged(0, 2).
+        assert_eq!(
+            scans.len() > 5,
+            passive,
+            "CanPassiveAquire={passive}: {scans:?}"
+        );
+    }
+}
+
 /// The loop on a retail map through the production loader and the player's
 /// order path: two Harriers of a human house, beside its Airforce Command
 /// (`GAAIRC`, four docks), strike an enemy Rhino, fly home, land on the pads

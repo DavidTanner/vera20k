@@ -127,13 +127,15 @@ pub(crate) fn guard_visit(facts: &GuardFacts, host: &mut impl GuardHost) -> i32 
         return 1;
     }
     // `0x0041A793`: the stock rearm threshold.
-    if facts.armed && facts.ammo < facts.type_ammo && !host.in_radio_contact() {
-        if let Some(dock) = host.find_dock() {
-            host.queue(MissionType::Enter);
-            host.assign_dock(dock);
-            host.clear_target();
-            return 1;
-        }
+    if facts.armed
+        && facts.ammo < facts.type_ammo
+        && !host.in_radio_contact()
+        && let Some(dock) = host.find_dock()
+    {
+        host.queue(MissionType::Enter);
+        host.assign_dock(dock);
+        host.clear_target();
+        return 1;
     }
     // `0x0041A6E0`: half the type's Ammo, rounded toward zero.
     if facts.ammo != -1

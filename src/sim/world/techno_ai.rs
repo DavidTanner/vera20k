@@ -760,20 +760,24 @@ fn techno_ai_shell(
         // (`0x0041504A`/`0x00415058`). Keep the counter here; the sole promotion
         // is `object_ai_post_movement_promote_one`.
         //
-        // RESIDUAL — no passive block on this arm (#1111). Aircraft reach the
-        // common Techno AI body in the original through the same foot-leaf
-        // call the Unit and Infantry leaves use, so the block is shared with
-        // them there; whether it acquires anything for a YR aircraft is
-        // UNCHECKED. Trigger: a guarding aircraft with an enemy in range.
-        // Effect: it takes no Target by itself, so Mission_Guard's Target arm
-        // queues no Attack.
+        // AircraftClass::AI drops an unsensed cloaked Target, then reaches the
+        // common Techno AI body through FootClass::AI (`0x00414DA3`), so the
+        // off-mission clear, the counter, MissionClass::AI and the passive
+        // block run in AI_Update's order (`0x006FA5E8..0x006FA6EE`). The
+        // retail fixed-wing types are `CanPassiveAquire=no`, so the block's
+        // gate refuses them except on Move in a computer house's
+        // `Aggressive=yes`, `Suicide=no` team (Korea's Black Eagles). A scan
+        // takes nothing for an aircraft: with no `+0x3C4` override its mask 1
+        // gives a zero flags word, which the class gate (`0x006F821A`) refuses
+        // for every candidate; the scan's Scenario draw and timer remain.
         EntityCategory::Aircraft => {
+            drop_unsensed_cloaked_target_step(sim, id);
             if let Some(rules) = rules
                 && !techno_common_steps(sim, id, rules, ctx.overlay_registry)
             {
                 return;
             }
-            drop_unsensed_cloaked_target_step(sim, id);
+            clear_passive_target_off_mission(sim, id, rules);
             mission_counter_step(sim, id);
             // MissionClass::AI, inside this slot and before Fly Process
             // (FootClass::AI4DA530).
@@ -783,6 +787,7 @@ fn techno_ai_shell(
             {
                 sim.fire_requests.aircraft.insert(id);
             }
+            passive_acquire_step(sim, id, rules, ctx);
             bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
