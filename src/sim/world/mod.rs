@@ -35,6 +35,7 @@ mod ground_move;
 pub(crate) use ground_move::GroundMove;
 mod house_base;
 mod house_defeat;
+mod ion_blast;
 pub(crate) use house_base::HouseBaseState;
 mod infantry_terminal;
 mod jumpjet_cruise;
@@ -1281,6 +1282,10 @@ pub struct Simulation {
     pub(crate) lightning_storm: crate::sim::superweapon::lightning_storm::LightningStorm,
     /// The Psychic Dominator's globals (one at a time).
     pub(crate) psychic_dominator: crate::sim::superweapon::psychic_dominator::PsychicDominatorState,
+    /// IonBlastClass's vector (`0x00AA0118`), owned by `ion_blast`. Native
+    /// saves no blast.
+    #[serde(skip)]
+    ion_blasts: Vec<ion_blast::IonBlast>,
     /// Whether superweapon grants have been initialized from map-placed buildings.
     pub(crate) super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend).
@@ -3184,6 +3189,7 @@ impl Simulation {
             super_weapons: BTreeMap::new(),
             lightning_storm: Default::default(),
             psychic_dominator: Default::default(),
+            ion_blasts: Vec::new(),
             super_weapons_initialized: false,
             terrain_speed_config: terrain_speed::TerrainSpeedConfig::default(),
             debug_event_logging: false,
@@ -6510,6 +6516,9 @@ impl Simulation {
                 &tube_turn_owned_ids,
                 overlay_registry,
             );
+            // `IonBlastClass::UpdateAll @ 0x0053D310` follows the object loop
+            // (`0x0055B64B`).
+            self.update_ion_blasts();
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls
             // `MapClass__UpdateCrateRegenTimers @ 0x0056BBE0` at `0x0055B65A`,
             // between `AlphaShapeClass::PurgeDisabled` and the Tactical,

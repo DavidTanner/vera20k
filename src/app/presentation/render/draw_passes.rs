@@ -190,6 +190,23 @@ pub(super) fn dispatch_draw_passes(
         bracket_tex,
         "factory_rally_first",
     );
+    // Original6D4656 IonBlast DrawAll moves terrain pixels after the first
+    // rally pass and before the object loop at 6D465F (render::terrain_draw).
+    // Native draws the placement overlay (6D5030) before it; VERA draws the
+    // placement cells after the objects, so a ripple does not shift them.
+    if state.renderer.terrain_draw_renderer.has_ion_blasts() {
+        drop(pass);
+        state
+            .renderer
+            .terrain_draw_renderer
+            .note_external_passes(encoder, 1);
+        state
+            .renderer
+            .terrain_draw_renderer
+            .draw_ion_blasts(encoder, view);
+        pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
+        pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
+    }
 
     // Building selection bracket back/left edges. Drawn before object bodies so
     // the normal SHP merge naturally occludes the hidden bracket edges.
@@ -1056,6 +1073,8 @@ mod tests {
     #[test]
     fn gsi_13_01_pixel_fx_and_the_timer_lines_end_vera_tactical_writes() {
         let first_rally = source_offset("\"factory_rally_first\"");
+        let ion_blasts = source_offset(".draw_ion_blasts(encoder, view)");
+        let objects = source_offset("merge_passes::draw_native_object_pass(");
         let combat_lights = source_offset(".combat_light_renderer");
         let second_rally = source_offset("\"factory_rally_second\"");
         let target_lines = source_offset("\"target_lines\"");
@@ -1070,6 +1089,10 @@ mod tests {
         );
         let first_screen_submission = source_offset("\"minimap\"");
 
+        // Original6D4648,6D4656,6D465F: IonBlast DrawAll between the first
+        // rally pass and the object loop.
+        assert!(first_rally < ion_blasts);
+        assert!(ion_blasts < objects);
         // Original6D4648,6D4664,6D46CF,6D4750. A is now consumed by
         // each world blitter, so there is no final framebuffer multiply.
         assert!(first_rally < combat_lights);
