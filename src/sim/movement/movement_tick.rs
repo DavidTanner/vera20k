@@ -955,14 +955,15 @@ fn prepare_movement_visit(
     if entity.is_active() && entity.movement_target.is_none() && !walk_route {
         super::walk_step::finish_idle(entity);
     }
-    // Drive4B0500/Ship69FC10 likewise reach Process_Movement for a moving
-    // class (Is_Moving4AFB80/69F290) without a track or an order adapter:
-    // a Chrono Warp's Force_Track leaves +34 in the Unit's own cell.
+    // A Drive or Ship got here through the outer Process gates
+    // (`track_turn`: Drive 0x4B08D1..0x4B0A69 / Ship 0x69FF98..0x6A0131),
+    // which admit Process_Movement (0x4B0A79 / 0x6A0142) for a moving class
+    // or a live path word whatever adapter it has: a Chrono Warp's
+    // Force_Track leaves +34 in the Unit's own cell with none.
     let track_route = entity
         .locomotor
         .as_ref()
-        .and_then(|loco| super::track_process::TrackFamily::from_kind(loco.kind))
-        .is_some_and(|family| super::track_head::motion_state(entity, family).0);
+        .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
     if entity.movement_target.is_none()
         && !walk_route
         && !track_route

@@ -376,10 +376,15 @@ fn post_warp_rows_refuse_the_own_cell_search() {
         let own = crate::sim::movement::ground_pose::position_world_coord(&e.position);
         assert!(sim.force_track(id, -1, own));
         sim.session.binary_frame = 101;
+        let rng = sim.rng_state();
         let grid = sim.path_grid.clone();
         sim.process_ground_locomotor_for_test(id, Some(&rules), grid.as_deref(), Some(&registry))
             .unwrap();
         compare(&sim, id, &row, None);
+        // The rows observe Random 0x65C780 and RandomRanged 0x65C7E0: no draw.
+        let events = row["events"].as_array().unwrap();
+        assert!(!events.iter().any(|e| e == "random" || e == "random_ranged"));
+        assert_eq!(sim.rng_state(), rng, "{row}");
         checked += 1;
     }
     assert_eq!(checked, 4);

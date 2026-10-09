@@ -97,6 +97,9 @@ def query(case):
     observed = {0x741970: 'unit_destination', 0x4D55C0: 'failed_receiver',
                 0x4B28A8: 'drive_continuation', 0x6A1EF8: 'ship_continuation',
                 0x481670: 'scatter_objects', 0x578AD0: 'gate_open'}
+    if case.get('post_warp'):
+        # Scenario draws, Random 0x65C780 and RandomRanged 0x65C7E0.
+        observed.update({0x65C780: 'random', 0x65C7E0: 'random_ranged'})
 
     def observe(_u, address, _size, _data):
         if address == FIND_PATH:
@@ -195,7 +198,7 @@ if __name__ == '__main__':
         ],
         substitutions=[
             'found/failed rows: Find_Path 0x4D3920 returns AL=1 after writing the route (then -1 words) to Foot+5E0, or AL=0 with no writes; original stdcall 12 cleanup.',
-            'post_warp rows: the AStar core returns EAX=0 as AStar_pathfind_search does for a goal in its start cell (0x429BF3..0x429C0A -> 0x42A451, read).',
+            'post_warp rows: the AStar core returns EAX=0 as AStar_pathfind_search does for a goal in its start cell (0x429BF3..0x429C0A -> 0x42A451, read). Their events also record calls of Random 0x65C780 and RandomRanged 0x65C7E0.',
             'native rows: only the AStar core 0x4CBBA0 is supplied (stdcall 24 cleanup): EAX=0, or a PathType in the shape of AStar_reconstruct_path 0x42AA90 (moves then -1 in the wrapper buffer, cost = moves, length = moves + 1); the Find_Path wrapper (copy, Mark, timers, Unit vt+540 = 0x41C140 no-op), Unit receivers, setters and continuation execute.',
             'Only OS Interlocked imports inherited from the fixture.',
         ]))

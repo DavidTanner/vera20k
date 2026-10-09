@@ -601,14 +601,12 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        let Some(family) = actor
+        let track = actor
             .locomotor
             .as_ref()
-            .and_then(|loco| super::track_process::TrackFamily::from_kind(loco.kind))
-        else {
-            return;
-        };
-        if !super::track_head::motion_state(actor, family).0
+            .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
+        if track
+            && super::motion_query::is_moving(actor) == Some(false)
             && super::track_head::active_track_family(actor).is_none()
         {
             actor.movement_target = None;

@@ -217,6 +217,38 @@ fn near_failure_returns_before_the_null_setter_and_guard_queue() {
     assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked);
 }
 
+/// A Walk destination in the infantryman's own cell reaches Find_Path like
+/// any other (Walk has no same-cell arm before the request at 0x0075AFC5),
+/// and AStar has no route for a goal in its start cell
+/// (0x00429BF3..0x00429C0A). The receiver's Stop clears the destination, the
+/// tail's Chebyshev test (0 here, 0x4D40A6) returns before its NULL setter
+/// and Guard queue, and the outer Process's recheck of the cleared
+/// destination (0x75AFD3) runs the NULL setter.
+#[test]
+fn own_cell_destination_fails_and_clears_the_order() {
+    let (mut sim, rules, registry) = fixture();
+    human_house(&mut sim);
+    let id = engineer_at(&mut sim, &rules, (10, 10));
+    order_walk(&mut sim, &rules, id, (10, 10));
+    let grid = sim.path_grid.clone();
+    sim.process_ground_locomotor_for_test(id, Some(&rules), grid.as_deref(), Some(&registry))
+        .unwrap();
+    let e = sim.substrate.entities.get(id).unwrap();
+    assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
+    assert_eq!(e.locomotor.as_ref().unwrap().walk_is_moving(), Some(false));
+    assert!(e.navigation.nav_com.is_none());
+    assert!(e.movement_target.is_none());
+    assert_eq!(e.mission.queued(), MissionId::NONE);
+    assert_eq!(
+        e.mission.current(),
+        MissionId::from_known(MissionType::Move)
+    );
+    assert_eq!((e.position.rx, e.position.ry), (10, 10));
+    // The NULL setter's Set_Destination_Internal tail rewrote +640 to
+    // duration 0.
+    assert_eq!(e.navigation.path_runtime.movement_timer.duration(), 0);
+}
+
 #[test]
 fn receiver_records_an_impassable_current_cell() {
     let (mut sim, rules, registry) = fixture();
