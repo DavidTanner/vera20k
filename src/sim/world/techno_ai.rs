@@ -7229,6 +7229,10 @@ mod veterancy_tests;
 #[path = "techno_ai_selfheal_tests.rs"]
 mod selfheal_tests;
 
+#[cfg(test)]
+#[path = "techno_ai_selfheal_oracle_tests.rs"]
+mod selfheal_oracle_tests;
+
 #[path = "bounce_terrain.rs"]
 mod bounce_terrain;
 
