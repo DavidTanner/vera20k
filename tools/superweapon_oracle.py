@@ -15,8 +15,9 @@ send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
 (iron_tint, effect_tint_intensity), src/app/presentation/instances/units.rs
 (curtain_draw_arm), src/app/presentation/curtain_tint_tests.rs
-(drawshp_curtain_arm, building_colour_word, anim_colour_word,
-building_anim_light, blit_pickers, blitters) and
+(drawshp_curtain_arm, draw_curtain_arm, building_colour_word,
+anim_colour_word, building_anim_light, blit_pickers, blitters),
+src/app/presentation/lighting.rs (aircraft_light) and
 src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
 nuke_lighting_read, nuke_launch) and src/sim/superweapon/force_shield_tests.rs
 (force_shield_launch, super_fade) and src/sim/superweapon/lightning_storm_tests.rs
@@ -142,6 +143,14 @@ fixture machinery):
   flash arm, IsIronCurtained 0x41BF40, the airstrike gate and
   ScaleByIronTintPhase 0x70E380 and the airstrike phase 0x70E4B0 run
   natively.
+- draw_curtain_arm: the same rows through TechnoClass::Draw's arm
+  0x706776..0x7067E4 (the voxel draw) for an aircraft and a building.
+- aircraft_light: AircraftClass::Draw_It's intensity 0x4148D1..0x41493E as a
+  slice after the aircraft unit's static initializers (the level step
+  0x889EC8 under both control words): IsActive 0x53A100, the IDIV by two
+  level steps, Level=/IonLevel=, GetCellAt 0x565730 and the cell's signed
+  word, and ExtraAircraftLight= run natively; GetHeight vt+0x1C8 answers
+  the row.
 - building_colour_word: the colour word BuildingClass_DrawBody
   (0x43D386..0x43D544) and BuildingClass::Draw (0x43DC1C..0x43DDF1) compute
   for their blits: the LaserTargetColor= and ForceShieldColor= [ColorAdd]
@@ -351,6 +360,26 @@ STUB_OCCUPANTS = STUBS + 0x1B0
 STUB_ANIM_DELETE = STUBS + 0x1C0
 
 LEVEL_LEPTONS = 104
+# The C++ initializers run from _cinit 0x7CBDAF after _setdefaultprecision
+# (53-bit), before WinMain sets truncation at 0x6BBFC1: the startup word.
+STARTUP_FPCW = 0x027F
+
+
+def invoke_under(emu, entry, *, fpcw=NATIVE_FPCW, ecx=None, edx=None, count=5_000_000,
+                 timeout_us=10_000_000):
+    """`entry` with no stack arguments under `fpcw`."""
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp, u32(RET_MAGIC))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_FPCW, fpcw)
+    for register, value in ((UC_X86_REG_ECX, ecx), (UC_X86_REG_EDX, edx)):
+        if value is not None:
+            uc.reg_write(register, value & 0xFFFFFFFF)
+    run_checked(uc, entry, RET_MAGIC, count=count, timeout_us=timeout_us)
+    if uc.reg_read(UC_X86_REG_ESP) != sp + 4:
+        raise OracleError(f'0x{entry:08X} returned with an unexpected stack')
+    return uc.reg_read(UC_X86_REG_EAX)
 
 
 def i32(value):
@@ -3539,18 +3568,19 @@ ZBUFFER_PTR, ABUFFER_PTR = 0x887644, 0x87E8A4
 def tint_building(emu, *, curtain=(4990, 750), stage=0, tint=(-1, 0), shielded=1,
                   airstrike=None, kind='building', flash=0,
                   coords=(10 * 256 + 128, 12 * 256 + 128, 0)):
-    """curtain_techno's Techno as a building ('building') or a unit: vt+0x160
-    the native IsIronCurtained 0x41BF40, vt+0x464 its class's flash arm
-    (BuildingClass 0x456F80, TechnoClass 0x70D190), vt+0x2C WhatAmI answering
-    6 or 1 and vt+0x48 GetCoords answering `coords`; the flash count, the
-    Force Shield byte IronCurtain writes (+0x1C4), and an AirstrikeClass at
-    +0x294 aimed at it ('self') or at another object ('other')."""
+    """curtain_techno's Techno as a building, a unit or an aircraft (`kind`):
+    vt+0x160 the native IsIronCurtained 0x41BF40, vt+0x464 its class's flash
+    arm (BuildingClass 0x456F80, TechnoClass 0x70D190), vt+0x2C WhatAmI
+    answering the class's id and vt+0x48 GetCoords answering `coords`; the
+    flash count, the Force Shield byte IronCurtain writes (+0x1C4), and an
+    AirstrikeClass at +0x294 aimed at it ('self') or at another object
+    ('other')."""
     this = curtain_techno(emu, stage=stage, tint=tint, curtain=curtain)
     emu.write32(this, CURTAIN_VT)
     emu.write32(CURTAIN_VT + 0x160, 0x41BF40)
     emu.write32(CURTAIN_VT + 0x464, 0x456F80 if kind == 'building' else 0x70D190)
     emu.write32(CURTAIN_VT + 0x2C, STUB_TINT_WHAT)
-    emu.hook(STUB_TINT_WHAT, lambda _e: 6 if kind == 'building' else 1, 0)
+    emu.hook(STUB_TINT_WHAT, lambda _e: WHAT[kind], 0)
     emu.write32(CURTAIN_VT + 0x48, STUB_TINT_COORDS)
     emu.hook(STUB_TINT_COORDS, coords_stub(coords), 4)
     emu.write32(this + TECHNO_FLASH, flash)
@@ -3606,15 +3636,14 @@ def drawshp_curtain_arm_row(*, kind='building', intensity=1000, curtain=(4990, 7
                 out_intensity=i32(uc.reg_read(UC_X86_REG_EBP)))
 
 
-def drawshp_curtain_arm():
-    """For a building and a unit: the curtain's edges, each stage's scale at
+def curtain_arm_rows(row, kinds):
+    """For each class in `kinds`: the curtain's edges, each stage's scale at
     the intensities of a lit, a bright and a dark cell, the flash count's bit
     1 (each class's own arm), and an airstrike aimed at the object or
     elsewhere while the curtain is off and the stage still reads 2 (only a
     building's draw takes it)."""
-    row = drawshp_curtain_arm_row
     rows = []
-    for kind in ('building', 'unit'):
+    for kind in kinds:
         rows += [row(kind=kind, curtain=curtain) for curtain in CURTAIN_EDGES]
         for stage, tint in CURTAIN_STAGE_TINTS:
             rows += [row(kind=kind, stage=stage, tint=tint, intensity=intensity)
@@ -3625,6 +3654,135 @@ def drawshp_curtain_arm():
         rows += [row(kind=kind, curtain=(-1, 0), airstrike=airstrike)
                  for airstrike in ('self', 'other')]
     return rows
+
+
+def drawshp_curtain_arm():
+    """curtain_arm_rows for a building and a unit."""
+    return curtain_arm_rows(drawshp_curtain_arm_row, ('building', 'unit'))
+
+
+def draw_curtain_arm_row(*, kind='aircraft', intensity=1000, curtain=(4990, 750), stage=2,
+                         tint=(4998, 4), flash=0, airstrike=None, frame=5000):
+    """TechnoClass::Draw's intensity arm 0x706776..0x7067E4 as a slice: EBP
+    tint_building's Techno, ECX the draw intensity (arg8, which 0x70676F
+    loads; FootClass::Draw_A_VXL 0x4DAF10 passes on the one AircraftClass::
+    Draw_It computes). The result is EDI, the intensity the voxel draw
+    takes."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    this = tint_building(emu, curtain=curtain, stage=stage, tint=tint, kind=kind, flash=flash,
+                         airstrike=airstrike)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ECX, intensity & 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EBP, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x706776, 0x7067E4, count=10_000)
+    if uc.reg_read(UC_X86_REG_ESP) != sp:
+        raise OracleError('the arm left the stack unbalanced')
+    return dict(kind=kind, intensity=intensity, curtain=list(curtain), stage=stage,
+                tint=list(tint), flash=flash, airstrike=airstrike, frame=frame,
+                out_intensity=i32(uc.reg_read(UC_X86_REG_EDI)))
+
+
+def draw_curtain_arm():
+    """curtain_arm_rows for an aircraft (AircraftClass::Draw_It's voxel) and a
+    building (its voxel turret and barrel, BuildingClass::Draw 0x43E2FF)."""
+    return curtain_arm_rows(draw_curtain_arm_row, ('aircraft', 'building'))
+
+
+# ------------------------------------------------- the aircraft's light
+
+# The aircraft translation unit's CRT initializers in their table's order
+# (0x812404..0x81241C), up to the level step 0x889EC8 its draw divides by:
+# the cell diagonal 0x889E70 and its ratios, the angles, then the step.
+AIRCRAFT_TU_INITIALIZERS = (0x413AC0, 0x413AF0, 0x413B10, 0x413B30, 0x413B50, 0x413B70,
+                            0x413B90)
+AIRCRAFT_LEVEL_HEIGHT = 0x889EC8
+AIRCRAFT_LIGHT = BASE + 0x100000
+AIRCRAFT_LIGHT_VT = AIRCRAFT_LIGHT + 0x1000
+AIRCRAFT_LIGHT_CELL = AIRCRAFT_LIGHT + 0x2000
+AIRCRAFT_LIGHT_CELLS = AIRCRAFT_LIGHT + 0x10000
+AIRCRAFT_LIGHT_CAPACITY = 0x10000
+STUB_AIRCRAFT_HEIGHT = STUBS + 0xFA0
+# MapClass's cell pointers (+0x13C) and their count (+0x140), which GetCellAt
+# 0x565730 indexes by (Y / 256) * 512 + X / 256.
+MAP_CELL_ITEMS, MAP_CELL_CAPACITY = 0x13C, 0x140
+# CellClass's intensity word, ScenarioClass's Level= and IonLevel= (Set_Defaults
+# 0x683901 and its Ion block) and RulesClass's ExtraAircraftLight=.
+CELL_INTENSITY = 0x10A
+SCENARIO_LEVEL, SCENARIO_ION_LEVEL = 0x3544, 0x355C
+RULES_EXTRA_AIRCRAFT_LIGHT = 0x17DC
+
+
+def aircraft_emu(fpcw):
+    """An emulator after the aircraft unit's initializers under `fpcw`."""
+    emu = Emu()
+    for entry in AIRCRAFT_TU_INITIALIZERS:
+        invoke_under(emu, entry, fpcw=fpcw)
+    return emu
+
+
+def aircraft_light_row(*, height=0, level=8, ion_level=0, storm=False, word=1000, extra=200,
+                       coord=(40 * 256 + 128, 50 * 256 + 128, 900)):
+    """AircraftClass::Draw_It's intensity 0x4148D1..0x41493E as a slice, after
+    the unit's initializers under the startup word: EBP a fixture aircraft
+    whose GetHeight vt+0x1C8 answers `height` and [ESP+0x28] the coordinate
+    the draw built from its Location at 0x41468F. The storm byte IsActive
+    0x53A100 reads, Scenario's Level= and IonLevel=, Rules'
+    ExtraAircraftLight= and the intensity word of the one cell in Map's
+    table are the row's; GetCellAt 0x565730 runs natively. The result is
+    EBX, the intensity the draw hands FootClass::Draw_A_VXL."""
+    emu = aircraft_emu(STARTUP_FPCW)
+    this = AIRCRAFT_LIGHT
+    emu.write32(this, AIRCRAFT_LIGHT_VT)
+    emu.write32(AIRCRAFT_LIGHT_VT + 0x1C8, STUB_AIRCRAFT_HEIGHT)
+    emu.hook(STUB_AIRCRAFT_HEIGHT, lambda _e: height, 0)
+    write8(emu, STORM_ACTIVE, int(storm))
+    emu.write32(SCENARIO + SCENARIO_LEVEL, level)
+    emu.write32(SCENARIO + SCENARIO_ION_LEVEL, ion_level)
+    emu.write32(RULES + RULES_EXTRA_AIRCRAFT_LIGHT, extra)
+    emu.write32(MAP + MAP_CELL_ITEMS, AIRCRAFT_LIGHT_CELLS)
+    emu.write32(MAP + MAP_CELL_CAPACITY, AIRCRAFT_LIGHT_CAPACITY)
+    x, y, _ = coord
+    emu.write32(AIRCRAFT_LIGHT_CELLS + 4 * ((y // 256) * 512 + x // 256), AIRCRAFT_LIGHT_CELL)
+    emu.uc.mem_write(AIRCRAFT_LIGHT_CELL + CELL_INTENSITY, struct.pack('<h', word))
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp + 0x28, struct.pack('<iii', *coord))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x4148D1, 0x41493E, count=10_000)
+    if uc.reg_read(UC_X86_REG_ESP) != sp:
+        raise OracleError('the light block left the stack unbalanced')
+    return dict(height=height, level=level, ion_level=ion_level, storm=storm, word=word,
+                extra=extra, coord=list(coord), light=i32(uc.reg_read(UC_X86_REG_EBX)))
+
+
+def aircraft_light():
+    """The level step under the startup and the process control words, then
+    the intensity over heights about each two-level step and below the
+    ground, Level= and IonLevel= with and without a raging storm (a negative
+    Level too), the cell's word at the signed 16-bit edges,
+    ExtraAircraftLight= values (retail .2 is 200) and sums and products that
+    wrap."""
+    row = aircraft_light_row
+    rows = [row(height=height, level=32)
+            for height in (0, 1, 207, 208, 209, 415, 416, 1500, 2000, -1, -207, -208, -209,
+                           -416)]
+    for storm in (False, True):
+        for height in (0, 416, 1500):
+            rows.append(row(height=height, level=32, ion_level=20, storm=storm))
+            rows.append(row(height=height, level=8, ion_level=-12, storm=storm))
+    rows += [row(height=1500, word=word) for word in (0, 2000, -1, 0x7FFF, -0x8000)]
+    rows += [row(height=1500, extra=extra) for extra in (0, -300, 0x7FFFFFFF)]
+    rows.append(row(height=0x40000000, level=1000))
+    rows.append(row(height=-0x80000000, level=3))
+    return dict(level_height={f'0x{fpcw:04X}': aircraft_emu(fpcw).read_i32(AIRCRAFT_LEVEL_HEIGHT)
+                              for fpcw in (STARTUP_FPCW, NATIVE_FPCW)},
+                rows=rows)
 
 
 def building_colour_word_row(*, curtain=(4990, 750), shielded=1, force_color=6, laser_color=4,
@@ -7082,9 +7240,6 @@ ION_RIPPLE_BUILT = 0xAA014C
 ION_RIPPLE_FRAMES = 80
 ION_RIPPLE_SIZE = (512, 256)
 ION_STEP_INITIALIZERS = (0x53CA30, 0x53CA50)
-# The C++ initializers run from _cinit 0x7CBDAF after _setdefaultprecision
-# (53-bit), before WinMain sets truncation at 0x6BBFC1: the startup word.
-ION_STEP_FPCW = 0x027F
 BSURFACE_VT = 0x7E2070
 DETAIL_LEVEL = 0xA8EB78
 TEMP_SURFACE = 0x887314
@@ -7125,23 +7280,6 @@ class IonEmu(Emu):
         return address
 
 
-def ion_invoke(emu, entry, *, fpcw=NATIVE_FPCW, ecx=None, edx=None, count=5_000_000,
-               timeout_us=10_000_000):
-    """`entry` with no stack arguments under `fpcw`."""
-    uc = emu.uc
-    sp = STACK_BASE + STACK_SIZE - 0x1000
-    uc.mem_write(sp, u32(RET_MAGIC))
-    uc.reg_write(UC_X86_REG_ESP, sp)
-    uc.reg_write(UC_X86_REG_FPCW, fpcw)
-    for register, value in ((UC_X86_REG_ECX, ecx), (UC_X86_REG_EDX, edx)):
-        if value is not None:
-            uc.reg_write(register, value & 0xFFFFFFFF)
-    run_checked(uc, entry, RET_MAGIC, count=count, timeout_us=timeout_us)
-    if uc.reg_read(UC_X86_REG_ESP) != sp + 4:
-        raise OracleError(f'0x{entry:08X} returned with an unexpected stack')
-    return uc.reg_read(UC_X86_REG_EAX)
-
-
 def fnv1a64_bytes(data):
     digest = 0xCBF29CE484222325
     for byte in data:
@@ -7153,7 +7291,7 @@ def ripple_step_bits(fpcw):
     """The ring step 0xA9FF80 and its copy 0xA9FFA8 after both initializers."""
     emu = Emu()
     for entry in ION_STEP_INITIALIZERS:
-        ion_invoke(emu, entry, fpcw=fpcw)
+        invoke_under(emu, entry, fpcw=fpcw)
     return [f'0x{struct.unpack("<Q", emu.uc.mem_read(address, 8))[0]:016x}'
             for address in (ION_RIPPLE_STEP, ION_RIPPLE_STEP + 0x28)]
 
@@ -7167,9 +7305,9 @@ def ion_blast_ripple():
     (x, y in -9..9)."""
     emu = IonEmu()
     for entry in ION_STEP_INITIALIZERS:
-        ion_invoke(emu, entry, fpcw=ION_STEP_FPCW)
+        invoke_under(emu, entry, fpcw=STARTUP_FPCW)
     # 116 million instructions under the observing hook.
-    ion_invoke(emu, 0x53D330, count=400_000_000, timeout_us=1_800_000_000)
+    invoke_under(emu, 0x53D330, count=400_000_000, timeout_us=1_800_000_000)
     if read8(emu, ION_RIPPLE_BUILT) != 1:
         raise OracleError('the ripple latch is not set')
     width, height = ION_RIPPLE_SIZE
@@ -7190,7 +7328,7 @@ def ion_blast_ripple():
     out = emu.alloc(8)
     points = []
     for index in range(1, 289):
-        ion_invoke(emu, 0x53D8E0, ecx=out, edx=index)
+        invoke_under(emu, 0x53D8E0, ecx=out, edx=index)
         points.append([index, *struct.unpack('<ii', emu.uc.mem_read(out, 8))])
     indexes = []
     for x in range(-9, 10):
@@ -7198,7 +7336,7 @@ def ion_blast_ripple():
             emu.invoke(0x53D960, args=[x & 0xFFFFFFFF, y & 0xFFFFFFFF])
             indexes.append([x, y, i32(emu.uc.reg_read(UC_X86_REG_EAX))])
     return dict(step_bits={f'0x{fpcw:04X}': ripple_step_bits(fpcw)
-                           for fpcw in (ION_STEP_FPCW, NATIVE_FPCW)},
+                           for fpcw in (STARTUP_FPCW, NATIVE_FPCW)},
                 generator_fpcw=f'0x{NATIVE_FPCW:04X}', frames=frames,
                 spiral_points=points, spiral_indexes=indexes)
 
@@ -7206,7 +7344,7 @@ def ion_blast_ripple():
 def ion_vector(emu, blasts):
     """The IonBlast vector after its initializer, holding fixture blasts
     (X, Y, Z, frame, flag); not allocated, so nothing frees its items."""
-    ion_invoke(emu, ION_VECTOR_INIT)
+    invoke_under(emu, ION_VECTOR_INIT)
     items = emu.alloc(4 * max(1, len(blasts)))
     pointers = []
     for index, (x, y, z, frame, flag) in enumerate(blasts):
@@ -7230,7 +7368,7 @@ def ion_blast_update():
     for frames in ([0], [78], [79], [80], [0, 5, 78, 79, 80, 3], [79, 79, 1]):
         emu = IonEmu()
         pointers = ion_vector(emu, [(0, 0, 0, frame, 1) for frame in frames])
-        ion_invoke(emu, 0x53D310)
+        invoke_under(emu, 0x53D310)
         items = emu.read32(ION_ITEMS)
         left = [emu.read32(items + 4 * i) for i in range(emu.read_i32(ION_COUNT))]
         rows.append(dict(frames=frames,
@@ -7309,7 +7447,7 @@ def ion_draw_row(*, name, blasts, view_origin, z_origin, detail=2):
         emu.invoke(0x6D2140, ecx=tactical, args=[blast, out])
         points.append([*struct.unpack('<ii', emu.uc.mem_read(out, 8)),
                        emu.uc.reg_read(UC_X86_REG_EAX) & 0xFF])
-    ion_invoke(emu, 0x53D850, count=50_000_000, timeout_us=300_000_000)
+    invoke_under(emu, 0x53D850, count=50_000_000, timeout_us=300_000_000)
     after = struct.unpack(f'<{len(words)}H', emu.uc.mem_read(dest_buffer, 2 * len(words)))
     changed = [[i % width, i // width, old, new]
                for i, (old, new) in enumerate(zip(words, after)) if old != new]
@@ -7356,7 +7494,7 @@ def ion_blast_draw():
     for z, frame in ((1500, 20), (300, 27)):
         emu = Emu()
         emu.uc.mem_write(ADJUST_FOR_Z_SCALE, struct.pack('<Q', STANDARD_Z_MULTIPLIER_BITS))
-        lift = i32(ion_invoke(emu, 0x6D20E0, ecx=z))
+        lift = i32(invoke_under(emu, 0x6D20E0, ecx=z))
         rows.append(row(name=f'raised_{z}', blasts=[(*ion_blast_coord((96, 60 + lift), z), frame)],
                         view_origin=(-96, 2940), z_origin=(origin - lift) & 0xFFFF))
     return rows
@@ -7389,6 +7527,8 @@ def generate():
             'effect_tint_intensity': effect_tint_intensity(),
             'curtain_draw_arm': curtain_draw_arm(),
             'drawshp_curtain_arm': drawshp_curtain_arm(),
+            'draw_curtain_arm': draw_curtain_arm(),
+            'aircraft_light': aircraft_light(),
             'building_colour_word': building_colour_word(),
             'anim_colour_word': anim_colour_word(),
             'building_anim_light': building_anim_light(),
@@ -7628,8 +7768,9 @@ if __name__ == '__main__':
                        'format 0x8205D0 is the row\'s (retail RGB565 is 2); the high half '
                        'of the colour word holds stale ECX bits from the fixture Rules '
                        'address; nothing is stubbed',
-                       'drawshp_curtain_arm, building_colour_word, anim_colour_word, '
-                       'building_anim_light: the Techno is curtain_techno\'s, its vtable '
+                       'drawshp_curtain_arm, draw_curtain_arm, building_colour_word, '
+                       'anim_colour_word, building_anim_light: the Techno is '
+                       'curtain_techno\'s, its vtable '
                        'holding the native IsIronCurtained 0x41BF40 and flash arms '
                        '(0x456F80, 0x70D190); WhatAmI vt+0x2C, GetCoords vt+0x48 and GetCell '
                        'vt+0x1BC answer the row; MapClass::operator[] 0x5657A0 and by '
@@ -7637,6 +7778,13 @@ if __name__ == '__main__':
                        'centre shrouded) answers the row; the slices start with the '
                        'registers their blocks read (ESI, EBP or EAX as named); above the '
                        'low 16 bits the colour words hold stale register bits',
+                       'aircraft_light: the slice starts with EBP a fixture aircraft '
+                       'whose GetHeight vt+0x1C8 answers the row and [ESP+0x28] the '
+                       'coordinate; the storm byte 0xA9FAB4, Scenario Level= (+0x3544) '
+                       'and IonLevel= (+0x355C), Rules ExtraAircraftLight= (+0x17DC) and '
+                       'one cell in Map\'s table (+0x13C, +0x140) with the row\'s word '
+                       '(+0x10A) are fixtures; the level step 0x889EC8 is what the '
+                       'aircraft unit\'s initializers 0x413AC0..0x413B90 leave',
                        'blit_pickers: a fixture Convert whose fields hold their offsets',
                        'blitters: the blitter objects carry the real vtables the 16-bit '
                        'Convert constructor 0x48E740 stores in each field, with fixture '
@@ -7822,6 +7970,9 @@ if __name__ == '__main__':
                       'TechnoClass::GetEffectTintIntensity': 0x70E360,
                       'UnitClass::DrawVoxelBody_curtain_block': 0x73BF7B,
                       'TechnoClass::DrawSHP_curtain_arm': 0x70631F,
+                      'TechnoClass::Draw_curtain_arm': 0x706776,
+                      'AircraftClass::Draw_It_light': 0x4148D1,
+                      'AircraftClass level step initializer': 0x413B90,
                       'BuildingClass_DrawBody_colour_word': 0x43D386,
                       'BuildingClass::Draw_colour_word': 0x43DC1C,
                       'AnimClass::DrawIt_colour_word': 0x4233EE,

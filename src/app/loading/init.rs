@@ -1241,7 +1241,7 @@ mod map_wall_owner_candidate_tests {
             PaletteLight::cell(lights.grid(), (4, 5), false),
             PaletteLight::new([200, 900, 400], rows, normal_cell.common_scalar, false)
         );
-        let ion_tint = lights.grid().unit_tint_at((4, 5), 0);
+        let ion_tint = lights.grid().body_tint_at((4, 5), 0);
         sim.session.lighting.select(ScenarioLightingProfile::Normal);
         sim.publish_global_lighting();
         apply_lighting_events(&mut lights, &terrain, &mut sim);
@@ -1253,7 +1253,7 @@ mod map_wall_owner_candidate_tests {
             PaletteLight::cell(lights.grid(), (4, 5), false),
             PaletteLight::new(normal_cell.rgb_key, rows, restored.common_scalar, false)
         );
-        assert_ne!(lights.grid().unit_tint_at((4, 5), 0), ion_tint);
+        assert_ne!(lights.grid().body_tint_at((4, 5), 0), ion_tint);
     }
 
     fn fatal_lamp_stage(sim: &mut Simulation, rules: &RuleSet, id: u64) {
@@ -1466,8 +1466,8 @@ mod map_wall_owner_candidate_tests {
             "both centered sources accumulate over the selected scenario profile"
         );
         assert_ne!(
-            composed.unit_tint_at((4, 5), 0),
-            base.unit_tint_at((4, 5), 0),
+            composed.body_tint_at((4, 5), 0),
+            base.body_tint_at((4, 5), 0),
             "the world-instance unit tint consumer observes the composed grid"
         );
     }

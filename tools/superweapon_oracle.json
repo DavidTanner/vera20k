@@ -25858,6 +25858,518 @@
       "team": false
     }
   ],
+  "aircraft_light": {
+    "level_height": {
+      "0x027F": 104,
+      "0x0E7F": 104
+    },
+    "rows": [
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 207,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 208,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 209,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 415,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1264,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1424,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 2000,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1488,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -1,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -207,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -208,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1168,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -209,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1168,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -416,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1136,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1264,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1216,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1424,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1256,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1200,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1200,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1240,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1176,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1340,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1116,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 256,
+        "storm": false,
+        "word": 0
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 2256,
+        "storm": false,
+        "word": 2000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 255,
+        "storm": false,
+        "word": -1
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 33023,
+        "storm": false,
+        "word": 32767
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": -32512,
+        "storm": false,
+        "word": -32768
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 0,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 1056,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": -300,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 756,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 2147483647,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": -2147482593,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1073741824,
+        "ion_level": 0,
+        "level": 1000,
+        "light": 867253904,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -2147483648,
+        "ion_level": 0,
+        "level": 3,
+        "light": -30972120,
+        "storm": false,
+        "word": 1000
+      }
+    ]
+  },
   "ambient_step": [
     {
       "cell_redraw": 1,
@@ -42754,6 +43266,1572 @@
       "key": "DominatorAmbientChangeRate",
       "offset": 13716,
       "stored_default": 1
+    }
+  ],
+  "draw_curtain_arm": [
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        11
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        10
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        7
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        5001,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 300,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1332,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1998,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 399,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 600,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 558,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 837,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 167,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 347,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 521,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 104,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 308,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 462,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 92,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 199,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 298,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 59,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 496,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 744,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 148,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 600,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 450,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 300,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "self",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "other",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        11
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        10
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        7
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        5001,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 300,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1332,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1998,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 399,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 600,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 558,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 837,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 167,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 347,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 521,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 104,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 308,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 462,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 92,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 199,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 298,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 59,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 496,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 744,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 148,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 600,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 450,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 300,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "self",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "other",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
     }
   ],
   "drawshp_curtain_arm": [

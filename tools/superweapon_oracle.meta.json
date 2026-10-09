@@ -41,7 +41,8 @@
     "iron_tint: the Techno is a fixture holding its vtable (slot +0x160 the native IsIronCurtained), both timers and the stage; nothing is stubbed",
     "effect_tint_intensity: one emulator for every row (the function only reads); the fixture Techno holds the stage and tint timer, its airstrike tint at stage 0 with both timers stopped; nothing is stubbed",
     "curtain_draw_arm: the slice starts with EBP the unit (vtable slots +0x464 and +0x160 the native 0x70D190 and 0x41BF40) and [ESP+0x1E0]/[ESP+0x1E4] the intensity and colour word; Rules hold the retail [ColorAdd] and the row's indexes; the pixel format 0x8205D0 is the row's (retail RGB565 is 2); the high half of the colour word holds stale ECX bits from the fixture Rules address; nothing is stubbed",
-    "drawshp_curtain_arm, building_colour_word, anim_colour_word, building_anim_light: the Techno is curtain_techno's, its vtable holding the native IsIronCurtained 0x41BF40 and flash arms (0x456F80, 0x70D190); WhatAmI vt+0x2C, GetCoords vt+0x48 and GetCell vt+0x1BC answer the row; MapClass::operator[] 0x5657A0 and by coordinate 0x565730 answer one fixture cell; 0x487950 (the cell's centre shrouded) answers the row; the slices start with the registers their blocks read (ESI, EBP or EAX as named); above the low 16 bits the colour words hold stale register bits",
+    "drawshp_curtain_arm, draw_curtain_arm, building_colour_word, anim_colour_word, building_anim_light: the Techno is curtain_techno's, its vtable holding the native IsIronCurtained 0x41BF40 and flash arms (0x456F80, 0x70D190); WhatAmI vt+0x2C, GetCoords vt+0x48 and GetCell vt+0x1BC answer the row; MapClass::operator[] 0x5657A0 and by coordinate 0x565730 answer one fixture cell; 0x487950 (the cell's centre shrouded) answers the row; the slices start with the registers their blocks read (ESI, EBP or EAX as named); above the low 16 bits the colour words hold stale register bits",
+    "aircraft_light: the slice starts with EBP a fixture aircraft whose GetHeight vt+0x1C8 answers the row and [ESP+0x28] the coordinate; the storm byte 0xA9FAB4, Scenario Level= (+0x3544) and IonLevel= (+0x355C), Rules ExtraAircraftLight= (+0x17DC) and one cell in Map's table (+0x13C, +0x140) with the row's word (+0x10A) are fixtures; the level step 0x889EC8 is what the aircraft unit's initializers 0x413AC0..0x413B90 leave",
     "blit_pickers: a fixture Convert whose fields hold their offsets",
     "blitters: the blitter objects carry the real vtables the 16-bit Convert constructor 0x48E740 stores in each field, with fixture conversion and row tables; the ZBuffer (0x887644) and ABuffer (0x87E8A4) instances wrap far past the lines",
     "nuke_impact: the slice starts with EBP the bullet (vtable slots +0x1C8/+0x1CC/+0x1B8 the native GetHeight, SetHeight and GetMapCoords; Mark +0x124 and UnInit +0xF8 recorded stubs), [ESP+0x18] the impact flag and [ESP+0x24] the committed candidate; the floor height 0x578080 answers the row's ground; AnimTypeClass::Array holds the row's types; ScreenNukeFlash 0x53AB70, CreateRadarEvent 0x65FA70, the anim constructor 0x421EA0 and the handoff 0x468D80 are recorded stubs; the holder list 0xB0F5B8 has room for four; the deck height 0xAC13BC holds 416",
@@ -104,6 +105,9 @@
     "TechnoClass::GetEffectTintIntensity": "0x0070E360",
     "UnitClass::DrawVoxelBody_curtain_block": "0x0073BF7B",
     "TechnoClass::DrawSHP_curtain_arm": "0x0070631F",
+    "TechnoClass::Draw_curtain_arm": "0x00706776",
+    "AircraftClass::Draw_It_light": "0x004148D1",
+    "AircraftClass level step initializer": "0x00413B90",
     "BuildingClass_DrawBody_colour_word": "0x0043D386",
     "BuildingClass::Draw_colour_word": "0x0043DC1C",
     "AnimClass::DrawIt_colour_word": "0x004233EE",
@@ -148,8 +152,8 @@
     "IonBlastClass::DrawAll": "0x0053D850"
   },
   "source_normalized_lf_sha256": {
-    "superweapon_oracle": "9a64a5295bfe7c04cbd3866db546d1964be9e8045e703974d9fff2d7d6b132a7",
+    "superweapon_oracle": "1d070fd5c37ecaf2f6d86ebc9a03df77fd001fd24e9d351eacb0ce076065dab0",
     "ai_base_building_oracle": "0579013a4d58a3d89f9ab427fb6396da7b917c84c55ad016aa397baec780d623"
   },
-  "payload_sha256": "a9dfb89ad2661b1d98ecbf8d20fa1db6a4e6fe1bce998f58a9ede060a780fc0e"
+  "payload_sha256": "c9d0ec9ddcdb21ca2b59badee8198b662ef3e75d28fe11e8f343dfaca2b2950e"
 }
