@@ -13,6 +13,7 @@ pub mod attack_mission;
 pub mod drop_payload;
 pub(crate) mod enter_mission;
 pub(crate) mod guard_mission;
+mod hunt_mission;
 mod idle_entry;
 pub(crate) use idle_entry::enter_idle_mode_for;
 #[cfg(test)]
@@ -30,6 +31,8 @@ pub(crate) mod spyplane_mission;
 mod dock_cycle_tests;
 #[cfg(test)]
 mod release_tests;
+#[cfg(test)]
+mod team_strike_tests;
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
@@ -79,9 +82,10 @@ pub(crate) fn attack_state(entity: &GameEntity) -> Option<u8> {
 /// The handlers: Mission_Move (`0x004166E0`, [`move_mission`]),
 /// Mission_Attack (`0x00417FE0`, [`attack_mission`]), Mission_Guard for
 /// Guard and Sticky and Mission_AreaGuard ([`guard_mission`]), Mission_Enter
-/// ([`enter_mission`]), Mission_Retreat (`0x00415A50`), Mission_Unload
-/// (`0x004151E0`), the paradrop plane's two (`0x004158E0`, `0x00415960`)
-/// and the Spy Plane's two (vt+0x26C, vt+0x270).
+/// ([`enter_mission`]), Mission_Hunt (`0x00414A80`, [`hunt_mission`]),
+/// Mission_Retreat (`0x00415A50`), Mission_Unload (`0x004151E0`), the
+/// paradrop plane's two (`0x004158E0`, `0x00415960`) and the Spy Plane's two
+/// (vt+0x26C, vt+0x270).
 ///
 /// Returns whether the combat phase must run a Mission_Attack strike visit
 /// (states 4..9) this frame. RESIDUAL: that visit runs in VERA's combat
@@ -94,13 +98,12 @@ pub(crate) fn attack_state(entity: &GameEntity) -> Option<u8> {
 /// Wait, and the Sleep slot QMove, an AttackMove order's mission 29, NONE
 /// and any id past 0x1F reach (`0x005B30BB`, `0x005B34C4`).
 ///
-/// RESIDUAL (#1111): Hunt (`AircraftClass::Mission_Hunt @ 0x00414A80`, which
-/// the idle mode picks for a `+0x3D4` aircraft with Ammo outside a team),
-/// Patrol (`0x00417300`) and the Foot handlers of Capture and Sabotage
-/// (`0x004D4B20`), Eaten (`0x004D4CB0`) and Rescue (`0x004DDF90`) are not
-/// run: the timer stays due and nothing happens. Trigger: a team script
-/// giving an aircraft Hunt or Patrol. Effect: the aircraft keeps flying to
-/// its destination and then hovers there.
+/// RESIDUAL: Patrol (`0x00417300`) and the Foot handlers of Capture
+/// and Sabotage (`0x004D4B20`), Eaten (`0x004D4CB0`) and Rescue
+/// (`0x004DDF90`) are not run: the timer stays due and nothing happens.
+/// Trigger: a map or trigger giving an aircraft one of those missions; no
+/// retail AI script does. Effect: the aircraft keeps flying to its
+/// destination and then hovers there.
 pub(crate) fn dispatch_mission(
     sim: &mut Simulation,
     id: u64,
@@ -138,6 +141,7 @@ pub(crate) fn dispatch_mission(
         }
         Some(MissionType::AreaGuard) => sim.aircraft_mission_area_guard(id, rules, ctx),
         Some(MissionType::Enter) => sim.aircraft_mission_enter(id, rules, registry),
+        Some(MissionType::Hunt) => sim.aircraft_mission_hunt(id, rules, ctx),
         Some(MissionType::Retreat) => retreat_mission::retreat(sim, id, rules),
         Some(MissionType::Unload) => {
             crate::sim::transport_unload::mission_unload(sim, id, rules, registry)
@@ -147,8 +151,7 @@ pub(crate) fn dispatch_mission(
         Some(MissionType::SpyplaneApproach) => spyplane_mission::approach(sim, id, rules),
         Some(MissionType::SpyplaneOverfly) => spyplane_mission::overfly(sim, id, rules),
         Some(
-            MissionType::Hunt
-            | MissionType::Patrol
+            MissionType::Patrol
             | MissionType::Capture
             | MissionType::Sabotage
             | MissionType::Eaten

@@ -1334,7 +1334,9 @@ fn a_landed_jumpjet_dies_where_it_stands() {
 
 /// Retail Dustbowl runtime, end to end through production: a Harrier ordered
 /// at three flak tracks takes off, their `FlakTrackAAGun` volleys shoot it
-/// down, and it crashes. `VoiceCrashing=`/`CrashingSound=` play on the edge,
+/// down, and it crashes. It has an Airforce Command to fly home to: after
+/// its strike, idle mode sends an AirportBound aircraft to a dock and crashes
+/// one without (`0x004176F0`). `VoiceCrashing=`/`CrashingSound=` play on the edge,
 /// SGRYSMK1 smoke trails the spinning fall, whose frames are the original
 /// executable's to the impact, and there its current weapon detonates as the
 /// death weapon and `ImpactLandSound=` plays before it is UnInit. Ignored:
@@ -1402,6 +1404,21 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
                 .into_iter()
                 .map(|(fx, fy)| sim.spawn_object("HTK", "Russians", fx, fy, 192, &resources.rules))
                 .collect::<Option<Vec<_>>>()?;
+            let airfield = resources.rules.object("GAAIRC")?;
+            let owner = sim.interner.intern("Americans");
+            let site = (x.checked_sub(12)?..=x - 6)
+                .flat_map(|ax| (y - 3..=y + 3).map(move |ay| (ax, ay)))
+                .find(|&(ax, ay)| {
+                    crate::sim::build_site::can_place_building_at(
+                        sim,
+                        &resources.rules,
+                        None,
+                        airfield,
+                        (ax as i16, ay as i16),
+                        Some(owner),
+                    )
+                })?;
+            sim.spawn_object("GAAIRC", "Americans", site.0, site.1, 0, &resources.rules)?;
             Some((harrier, flak))
         })
         .expect("open level ground for the fight");

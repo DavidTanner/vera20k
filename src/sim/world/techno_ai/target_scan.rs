@@ -762,20 +762,21 @@ impl Simulation {
     }
 }
 
-/// A team leader's `Greatest_Threat` for script actions 0 and 57
-/// (`0x006ED15E`, `0x006F0253`): its `+0x3C4` override with the quarry's
-/// mask, directly.
-pub(crate) fn team_leader_greatest_threat(
+/// An object's `Greatest_Threat` through its `+0x3C4` override, called
+/// directly with the caller's literal mask around the object's own Location:
+/// a team leader's for script actions 0 and 57 (`0x006ED15E`, `0x006F0253`),
+/// and an aircraft's own for Mission_Hunt (`0x00414B24`, `0x00414B64`).
+pub(crate) fn direct_greatest_threat(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
-    leader: u64,
+    scanner: u64,
     mask: ScanMission,
 ) -> Option<u64> {
     sim.greatest_threat_represented(
         rules,
         overlay_registry,
-        leader,
+        scanner,
         mask,
         None,
         crate::sim::combat::combat_targeting::greatest_threat_for_entity,

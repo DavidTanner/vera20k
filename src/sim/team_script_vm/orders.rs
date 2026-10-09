@@ -5,19 +5,6 @@
 //! `Assign_Target` (`vt+0x3C8`), `Set_Destination` (`vt+0x480`),
 //! `Enter_Idle_Mode` (`vt+0x484`, [`crate::sim::world::enter_idle_mode`])
 //! and `Set_ArchiveTarget` (`0x0070C610`).
-//!
-//! RESIDUALS:
-//! - `Set_Destination` for an aircraft (`0x0041AA80`) is not given. Unit
-//!   callers, including Jumpjet, use the shared class setter; Infantry uses
-//!   its class setter and retains that owner's Jumpjet limitations.
-//!   Trigger: an aircraft member in a team ordered to move or to
-//!   join up. Effect: it stays where it is and never joins, so a team of
-//!   them never finishes action 53 or 54 (`Coordinate_Move`) and passes
-//!   action 0 without attacking.
-//!   Frequency: the previously counted 24 retail AIMD teams mixed Aircraft
-//!   and now-supported Unit members, so that count no longer bounds this gap.
-//!   Downstream: a stuck aircraft team keeps its members and its `Max=`
-//!   slot.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
@@ -85,9 +72,9 @@ impl Simulation {
         }
     }
 
-    /// `vt+0x480` `Set_Destination(target, 1)`: Infantry `0x0051AA40`, Unit
-    /// `0x00741970` (see the module residuals for the receivers and targets
-    /// without a port).
+    /// `vt+0x480` `Set_Destination(target, 1)`: Infantry `0x0051AA40` (with
+    /// that owner's Jumpjet limitations), Unit `0x00741970` (Jumpjet
+    /// included), Aircraft `0x0041AA80`.
     pub(super) fn team_member_set_destination(
         &mut self,
         id: u64,
@@ -119,6 +106,9 @@ impl Simulation {
             }
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
                 self.set_unit_destination(id, requested, rules, true);
+            }
+            EntityCategory::Aircraft => {
+                self.assign_aircraft_destination(id, Some(requested), rules);
             }
             _ => {}
         }
