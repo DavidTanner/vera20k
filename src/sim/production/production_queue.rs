@@ -15,15 +15,28 @@ use super::production_spawn::{
     ProductionDeliveryKind, ProductionSpawnSelection, mark_war_factory_spawn_contact,
     unlimbo_held_naval_unit,
 };
-use super::production_tech::{owner_matches_build_identity, production_category_for_object};
+use super::production_tech::production_category_for_object;
 use super::production_types::*;
 
+/// `owner`'s Available_Money, by house name; 0 for a house that does not
+/// exist.
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
     sim.interner
         .get(owner)
-        .and_then(|id| sim.houses.get(&id))
-        .map(|h| h.economy.credits)
-        .unwrap_or(STARTING_CREDITS)
+        .map_or(0, |id| crate::sim::credit_income::available_money(sim, id))
+}
+
+/// `owner`'s house, created as a human house holding [`STARTING_CREDITS`]
+/// when the test never made one.
+#[cfg(test)]
+pub(in crate::sim) fn house_for_test<'a>(
+    sim: &'a mut Simulation,
+    owner: &str,
+) -> &'a mut crate::sim::house_state::HouseState {
+    let key = sim.interner.intern(owner);
+    sim.houses.entry(key).or_insert_with(|| {
+        crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10)
+    })
 }
 
 pub fn power_balance_for_owner(sim: &Simulation, _rules: &RuleSet, owner: &str) -> (i32, i32) {
@@ -50,29 +63,7 @@ pub fn theoretical_power_for_owner(sim: &Simulation, owner: &str) -> i32 {
         .unwrap_or(0)
 }
 
-pub(in crate::sim) fn credits_entry_for_owner<'a>(
-    sim: &'a mut Simulation,
-    owner: &str,
-) -> &'a mut i32 {
-    let key = sim.interner.intern(owner);
-    // Ensure house entry exists (auto-create with defaults if missing).
-    // is_human defaults to true: in real games the app loading path seeds every house
-    // with its actual flag, so the only callers that hit this fallback are
-    // tests / edge cases that never declared a player. Defaulting to human
-    // keeps those paths from accidentally activating AI-only behavior
-    // (e.g., AIVirtualPurifiers credit bonus in the deposit path).
-    if !sim.houses.contains_key(&key) {
-        sim.houses.insert(
-            key,
-            crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10),
-        );
-    }
-    &mut sim.houses.get_mut(&key).unwrap().economy.credits
-}
-
-/// Build a production list across supported sidebar categories for an owner.
-///
-/// In RA2, only items the player has unlocked via the tech tree are shown
+/// The options the player's sidebar shows for `owner`, by category
 /// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
     let options: Vec<BuildOption> =
@@ -84,13 +75,9 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         let mut reason_counts: BTreeMap<&str, usize> = BTreeMap::new();
         for opt in &options {
             let key = match &opt.reason {
-                Some(BuildDisabledReason::UnbuildableTechLevel) => "UnbuildableTechLevel",
-                Some(BuildDisabledReason::WrongOwner) => "WrongOwner",
-                Some(BuildDisabledReason::WrongHouse) => "WrongHouse",
-                Some(BuildDisabledReason::ForbiddenHouse) => "ForbiddenHouse",
-                Some(BuildDisabledReason::RequiresStolenTech) => "RequiresStolenTech",
-                Some(BuildDisabledReason::MissingPrerequisite(_)) => "MissingPrerequisite",
                 Some(BuildDisabledReason::NoFactory) => "NoFactory",
+                Some(BuildDisabledReason::CannotBuild) => "CannotBuild",
+                Some(BuildDisabledReason::NoReadyFactory) => "NoReadyFactory",
                 Some(BuildDisabledReason::AtBuildLimit) => "AtBuildLimit",
                 None => "Enabled",
             };
@@ -128,92 +115,10 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         }
     }
 
-    let visible: Vec<BuildOption> = options
+    options
         .into_iter()
         .filter(BuildOption::visible_in_sidebar)
-        .collect();
-    dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner)
-}
-
-fn dedupe_visible_build_options(
-    options: Vec<BuildOption>,
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    interner: &crate::sim::intern::StringInterner,
-) -> Vec<BuildOption> {
-    let mut deduped: Vec<BuildOption> = Vec::new();
-    let mut seen: BTreeMap<(ProductionCategory, String), usize> = BTreeMap::new();
-
-    for option in options {
-        let Some(key) = build_option_sidebar_key(rules, &option, interner) else {
-            deduped.push(option);
-            continue;
-        };
-
-        let seen_key = (option.queue_category, key);
-        if let Some(existing_idx) = seen.get(&seen_key).copied() {
-            let existing = &deduped[existing_idx];
-            if prefers_sidebar_variant(sim, rules, owner, &option, existing, interner) {
-                deduped[existing_idx] = option;
-            }
-            continue;
-        }
-
-        seen.insert(seen_key, deduped.len());
-        deduped.push(option);
-    }
-
-    deduped
-}
-
-fn build_option_sidebar_key(
-    rules: &RuleSet,
-    option: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> Option<String> {
-    let type_str = interner.resolve(option.type_id);
-    let obj = rules.object(type_str)?;
-    let image_key = if obj.image.trim().is_empty() {
-        obj.id.to_ascii_uppercase()
-    } else {
-        obj.image.to_ascii_uppercase()
-    };
-    Some(format!("{}:{image_key}", option.object_category as u8))
-}
-
-fn prefers_sidebar_variant(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    candidate: &BuildOption,
-    existing: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    sidebar_variant_rank(sim, rules, owner, candidate, interner)
-        > sidebar_variant_rank(sim, rules, owner, existing, interner)
-}
-
-fn sidebar_variant_rank(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    option: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> (u8, u16, u8) {
-    let type_str = interner.resolve(option.type_id);
-    let Some(obj) = rules.object(type_str) else {
-        return (0, 0, 0);
-    };
-
-    let required_house_match = obj
-        .required_houses
-        .iter()
-        .any(|house| owner_matches_build_identity(sim, owner, house));
-    let owner_specificity = u16::MAX.saturating_sub(obj.owner.len() as u16);
-    let enabled = option.enabled as u8;
-
-    (required_house_match as u8, owner_specificity, enabled)
+        .collect()
 }
 
 /// True if this owner has at least one buildable production option — useful

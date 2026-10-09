@@ -81,15 +81,6 @@ pub fn funds_nag_factory_count(
         .count() as u32
 }
 
-/// `0x004F8C0B..0x004F8C21`: with the funds timer expired and no nag due,
-/// a nearly full silo bank (`capacity - stored < 30 && capacity > 50`,
-/// `HouseClass+0x310` vs `StorageClass::GetTotal(+0x2FC)` through `ftol`)
-/// re-arms the same timer without any line, pushing the next funds nag out by
-/// one SpeakDelay. There is no `EVA_SilosNeeded` in YR.
-pub const fn silo_nearly_full(capacity: i32, stored: i32) -> bool {
-    capacity - stored < 30 && capacity > 50
-}
-
 /// The house owns a live instance of one of the first three
 /// `[AI] BuildPower=` types (`0x004F8C97..0x004F8CFC` reads exactly
 /// `Rules+0x8B0[0..3]` through `CountOwnedInstances @ 0x0049FAE0` on the
@@ -132,18 +123,17 @@ pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: Int
     if !house.is_controlled_by_human(game_mode_nonzero) {
         return;
     }
-    let credits = house.economy.credits;
+    let available = house.economy.available_money();
     let mut timer = house.eva_funds_timer;
     let mut guard = house.eva_low_power_guard;
 
     // --- Insufficient funds, `0x004F8B3C..0x004F8BE1` ---
     // Available money (`IHouse::Available_Money`, House vtable `0x7EA834`
-    // slot `+0x18` = `0x004F6990`: credits plus stored ore) below 100 and
+    // slot `+0x18` = `0x004F6990`, called at `0x004F8B6C`) below 100 and
     // any infantry/vehicle/building/naval factory owned → the line, the
-    // sidebar credits flash and a re-arm. VERA banks ore straight into
-    // `credits`, so the wallet is the available money.
+    // sidebar credits flash and a re-arm.
     if timer.expired(now)
-        && credits < FUNDS_NAG_CREDITS
+        && available < FUNDS_NAG_CREDITS
         && funds_nag_factory_count(&sim.substrate.entities, rules, owner, &sim.interner) > 0
     {
         sim.sound_events.push(SimSoundEvent::HouseEva {
@@ -152,27 +142,11 @@ pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: Int
         });
         timer.start(now, delay);
     }
-    // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- (timer re-read after
-    // the nag's own re-arm). VERA has no ore storage authority, so
-    // `stored` is 0 and the branch is unreachable on any real capacity.
-    if timer.expired(now) {
-        let capacity: i32 = sim
-            .substrate
-            .entities
-            .values()
-            .filter(|e| {
-                !e.dying
-                    && !e.lifecycle.in_limbo
-                    && e.owner() == owner
-                    && e.category == EntityCategory::Structure
-            })
-            .filter_map(|e| rules.object(sim.interner.resolve(e.type_ref())))
-            .map(|obj| obj.storage)
-            .fold(0i32, i32::saturating_add);
-        if silo_nearly_full(capacity, 0) {
-            timer.start(now, delay);
-        }
-    }
+    // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- With the timer expired,
+    // a nearly full silo bank (`0x004F8C0B..0x004F8C21`: capacity `+0x310`
+    // minus `ftol(+0x2FC)` below 30, capacity above 50) re-arms it without a
+    // line. The store stays empty in YR (`crate::sim::economy`), so capacity
+    // would have to be both below 30 and above 50: it never re-arms.
 
     // --- Low power, `0x004F8C56..0x004F8DAB` ---
     // Short = `PowerOutput < PowerDrain && PowerDrain != 0 && (Output == 0
@@ -368,14 +342,6 @@ mod tests {
             funds_nag_factory_count(&sim.substrate.entities, &rules, owner, &sim.interner),
             0
         );
-    }
-
-    #[test]
-    fn silo_nearly_full_predicate_is_exact() {
-        assert!(silo_nearly_full(100, 80));
-        assert!(!silo_nearly_full(100, 70));
-        assert!(!silo_nearly_full(50, 40));
-        assert!(silo_nearly_full(51, 30));
     }
 
     /// Barracks and refinery before any power plant: short on power, but no

@@ -661,7 +661,7 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
     }
     let owner = sim.interner.get("Americans").unwrap();
     assert_eq!(
-        i64::from(sim.houses[&owner].economy.credits),
+        i64::from(sim.houses[&owner].economy.credits()),
         native["balance"].as_i64().unwrap(),
         "{context}: balance"
     );

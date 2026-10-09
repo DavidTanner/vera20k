@@ -383,8 +383,9 @@ impl Fixture {
             as u32));
         sim.session.binary_frame = int(&prior["frame"]) as u32;
         for (house, native) in houses.iter().zip(prior["houses"].as_array().unwrap()) {
-            sim.houses.get_mut(house).unwrap().stats =
-                MatchStatistics::from_totals_for_test(0, 0, 0, 0, 0, 0);
+            let state = sim.houses.get_mut(house).unwrap();
+            state.stats = MatchStatistics::from_totals_for_test(0, 0, 0, 0, 0);
+            state.economy.set_score_for_test(0);
             let mut power = serde_json::to_value(PowerState::default()).unwrap();
             power["total_output"] = native["power"].clone();
             power["total_drain"] = native["drain"].clone();
@@ -977,7 +978,7 @@ impl Fixture {
                 "{boundary}: losses"
             );
             assert_eq!(
-                house.stats.score_points(),
+                house.economy.score(),
                 int(&native["score"]),
                 "{boundary}: credit"
             );

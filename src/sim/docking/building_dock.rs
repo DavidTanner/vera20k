@@ -1809,8 +1809,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 300);
         assert_eq!(unit.estimated_health.get(), -20);
-        assert_eq!(sim.houses[&owner].economy.credits, 10_000);
-        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
+        assert_eq!(sim.houses[&owner].economy.credits(), 10_000);
+        assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
         assert_eq!(sim.scenario_rng.state(), rng);
     }
 
@@ -1822,8 +1822,8 @@ mod tests {
         assert!(sim.set_unit_destination(1, NavTargetRef::cell(15, 11), &rules, true));
         assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
         assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 100);
-        assert_eq!(sim.houses[&owner].economy.credits, 10_000);
-        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
+        assert_eq!(sim.houses[&owner].economy.credits(), 10_000);
+        assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
     }
 
     /// Techno6F4D35 replies32 without side effects; repeated requests do not
@@ -1832,7 +1832,11 @@ mod tests {
     fn insufficient_money_never_accumulates_a_repair_grace_timeout() {
         let (mut sim, rules) = setup(1);
         let owner = sim.substrate.entities.get(1).unwrap().owner();
-        sim.houses.get_mut(&owner).unwrap().economy.credits = 1;
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .economy
+            .set_credits_for_test(1);
         let rng = sim.scenario_rng.state();
         let estimate = sim
             .substrate
@@ -1850,8 +1854,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.health.current, 100);
         assert_eq!(unit.estimated_health.get(), estimate);
-        assert_eq!(sim.houses[&owner].economy.credits, 1);
-        assert_eq!(sim.houses[&owner].economy.spent_credits, 0);
+        assert_eq!(sim.houses[&owner].economy.credits(), 1);
+        assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
         assert_eq!(sim.scenario_rng.state(), rng);
     }
 
@@ -1994,7 +1998,7 @@ mod tests {
             use crate::sim::house_state::HouseState;
             let owner_id = sim.interner.intern("Americans");
             let mut house = HouseState::new(owner_id, 0, None, false, 0, 10);
-            house.economy.credits = 10_000;
+            house.economy.set_credits_for_test(10_000);
             sim.houses.insert(owner_id, house);
         }
         spawn_depot(&mut sim);
@@ -2032,8 +2036,8 @@ mod tests {
         let tank = sim.substrate.entities.get(1).unwrap();
         assert_eq!(tank.health.current, 108);
         let house = sim.houses.get(&owner).unwrap();
-        assert_eq!(house.economy.credits, 9_998);
-        assert_eq!(house.economy.spent_credits, 2);
+        assert_eq!(house.economy.credits(), 9_998);
+        assert_eq!(house.economy.spent_credits(), 2);
         assert_eq!(sim.scenario_rng.state(), rng);
     }
 
@@ -3037,18 +3041,23 @@ mod tests {
         let rules = RuleSet::from_ini_with_fixed_art_for_test(
             &IniFile::from_str(
                 "[General]\nRepairPercent=15%\nRepairStep=8\nURepairRate=.016\n\
+                 [Countries]\n0=Americans\n\
                  [VehicleTypes]\n0=MTNK\n1=PENDING\n\
                  [MTNK]\nCost=700\nStrength=300\nTechLevel=1\n\
-                 [PENDING]\nCost=108\nStrength=100\nTechLevel=1\n\
+                 [PENDING]\nCost=108\nStrength=100\nTechLevel=1\nOwner=Americans\n\
                  [BuildingTypes]\n0=GADEPT\n1=FACTORY\n\
                  [GADEPT]\nStrength=1000\nUnitRepair=yes\nHasStupidGuardMode=no\n\
-                 [FACTORY]\nStrength=500\nFactory=UnitType\n",
+                 [FACTORY]\nStrength=500\nFactory=UnitType\nOwner=Americans\n",
             ),
             &IniFile::from_str("[GADEPT]\nFoundation=3x3\n"),
         )
         .unwrap();
         let owner = sim.substrate.entities.get(1).unwrap().owner();
-        sim.houses.get_mut(&owner).unwrap().economy.credits = 2;
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .economy
+            .set_credits_for_test(2);
         spawn_entity(
             &mut sim,
             501,
@@ -3058,6 +3067,8 @@ mod tests {
             11,
             500,
         );
+        // The house's building list holds its factory (FindFactory scans it).
+        sim.append_house_base_building_for_test(501);
         link_for_service(&mut sim, 1);
         sim.mission_assign_exact(DEPOT, MissionId::from_known(MissionType::Repair), 0)
             .unwrap();
@@ -3093,8 +3104,8 @@ mod tests {
         }
         sim.advance_tick(&[], Some(&rules), None, None, 66);
         assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 108);
-        assert_eq!(sim.houses[&owner].economy.credits, 0);
-        assert_eq!(sim.houses[&owner].economy.spent_credits, 2);
+        assert_eq!(sim.houses[&owner].economy.credits(), 0);
+        assert_eq!(sim.houses[&owner].economy.spent_credits(), 2);
         let factory = sim.production.factories.test_first_mut().unwrap();
         assert_eq!(factory.progress, 0);
         assert_eq!(factory.balance, 108);

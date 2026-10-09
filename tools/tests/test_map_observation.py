@@ -845,7 +845,7 @@ class MapObservationTests(unittest.TestCase):
             self.house_frames[step] = [{'owner': 'Computer1', 'economy': {
                 'credits': 7000 if step < 2 else 8000,
                 'spent_credits': 3000,
-                'harvested_credits': 0 if step < 2 else 200}}]
+                'score': 0 if step < 2 else 200}}]
 
     def test_refinery_cargo_radio_and_house_receipts_remain_exact_observations(self):
         self.refinery_profile()
@@ -892,7 +892,7 @@ class MapObservationTests(unittest.TestCase):
                     lambda m: m['observations']['frames'][1]['houses'][0].update(owner='OtherHouse'),
                     lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(credits=True),
                     lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(spent_credits=1 << 31),
-                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(harvested_credits=0.5),
+                    lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(score=0.5),
                     lambda m: m['observations']['frames'][1]['houses'][0]['economy'].update(extra=0)]
         for index, change in enumerate(changes):
             with self.subTest(index=index):

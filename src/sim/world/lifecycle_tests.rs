@@ -3781,7 +3781,7 @@ fn score_stats_credit_the_killer_and_charge_the_victim_once() {
         1,
         "a unit victim must land in the unit bucket, not the building one"
     );
-    assert_eq!(killer.stats.score_points(), 900);
+    assert_eq!(killer.economy.score(), 900);
 }
 
 #[test]
@@ -3813,15 +3813,12 @@ fn score_stats_come_from_the_kill_record_captured_at_destruction() {
         crate::sim::combat::KillCallback::Terminal,
         &rules,
     );
-    assert_eq!(sim.houses[&killer_owner].stats.score_points(), 200);
+    assert_eq!(sim.houses[&killer_owner].economy.score(), 200);
 
     sim.uninit(1);
 
     assert_eq!(sim.houses.get(&killer_owner).unwrap().stats.kills(), 1);
-    assert_eq!(
-        sim.houses.get(&killer_owner).unwrap().stats.score_points(),
-        200
-    );
+    assert_eq!(sim.houses.get(&killer_owner).unwrap().economy.score(), 200);
 }
 
 #[test]
@@ -3868,7 +3865,7 @@ fn score_stats_count_a_self_inflicted_kill_but_award_no_points() {
     assert_eq!(house.stats.buildings_lost(), 1);
     assert_eq!(house.stats.buildings_killed(), 1);
     assert_eq!(
-        house.stats.score_points(),
+        house.economy.score(),
         0,
         "an allied or self-inflicted victim is worth no score"
     );
@@ -3904,18 +3901,19 @@ fn dont_score_victims_book_no_kill_no_loss_and_no_points() {
     assert_eq!(victim_house.stats.losses(), 0, "no phantom loss");
     let killer = sim.houses.get(&killer_owner).unwrap();
     assert_eq!(killer.stats.kills(), 0, "no phantom kill");
-    assert_eq!(killer.stats.score_points(), 0, "no phantom points");
+    assert_eq!(killer.economy.score(), 0, "no phantom points");
 }
 
 #[test]
-fn score_column_sums_the_harvest_and_kill_feeders() {
-    // The native score field has two feeders. Drive the kill half through the
-    // real award helper on stock costs rather than a hand-picked total: one
-    // Rhino (Cost=900) plus one veteran GI (Cost=200, doubled).
+fn deposits_and_kills_feed_the_one_score() {
+    // House+0x54E8 has two feeders. Drive the kills through the real award
+    // helper on stock costs rather than a hand-picked total: one Rhino
+    // (Cost=900) plus one veteran GI (Cost=200, doubled).
     use crate::rules::ini_parser::IniFile;
     use crate::rules::object_type::{ObjectCategory, ObjectType};
+    use crate::rules::ruleset::INCOME_PPM_SCALE;
     use crate::sim::combat::veterancy::{VeterancyRank, kill_award_points};
-    use crate::sim::house_state::MatchStatistics;
+    use crate::sim::economy::Economy;
 
     let of = |body: &str, category| {
         let ini = IniFile::from_str(&format!(
@@ -3935,14 +3933,15 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
         ObjectCategory::Infantry,
     );
 
-    let kill_half = kill_award_points(rhino.cost, VeterancyRank::Rookie, false)
+    let kill_points = kill_award_points(rhino.cost, VeterancyRank::Rookie, false)
         + kill_award_points(gi.cost, VeterancyRank::Veteran, false);
-    assert_eq!(kill_half, 1_300);
+    assert_eq!(kill_points, 1_300);
 
-    let mut stats = MatchStatistics::default();
-    stats.add_score(kill_half);
-    // Harvest half: 240 bales deposited at the x5.0 statistics rate.
-    assert_eq!(stats.score(1_200), 2_500);
+    let mut economy = Economy::new(0);
+    // 240 bales of ore deposited at the x5.0 score rate.
+    economy.add_tiberium_credits(240 * 25, 240, INCOME_PPM_SCALE, INCOME_PPM_SCALE);
+    economy.add_score(kill_points);
+    assert_eq!(economy.score(), 2_500);
 }
 
 #[test]

@@ -379,13 +379,14 @@ pub(super) fn drain_first_slot(cargo: &mut Vec<super::CargoBale>) -> Option<(i32
     Some((value, bales))
 }
 
-/// The two `HouseClass::GiveTiberium` calls (`0x004F9610`, at `0x0073E4A9`
-/// and `0x0073E4C9`) for one drained slot, paid to the unload building's
-/// owner (`vt+0x3C`): the base amount, then the purifier bonus
-/// `P × PurifierBonus × amount` where P counts the owner's purifiers plus
-/// `AIVirtualPurifiers[difficulty]` for a computer house outside the
-/// campaign (`0x0073E3D5..0x0073E408`). A slave's deposit pays its master
-/// the same way (`0x00522D71..0x00522E36`).
+/// The two `HouseClass::Add_Tiberium_Credits` calls (`0x004F9610`, at
+/// `0x0073E4A9` and `0x0073E4C9`) for one drained slot, paid to the unload
+/// building's owner (`vt+0x3C`): the slot's amount, then the purifier bonus
+/// `P × PurifierBonus × amount` when it is above zero, where P counts the
+/// owner's purifiers plus `AIVirtualPurifiers[difficulty]` for a computer
+/// house outside the campaign (`0x0073E3D5..0x0073E408`). A slave's deposit
+/// pays its master the same way (`0x00522D71..0x00522E36`). The unloader's
+/// `Weeder=` arm (`0x0073E474`) is not ported; no retail unit sets it.
 pub(crate) fn pay_refinery_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -393,36 +394,24 @@ pub(crate) fn pay_refinery_owner(
     value: i32,
     bales: i32,
 ) {
-    use crate::sim::economy::apply_income_mult;
-    use crate::sim::house_state::{house_state_for_owner_mut, income_ppm_for_owner};
-    use crate::sim::production::credits_entry_for_owner;
-    let Some(owner) = sim
-        .substrate
-        .entities
-        .get(building)
-        .map(|b| sim.interner.resolve(b.owner()).to_string())
-    else {
+    use crate::rules::ruleset::INCOME_PPM_SCALE;
+    use crate::sim::house_state::income_ppm_for_owner;
+    let Some(owner) = sim.substrate.entities.get(building).map(|b| b.owner()) else {
         return;
     };
-    let income_ppm = income_ppm_for_owner(&sim.houses, &sim.interner, rules, &owner);
-    let base_credits = apply_income_mult(value, income_ppm);
-    if base_credits > 0 {
-        let credits = credits_entry_for_owner(sim, &owner);
-        *credits = credits.saturating_add(base_credits);
-        if let Some(house) = house_state_for_owner_mut(&mut sim.houses, &owner, &sim.interner) {
-            house.economy.add_harvested(bales);
-        }
-    }
-    let purifiers = super::miner_system::effective_purifier_count(sim, rules, &owner);
-    let bonus_ppm = rules.general.purifier_bonus_ppm;
-    let bonus_credits =
-        crate::sim::economy::purifier_bonus_credits(value, purifiers, bonus_ppm, income_ppm);
-    if bonus_credits > 0 {
-        let credits = credits_entry_for_owner(sim, &owner);
-        *credits = credits.saturating_add(bonus_credits);
-        let stat = crate::sim::economy::purifier_bonus_harvested(bales, purifiers, bonus_ppm);
-        if let Some(house) = house_state_for_owner_mut(&mut sim.houses, &owner, &sim.interner) {
-            house.economy.add_harvested_raw(stat);
-        }
+    let owner_name = sim.interner.resolve(owner).to_string();
+    let income_ppm = income_ppm_for_owner(&sim.houses, &sim.interner, rules, &owner_name);
+    let purifiers = super::miner_system::effective_purifier_count(sim, rules, &owner_name);
+    let bonus_ppm = i64::from(purifiers) * rules.general.purifier_bonus_ppm;
+    let Some(house) = sim.houses.get_mut(&owner) else {
+        return;
+    };
+    house
+        .economy
+        .add_tiberium_credits(value, bales, INCOME_PPM_SCALE, income_ppm);
+    if bonus_ppm > 0 {
+        house
+            .economy
+            .add_tiberium_credits(value, bales, bonus_ppm, income_ppm);
     }
 }

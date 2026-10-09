@@ -1,6 +1,6 @@
-//! The existing total-only score model through native House save/load values.
-//! Native field retention is compared; per-house kill-table aggregation and
-//! the score model's harvested/kill split are not newly certified by this test.
+//! The existing total-only statistics model and the score (`Economy::score`)
+//! through native House save/load values. Native field retention is compared;
+//! per-house kill-table aggregation is not newly certified by this test.
 
 use super::*;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
@@ -31,7 +31,8 @@ fn capture_count(value: &Value) -> u32 {
     u32::try_from(value.as_u64().unwrap()).unwrap()
 }
 
-fn capture_totals(fields: &Value) -> MatchStatistics {
+/// The house's statistics and score as the corpus records them.
+fn capture_totals(fields: &Value) -> (MatchStatistics, i32) {
     let building_kills = fields["building_kills"]
         .as_array()
         .unwrap()
@@ -39,14 +40,21 @@ fn capture_totals(fields: &Value) -> MatchStatistics {
         .fold(0_u32, |total, count| {
             total.wrapping_add(capture_count(count))
         });
-    MatchStatistics::from_totals_for_test(
+    let stats = MatchStatistics::from_totals_for_test(
         0,
         building_kills,
         0,
         capture_count(&fields["building_losses"]),
         0,
+    );
+    (
+        stats,
         i32::try_from(fields["score"].as_i64().unwrap()).unwrap(),
     )
+}
+
+fn house_totals(house: &HouseState) -> (MatchStatistics, i32) {
+    (house.stats, house.economy.score())
 }
 
 /// Original702D40 controls execute through the reused EngineerJoinedFixture,
@@ -83,7 +91,9 @@ fn native_null_record_kill_books_each_live_callback_immediately() {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
         let mut house = HouseState::new(owner, 0, None, true, 0, 10);
-        house.stats = capture_totals(&row["before"]);
+        let (stats, score) = capture_totals(&row["before"]);
+        house.stats = stats;
+        house.economy.set_score_for_test(score);
         sim.houses.insert(owner, house);
         let mut victim = GameEntity::test_default(1, "GAPOWR", "Americans", 10, 10);
         victim.owner = owner;
@@ -111,7 +121,11 @@ fn native_null_record_kill_books_each_live_callback_immediately() {
                 crate::sim::combat::KillCallback::OwnerChange,
                 &rules,
             );
-            assert_eq!(sim.houses[&owner].stats, capture_totals(after), "{name}");
+            assert_eq!(
+                house_totals(&sim.houses[&owner]),
+                capture_totals(after),
+                "{name}"
+            );
             let victim = sim.substrate.entities.get(1).unwrap();
             assert_eq!(victim.owner(), owner, "{name}: old owner still installed");
             assert_eq!(
@@ -159,10 +173,15 @@ fn native_change_owner_score_and_kill_counter_wrap() {
         .unwrap()["price"]
         .as_i64()
         .unwrap();
-    let mut stats = capture_totals(&row["before"]["new"]);
-    stats.add_score(i32::try_from(native_price).unwrap());
+    let (mut stats, score) = capture_totals(&row["before"]["new"]);
+    let mut economy = crate::sim::economy::Economy::new(0);
+    economy.set_score_for_test(score);
+    economy.add_score(i32::try_from(native_price).unwrap());
     stats.record_kill(crate::map::entities::EntityCategory::Structure);
-    assert_eq!(stats, capture_totals(&row["after"]["new"]));
+    assert_eq!(
+        (stats, economy.score()),
+        capture_totals(&row["after"]["new"])
+    );
 }
 
 #[test]
@@ -181,7 +200,6 @@ fn native_record_last_built_counter_wrap() {
             0,
             0,
             capture_count(&row["before"]["total"]),
-            0,
         );
         stats.record_built();
         assert_eq!(
@@ -258,10 +276,11 @@ fn house_current_viewer_discovery_is_retained_without_changing_peer_hash() {
     assert_eq!(sim.state_hash(), prior);
 }
 
-fn native_totals(fields: &Value) -> MatchStatistics {
+/// The house's statistics and score as the corpus records them.
+fn native_totals(fields: &Value) -> (MatchStatistics, i32) {
     let count = |field: &Value| u32::try_from(field.as_i64().unwrap()).unwrap();
     let table_total = |name: &str| fields[name].as_array().unwrap().iter().map(count).sum();
-    MatchStatistics {
+    let stats = MatchStatistics {
         units_killed: table_total("units_killed"),
         buildings_killed: table_total("buildings_killed"),
         units_lost: count(&fields["units_lost"]),
@@ -272,10 +291,11 @@ fn native_totals(fields: &Value) -> MatchStatistics {
             .iter()
             .map(|counter| count(&counter["total"]))
             .sum(),
-        // These fixtures have no harvested credits, so the existing split
-        // represents the native combined score with this one signed value.
-        score_points: i32::try_from(fields["score"].as_i64().unwrap()).unwrap(),
-    }
+    };
+    (
+        stats,
+        i32::try_from(fields["score"].as_i64().unwrap()).unwrap(),
+    )
 }
 
 #[test]
@@ -295,7 +315,9 @@ fn native_house_statistics_survive_snapshot_and_retained_ship_terminal_record() 
         sim.scenario_rng = SimRng::new(0);
         let owner = sim.interner.intern("Americans");
         let mut house = HouseState::new(owner, 0, None, false, 0, 10);
-        house.stats = native_totals(&row["before"]);
+        let (stats, score) = native_totals(&row["before"]);
+        house.stats = stats;
+        house.economy.set_score_for_test(score);
         sim.houses.insert(owner, house);
         sim.session.house_order.push(owner);
         let id = sim.allocate_stable_id();
@@ -311,7 +333,10 @@ fn native_house_statistics_survive_snapshot_and_retained_ship_terminal_record() 
             .sim;
         restored.retain_in_scenario_process_state_from(&sim);
         restored.restore_after_snapshot_load().unwrap();
-        assert_eq!(restored.houses[&owner].stats, native_totals(&row["after"]));
+        assert_eq!(
+            house_totals(&restored.houses[&owner]),
+            native_totals(&row["after"])
+        );
         assert_eq!(restored.state_hash(), sim.state_hash());
         assert_eq!(restored.rng_state(), sim.rng_state());
         if let Some(expected) = row["terminal_record_loss"].as_u64() {
@@ -345,8 +370,8 @@ fn saved_live_statistics_preserve_terminal_score_and_rng_continuation() {
         units_lost: 1,
         buildings_lost: 3,
         built: 4,
-        score_points: 700,
     };
+    house.economy.set_score_for_test(700);
     sim.houses.insert(owner, house);
     sim.session.house_order.push(owner);
     let bytes = GameSnapshot::save_validated(&sim, 1, 2, "before score edge", 3);

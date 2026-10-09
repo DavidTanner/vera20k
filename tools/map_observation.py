@@ -585,7 +585,7 @@ def _houses(value: Any, owners: list[str], label: str, super_weapons: bool = Fal
         require_value(house['owner'], owner, f'{row_label}.owner')
         if house['economy'] is not None:
             economy = require_object(house['economy'], f'{row_label}.economy')
-            require_exact_keys(economy, ('credits', 'spent_credits', 'harvested_credits'),
+            require_exact_keys(economy, ('credits', 'spent_credits', 'score'),
                                f'{row_label}.economy')
             for key in economy:
                 _bounded_int(economy[key], f'{row_label}.economy.{key}', -(1 << 31), (1 << 31) - 1)

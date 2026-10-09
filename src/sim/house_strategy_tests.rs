@@ -139,7 +139,7 @@ fn the_strategy_timer_and_its_gates_match_native() {
         house.multiplay_passive = flag(&row["passive"]);
         house.strategy_timer = CdTimer::from_raw(int(&row["start"]), int(&row["delay"]));
         // A live factory and cash keep Strategy to its draw.
-        house.economy.credits = 1000;
+        house.economy.set_credits_for_test(1000);
         spawn_building(&mut sim, owner, "FACTORY", 1000, false);
         sim.session.binary_frame = int(&row["frame"]) as u32;
         sim.scenario_rng = SimRng::answering(1, 7, int(&row["answer"]) - 105);
@@ -205,7 +205,7 @@ fn the_strategy_matches_native() {
         house.alternate_base_center = cell(&row["alternate"]);
         house.strategy_emergency.mode = int(&row["mode"]);
         house.strategy_emergency.last_building_attack_frame = int(&row["attack_frame"]);
-        house.economy.credits = int(&row["money"]);
+        house.economy.set_credits_for_test(int(&row["money"]));
         house.current_iq = int(&row["iq"]);
         // VERA's list holds no null item; a native null is skipped by both
         // walks.

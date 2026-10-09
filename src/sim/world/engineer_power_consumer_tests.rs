@@ -244,12 +244,12 @@ fn assert_joined(sim: &Simulation, rules: &RuleSet, owner: InternedId, native: &
         "{boundary}: suspended"
     );
     assert_eq!(
-        sim.houses[&owner].economy.credits,
+        sim.houses[&owner].economy.credits(),
         int(&expected["credits"]),
         "{boundary}: credits"
     );
     assert_eq!(
-        sim.houses[&owner].economy.spent_credits,
+        sim.houses[&owner].economy.spent_credits(),
         int(&expected["spent"]),
         "{boundary}: spending"
     );
@@ -294,8 +294,16 @@ fn settled_repair_native_health_sample_factory_cadence_radar_and_later_advice() 
         factory.balance = int(&pending["balance"]);
         factory.on_hold = pending["on_hold"] == true;
         factory.suspended = pending["suspended"] == true;
-        sim.houses.get_mut(&owner).unwrap().economy.credits = int(&pending["credits"]);
-        sim.houses.get_mut(&owner).unwrap().economy.spent_credits = int(&pending["spent"]);
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .economy
+            .set_credits_for_test(int(&pending["credits"]));
+        sim.houses
+            .get_mut(&owner)
+            .unwrap()
+            .economy
+            .set_spent_for_test(int(&pending["spent"]));
         sim.substrate.entities.get_mut(PLANT).unwrap().repairing = true;
         assert_joined(&sim, &rules, owner, prior);
         assert_rng(&sim, &row["receipt"]["rng_before"], "joined prior");

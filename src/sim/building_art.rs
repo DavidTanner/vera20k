@@ -120,6 +120,14 @@ impl Simulation {
         if first_opening && refinery {
             self.initialize_refinery_storage_anim(id, rules);
         }
+        // 0x004463C0..0x004463E0: a Helipad's docks join its house's
+        // AirportDocks at the first opening only.
+        if first_opening
+            && object.helipad
+            && let Some(house) = self.houses.get_mut(&owner)
+        {
+            house.tracking.add_airport_docks(object.number_of_docks);
+        }
         if first_opening {
             self.open_super_weapon_anims(id, damaged, garrisoned, rules);
         }

@@ -78,7 +78,7 @@ fn manager_state(s: &SlaveScene) -> ManagerState {
 
 fn credits(s: &SlaveScene) -> i32 {
     let owner = s.scene.sim.interner.get("Americans").unwrap();
-    s.scene.sim.houses[&owner].economy.credits
+    s.scene.sim.houses[&owner].economy.credits()
 }
 
 /// The first visit (10 frames) moves the built refinery to state 5; the next

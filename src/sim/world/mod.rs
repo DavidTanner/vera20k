@@ -4833,7 +4833,7 @@ impl Simulation {
                 .and_then(|entity| self.object_type(entity.type_ref(), rules))
                 .map_or(0, |object| self.cost_of(old_owner, object, rules));
             if let Some(house) = self.houses.get_mut(&new_owner) {
-                house.stats.add_score(cost);
+                house.economy.add_score(cost);
             }
         }
         self.update_house_tracking(
@@ -4888,6 +4888,25 @@ impl Simulation {
         {
             entity.has_been_captured = true;
             entity.repairing = false;
+        }
+        // A Helipad's docks leave the old house's AirportDocks
+        // (`0x00448B4C..0x00448B6A`) and join the new one's
+        // (`0x00449229..0x00449245`), whether it has opened or not.
+        if category == EntityCategory::Structure
+            && let Some(rules) = rules
+            && let Some(docks) = self
+                .substrate
+                .entities
+                .get(stable_id)
+                .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                .filter(|object| object.helipad)
+                .map(|object| object.number_of_docks)
+        {
+            for (owner, delta) in [(old_owner, docks.wrapping_neg()), (new_owner, docks)] {
+                if let Some(house) = self.houses.get_mut(&owner) {
+                    house.tracking.add_airport_docks(delta);
+                }
+            }
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.

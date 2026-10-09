@@ -1706,8 +1706,8 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             "unit_coordinate": [at.x,at.y,at.z],
             "health": unit.health.current,
             "estimate": unit.estimated_health.get(),
-            "balance": house.economy.credits,
-            "spent": house.economy.spent_credits,
+            "balance": house.economy.credits(),
+            "spent": house.economy.spent_credits(),
             "unit_mission": unit.mission.current().raw(),
             "unit_queued": unit.mission.queued().raw(),
             "unit_nav": nav(unit.navigation.nav_com),
@@ -1963,8 +1963,10 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
                 integer(&stage[5]),
             ));
         let house = sim.houses.get_mut(&owner).unwrap();
-        house.economy.credits = integer(&before["balance"]);
-        house.economy.spent_credits = integer(&before["spent"]);
+        house
+            .economy
+            .set_credits_for_test(integer(&before["balance"]));
+        house.economy.set_spent_for_test(integer(&before["spent"]));
         sim.substrate.occupancy =
             crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
         sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));

@@ -1367,20 +1367,18 @@ def _require_final_fingerprint(
 
     wallet = _exact_object(
         fingerprint["wallet"],
-        ("credits", "harvested_credits", "spent_credits"),
+        ("credits", "score", "spent_credits"),
         f"{field}.wallet",
     )
     credits = _nonnegative_int(wallet["credits"], f"{field}.wallet.credits")
-    harvested = _nonnegative_int(
-        wallet["harvested_credits"],
-        f"{field}.wallet.harvested_credits",
-    )
+    _nonnegative_int(wallet["score"], f"{field}.wallet.score")
     spent = _nonnegative_int(wallet["spent_credits"], f"{field}.wallet.spent_credits")
     require_value(credits, render["sidebar"]["credits"], f"{field}.wallet.credits")
     launch = require_object(profile.document["launch"], "launch")
     options = require_object(launch["options"], "launch.options")
+    # The profile deposits no ore, so cash and spending account for the start.
     require_value(
-        credits + spent - harvested,
+        credits + spent,
         options["starting_credits"],
         f"{field}.wallet.balance",
     )

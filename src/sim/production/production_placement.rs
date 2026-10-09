@@ -186,12 +186,13 @@ pub fn place_production_with_overlays(
             {
                 return false;
             }
-            // Native wrapper5F5C20 -> TypeFindFactory5F7900. A null
-            // Infantry/Aircraft producer leaves the head and queue untouched.
-            // Unit alone retries with its radio-selection restriction skipped.
+            // Native wrapper5F5C20 -> TypeFindFactory5F7900 with (0,1); an
+            // aircraft (`What_Am_I` 2) alone retries with the busy-airfield
+            // gate skipped (1,1) (0x004FB524..0x004FB54C). A null producer
+            // leaves the head and queue untouched.
             let producer = super::find_factory(sim, rules, owner_id, obj, false, true, false)
                 .or_else(|| {
-                    (obj.category == ObjectCategory::Vehicle)
+                    (obj.category == ObjectCategory::Aircraft)
                         .then(|| super::find_factory(sim, rules, owner_id, obj, true, true, false))
                         .flatten()
                 });

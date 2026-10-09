@@ -1,13 +1,10 @@
 //! Per-object money producers/consumers that live in the object AI loop:
 //! oil-derrick `ProduceCash` and the Floating Disc money drain (GSI-09.01).
 //!
-//! Both mechanisms move credits through the one authoritative wallet
-//! (`HouseState.economy.credits`) with the native primitives' semantics:
-//! `HouseClass::Add_Credits @ 0x004F9950` (`credits += amount`, no clamp) and
-//! `HouseClass::Spend_Money @ 0x004F9790` (cash first, then the silo-drain
-//! fallback. The current wallet adapter clamps to available credits; native
-//! saved nonzero Building/House storage withdrawal and liquidation remain a
-//! required integration boundary, not a proof that storage is always zero.
+//! Both mechanisms move credits through the house's wallet
+//! ([`Economy`](crate::sim::economy::Economy)), whose money primitives these
+//! look up by house: `HouseClass::Add_Credits @ 0x004F9950` and
+//! `HouseClass::Spend_Money @ 0x004F9790`.
 //!
 //! Building AI runs ProduceCash43FD2C before shared Techno43FE56 promotion
 //! and drain transfer, matching the implemented Structure prelude order.
@@ -37,43 +34,29 @@ fn produce_cash_fires(timer: CdTimer, frame: u32) -> bool {
     timer.remaining(frame as i32) == 1
 }
 
-/// `HouseClass::Add_Credits @ 0x004F9950`: `credits += amount`, unclamped.
+/// [`Economy::add_credits`](crate::sim::economy::Economy::add_credits) on
+/// `owner`'s wallet (`HouseClass::Add_Credits @ 0x004F9950`).
 pub(crate) fn add_credits(sim: &mut Simulation, owner: InternedId, amount: i32) {
     if let Some(house) = sim.houses.get_mut(&owner) {
-        house.economy.credits = house.economy.credits.wrapping_add(amount);
+        house.economy.add_credits(amount);
     }
 }
 
-/// `HouseClass::Spend_Money @ 0x004F9790`, cash arm only (`credits >= amount`
-/// → `credits -= amount`; else `credits = 0` and the silo-drain fallback,
-/// which is dead in stock skirmish because house storage is never filled —
-/// scan §1.2). The amount taken joins the house's spending statistic
-/// (`+0x2DC`, `ADD` at the tail), which the factory's charges feed too
-/// ([`Economy::spend`](crate::sim::economy::Economy::spend)). Returns the
-/// amount actually taken from cash.
-pub(crate) fn spend_money(sim: &mut Simulation, owner: InternedId, amount: i32) -> i32 {
-    let Some(house) = sim.houses.get_mut(&owner) else {
-        return 0;
-    };
-    let spent = if house.economy.credits >= amount {
-        house.economy.credits -= amount;
-        amount
-    } else {
-        let spent = house.economy.credits.max(0);
-        house.economy.credits = 0;
-        spent
-    };
-    house.economy.spent_credits = house.economy.spent_credits.wrapping_add(spent);
-    spent
+/// [`Economy::spend_money`](crate::sim::economy::Economy::spend_money) on
+/// `owner`'s wallet (`HouseClass::Spend_Money @ 0x004F9790`).
+pub(crate) fn spend_money(sim: &mut Simulation, owner: InternedId, amount: i32) {
+    if let Some(house) = sim.houses.get_mut(&owner) {
+        house.economy.spend_money(amount);
+    }
 }
 
-/// `HouseClass` money-interface slot `+0x18` = `Available_Money @ 0x004F6990`:
-/// `ftol(storage_total × IncomeMult) + credits`; storage is 0 in stock
-/// skirmish (scan §1.1/§2.1) so this is the cash balance.
+/// [`Economy::available_money`](crate::sim::economy::Economy::available_money)
+/// of `owner`'s wallet (the money interface's slot `+0x18`,
+/// `Available_Money @ 0x004F6990`); 0 for a house that does not exist.
 pub(crate) fn available_money(sim: &Simulation, owner: InternedId) -> i32 {
     sim.houses
         .get(&owner)
-        .map_or(0, |house| house.economy.credits)
+        .map_or(0, |house| house.economy.available_money())
 }
 
 // ---------------------------------------------------------------------------
@@ -497,7 +480,7 @@ mod tests {
     }
 
     fn credits(sim: &Simulation, owner: InternedId) -> i32 {
-        sim.houses[&owner].economy.credits
+        sim.houses[&owner].economy.credits()
     }
 
     /// §2.13: capture from a `MultiplayPassive` house grants
