@@ -247,7 +247,6 @@ pub(crate) enum ScrollDir {
 pub(crate) enum CursorFeedbackKind {
     Move,
     AttackMove,
-    Guard,
     FriendlyUnit,
     FriendlyStructure,
     EnemyUnit,

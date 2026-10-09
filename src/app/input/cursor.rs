@@ -1066,9 +1066,6 @@ pub(crate) fn cursor_id_for_feedback(kind: CursorFeedbackKind) -> Option<CursorI
         CursorFeedbackKind::FriendlyUnit | CursorFeedbackKind::FriendlyStructure => {
             Some(CursorId::Select)
         }
-        // Guard-area has its own reticle (cursor row 22); it is not the select
-        // cursor, which is what VERA used to show while guard mode was armed.
-        CursorFeedbackKind::Guard => Some(CursorId::GuardArea),
         CursorFeedbackKind::Move => Some(CursorId::Move),
         CursorFeedbackKind::AttackMove => Some(CursorId::AttackMove),
         CursorFeedbackKind::EnemyUnit | CursorFeedbackKind::EnemyStructure => {
@@ -2329,15 +2326,6 @@ mod cursor_animation_tests {
         let mut anim = CursorAnimation::new();
         anim.advance(CursorId::IronCurtain, 5, 0, 0);
         assert_eq!(anim.advance(CursorId::IronCurtain, 5, 0, 10_000), 0);
-    }
-
-    /// Guard-area action feedback resolves the dedicated reticle.
-    #[test]
-    fn guard_feedback_maps_to_the_guard_area_reticle() {
-        assert_eq!(
-            super::cursor_id_for_feedback(CursorFeedbackKind::Guard),
-            Some(CursorId::GuardArea)
-        );
     }
 
     /// Harvest shares cursor row 21 with an out-of-range attack, and is not the

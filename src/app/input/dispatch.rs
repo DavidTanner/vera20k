@@ -2482,7 +2482,6 @@ fn queue_area_guard_orders(
     voices_enabled: bool,
 ) -> Vec<crate::audio::events::GameSoundEvent> {
     use crate::audio::events::GameSoundEvent;
-    use crate::sim::command::CommandEnvelope;
 
     let mut sounds = Vec::new();
     if selected.is_empty() {
@@ -2491,6 +2490,7 @@ fn queue_area_guard_orders(
     let Some(owner) = sim.session.current_house else {
         return sounds;
     };
+    let owner = sim.interner.resolve(owner).to_owned();
     for &entity_id in selected {
         let Some(payload) = sim.area_guard_key_command(entity_id, rules) else {
             continue;
@@ -2505,16 +2505,12 @@ fn queue_area_guard_orders(
         ) {
             sounds.push(event);
         }
-        let Some(envelope) = crate::app::input::commands::roundtrip_ordinary_local_megamission(
-            sim,
-            CommandEnvelope::new(owner, sim.session.tick, payload),
-        ) else {
+        if crate::app::input::commands::schedule_command_in_sim(sim, &owner, payload).is_none() {
             // A missing Rust registration or unrepresentable record fails
             // closed. This invariant boundary is not native issuer false;
             // Planning Mode is the separate native false-return route.
             return sounds;
-        };
-        sim.queue_command(envelope);
+        }
     }
     if let Some(sound_id) = &rules.general.guard_sound {
         // 730E73..730E8A: PlayAtPos750920, centre2000, volume1, no handle.

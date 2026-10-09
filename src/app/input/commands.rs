@@ -787,7 +787,7 @@ fn pick_building_for_owner(
     None
 }
 
-fn schedule_command_in_sim(
+pub(super) fn schedule_command_in_sim(
     sim: &mut crate::sim::world::Simulation,
     owner: &str,
     payload: Command,
