@@ -676,6 +676,16 @@ pub enum SimSoundEvent {
     /// `EVA_LightningStormCreated` (`0x0053AB11`) and posts
     /// `TXT_LIGHTNING_STORM_APPROACHING` (`0x0053AB40`).
     LightningStormApproaching,
+    /// `owner`'s Lightning Storm was refused because a storm rages or counts
+    /// down (`SuperClass::ClickFire @ 0x006CBAA7..0x006CBAC7`). The client
+    /// whose player owns it (Fire_SW passes `this == PlayerPtr`,
+    /// `0x004FAE8E`) posts `Msg:LightningStormActive`
+    /// (`LightningStorm::PrintMessage @ 0x0053AE00`).
+    LightningStormRefused { owner: InternedId },
+    /// `owner`'s Psychic Dominator was refused because one is active
+    /// (`0x006CBAD6..0x006CBAF6`). The client whose player owns it posts
+    /// `Msg:DominatorActive` (`PsyDom::PrintMessage @ 0x0053B410`).
+    PsychicDominatorRefused { owner: InternedId },
     /// First occupant entered a CanBeOccupied building (cargo 0→1).
     /// Owner is the building owner at AddGarrisonOccupant time; civilian
     /// ownership transfer is reported separately from building reconciliation.
