@@ -22,7 +22,7 @@ ska gå.
 ## Projektets mål
 
 1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Red Alert 2: Yuri's Revenge.
-2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på större kartor.
+2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på 500×500-kartor.
 3. Integrera kända RTS-funktioner, gamla som nya, och några som aldrig setts förut.
 4. Integrerad flerspelarklient
 

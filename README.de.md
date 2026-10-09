@@ -22,7 +22,7 @@ das Projekt entwickelt.
 ## Projektziele
 
 1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren.
-2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
+2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf 500×500-Karten.
 3. Bekannte RTS-Funktionen integrieren, alte wie neue, und einige, die es noch nie gab.
 4. Integrierter Mehrspieler-Client
 
