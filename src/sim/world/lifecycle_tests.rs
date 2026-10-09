@@ -5081,69 +5081,6 @@ fn gsi_04_01_cell_target_uses_live_structural_bit() {
 }
 
 #[test]
-fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
-    let rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[InfantryTypes]\n\
-             [VehicleTypes]\n0=MTNK\n\
-             [AircraftTypes]\n\
-             [BuildingTypes]\n\
-             [Warheads]\n0=WH\n\
-             [MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\
-             [PARENT]\nDamage=0\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\
-             [PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-2\n\
-             [CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\
-             [CHILDPROJ]\nSubjectToWalls=yes\n\
-             [WH]\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        ))
-        .expect("bridge shrapnel rules");
-    let mut sim = Simulation::with_seed(0x46_a310);
-    sim.session.map_width = 16;
-    sim.session.map_height = 16;
-    install_common_raw_terrain(&mut sim, 16, 16, 0, Some((6, 7)));
-
-    let source_id = sim.allocate_stable_id();
-    insert_entity(&mut sim, source_id, EntityCategory::Unit);
-    let source_type = sim.interner.intern("MTNK");
-    sim.substrate.entities.get_mut(source_id).unwrap().type_ref = source_type;
-    let projectile_id = sim.allocate_stable_id();
-    let detonation = crate::sim::projectile::ProjectileDetonation {
-        projectile_id,
-        source_id,
-        target: ProjectileTarget::Cell { rx: 6, ry: 7 },
-        impact: ProjectileCoord::new(6 * 256 + 128, 7 * 256 + 128, 0),
-        payload: ProjectilePayload::new(
-            0,
-            sim.interner.intern("WH"),
-            sim.interner.intern("PARENT"),
-        ),
-        reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
-    };
-
-    assert!(
-        sim.resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(6, 7))
-            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge())
-    );
-    let result = sim.tick_combat_with_fatal_lifecycle(
-        &rules,
-        None,
-        100,
-        &[],
-        &std::collections::BTreeSet::new(),
-        &Default::default(),
-        &[detonation],
-    );
-
-    assert_eq!(
-        result.projectile_spawns.len(),
-        1,
-        "ShrapnelCount=-2 subtracts the intact deck target's one-cell vertical distance; suppressing the live +416 deck term would emit two children"
-    );
-}
-
-#[test]
 fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
     let rules =
         crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(

@@ -1423,7 +1423,7 @@ pub(crate) fn handle_death(
                     rx: *rx,
                     ry: *ry,
                     rad_level: weapon.rad_level,
-                    spread: warhead.cell_spread.to_num::<i32>(),
+                    spread: super::cell_spread::whole_cells(warhead.cell_spread_f64),
                 });
             }
             // One native Apply_area_damage owns the whole fixed record vector.
@@ -2102,7 +2102,7 @@ fn emit_detonation_receivers(
                 rx: impact_rx,
                 ry: impact_ry,
                 rad_level: weapon.rad_level,
-                spread: warhead.cell_spread.to_num::<i32>(),
+                spread: super::cell_spread::whole_cells(warhead.cell_spread_f64),
             });
     }
 
