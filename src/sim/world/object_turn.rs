@@ -9,7 +9,6 @@ use std::collections::BTreeSet;
 use super::{Simulation, techno_ai};
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::movement::{self, teleport_movement};
 
 /// Whether this Unit visit reaches FootClass's SHP body-counter cadence.
@@ -890,7 +889,16 @@ impl Simulation {
             sim.refresh_high_flying_sight_before_process(stable_id, rules);
         }
 
-        let before_movement = sim.movement_sound_probe(stable_id);
+        // Foot4DA80C captures +538 before locomotor Process. The sound tail
+        // compares this same counter after its canonical cadence owner runs.
+        let Some(body_frame_before_process) = sim
+            .substrate
+            .entities
+            .get(stable_id)
+            .map(|entity| entity.body_frame_counter)
+        else {
+            return Ok(outcome);
+        };
         let cell_before_movement = sim
             .substrate
             .entities
@@ -1045,8 +1053,6 @@ impl Simulation {
 
         let mut lifecycle_requests = std::mem::take(&mut sim.pending_lifecycle_requests);
         for request in lifecycle_requests.drain(..) {
-            let LifecycleRequest::Uninit { stable_id, .. } = request;
-            sim.release_move_sound(stable_id);
             if let Some(rules) = rules {
                 sim.apply_lifecycle_request_with_rules(request, rules, overlay_registry);
             } else {
@@ -1056,7 +1062,7 @@ impl Simulation {
         debug_assert!(lifecycle_requests.is_empty());
         sim.pending_lifecycle_requests = lifecycle_requests;
 
-        sim.tick_move_sound_after_process(stable_id, before_movement, rules);
+        sim.tick_move_sound_after_process(stable_id, body_frame_before_process, rules);
         if let Some(rules) = rules {
             sim.sinking_edge_sounds(stable_id, rules);
             sim.crash_edge_sounds(stable_id, rules);

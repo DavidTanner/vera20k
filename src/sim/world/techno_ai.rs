@@ -533,7 +533,6 @@ impl Simulation {
                 self.session.binary_frame,
             );
             if finished {
-                self.release_move_sound(id);
                 self.uninit_with_context(
                     id,
                     super::UninitContext::new(Some(rules), ctx.overlay_registry),

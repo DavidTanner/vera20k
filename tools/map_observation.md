@@ -75,6 +75,83 @@ every retained object toward the shared 100000-sample budget and preserves the
 under ASCII case folding. Absent options (or only `observe_projectiles: false`)
 add no frame fields; v1 rejects both options.
 
+Optional v2 `observe_audio` records device-mixer queue pulls from requested ordinary
+SFX Players. For example:
+
+```json
+"observe_audio": {
+  "sound_ids": ["SquidMove"],
+  "max_events": 4,
+  "max_samples_per_event": 262144,
+  "completion_tail_ms": 4000
+}
+```
+
+The production SfxPlayer enables the recorder at accepted L0. Its existing
+decoder, arbiter, Player, gain/pause/stop processing and device mixer still own
+playback. A forwarding Source observes the Player output that the production
+device mixer pulls, **before mixer resampling/summing**, including any synchronous
+initialization prefetch. It does not establish that each sample reached the DAC
+or physical speakers, and is neither OS loopback nor native audio equivalence.
+Both paths preserve the ordinary new-Player, mixer-add, gain-setup, append order;
+unobserved output retains `Player::connect_new`. The diagnostic
+callback uses preallocated atomic slots, with no per-sample diagnostic locks or
+allocations; Source format queries occur at span boundaries.
+
+Each observed submission retains the reusable arbiter slot, owner, resolved
+sample identities, decoded source sample count, action/context rows, format
+spans, exact little-endian f32 PCM bytes, finite/nonzero counts and SHA256.
+`submission` is the capture ordinal; `event` is a reusable production pool slot.
+A stopped old source can finish draining while a new submission reuses its slot.
+The PCM includes any Player queue filler silence. Completion requires both the
+existing SFX owner's terminal action and the device mixer pulling the queue to its end;
+recording is not cut off merely because a stop/release was requested.
+
+Limits are 1..16 distinct ASCII sound IDs (128 bytes each), 1..16 submissions,
+1..262144 samples per submission, 64 action/format rows and 128 resolved sample
+names per submission. After the requested exact steps, the existing frame/audio
+service continues without simulation ticks for at most the requested 1..10000 ms
+tail. It stops when observed outputs end; exhaustion/timeouts fail the capture
+instead of claiming complete output. Repeated tail draws are counted separately
+from the exact-step draw transcript. PCM stays inside the existing sealed
+`capture.json`; the 128 MiB receipt limit is unchanged. Frame `audio_state` and a
+load segment's `restored_audio_state` read the existing Main/Scenario cursors and
+filtered actors' body counter, MoveSound latch and countdown without advancing
+any owner. Each row charges its actors and both cursors to the shared
+100000-sample budget, including the immediate restored row. Sound RNG and device
+timing are presentation inputs; repeated PCM captures need not be byte-identical.
+
+Export retained PCM after the wrapper validates every byte and summary:
+
+```sh
+python -m tools.map_observation export-audio --run /absolute/retained-run \
+  --output /absolute/new-audio-directory
+```
+
+Each format span becomes an IEEE-float WAV; no retail decode or mix runs again.
+The export records a final incomplete channel frame, if present, as
+`unframed_tail_samples`; those samples remain intact in the original receipt.
+Neither export nor validation writes into a retained run.
+
+Literal `key` gestures may optionally include a unique `modifiers` list containing
+`Ctrl`, `Shift`, `Alt`, and/or `Super`. These use the shared modifier-key owner and
+ordinary key edges, and release every modifier before rendering. Bare historical
+gestures keep their existing receipts. The release game's Ctrl+Shift+M/N shortcuts
+exercise the production quicksave/quickload owner. A quickload gesture requires
+`allow_load_segments: true` and must actually restore an earlier clock. Up to 16
+`load_segments` retain the triggering gesture ordinal and before/after tick,
+binary frame and simulation milliseconds. Capture-step numbering remains
+monotonic; draw/receipt validation follows the restored clock, including its
+rewind. This is VERA same-content snapshot loading, not original SAV compatibility.
+Run these profiles with a fresh scratch working directory/config: the production
+save repository uses that working directory's `saves/` folder. There is no
+diagnostic save backend or bypass of preparation/commit.
+
+The [idle SQD profiles](spatial_oracle/fv_cell_attack/profiles/README.md) use an
+authored water map with unchanged retail types. A separate ignored real-device
+SfxPlayer test exercises release/detach/hard-stop consumers; ordinary Stop on a
+stationary SQD does not manufacture an idle-lapse trigger.
+
 The [projectile trailer discovery profile](projectile_oracle/profiles/projectile-trailer-discovery.json)
 loads an authored water scene with unchanged retail SUB and LCRF rules. Use it
 to confirm stable actor IDs before the ordinary `Attack` in the

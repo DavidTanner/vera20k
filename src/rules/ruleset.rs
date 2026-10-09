@@ -3569,6 +3569,9 @@ impl RuleSet {
             object.voice_select = section.map_or_else(Vec::new, |section| {
                 sounds.read_rules_sound_list(section, "VoiceSelect")
             });
+            object.move_sound = section.map_or_else(Vec::new, |section| {
+                sounds.read_rules_sound_list(section, "MoveSound")
+            });
             if object.category == crate::rules::object_type::ObjectCategory::Building {
                 object.buildup_sound = section
                     .and_then(|section| sounds.read_rules_reference(section, "BuildupSound"));
@@ -4583,6 +4586,21 @@ impl RuleSet {
                             &p.trailer,
                         ),
                     ),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
+        // The fixed SOUNDMD registry changes which names resolve even when
+        // Rules text is identical. Empty versus nonempty vectors gates Main
+        // draws; list order/duplicates select the sound. Hash effective lists
+        // in canonical type order, independently of registry insertion order.
+        b"resolved-type-sound-lists-v1".hash(&mut hasher);
+        self.object_list
+            .iter()
+            .map(|object| {
+                (
+                    (object.category, object.id.to_ascii_uppercase()),
+                    (&object.voice_select, &object.move_sound),
                 )
             })
             .collect::<BTreeMap<_, _>>()

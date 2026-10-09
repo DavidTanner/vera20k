@@ -2271,7 +2271,6 @@ fn lifecycle_authority_conceal_without_dirty_eligibility_still_clears_drawn_stat
         vec![
             LifecycleOutput::DisplayRemove { stable_id: 1 },
             LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
-            LifecycleOutput::StopVoc { stable_id: 1 },
             LifecycleOutput::ClearDrawnState { stable_id: 1 },
             LifecycleOutput::ClearRedraw { stable_id: 1 },
         ]
@@ -2485,7 +2484,6 @@ fn lifecycle_authority_conceal_outputs_match_release_order() {
         vec![
             LifecycleOutput::DisplayRemove { stable_id: 1 },
             LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
-            LifecycleOutput::StopVoc { stable_id: 1 },
             LifecycleOutput::DirtyTacticalRect { stable_id: 1 },
             LifecycleOutput::ClearDrawnState { stable_id: 1 },
             LifecycleOutput::ClearRedraw { stable_id: 1 },

@@ -43,6 +43,10 @@ use crate::rules::sound_ini::{
 };
 use crate::util::native_x87::X87Chop53;
 
+mod observation;
+use observation::PcmObserver;
+pub(crate) use observation::{PcmObservationConfig, PcmObservationContext, PcmObservationReport};
+
 /// How many passes of a sustaining cue are kept queued on its rodio player:
 /// the one that is sounding plus one waiting behind it.
 ///
@@ -705,6 +709,9 @@ struct ResolvedPlayback {
     event_linear: i32,
     /// The per-play draws, kept so the pre-delay reaches the arbiter.
     shifts: PlayShifts,
+    /// Diagnostic identity of successfully decoded samples, collected only
+    /// when this entry was explicitly requested by a bounded PCM observer.
+    observed_samples: Option<Vec<String>>,
 }
 
 /// Which native volume groups one secondary output is chained to.
@@ -920,6 +927,9 @@ pub struct SfxPlayer {
     live: BTreeMap<EventId, LiveSfxOutput>,
     /// Queue bookkeeping for the sustaining subset of [`Self::live`].
     loops: BTreeMap<EventId, LoopQueue>,
+    /// Presentation diagnostics only; absent in ordinary play. It never
+    /// supplies an arbiter, sample-selection or simulation decision.
+    pcm_observer: Option<PcmObserver>,
     /// Last service-pass timestamp handed in by the app.
     now_ms: u64,
     /// Dedicated voice player — unit responses cut off the previous voice.
@@ -1035,6 +1045,7 @@ impl SfxPlayer {
             pending: BTreeMap::new(),
             live: BTreeMap::new(),
             loops: BTreeMap::new(),
+            pcm_observer: None,
             now_ms: 0,
             voice_player: None,
             vox: VoxQueue::new(),
@@ -1069,9 +1080,17 @@ impl SfxPlayer {
         assets: &AssetManager,
         audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) -> Option<ResolvedPlayback> {
-        resolve_entry_playback(entry, &mut self.rng, |name| {
-            load_sfx(name, assets, audio_index)
-        })
+        let observe = self
+            .pcm_observer
+            .as_ref()
+            .is_some_and(|observer| observer.wants(&entry.id));
+        resolve_entry_playback_pass(
+            entry,
+            &mut self.rng,
+            |name| load_sfx(name, assets, audio_index),
+            true,
+            observe,
+        )
     }
 
     /// Resolve a sound id through the registry, else as a raw audio-bag name
@@ -1095,6 +1114,11 @@ impl SfxPlayer {
                 volume_shift_pct: 0,
                 predelay_ms: 0,
             },
+            observed_samples: self
+                .pcm_observer
+                .as_ref()
+                .is_some_and(|observer| observer.wants(sound_id))
+                .then(|| vec![sound_id.to_owned()]),
         })
     }
 
@@ -1228,6 +1252,9 @@ impl SfxPlayer {
                 &mut self.rng,
                 |name| load_sfx(name, assets, audio_index),
                 plays_attack,
+                self.pcm_observer
+                    .as_ref()
+                    .is_some_and(|observer| observer.wants(sound_id)),
             ),
             None => self.resolve_any(sound_id, registry, assets, audio_index),
         };
@@ -1247,6 +1274,9 @@ impl SfxPlayer {
         // (`UpdateState` state 3 checks `Control & LOOP` first).
         self.arbiter
             .set_loop_handle(anim_id, Some(event), &registry_key(sound_id));
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.bind_owner(event, anim_id);
+        }
         true
     }
 
@@ -1321,7 +1351,19 @@ impl SfxPlayer {
     /// cue stops repeating and plays out, and the handle is cleared.
     /// Idempotent.
     pub fn release_animation_sound(&mut self, anim_id: u64) {
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.owner_action(anim_id, "release", self.now_ms);
+        }
         self.arbiter.release_owner(anim_id);
+    }
+
+    /// `VocHandle405FD0`: prevent repetitions and discard the handle while
+    /// retaining the current playout. The arbiter remains the handle owner.
+    pub fn detach_animation_sound(&mut self, owner: u64) {
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.owner_action(owner, "detach", self.now_ms);
+        }
+        self.arbiter.detach_owner(owner);
     }
 
     /// Whether `owner`'s handle still holds a live event: `0x00406130` on a
@@ -1619,6 +1661,15 @@ impl SfxPlayer {
             predelay_ms: resolved.shifts.predelay_ms,
         };
         let event = self.arbiter.submit(&request, self.now_ms)?;
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.submitted(
+                event,
+                &key,
+                resolved.observed_samples,
+                resolved.decoded.samples.len(),
+                self.now_ms,
+            );
+        }
         self.pending.insert(
             event,
             PendingPlayback {
@@ -1723,10 +1774,23 @@ impl SfxPlayer {
             NonZero::new(decoded.sample_rate),
         ) else {
             self.arbiter.stop(event);
+            if let Some(observer) = &mut self.pcm_observer {
+                observer.action(event, "stopped", now_ms);
+            }
             return;
         };
         let source = SamplesBuffer::new(channels, sample_rate, decoded.samples);
-        let player: Player = Player::connect_new(self._device.mixer());
+        let player = if let Some(observer) = self
+            .pcm_observer
+            .as_mut()
+            .filter(|observer| observer.contains(event))
+        {
+            observer
+                .connect_player(event, self._device.mixer(), now_ms)
+                .expect("observed event")
+        } else {
+            Player::connect_new(self._device.mixer())
+        };
         let output = LiveSfxOutput::new(player, gain, initial_volume);
         output.player.append(source);
         self.live.insert(event, output);
@@ -1795,12 +1859,22 @@ impl SfxPlayer {
                     &mut self.rng,
                     |name| load_sfx(name, assets, audio_index),
                     plays_attack,
+                    self.pcm_observer
+                        .as_ref()
+                        .is_some_and(|observer| observer.contains(event)),
                 ) else {
                     if let Some(queue) = self.loops.get_mut(&event) {
                         queue.finished = true;
                     }
                     break;
                 };
+                if let Some(observer) = &mut self.pcm_observer {
+                    observer.samples(
+                        event,
+                        resolved.observed_samples,
+                        resolved.decoded.samples.len(),
+                    );
+                }
                 let mut decoded = resolved.decoded;
                 apply_pan(&mut decoded.samples, pan);
                 let (Some(channels), Some(sample_rate)) = (
@@ -1843,6 +1917,9 @@ impl SfxPlayer {
             .map(|(event, _)| *event)
             .collect();
         for event in finished {
+            if let Some(observer) = &mut self.pcm_observer {
+                observer.action(event, "completed", self.now_ms);
+            }
             self.arbiter.notify_playout_ended(event);
             self.release_output(event);
         }
@@ -1860,6 +1937,9 @@ impl SfxPlayer {
     }
 
     fn release_output(&mut self, event: EventId) {
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.action(event, "stopped", self.now_ms);
+        }
         self.pending.remove(&event);
         self.loops.remove(&event);
         if let Some(output) = self.live.remove(&event) {
@@ -1979,27 +2059,58 @@ impl SfxPlayer {
     /// Hard-stop every SFX/voice source and discard queued announcements.
     pub fn stop_all(&mut self) {
         for event in self.live.keys().copied().collect::<Vec<_>>() {
-            self.arbiter.stop(event);
+            if let Some(observer) = &mut self.pcm_observer {
+                observer.action(event, "stopped", self.now_ms);
+            }
         }
         for (_, output) in std::mem::take(&mut self.live) {
             output.player.stop();
         }
         for event in self.pending.keys().copied().collect::<Vec<_>>() {
-            self.arbiter.stop(event);
+            if let Some(observer) = &mut self.pcm_observer {
+                observer.action(event, "stopped", self.now_ms);
+            }
         }
         self.pending.clear();
         self.loops.clear();
+        self.arbiter.clear_for_world_replacement();
         if let Some(output) = self.voice_player.take() {
             output.player.stop();
         }
         self.current_voice_id = None;
         self.current_voice_owner = None;
+        // World replacement resets native Techno voice latches at
+        // 70C231/70C23A/70C240; outgoing queued owners must not survive this
+        // common audio reset (69BB82 -> 7535D0). Do not replay them on load.
+        self.voice_queue = VoiceQueue::new();
         // `VoxClass::ResetAll @ 0x007535D0`: current entry done, stop the
         // stream, `ClearAllQueues`, then `DAT_00b1d428 = 0` and
         // `DAT_00b1d3d8 = 0`. Both depths are reset here, not left to unwind
         // on the next pause edge.
         self.stop_eva_stream();
         self.vox.reset_all();
+    }
+
+    pub(crate) fn observe_pcm(&mut self, config: PcmObservationConfig) -> Result<(), &'static str> {
+        if self.pcm_observer.is_some() {
+            return Err("PCM observation is already active");
+        }
+        self.pcm_observer = Some(PcmObserver::new(config)?);
+        Ok(())
+    }
+
+    pub(crate) fn set_pcm_observation_context(&mut self, context: PcmObservationContext) {
+        if let Some(observer) = &mut self.pcm_observer {
+            observer.context(context);
+        }
+    }
+
+    pub(crate) fn observed_pcm_settled(&self) -> bool {
+        self.pcm_observer.as_ref().is_some_and(PcmObserver::settled)
+    }
+
+    pub(crate) fn finish_pcm_observation(&mut self) -> Option<PcmObservationReport> {
+        self.pcm_observer.take().map(PcmObserver::finish)
     }
 
     /// Get the current SFX master volume.
@@ -2109,12 +2220,13 @@ fn entry_facts(sound_id: &str, registry: &SoundRegistry) -> EntryFacts {
 /// Device-free core of one play request: draw the shifts, select the
 /// samples, load and chain them, apply the pitch shift, and combine the entry
 /// volume with the `VShift=` reduction into the event's linear volume.
+#[cfg(test)]
 fn resolve_entry_playback(
     entry: &SoundEntry,
     rng: &mut impl SampleRng,
     load: impl FnMut(&str) -> Option<DecodedAudio>,
 ) -> Option<ResolvedPlayback> {
-    resolve_entry_playback_pass(entry, rng, load, true)
+    resolve_entry_playback_pass(entry, rng, load, true, false)
 }
 
 /// [`resolve_entry_playback`] for one pass; `plays_attack` is
@@ -2124,6 +2236,7 @@ fn resolve_entry_playback_pass(
     rng: &mut impl SampleRng,
     mut load: impl FnMut(&str) -> Option<DecodedAudio>,
     plays_attack: bool,
+    observe_samples: bool,
 ) -> Option<ResolvedPlayback> {
     if entry.sounds.is_empty() {
         return None;
@@ -2131,6 +2244,7 @@ fn resolve_entry_playback_pass(
     let shifts = PlayShifts::draw(entry, rng);
     let order = select_playout_pass(entry, rng, plays_attack);
     let mut decoded: Option<DecodedAudio> = None;
+    let mut observed_samples = observe_samples.then(Vec::new);
     for index in order {
         let Some(name) = entry.sounds.get(index) else {
             continue;
@@ -2138,6 +2252,9 @@ fn resolve_entry_playback_pass(
         let Some(clip) = load(name) else {
             continue;
         };
+        if let Some(samples) = &mut observed_samples {
+            samples.push(name.clone());
+        }
         match decoded.as_mut() {
             Some(chain) => chain.append(clip),
             None => decoded = Some(clip),
@@ -2149,6 +2266,7 @@ fn resolve_entry_playback_pass(
         decoded,
         event_linear: combine_linear(entry.volume_linear, shifts.volume_linear()),
         shifts,
+        observed_samples,
     })
 }
 
@@ -3106,6 +3224,150 @@ mod tests {
             crate::util::sha256::sha256_hex(&actual),
             native["sha256"].as_str().unwrap()
         );
+    }
+
+    #[test]
+    #[ignore = "requires active-retail RA2_DIR and an audio output device"]
+    fn retail_squid_one_shot_device_release_detach_and_hard_stop() {
+        use std::io::Write;
+        use std::time::{Duration, Instant};
+
+        // Original handle controls are retained in fv_cell_attack/foot_move_sound:
+        // Release406060 and 405FD0 retain a current one-shot; Stop405D40 ends it.
+        // This is the production device consumer, not a supplied native channel
+        // callback or an invented idle-lapse trigger. Sample RNG stays untouched.
+        let (_root, assets) = crate::rules::retail_ini_fixture::retail_assets()
+            .expect("explicit device witness requires active-retail assets");
+        let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+        let loaded_index = assets.load_audio_index().expect("retail audio index");
+        let audio_index = loaded_index.as_ref().map(|loaded| &loaded.index);
+        let entry = definitions.sounds().get("SquidMove").unwrap();
+        assert_eq!(entry.control, control::RANDOM);
+        assert_eq!(entry.loop_count, 0);
+        assert_eq!(entry.sounds, ["vsqumova", "vsqumovb"]);
+        let mut player = SfxPlayer::new().expect("explicit witness requires an output device");
+        let epoch = Instant::now();
+        let mut reports = Vec::new();
+        for operation in ["release", "detach", "hard_stop"] {
+            player.stop_all();
+            player
+                .observe_pcm(PcmObservationConfig {
+                    sound_ids: vec!["SquidMove".to_owned()],
+                    max_events: 1,
+                    max_samples_per_event: 262_144,
+                })
+                .unwrap();
+            assert!(player.play_animation_sound_spatial(
+                7,
+                "SquidMove",
+                SpatialGain::CENTRED_FULL,
+                definitions.sounds(),
+                &assets,
+                audio_index
+            ));
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                player.pump(
+                    epoch.elapsed().as_millis() as u64,
+                    definitions.sounds(),
+                    &assets,
+                    audio_index,
+                );
+                if player.pcm_observer.as_ref().unwrap().pulled_nonzero() {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{operation}: real device did not pull nonzero PCM"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let before = player.pcm_observer.as_ref().unwrap().recorded_samples();
+            match operation {
+                "release" => player.release_animation_sound(7),
+                "detach" => player.detach_animation_sound(7),
+                _ => player.stop_animation_sound(7),
+            }
+            assert!(player.handle_sound_id(7).is_none());
+            while !player.observed_pcm_settled() {
+                player.pump(
+                    epoch.elapsed().as_millis() as u64,
+                    definitions.sounds(),
+                    &assets,
+                    audio_index,
+                );
+                assert!(
+                    Instant::now() < deadline,
+                    "{operation}: real device queue did not end"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let report = player.finish_pcm_observation().unwrap();
+            assert!(!report.truncated);
+            assert_eq!(report.outputs.len(), 1);
+            let output = &report.outputs[0];
+            assert!(output.source_ended && !output.truncated);
+            assert_eq!(output.owner, Some(7));
+            assert_eq!(output.resolved_samples.len(), 1);
+            assert!(entry.sounds.contains(&output.resolved_samples[0]));
+            assert!(
+                output
+                    .sample_bits
+                    .iter()
+                    .all(|bits| f32::from_bits(*bits).is_finite())
+            );
+            if operation == "hard_stop" {
+                assert!(
+                    output.sample_bits.len() < output.source_sample_count,
+                    "device continued the entire one-shot after a hard stop"
+                );
+                assert_eq!(output.actions.last().unwrap().kind, "stopped");
+            } else {
+                assert!(output.sample_bits.len() >= output.source_sample_count);
+                assert!(
+                    output.sample_bits[before..]
+                        .iter()
+                        .any(|bits| f32::from_bits(*bits) != 0.0),
+                    "current playout must remain audible after {operation}"
+                );
+                assert_eq!(output.actions.last().unwrap().kind, "completed");
+            }
+            eprintln!(
+                "SquidMove {operation}: sample={} before={before} pulled={} decoded={} source_ended={}",
+                output.resolved_samples[0],
+                output.sample_bits.len(),
+                output.source_sample_count,
+                output.source_ended
+            );
+            reports.push(
+                serde_json::json!({"operation": operation, "samples_before_operation": before,
+                "observation": report.into_json()}),
+            );
+        }
+        player.queue_unit_voice(7, "SquidSelect");
+        player.stop_all();
+        assert!(player.voice_queue.pending_for(7).is_none());
+        assert!(player.voice_queue.playing_for(7).is_none());
+        assert!(player.looping_owners().is_empty());
+        if let Some(path) = std::env::var_os("VERA20K_SFX_PCM_TEST_OUTPUT") {
+            let path = std::path::PathBuf::from(path);
+            assert!(
+                path.is_absolute(),
+                "witness output must name a scratch absolute path"
+            );
+            let bytes = serde_json::to_vec(
+                &serde_json::json!({"schema_version": "vera20k.sfx-device-control.v1",
+                "point": "post_player_pre_device_mixer", "controls": reports}),
+            )
+            .unwrap();
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap()
+                .write_all(&bytes)
+                .unwrap();
+        }
     }
 
     /// Original AudioSystem406F70 with physical EVAMD DialogList62 and

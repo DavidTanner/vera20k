@@ -545,8 +545,10 @@ pub struct ObjectType {
     /// the `-1` gate. Trigger / player effect / frequency are recorded in full
     /// on `crate::audio::events::SoundEventQueue`.
     pub damage_sound: Option<String>,
-    /// Sound ID played while this entity moves (looping engine/footstep).
-    pub move_sound: Option<String>,
+    /// Ordered MoveSound vector, TechnoType+4F4. Constructor710E7B..710EAC
+    /// creates an empty list; ReadINI713459..7134D9 uses ReadSoundList525430.
+    /// The fixed SOUNDMD binder resolves each token, retaining duplicates.
+    pub move_sound: Vec<String>,
     /// `CrashingSound=` — `TechnoTypeClass+0x544`, read at `0x00712F80`.
     /// `FootClass::AI` plays it on the object's MoveSound controller
     /// (`+0x544`) when the crash latch rises (`0x004DAD5E..0x004DADA7`).
@@ -2246,7 +2248,10 @@ impl ObjectType {
                 .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             damage_sound: section.read_name("DamageSound", 0x80).map(str::to_owned),
-            move_sound: first_sound("MoveSound"),
+            move_sound: section
+                .read_sound_list("MoveSound")
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+                .unwrap_or_default(),
             crashing_sound: section.read_name("CrashingSound", 0x80).map(str::to_owned),
             voice_crashing: section.read_name("VoiceCrashing", 0x80).map(str::to_owned),
             // Native constructors store -1; the process owner later binds

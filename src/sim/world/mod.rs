@@ -58,6 +58,10 @@ mod lifecycle;
 mod load_object_lifecycle;
 mod logic_vector;
 mod move_cell_input;
+mod move_sound;
+pub(crate) use move_sound::MoveSoundState;
+#[cfg(test)]
+mod move_sound_tests;
 #[cfg(test)]
 mod native_cell_input_test_fixture;
 mod navigation;
@@ -82,9 +86,9 @@ pub(crate) use techno_ai::foot_unlimbo_idle_mode;
 pub(crate) use techno_ai::passive_target_acquire;
 pub(crate) use techno_ai::queue_and_commence;
 mod command_schedule;
+mod selection_voice;
 pub(crate) mod techno_ai_cloak;
 pub(crate) mod unit_post;
-mod selection_voice;
 mod world_commands;
 mod world_hash;
 mod world_orders;
@@ -320,19 +324,6 @@ pub(crate) enum HouseAiActivationOrderTestEvent {
     DefeatProcessed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MovementSoundProbe {
-    rx: u16,
-    ry: u16,
-    z: u8,
-    sub_x_bits: i32,
-    sub_y_bits: i32,
-    /// The body's FacingClass state: a turn issued during Process changes it;
-    /// a turn already running is `Is_Moving_Now`'s.
-    facing: crate::sim::movement::FacingClass,
-    track_point: Option<u16>,
-}
-
 /// A sound event produced during simulation (combat, death, production).
 /// Pure data — no audio library dependency. Drained by the app layer each frame.
 #[derive(Debug, Clone)]
@@ -377,6 +368,9 @@ pub enum SimSoundEvent {
     /// plays out; an uncounted loop stops repeating. Anim UnInit4255D5 and
     /// scalar destructor4228E0 share this operation with Foot4D3677.
     ObjectSoundReleased { owner: u64 },
+    /// FootLimbo4DB353 ->405FD0: stop repetition for any valid event, even
+    /// a counted loop, and detach the handle. The current audio plays out.
+    ObjectSoundDetached { owner: u64 },
     /// Native Fly AuxSound1/AuxSound2 at the phase callback world coordinate.
     AircraftPhase {
         sound_id: InternedId,
@@ -1903,7 +1897,6 @@ impl Simulation {
                 {
                     crate::sim::docking::bunker_link::release_sell_destroy(self, stable_id);
                 }
-                self.release_move_sound(stable_id);
                 self.uninit_with_context(stable_id, uninit_context);
             }
         }
@@ -3418,31 +3411,6 @@ impl Simulation {
         self.interner.intern(s)
     }
 
-    fn movement_sound_probe(&self, stable_id: u64) -> Option<MovementSoundProbe> {
-        let entity = self.substrate.entities.get(stable_id)?;
-        Some(MovementSoundProbe {
-            rx: entity.position.rx,
-            ry: entity.position.ry,
-            z: entity.position.z,
-            sub_x_bits: entity.position.sub_x.to_bits(),
-            sub_y_bits: entity.position.sub_y.to_bits(),
-            facing: entity.body_facing,
-            track_point: entity
-                .locomotor
-                .as_ref()
-                .and_then(|loco| {
-                    loco.track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
-                        .or_else(|| {
-                            loco.track_progress(
-                                crate::sim::movement::track_process::TrackFamily::Ship,
-                            )
-                        })
-                })
-                .filter(|track| track.turn_index >= 0)
-                .and_then(|track| u16::try_from(track.cursor).ok()),
-        })
-    }
-
     /// Current world coordinate of whatever object holds one app-side loop
     /// handle, whether that is an anim or a `MoveSound`-carrying entity.
     ///
@@ -3488,119 +3456,6 @@ impl Simulation {
             x,
             y,
             z: crate::sim::movement::ground_pose::object_world_z_leptons(entity, None),
-        }
-    }
-
-    /// Release an active FootClass MoveSound while the object is still
-    /// represented, preserving the native stop-before-UnInit ordering.
-    pub(crate) fn release_move_sound(&mut self, stable_id: u64) {
-        let Some(entity) = self.substrate.entities.get(stable_id) else {
-            return;
-        };
-        if !entity.move_sound_active {
-            return;
-        }
-        let world = Self::movement_sound_world(entity);
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.move_sound_active = false;
-            entity.move_sound_countdown = 0;
-        }
-        self.sound_events.push(SimSoundEvent::AnimationStopped {
-            anim_id: stable_id,
-            stop_sound_id: None,
-            world,
-        });
-    }
-
-    /// FootClass's post-locomotor MoveSound tail. A fresh moving-now virtual
-    /// answer or locomotor state change keeps the handle alive and reloads the
-    /// three-visit grace counter. The process-local audio owner selects the
-    /// sample only after its device and spatial-acceptance gates.
-    ///
-    /// RESIDUAL: native's "state change" is the body frame counter
-    /// (Foot+0x538) advancing within this AI pass (saved `0x004DA80C`,
-    /// compared `0x004DAA01`). `0x004DA9FB` bumps it every `IdleRate=` frames
-    /// while not moving now, and every frame while a `DeployToLand=` type is
-    /// above ground, unless warping (+0x270/+0x271) or +0x6AD is set. VERA
-    /// compares position, facing, path index and track point instead.
-    /// - Trigger: a hovering `DeployToLand=` Siege Chopper; an idle
-    ///   `IdleRate=` type; a position or facing change while not moving now.
-    /// - Effect: the MoveSound starts or lapses on other frames than native;
-    ///   a hovering Siege Chopper's loop lapses after three visits. A start
-    ///   draws Main RNG (`0x004DAACB`).
-    /// - Frequency: Siege Choppers holding in the air; others rare.
-    /// - Risk: audio, and the Main RNG draw order.
-    fn tick_move_sound_after_process(
-        &mut self,
-        stable_id: u64,
-        before: Option<MovementSoundProbe>,
-        rules: Option<&RuleSet>,
-    ) {
-        let Some(entity) = self.substrate.entities.get(stable_id) else {
-            return;
-        };
-        if entity.category == EntityCategory::Structure || entity.locomotor.is_none() {
-            return;
-        }
-        let after = self.movement_sound_probe(stable_id);
-        let movement_changed = before.is_some() && before != after;
-        let moving_now = crate::sim::movement::motion_query::is_moving_now(
-            entity,
-            rules.map(|rules| {
-                crate::sim::movement::SpeedRules::new(
-                    rules,
-                    &self.interner,
-                    &self.type_handles,
-                    &self.houses,
-                )
-            }),
-            self.session.binary_frame,
-        );
-        // `0x004DAA38`/`0x004DAA3E`: falling (`+0x8D`) or crashing (`+0x425`).
-        // A Jumpjet's ordinary descent is neither: it keeps its move sound.
-        let falling_or_crashing =
-            entity.is_falling_down() || entity.crashing || entity.parachute_state.is_some();
-        let active = entity.move_sound_active;
-        let countdown = entity.move_sound_countdown;
-        let type_ref = entity.type_ref();
-        let world = Self::movement_sound_world(entity);
-        let qualifies = (movement_changed || moving_now) && !falling_or_crashing;
-
-        if qualifies {
-            let mut started = false;
-            if !active {
-                let configured = rules
-                    .and_then(|rules| self.object_type(type_ref, rules))
-                    .and_then(|object| object.move_sound.as_deref())
-                    .map(str::trim)
-                    .filter(|sound| !sound.is_empty() && !sound.eq_ignore_ascii_case("none"))
-                    .map(str::to_owned);
-                if let Some(configured) = configured {
-                    // gamemd `FootClass__AI @ 0x004DA530`: the active MoveSound
-                    // tail loads `g_MainRng` at 0x004DAAC0, calls `Random__Next`
-                    // at 0x004DAACB, then indexes the vector at 0x004DAAD3.
-                    let _sound_index_draw = self.main_rng.next_u32();
-                    let sound_id = self.interner.intern(&configured);
-                    self.sound_events.push(SimSoundEvent::AnimationStarted {
-                        anim_id: stable_id,
-                        sound_id,
-                        world,
-                    });
-                    started = true;
-                }
-            }
-            if active || started {
-                if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                    entity.move_sound_active = true;
-                    entity.move_sound_countdown = 3;
-                }
-            }
-        } else if active {
-            if countdown == 0 || falling_or_crashing {
-                self.release_move_sound(stable_id);
-            } else if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.move_sound_countdown = countdown - 1;
-            }
         }
     }
 
@@ -4104,12 +3959,8 @@ impl Simulation {
             &self.effective_shared_cell_dummy(),
             spawn.origin,
         );
-        self.projectiles.spawn_at(
-            stable_id,
-            self.session.binary_frame,
-            spawn,
-            location,
-        );
+        self.projectiles
+            .spawn_at(stable_id, self.session.binary_frame, spawn, location);
         let registered = self.register_projectile(stable_id, spawn.flat);
         debug_assert!(registered);
         if let Some(style) = spawn.line_trail {
