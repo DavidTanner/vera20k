@@ -602,7 +602,7 @@ fn compare_unload(s: &Scene, row: &Value, context: &str) {
         .unwrap();
     let (balance, score) = (
         i64::from(house.economy.credits()),
-        i64::from(house.economy.harvested_credits()),
+        i64::from(house.economy.score()),
     );
     if row["input"]["name"] == "unload_gate_income_mult" {
         // RESIDUAL (documented on `refinery_dock`): native 0.9f pays

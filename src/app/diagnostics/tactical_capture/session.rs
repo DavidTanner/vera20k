@@ -1066,11 +1066,7 @@ impl TacticalCaptureSession {
             && output.instance_counts.radar_animation > 0;
         let sidebar_values_ready = sidebar.power_produced >= sidebar.power_drained
             && sidebar.credits
-                == sim
-                    .houses
-                    .get(&owner_id)
-                    .map(|house| house.economy.credits())
-                    .unwrap_or(sidebar.credits);
+                == crate::app::presentation::sidebar_render::counter_credits(sim, owner);
         let egui = state.capture_egui_observation();
         let egui_ready = egui
             .pixels_per_point
@@ -1239,7 +1235,7 @@ impl TacticalCaptureSession {
             "wallet": {
                 "credits": house.economy.credits(),
                 "spent_credits": house.economy.spent_credits(),
-                "harvested_credits": house.economy.harvested_credits(),
+                "score": house.economy.score(),
             },
             "power": {
                 "output": power.total_output,

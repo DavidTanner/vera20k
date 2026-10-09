@@ -4833,7 +4833,7 @@ impl Simulation {
                 .and_then(|entity| self.object_type(entity.type_ref(), rules))
                 .map_or(0, |object| self.cost_of(old_owner, object, rules));
             if let Some(house) = self.houses.get_mut(&new_owner) {
-                house.stats.add_score(cost);
+                house.economy.add_score(cost);
             }
         }
         self.update_house_tracking(

@@ -700,7 +700,8 @@ fn erase_awards_price_each_cost_by_its_house() {
         veterancy(&sim, cleg),
         f32::from_bits(expected.veterancy_raw.bits())
     );
-    assert_eq!(house_stats(&sim, "Russians").score_points(), 450);
+    let russians = sim.interner.get("Russians").unwrap();
+    assert_eq!(sim.houses[&russians].economy.score(), 450);
 }
 
 /// A warp's start makes a victim that was itself warping let go

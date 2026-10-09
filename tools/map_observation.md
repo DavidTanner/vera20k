@@ -1246,10 +1246,10 @@ A miner row contains `cargo_bales`, `capacity_bales`, `unload_active` and
 `harvesting`; other actors have null `miner`. Radio rows preserve the complete
 contact-slot array, including null holes, and the optional `dock_entered_with`
 stable ID on both the miner and refinery. House rows follow requested-owner order
-and expose the existing economy's `credits`, `spent_credits` and
-`harvested_credits`. A missing House has null economy; the observer never creates
-a wallet. HarvestedCredits is the existing deposit statistic, including its x5
-bale multiplier, rather than spendable cash. These immutable reads never send
+and expose the existing economy's `credits`, `spent_credits` and `score`. A
+missing House has null economy; the observer never creates a wallet. The score is
+House+0x54E8, fed by refinery deposits (x5 per bale), kills and captures, rather
+than spendable cash. These immutable reads never send
 radio queries, advance timers or change cargo.
 
 Capture manifests and sealed run receipts use compact JSON with the same fields

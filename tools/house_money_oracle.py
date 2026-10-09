@@ -4,7 +4,8 @@ Run python -m tools.house_money_oracle --check (or explicit --write).
 Rust consumer: src/sim/economy.rs (tests).
 
 Sections, each case executed in a fresh emulator on a house whose silo
-storage (+0x2FC) and capacity (+0x310) are empty, as VERA keeps them:
+storage (+0x2FC) is empty, as VERA keeps it, and whose capacity (+0x310)
+holds a retail refinery's Storage=200:
 - spend_money: HouseClass::Spend_Money 0x4F9790 over the cash arm, the
   shortfall arm (a negative balance included) and 32-bit wrap of the
   balance and the spending statistic (+0x2DC).
@@ -34,6 +35,7 @@ TIBERIUM_LIST = FAKE + 0x40000
 TIBERIUM = FAKE + 0x41000
 
 BALANCE = 0x30C
+CAPACITY = 0x310
 SPENT = 0x2DC
 SCORE = 0x54E8
 INCOME_MULT = 0x148
@@ -52,6 +54,7 @@ def house(balance, *, spent=0, score=0, income_ppm=1_000_000):
     emu.write32(HOUSE + 0x34, HOUSE_TYPE)
     emu.write32(HOUSE_TYPE + INCOME_MULT, f32(income_ppm / 1_000_000))
     emu.write32(HOUSE + BALANCE, balance)
+    emu.write32(HOUSE + CAPACITY, 200)
     emu.write32(HOUSE + SPENT, spent)
     emu.write32(HOUSE + SCORE, score)
     return emu
@@ -101,8 +104,10 @@ def add_tiberium_credits():
         ('three purifiers', 0, 0, 3, 750_000, 25, 1_000_000),
         ('IncomeMult 1.25', 10, 0, 7, 1_000_000, 25, 1_250_000),
         ('IncomeMult 0.5 with a bonus', 0, 0, 3, 250_000, 25, 500_000),
-        ('a negative balance truncates toward zero', -100, -9, 10, 250_000, 25, 1_000_000),
+        ('negative sums truncate toward zero', -100, -20, 10, 250_000, 25, 1_000_000),
+        ('the balance wraps', 0x7FFFFFF0, 0, 40, 1_000_000, 25, 1_000_000),
         ('IncomeMult 0.9 is a float', 0, 0, 40, 1_000_000, 25, 900_000),
+        ('a deposit too small to pay still scores', 0, 0, 1, 1_000_000, 25, 10_000),
     ):
         emu = house(balance, score=score, income_ppm=income_ppm)
         emu.write32(TIBERIUMS, TIBERIUM_LIST)
@@ -141,9 +146,9 @@ if __name__ == '__main__':
         scope=('HouseClass::Spend_Money, Add_Credits, Add_Tiberium_Credits and '
                'Available_Money on a house with empty silo storage. Synthetic fixtures '
                'only; the silo-drain arm of Spend_Money is not reached.'),
-        assumptions=['The house holds no silo storage (+0x2FC) and no capacity (+0x310), '
-                     'so Spend_Money never drains buildings and Update_Silo_Damage_Frames '
-                     'returns at once.'],
+        assumptions=['The house holds no silo storage (+0x2FC) and a capacity (+0x310) of '
+                     '200, so Spend_Money never drains buildings and '
+                     'Update_Silo_Damage_Frames compares two empty fill ratios and returns.'],
         substitutions=[],
         entry_points={'spend_money': SPEND_MONEY, 'add_credits': ADD_CREDITS,
                       'add_tiberium_credits': ADD_TIBERIUM_CREDITS,

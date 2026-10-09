@@ -1,11 +1,15 @@
 //! The house's wallet, owned by `HouseState`: its cash balance (House
-//! `+0x30C`), the spending statistic (`+0x2DC`) and the ore feeder of its
-//! score (`+0x54E8`). Every writer goes through the money primitives here,
-//! each the one port of its native function. The house's silo storage
-//! (`+0x2FC`) and capacity (`+0x310`) are not kept: their only filler is the
-//! `Weeder=` deposit (`Add_Tiberium_To_Storage @ 0x004F9700`, called only at
-//! `0x0073E48E`), which retail never sets, so the primitives' storage arms
-//! never run (tools/house_money_oracle.py pins them on an empty store).
+//! `+0x30C`), the spending statistic (`+0x2DC`) and the score (`+0x54E8`).
+//! Every writer goes through the money primitives here, each the one port of
+//! its native function.
+//!
+//! The house's silo storage (`+0x2FC`) is not kept, because nothing fills it:
+//! it grows only when `HouseClass::Added_To_Game @ 0x00502B83` merges a
+//! building's own store (`+0x33C`), which no code adds to, and the `Weeder=`
+//! deposit (`Add_Tiberium_To_Storage @ 0x004F9700`, called only at
+//! `0x0073E48E`) fills a separate store (`+0x314`). So `Spend_Money`'s silo
+//! drain and `Available_Money`'s storage term never run, and
+//! tools/house_money_oracle.py pins them on an empty store.
 //!
 //! Never depends on render/ui/audio/net (sim invariant #1). The wallet is
 //! serialized and hashed.
@@ -19,9 +23,9 @@ pub struct Economy {
     credits: i32,
     /// House `+0x2DC`: the running total `Spend_Money` took.
     spent_credits: i32,
-    /// The ore feeder of House `+0x54E8`, written by `Add_Tiberium_Credits`;
-    /// its kill and capture feeders are `MatchStatistics::score_points`.
-    harvested_credits: i32,
+    /// House `+0x54E8`, the score: refinery deposits, kills and captures add
+    /// to it, and the score screen reads it.
+    score: i32,
 }
 
 impl Economy {
@@ -31,7 +35,7 @@ impl Economy {
         Self {
             credits,
             spent_credits: 0,
-            harvested_credits: 0,
+            score: 0,
         }
     }
 
@@ -43,8 +47,8 @@ impl Economy {
         self.spent_credits
     }
 
-    pub const fn harvested_credits(&self) -> i32 {
-        self.harvested_credits
+    pub const fn score(&self) -> i32 {
+        self.score
     }
 
     /// `HouseClass::Available_Money @ 0x004F6990`: `ftol(storage value *
@@ -72,16 +76,24 @@ impl Economy {
         self.spent_credits = self.spent_credits.wrapping_add(taken);
     }
 
+    /// The score's kill and capture awards: `TechnoClass::RecordKill @
+    /// 0x0070300F` and `TechnoClass::ChangeOwner @ 0x007015D0` add to
+    /// `+0x54E8`, wrapping.
+    pub(crate) fn add_score(&mut self, points: i32) {
+        self.score = self.score.wrapping_add(points);
+    }
+
     /// `HouseClass::Add_Tiberium_Credits @ 0x004F9610` for `amount` units
     /// of a tiberium: `score = ftol(amount * 5 + score)` and `balance =
     /// ftol(value * IncomeMult * amount + balance)`, `value` being
     /// the tiberium's `Value=`. VERA's amount is `bales * scale_ppm / 1e6`
     /// (the deposit passes 1.0, its purifier bonus `P * PurifierBonus`), its
     /// `value` the bales' summed worth and the IncomeMult `income_ppm / 1e6`;
-    /// each sum truncates toward zero once, as the `ftol` does. Native runs
-    /// in floats: an IncomeMult a float cannot hold, such as 0.9, pays one
-    /// credit more here (the oracle's `IncomeMult 0.9` row). A sum past
-    /// `i32` wraps where `ftol` gives `0x80000000`.
+    /// each sum truncates toward zero once and keeps its low 32 bits, as the
+    /// `ftol @ 0x007C5F00` does. Native multiplies floats: an IncomeMult or
+    /// PurifierBonus a float cannot hold, such as 0.9, can pay a credit
+    /// less there (the oracle's `IncomeMult 0.9` row); retail's
+    /// PurifierBonus .25 and IncomeMult values a float holds pay the same.
     pub(crate) fn add_tiberium_credits(
         &mut self,
         value: i32,
@@ -90,13 +102,13 @@ impl Economy {
         income_ppm: i64,
     ) {
         let scale = i128::from(INCOME_PPM_SCALE);
-        let score = (i128::from(self.harvested_credits) * scale
+        let score = (i128::from(self.score) * scale
             + i128::from(bales) * i128::from(scale_ppm) * 5)
             / scale;
         let credits = (i128::from(self.credits) * scale * scale
             + i128::from(value) * i128::from(scale_ppm) * i128::from(income_ppm))
             / (scale * scale);
-        self.harvested_credits = score as i32;
+        self.score = score as i32;
         self.credits = credits as i32;
     }
 
@@ -112,10 +124,10 @@ impl Economy {
         self.spent_credits = spent;
     }
 
-    /// A captured or authored score feeder for a test.
+    /// A captured or authored score for a test.
     #[cfg(test)]
-    pub(crate) fn set_harvested_for_test(&mut self, harvested: i32) {
-        self.harvested_credits = harvested;
+    pub(crate) fn set_score_for_test(&mut self, score: i32) {
+        self.score = score;
     }
 }
 
@@ -169,7 +181,7 @@ mod tests {
     fn add_tiberium_credits_matches_the_original() {
         for row in rows("add_tiberium_credits") {
             let mut wallet = Economy::new(int(&row["balance"]));
-            wallet.set_harvested_for_test(int(&row["score"]));
+            wallet.set_score_for_test(int(&row["score"]));
             let bales = int(&row["bales"]);
             wallet.add_tiberium_credits(
                 int(&row["value"]) * bales,
@@ -185,7 +197,7 @@ mod tests {
                 balance = 900;
             }
             assert_eq!(
-                (wallet.credits(), wallet.harvested_credits()),
+                (wallet.credits(), wallet.score()),
                 (balance, int(&expected["score"])),
                 "{}",
                 row["name"]

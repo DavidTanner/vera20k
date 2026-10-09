@@ -39,7 +39,7 @@ pub(crate) fn current_sidebar_view(state: &AppState) -> Option<&SidebarView> {
 /// The money the credits counter counts toward: `CreditsClass::AI @
 /// 0x004A2600` reads the player's Available_Money and shows a balance at or
 /// below zero as 0 (`0x004A2687..0x004A2698`).
-fn counter_credits(sim: &crate::sim::world::Simulation, owner: &str) -> i32 {
+pub(crate) fn counter_credits(sim: &crate::sim::world::Simulation, owner: &str) -> i32 {
     production::credits_for_owner(sim, owner).max(0)
 }
 

@@ -4013,7 +4013,7 @@ fn gsi_04_07_damage_postmortem_exact_zero_callbacks_precede_restore() {
     assert!(source.attack_target.is_none());
     assert_eq!(sim.houses[&victim_owner].stats.buildings_lost(), 1);
     assert_eq!(sim.houses[&source_owner].stats.buildings_killed(), 1);
-    assert_eq!(sim.houses[&source_owner].stats.score_points(), 700);
+    assert_eq!(sim.houses[&source_owner].economy.score(), 700);
 
     let events = sim.lifecycle_test_events_for_test();
     let kill_index = events
@@ -4097,7 +4097,7 @@ fn gsi_04_07_damage_postmortem_exact_zero_callbacks_precede_restore() {
     assert!(!sim.substrate.pending_delete.contains(&target_id));
     assert_eq!(sim.houses[&victim_owner].stats.buildings_lost(), 2);
     assert_eq!(sim.houses[&source_owner].stats.buildings_killed(), 2);
-    assert_eq!(sim.houses[&source_owner].stats.score_points(), 1_400);
+    assert_eq!(sim.houses[&source_owner].economy.score(), 1_400);
     assert!(sim.lifecycle_test_events_for_test().iter().any(|event| {
         *event
             == (LifecycleTestEvent::PostMortemKillBookkeeping {
@@ -4172,7 +4172,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
         ],
     );
     assert_eq!(sim.houses[&owner_a].stats.buildings_killed(), 2);
-    assert_eq!(sim.houses[&owner_a].stats.score_points(), 1_400);
+    assert_eq!(sim.houses[&owner_a].economy.score(), 1_400);
     for target_id in [expiry_target, later_target] {
         let target = sim.substrate.entities.get(target_id).unwrap();
         assert_eq!(target.health.current, 1);
@@ -4198,11 +4198,11 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
     assert_eq!(later.health.current, 0);
     assert_eq!(later.killed_by, Some(owner_b));
     assert_eq!(sim.houses[&owner_b].stats.buildings_killed(), 1);
-    assert_eq!(sim.houses[&owner_b].stats.score_points(), 700);
+    assert_eq!(sim.houses[&owner_b].economy.score(), 700);
 
     let initial_killer_before_expiry = (
         sim.houses[&owner_a].stats.buildings_killed(),
-        sim.houses[&owner_a].stats.score_points(),
+        sim.houses[&owner_a].economy.score(),
     );
     sim.session.binary_frame = 5;
     sim.tick_pending_building_detonation(expiry_target, &rules, None);
@@ -4213,7 +4213,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
     assert_eq!(
         (
             sim.houses[&owner_a].stats.buildings_killed(),
-            sim.houses[&owner_a].stats.score_points(),
+            sim.houses[&owner_a].economy.score(),
         ),
         initial_killer_before_expiry,
         "fresh PostMortem expiry packet is sourceless and cannot recredit HouseA"

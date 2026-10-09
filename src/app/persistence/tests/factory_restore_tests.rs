@@ -159,7 +159,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .set_harvested_for_test(35);
+        .set_score_for_test(35);
     let expected = saved.houses[&owner].economy.clone();
     assert!(expected.spent_credits() > 0);
     assert_eq!(expected.credits() + expected.spent_credits(), 50_123);
@@ -225,7 +225,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     let economy = &runtime.simulation.houses[&owner].economy;
     assert_eq!(economy.credits(), 50_123);
     assert_eq!(economy.spent_credits(), resumed.spent_credits());
-    assert_eq!(economy.harvested_credits(), 35);
+    assert_eq!(economy.score(), 35);
 }
 
 #[test]

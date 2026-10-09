@@ -77,29 +77,29 @@ impl Simulation {
         }
         let mut rows = Vec::with_capacity(contenders.len());
         for owner in contenders {
-            let Some((country, survived, stats, harvested_credits)) =
+            let Some((country, survived, stats, raw_score)) =
                 self.houses.get(&owner).map(|house| {
                     (
                         house.country,
                         !house.is_defeated,
                         house.stats,
-                        house.economy.harvested_credits(),
+                        house.economy.score(),
                     )
                 })
             else {
                 continue;
             };
-            let raw_score = stats.score(harvested_credits);
             // 0x005C99EB..0x005C99F5 adds only a positive score to the zeroed
             // entry; a survivor then gets v + v/2 + Random(v/2, v), which
-            // draws nothing when v is 0 (0x0065C7E0 with min == max).
+            // draws nothing when v is 0 (0x0065C7E0 with min == max). The
+            // sums wrap (0x005C9A26..0x005C9A28).
             let base = raw_score.max(0);
             let score = if survived && base > 0 {
                 let half = base / 2;
                 let bonus = self
                     .scenario_rng
                     .next_range_u32_inclusive(half as u32, base as u32);
-                base.saturating_add(half).saturating_add(bonus as i32)
+                base.wrapping_add(half).wrapping_add(bonus as i32)
             } else {
                 base
             };
@@ -130,8 +130,7 @@ mod tests {
         name: &'a str,
         defeated: bool,
         passive: bool,
-        harvested: i32,
-        kill_score: i32,
+        score: i32,
         units_killed: u32,
         buildings_killed: u32,
         units_lost: u32,
@@ -144,14 +143,13 @@ mod tests {
         let mut house = HouseState::new(owner, 0, None, false, 0, 10);
         house.is_defeated = fixture.defeated;
         house.multiplay_passive = fixture.passive;
-        house.economy.set_harvested_for_test(fixture.harvested);
+        house.economy.set_score_for_test(fixture.score);
         house.stats = crate::sim::house_state::MatchStatistics::from_totals_for_test(
             fixture.units_killed,
             fixture.buildings_killed,
             fixture.units_lost,
             fixture.buildings_lost,
             fixture.built,
-            fixture.kill_score,
         );
         sim.houses.insert(owner, house);
         owner
@@ -166,8 +164,7 @@ mod tests {
                 name: "Alpha",
                 defeated: false,
                 passive: false,
-                harvested: 80,
-                kill_score: 20,
+                score: 100,
                 units_killed: 2,
                 buildings_killed: 3,
                 units_lost: 4,
@@ -181,8 +178,7 @@ mod tests {
                 name: "Defeated",
                 defeated: true,
                 passive: false,
-                harvested: 200,
-                kill_score: 0,
+                score: 200,
                 units_killed: 0,
                 buildings_killed: 0,
                 units_lost: 0,
@@ -196,8 +192,7 @@ mod tests {
                 name: "Zero",
                 defeated: false,
                 passive: false,
-                harvested: 0,
-                kill_score: 0,
+                score: 0,
                 units_killed: 0,
                 buildings_killed: 0,
                 units_lost: 0,
@@ -211,8 +206,7 @@ mod tests {
                 name: "Passive",
                 defeated: false,
                 passive: true,
-                harvested: 300,
-                kill_score: 0,
+                score: 300,
                 units_killed: 0,
                 buildings_killed: 0,
                 units_lost: 0,
@@ -226,8 +220,7 @@ mod tests {
                 name: "Omega",
                 defeated: false,
                 passive: false,
-                harvested: 40,
-                kill_score: 10,
+                score: 50,
                 units_killed: 1,
                 buildings_killed: 0,
                 units_lost: 2,
@@ -292,8 +285,7 @@ mod tests {
                     name,
                     defeated,
                     passive: false,
-                    harvested: 0,
-                    kill_score: -40,
+                    score: -40,
                     units_killed: 0,
                     buildings_killed: 0,
                     units_lost: 0,
@@ -323,8 +315,7 @@ mod tests {
                 name: "Alpha",
                 defeated: false,
                 passive: false,
-                harvested: 100,
-                kill_score: 0,
+                score: 100,
                 units_killed: 0,
                 buildings_killed: 0,
                 units_lost: 0,
@@ -357,7 +348,7 @@ mod tests {
         let human = sim.interner.intern("Human");
         let mut human_house = HouseState::new(human, 0, None, true, 0, 10);
         human_house.is_defeated = true;
-        human_house.economy.set_harvested_for_test(200);
+        human_house.economy.set_score_for_test(200);
         human_house.outcome_state = Some(HouseOutcomeState {
             kind: HouseOutcomeKind::Defeat,
             savour_until_tick: 0,
@@ -367,7 +358,7 @@ mod tests {
 
         let opponent = sim.interner.intern("Opponent");
         let mut opponent_house = HouseState::new(opponent, 1, None, false, 0, 10);
-        opponent_house.economy.set_harvested_for_test(100);
+        opponent_house.economy.set_score_for_test(100);
         sim.houses.insert(opponent, opponent_house);
         sim.session.house_order = vec![human, opponent];
         sim

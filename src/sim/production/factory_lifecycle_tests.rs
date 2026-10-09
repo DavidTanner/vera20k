@@ -814,11 +814,12 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let first = held_id(&sim, owner, category);
     // Supply the paid-completion wallet and Balance0 through their existing
     // owners. The actual constructor, publication, PLACE and HELLO2/9 tail run.
-    sim.houses
-        .get_mut(&owner)
-        .unwrap()
-        .economy
-        .spend_money(cost);
+    let economy = &mut sim.houses.get_mut(&owner).unwrap().economy;
+    assert!(
+        economy.available_money() >= cost,
+        "the wallet covers the build"
+    );
+    economy.spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     assert!(dispatch_production_changes_for_tests(
         &mut sim, &rules, None
@@ -848,11 +849,12 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert_ne!(refused, first);
     // This completed second head and post-payment wallet are supplied test
     // priors. No live GI turn is invented to keep the first real link occupied.
-    sim.houses
-        .get_mut(&owner)
-        .unwrap()
-        .economy
-        .spend_money(cost);
+    let economy = &mut sim.houses.get_mut(&owner).unwrap().economy;
+    assert!(
+        economy.available_money() >= cost,
+        "the wallet covers the build"
+    );
+    economy.spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     assert_eq!(
         sim.production

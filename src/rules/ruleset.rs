@@ -103,7 +103,8 @@ pub struct CountryRules {
     pub name: Option<String>,
 }
 
-/// PPM scale for `IncomeMult` (1_000_000 = 1.0×). Must equal `apply_income_mult`'s divisor.
+/// PPM scale for `IncomeMult` and `PurifierBonus` (1_000_000 = 1.0×), the
+/// divisor of `Economy::add_tiberium_credits`.
 pub const INCOME_PPM_SCALE: i64 = 1_000_000;
 
 /// The House factors [`RuleSet::cost_of`] multiplies in, each indexed by

@@ -109,12 +109,25 @@
       "bales": 10,
       "expected": {
         "balance": -37,
-        "score": 3
+        "score": -7
       },
       "income_ppm": 1000000,
-      "name": "a negative balance truncates toward zero",
+      "name": "negative sums truncate toward zero",
       "scale_ppm": 250000,
-      "score": -9,
+      "score": -20,
+      "value": 25
+    },
+    {
+      "balance": 2147483632,
+      "bales": 40,
+      "expected": {
+        "balance": -2147482664,
+        "score": 200
+      },
+      "income_ppm": 1000000,
+      "name": "the balance wraps",
+      "scale_ppm": 1000000,
+      "score": 0,
       "value": 25
     },
     {
@@ -126,6 +139,19 @@
       },
       "income_ppm": 900000,
       "name": "IncomeMult 0.9 is a float",
+      "scale_ppm": 1000000,
+      "score": 0,
+      "value": 25
+    },
+    {
+      "balance": 0,
+      "bales": 1,
+      "expected": {
+        "balance": 0,
+        "score": 5
+      },
+      "income_ppm": 10000,
+      "name": "a deposit too small to pay still scores",
       "scale_ppm": 1000000,
       "score": 0,
       "value": 25

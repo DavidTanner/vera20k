@@ -132,18 +132,17 @@ pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: Int
     if !house.is_controlled_by_human(game_mode_nonzero) {
         return;
     }
-    let credits = house.economy.credits();
+    let available = house.economy.available_money();
     let mut timer = house.eva_funds_timer;
     let mut guard = house.eva_low_power_guard;
 
     // --- Insufficient funds, `0x004F8B3C..0x004F8BE1` ---
     // Available money (`IHouse::Available_Money`, House vtable `0x7EA834`
-    // slot `+0x18` = `0x004F6990`: credits plus stored ore) below 100 and
+    // slot `+0x18` = `0x004F6990`, called at `0x004F8B6C`) below 100 and
     // any infantry/vehicle/building/naval factory owned → the line, the
-    // sidebar credits flash and a re-arm. VERA banks ore straight into
-    // `credits`, so the wallet is the available money.
+    // sidebar credits flash and a re-arm.
     if timer.expired(now)
-        && credits < FUNDS_NAG_CREDITS
+        && available < FUNDS_NAG_CREDITS
         && funds_nag_factory_count(&sim.substrate.entities, rules, owner, &sim.interner) > 0
     {
         sim.sound_events.push(SimSoundEvent::HouseEva {

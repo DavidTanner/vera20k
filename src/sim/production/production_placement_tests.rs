@@ -3790,11 +3790,12 @@ fn stock_infantry_fallback_unit_ready_uses_producer_getcoords() {
         .entity_id
         .unwrap();
     let cost = sim.cost_of(owner, rules.object("E1").unwrap(), &rules);
-    sim.houses
-        .get_mut(&owner)
-        .unwrap()
-        .economy
-        .spend_money(cost);
+    let economy = &mut sim.houses.get_mut(&owner).unwrap().economy;
+    assert!(
+        economy.available_money() >= cost,
+        "the wallet covers the build"
+    );
+    economy.spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     // The focused publisher helper increments both clocks before applying
     // due PLACE, so159 ->160 reaches the measured native fallback call frame.

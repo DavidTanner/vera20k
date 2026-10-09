@@ -952,7 +952,8 @@ impl HouseState {
 /// gamemd sums per-victim-house kill tables into one number for the Kills
 /// column, adds its two loss counters for the Losses column, and sums its four
 /// per-category built counters for the Built column. Totals are all the screen
-/// ever reads, so these are kept as totals.
+/// ever reads, so these are kept as totals. Its Score column reads
+/// [`Economy::score`](crate::sim::economy::Economy::score).
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -969,16 +970,6 @@ pub struct MatchStatistics {
     /// excepted: placed buildings and delivered units
     /// (`production::factory_lifecycle::record_last_built`).
     built: u32,
-    /// The kill and ChangeOwner feeders of House+54E8: RecordKill70300F adds
-    /// its award, and ChangeOwner7015D2 adds CostOf for the old House.
-    ///
-    /// gamemd keeps ONE score accumulator per house with two large feeders — the
-    /// ore-deposit statistic and this kill-points stream — and the score screen
-    /// shows their sum. The ore half is the existing hashed
-    /// `Economy::harvested_credits`; this is the kill half, split out only so the
-    /// hashed accumulator is not disturbed. Always read the two together through
-    /// [`MatchStatistics::score`].
-    score_points: i32,
 }
 
 #[cfg(test)]
@@ -1006,10 +997,6 @@ impl MatchStatistics {
         self.built
     }
 
-    pub const fn score_points(&self) -> i32 {
-        self.score_points
-    }
-
     /// RecordKill70305C/7031A9 increment one native loss counter. Callers own
     /// DontScore, Insignificant and sale admission; this owner only mutates it.
     pub(crate) fn record_loss(&mut self, category: crate::map::entities::EntityCategory) {
@@ -1033,11 +1020,6 @@ impl MatchStatistics {
         *counter = counter.wrapping_add(1);
     }
 
-    /// Original ADD70300F/7015D0 keeps its signed 32-bit wrapped result.
-    pub(crate) fn add_score(&mut self, points: i32) {
-        self.score_points = self.score_points.wrapping_add(points);
-    }
-
     /// The existing Record_Last_Built caller owns its DontScore admission.
     pub(crate) fn record_built(&mut self) {
         self.built = self.built.wrapping_add(1);
@@ -1050,7 +1032,6 @@ impl MatchStatistics {
         units_lost: u32,
         buildings_lost: u32,
         built: u32,
-        score_points: i32,
     ) -> Self {
         Self {
             units_killed,
@@ -1058,7 +1039,6 @@ impl MatchStatistics {
             units_lost,
             buildings_lost,
             built,
-            score_points,
         }
     }
 
@@ -1070,12 +1050,6 @@ impl MatchStatistics {
     /// Score-screen Losses column: units + buildings lost.
     pub const fn losses(&self) -> u32 {
         self.units_lost + self.buildings_lost
-    }
-
-    /// Score-screen Score column: the house's single native score accumulator,
-    /// reassembled from its harvest and kill feeders.
-    pub const fn score(&self, harvested_credits: i32) -> i32 {
-        harvested_credits.saturating_add(self.score_points)
     }
 }
 

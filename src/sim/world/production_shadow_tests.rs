@@ -181,7 +181,7 @@ fn production_authoritative_hash_includes_factory_fields() {
     type EMut = fn(&mut crate::sim::economy::Economy);
     let econ_muts: [EMut; 2] = [
         |e| e.set_spent_for_test(e.spent_credits() + 1),
-        |e| e.set_harvested_for_test(e.harvested_credits() + 1),
+        |e| e.set_score_for_test(e.score() + 1),
     ];
     for m in econ_muts {
         let mut sim = mid_build();
@@ -227,7 +227,7 @@ fn snapshot_roundtrip_factory_registry() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .set_harvested_for_test(12_345);
+        .set_score_for_test(12_345);
     // Native in-scenario load resets Scenario RNG; isolate factory persistence
     // by comparing against that same post-load baseline.
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);

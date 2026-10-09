@@ -829,11 +829,11 @@ impl Simulation {
             house.economy.credits().hash(hasher);
             // The sole cash balance retains its original position in the hash stream.
             house.economy.spent_credits().hash(hasher);
-            house.economy.harvested_credits().hash(hasher);
-            // Live score totals affect the later terminal Scenario draw, and
-            // House504080/503040 preserves them through native load. The
-            // retained-ship chain needs both its initial and terminal loss.
-            // Preserve zero and historical streams before this schema.
+            // The score feeds the terminal Scenario draw.
+            house.economy.score().hash(hasher);
+            // House504080/503040 preserves the kill, loss and built totals
+            // through native load. The retained-ship chain needs both its
+            // initial and terminal loss. Preserve zero streams.
             if house.stats != crate::sim::house_state::MatchStatistics::default() {
                 b"house-match-statistics-v1".hash(hasher);
                 house.stats.hash(hasher);
