@@ -547,7 +547,7 @@ def _stable_fixture(
             "script": fingerprint_script,
             "wallet": {
                 "credits": 6400,
-                "harvested_credits": 0,
+                "score": 0,
                 "spent_credits": 3600,
             },
         },

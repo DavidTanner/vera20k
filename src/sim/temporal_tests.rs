@@ -700,7 +700,8 @@ fn erase_awards_price_each_cost_by_its_house() {
         veterancy(&sim, cleg),
         f32::from_bits(expected.veterancy_raw.bits())
     );
-    assert_eq!(house_stats(&sim, "Russians").score_points(), 450);
+    let russians = sim.interner.get("Russians").unwrap();
+    assert_eq!(sim.houses[&russians].economy.score(), 450);
 }
 
 /// A warp's start makes a victim that was itself warping let go
@@ -1380,7 +1381,11 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
         building.repairing = true;
     }
     let americans = sim.interner.get("Americans").unwrap();
-    sim.houses.get_mut(&americans).unwrap().economy.credits = 5000;
+    sim.houses
+        .get_mut(&americans)
+        .unwrap()
+        .economy
+        .set_credits_for_test(5000);
     let now = sim.session.binary_frame;
     let _ = sim.mission_assign_exact(gi, MissionId::from_known(MissionType::Guard), now);
     assert!(
@@ -1414,7 +1419,7 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
     sim.temporal_initiate_warp(cleg2, Some(plant), &rules, None);
     let credits_before = sim.houses[&sim.interner.get("Americans").unwrap()]
         .economy
-        .credits;
+        .credits();
     assert!(
         !idle_turn(&mut sim, now.wrapping_add(200_000)),
         "no idle draw while warped"
@@ -1427,7 +1432,7 @@ fn a_warped_object_runs_none_of_its_ai_phases() {
     assert_eq!(
         sim.houses[&sim.interner.get("Americans").unwrap()]
             .economy
-            .credits,
+            .credits(),
         credits_before,
         "no bill"
     );

@@ -206,8 +206,8 @@ impl Scene {
             "unit_coordinate": [at.x,at.y,at.z],
             "health": unit.health.current,
             "estimate": unit.estimated_health.get(),
-            "balance": house.economy.credits,
-            "spent": house.economy.spent_credits,
+            "balance": house.economy.credits(),
+            "spent": house.economy.spent_credits(),
             "unit_mission": unit.mission.current().raw(),
             "unit_queued": unit.mission.queued().raw(),
             "unit_nav": self.nav(unit.navigation.nav_com),
@@ -561,8 +561,8 @@ fn scene(golden: &Value, row: &Value) -> Scene {
     }
     let owner = sim.substrate.entities.get(tank).unwrap().owner();
     let house = sim.houses.get_mut(&owner).unwrap();
-    house.economy.credits = int(&before["balance"]);
-    house.economy.spent_credits = int(&before["spent"]);
+    house.economy.set_credits_for_test(int(&before["balance"]));
+    house.economy.set_spent_for_test(int(&before["spent"]));
     sim.scenario_rng = if let Some(hex) = row["rng_before"]["scenario"].as_str() {
         SimRng::from_native_state_hex_for_test(hex)
     } else {

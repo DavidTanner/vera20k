@@ -572,7 +572,11 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // Snapshot307: the session's LocalSize copy leaves the hash. A control binary
 // (main with a hash that skips only that tuple) gives this value in the same
 // test, with every tripwire above green. Control removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x2F2B_3D24_D9FC_70E3;
+// Snapshot313: the house score is one Economy field, so its hash slot carries
+// the kill points and MatchStatistics hashes no score. A control binary (main
+// with only that hash layout) gives this value in the same test, with every
+// tripwire above green. Control removed.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0xEAFC_3C0D_2066_C880;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

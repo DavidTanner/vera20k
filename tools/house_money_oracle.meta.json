@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "native_sha256": "1cdd1180e49024fbda8ad568caac2e86e856063ff67ab38f62b7d2c7bb84298c",
+  "unicorn_binding": "2.1.4",
+  "unicorn_core": [
+    2,
+    1,
+    33621247
+  ],
+  "scope": "HouseClass::Spend_Money, Add_Credits, Add_Tiberium_Credits and Available_Money on a house with empty silo storage. Synthetic fixtures only; the silo-drain arm of Spend_Money is not reached.",
+  "assumptions": [
+    "The house holds no silo storage (+0x2FC) and a capacity (+0x310) of 200, so Spend_Money never drains buildings and Update_Silo_Damage_Frames compares two empty fill ratios and returns."
+  ],
+  "substitutions": [],
+  "entry_points": {
+    "spend_money": "0x004F9790",
+    "add_credits": "0x004F9950",
+    "add_tiberium_credits": "0x004F9610",
+    "available_money": "0x004F6990"
+  },
+  "payload_sha256": "e4b9a6ad9446d42b288d6ff9fe0ea52a9867c35f26a7f8ac0a92a8b9cfaf7097"
+}

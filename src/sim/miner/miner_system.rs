@@ -1725,11 +1725,7 @@ pub(crate) fn effective_purifier_count(
     refinery_owner: &str,
 ) -> i32 {
     let real = count_purifiers_for_owner(sim, rules, refinery_owner);
-    // Apply the AI virtual bonus only when a HouseState explicitly says
-    // the refinery's owner is non-human. Real games seed every house
-    // through app init with the correct flag; tests/edge cases that fall
-    // through to the credits_entry_for_owner auto-create get is_human=true
-    // (the safer default) and therefore skip the AI bonus, as intended.
+    // The AI virtual bonus needs the owner's house to say it is a computer.
     let Some(house) =
         crate::sim::house_state::house_state_for_owner(&sim.houses, refinery_owner, &sim.interner)
     else {

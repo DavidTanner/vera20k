@@ -1044,7 +1044,7 @@ mod tests {
 
         let credits = |owner: &str| {
             crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
-                .map(|house| house.economy.credits)
+                .map(|house| house.economy.credits())
         };
         assert_eq!(credits("Player"), Some(10_000));
         assert_eq!(credits("Computer1"), Some(50_000), "Hard: +400%");
@@ -1073,16 +1073,20 @@ mod tests {
         let mut rules = test_standard_launch_rules();
         populate_launch_houses(&mut sim, &normalized_launch_slots(&session), &rules);
         let ai = sim.interner.get("Computer1").expect("AI house");
-        sim.houses.get_mut(&ai).expect("AI house").economy.credits = 12_345;
+        sim.houses
+            .get_mut(&ai)
+            .expect("AI house")
+            .economy
+            .set_credits_for_test(12_345);
 
         rules.general.multiplayer_ai_cm = Vec::new();
         apply_skirmish_ai_opening_credits(&mut sim, &rules);
-        assert_eq!(sim.houses[&ai].economy.credits, 12_345);
+        assert_eq!(sim.houses[&ai].economy.credits(), 12_345);
 
         // 7 * 0.01 * 12345 = 864.15... -> 864 under chop.
         rules.general.multiplayer_ai_cm = vec![7, 0, 0];
         apply_skirmish_ai_opening_credits(&mut sim, &rules);
-        assert_eq!(sim.houses[&ai].economy.credits, 12_345 + 864);
+        assert_eq!(sim.houses[&ai].economy.credits(), 12_345 + 864);
     }
 
     #[test]
@@ -2200,7 +2204,7 @@ mod tests {
         // Computer1 has no infantry, stops at 3xHTNK = 300 and is credited 34.
         let credits = |owner: &str| {
             crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
-                .map(|house| house.economy.credits)
+                .map(|house| house.economy.credits())
         };
         assert_eq!(credits("Player"), Some(10_000));
         assert_eq!(credits("Computer1"), Some(10_034));
@@ -2242,7 +2246,7 @@ mod tests {
         assert_eq!(sim.entities().len(), 8);
         let credits = |owner: &str| {
             crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
-                .map(|house| house.economy.credits)
+                .map(|house| house.economy.credits())
         };
         assert_eq!(credits("Player"), Some(10_000));
         assert_eq!(credits("Computer1"), Some(10_000));
@@ -2277,7 +2281,7 @@ mod tests {
 
         let credits = |owner: &str| {
             crate::sim::house_state::house_state_for_owner(&sim.houses, owner, &sim.interner)
-                .map(|house| house.economy.credits)
+                .map(|house| house.economy.credits())
         };
         assert_eq!(credits("Player"), Some(10_000));
         assert_eq!(credits("Computer1"), Some((10_000 + 34) * 5));

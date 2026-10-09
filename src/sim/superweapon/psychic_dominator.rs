@@ -8,7 +8,8 @@
 //! `[General] DominatorFirstAnim=` 750 leptons over the target and tints the
 //! scenario with the map's `Dominator*=` lighting (`light_sources`). Once the
 //! anim has played `DominatorFireAtPercentage=` of its frames, MindControlArea
-//! strikes: `DominatorSecondAnim=` on the cell, `DominatorDamage=` with
+//! strikes: a screen ripple (an IonBlast, `sim::world::ion_blast`) and
+//! `DominatorSecondAnim=` on the cell, `DominatorDamage=` with
 //! `DominatorWarhead=` around it, and every eligible object of the cells
 //! within `DominatorCaptureRange=` permanently joins the launcher's house
 //! (`capture_manager`). Near the second anim's end the tint fades back, and
@@ -37,10 +38,6 @@
 //! for a captive a controller held, and the perma ring's SetOwnerObject.
 //!
 //! RESIDUALS:
-//! - MindControlArea's `IonBlastClass` at the cell (`0x0053B089..0x0053B0D4`,
-//!   flag `+0x10` set, so its update applies no forces) only draws a screen
-//!   ripple for 79 frames at high detail (`IonBlastClass::DrawAll @
-//!   0x0053D850`); VERA draws none. Trigger: every strike. Effect: no ripple.
 //! - Launch's EVA line is skipped natively while `0x00A8B538` is set (a
 //!   defeated client); VERA always plays it.
 //! - The anim Process follows (`0x00A9FAC4`) has no pointer expiry natively;
@@ -265,13 +262,15 @@ fn anim_progress(sim: &Simulation, rules: &RuleSet) -> (i32, i32) {
 }
 
 /// `PsyDom::MindControlArea @ 0x0053B080`:
-/// 1. `DominatorSecondAnim=` at the cell's GetCoords becomes the followed
-///    anim (`0x0053B0DB..0x0053B145`);
-/// 2. Apply_area_damage there with `DominatorDamage=` and `DominatorWarhead=`,
+/// 1. a flagged IonBlast at the cell's GetCoords (`0x0053B087..0x0053B0D4`,
+///    [`Simulation::add_dominator_ion_blast`]), the screen ripple;
+/// 2. `DominatorSecondAnim=` at the same coordinate becomes the followed anim
+///    (`0x0053B0DB..0x0053B145`);
+/// 3. Apply_area_damage there with `DominatorDamage=` and `DominatorWarhead=`,
 ///    no source object and the Lightning Storm's house `0x00A9FACC` as the
 ///    source house (`0x0053B14B..0x0053B16B`): a storm's owner while one
 ///    counts down or rages, else none;
-/// 3. for the first `count[min(DominatorCaptureRange=, 10)]` cells of the
+/// 4. for the first `count[min(DominatorCaptureRange=, 10)]` cells of the
 ///    cell-spread sweep around the cell (`0x0053B170..0x0053B391`): from the
 ///    ground list's Techno nearest the cell's (0, 0) sub-point
 ///    (`CellClass::Find_Nearest_Object @ 0x0047C3D0`; the ones listed before
@@ -279,7 +278,7 @@ fn anim_progress(sim: &Simulation, rules: &RuleSet) -> (i32, i32) {
 ///    while they are Technos (`+0x14 & 1`, `0x0053B364..0x0053B37F`), each
 ///    that [`Simulation::can_be_perma_mind_controlled`] passes is captured
 ///    ([`Simulation::perma_capture`]) and kept;
-/// 4. unless the owner is controlled by a human (`HouseClass::
+/// 5. unless the owner is controlled by a human (`HouseClass::
 ///    IsControlledByHuman @ 0x0050B730`), the kept objects queue Hunt, the
 ///    last first (`0x0053B3A6..0x0053B3C4`).
 ///
@@ -292,6 +291,7 @@ fn mind_control_area(
     let general = &rules.general;
     let centre = sim.psychic_dominator.cell;
     let coords = super::fire::cell_coords(sim, (centre.0 as u16, centre.1 as u16));
+    sim.add_dominator_ion_blast(coords);
     sim.psychic_dominator.anim =
         super::spawn_super_anim(sim, rules, &general.dominator_second_anim, coords);
 

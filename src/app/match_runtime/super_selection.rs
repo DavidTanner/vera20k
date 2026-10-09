@@ -4,9 +4,14 @@
 //!
 //! The selection's writers are the sidebar (`SelectClass::Action`), building
 //! placement (`0x004FB8A9`), `SuperClass::Launch` and the revoke/suspend
-//! pass (the Ghidra xrefs to `0x008809A0`). None drops it because the
-//! selected Super is not charged or not granted, so the Chrono Warp case 3
-//! selects stays selected although retail grants it to no house.
+//! pass (the Ghidra xrefs to `0x008809A0`), and DisplayClass through its own
+//! field (`+0x11B8`): the constructor and `Init_Clear` (`0x004A87D6`,
+//! `0x004A88E5`) and the right-button release (`DisplayClass::RightUp`,
+//! `0x004AAE06`). The map click that fires a Super only queues its event
+//! (`DisplayClass::BandBox_LeftUp @ 0x004AB9B0`), so the selection stays
+//! until Launch's tail. None drops it because the selected Super is not
+//! charged or not granted, so the Chrono Warp case 3 selects stays selected
+//! although retail grants it to no house.
 
 use std::collections::BTreeSet;
 
@@ -105,10 +110,6 @@ pub(super) fn follow_selection_writes(
 /// (AnimClass `+0x19D`) has no other writer for this anim, so a hidden one
 /// stays hidden after its Super lets it go. `hidden` keeps the client's
 /// bytes; anims that are gone leave it.
-///
-/// RESIDUAL: VERA drops the selection at the click, natively it stays until
-/// case 4 runs; so the player's own anim hides from the click and its last
-/// loop after the warp is not drawn.
 pub(super) fn hide_placement_anims(
     hidden: &mut BTreeSet<AnimId>,
     sim: &Simulation,
@@ -458,5 +459,73 @@ mod tests {
         assert!(sim.anim(own).is_none());
         hide_placement_anims(&mut hidden, &sim, false, Some("Americans"), &mut output);
         assert!(hidden.is_empty());
+    }
+
+    /// The map click only queues its event (`0x004AB9B0`), so the selection
+    /// holds until Launch's tail: the Chronosphere until case 3 selects the
+    /// Chrono Warp, and that until case 4 clears it. The player's
+    /// ChronoPlacement anim shows throughout, then plays out unhidden.
+    #[test]
+    fn the_selection_holds_from_the_click_to_the_launch_tail() {
+        use crate::sim::command::{Command, CommandEnvelope};
+        let Some((rules, mut sim, americans)) = retail_world() else {
+            return;
+        };
+        charge_chronosphere(&mut sim, americans);
+        let selected = |name: &str| Some(TargetingMode::SuperWeapon(name.to_string()));
+        // A click whose event executes three frames on, as input delay does.
+        let click = |sim: &mut Simulation, name: &str, (rx, ry): (u16, u16)| {
+            let sw_type_id = sim.interner.intern(name);
+            sim.queue_command(CommandEnvelope::new(
+                americans,
+                sim.session.tick + 3,
+                Command::LaunchSuperWeapon {
+                    sw_type_id,
+                    target_rx: rx,
+                    target_ry: ry,
+                },
+            ));
+        };
+        let mut targeting = selected("ChronoSphereSpecial");
+        let mut hidden = BTreeSet::new();
+        let mut output = SoundEventQueue::new();
+        // The app's frame (`sim_tick`): the frame's events move the
+        // selection, then the client hides its anims.
+        let mut frame = |sim: &mut Simulation, targeting: &mut Option<TargetingMode>| {
+            step(sim, &rules);
+            let events = std::mem::take(&mut sim.sound_events);
+            follow_selection_writes(targeting, &events, sim, &rules, Some("Americans"));
+            let warp = chrono_warp_selected(targeting.as_ref(), &rules);
+            hide_placement_anims(&mut hidden, sim, warp, Some("Americans"), &mut output);
+        };
+
+        click(&mut sim, "ChronoSphereSpecial", SOURCE);
+        for _ in 0..2 {
+            frame(&mut sim, &mut targeting);
+            assert_eq!(targeting, selected("ChronoSphereSpecial"));
+        }
+        frame(&mut sim, &mut targeting);
+        assert_eq!(targeting, warp_selected());
+        let anims = sim.super_placement_anims();
+        assert_eq!(anims.len(), 1);
+        let own = anims[0].1;
+
+        click(&mut sim, "ChronoWarpSpecial", (40, 40));
+        for _ in 0..2 {
+            frame(&mut sim, &mut targeting);
+            assert_eq!(targeting, warp_selected());
+        }
+        frame(&mut sim, &mut targeting);
+        assert_eq!(targeting, None);
+        assert!(sim.super_placement_anims().is_empty());
+        let mut frames = 0;
+        while sim.anim(own).is_some() {
+            frame(&mut sim, &mut targeting);
+            frames += 1;
+            assert!(frames < 200, "the anim never plays out");
+        }
+        assert!(frames > 1, "the anim plays out after the warp");
+        assert!(hidden.is_empty());
+        assert!(output.drain().is_empty());
     }
 }

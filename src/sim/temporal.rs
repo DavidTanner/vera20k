@@ -91,16 +91,19 @@
 //!   building options and sidebar strips (`0x004F926C`), presentation.
 //! - The online latch's readers VERA wires are Is_Operational, power drain,
 //!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`), the
-//!   depot probe (`0x0043C7FB`) and the Super hold pass (`0x0050B020`,
-//!   `0x0050B04F`, in `superweapon`). Not wired:
-//!   - `ObjectTypeClass::FindFactory @ 0x005F7900` with its online argument
-//!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
-//!     build that only offline factories could build (`0x0050924D`), and a
-//!     build promoted then starts on hold (`0x004FA45B`). VERA has neither
-//!     (residual at `production_tech::revalidate_eligibility`). Trigger: a
-//!     building event or a promotion while every factory of the kind is
-//!     warped; a warp's start runs no update (`0x004521C0`). Effect: VERA
-//!     keeps producing during the warp.
+//!   depot probe (`0x0043C7FB`), the Super hold pass (`0x0050B020`,
+//!   `0x0050B04F`, in `superweapon`), and `ObjectTypeClass::FindFactory @
+//!   0x005F7900`'s online argument where the player's sidebar darkens a
+//!   cameo and a PRODUCE event looks for a factory (`production::can_build`).
+//!   Not wired:
+//!   - `HouseClass::Update_Factory_Queue @ 0x00509140` holds a build that
+//!     only offline factories could build (`FindFactory(1,1,1)`,
+//!     `0x0050924D`), and a build promoted then starts on hold
+//!     (`0x004FA45B`). VERA has neither (residual at
+//!     `FactoryRegistry::plan_revalidation`). Trigger: a building event or a
+//!     promotion while every factory of the kind is warped; a warp's start
+//!     runs no update (`0x004521C0`). Effect: VERA keeps producing during
+//!     the warp.
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
 //!     online, unsold host; plain prerequisites use the house counters),

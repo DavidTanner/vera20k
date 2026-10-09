@@ -478,7 +478,13 @@ fn a_paid_repair_radio_request_releases_the_drone_after_the_heal() {
     );
     assert_eq!(arena.eater_of(tank), Some(drone));
     assert_eq!(arena.health(tank), Some(hp));
-    arena.sim.houses.get_mut(&owner).unwrap().economy.credits = 1;
+    arena
+        .sim
+        .houses
+        .get_mut(&owner)
+        .unwrap()
+        .economy
+        .set_credits_for_test(1);
     assert_eq!(
         crate::sim::radio::receive_radio(
             &mut arena.sim,
@@ -493,8 +499,8 @@ fn a_paid_repair_radio_request_releases_the_drone_after_the_heal() {
     assert_eq!(arena.health(tank), Some(hp + 8));
     assert!(arena.gone(drone));
     assert_eq!(arena.eater_of(tank), None);
-    assert_eq!(arena.sim.houses[&owner].economy.credits, 0);
-    assert_eq!(arena.sim.houses[&owner].economy.spent_credits, 1);
+    assert_eq!(arena.sim.houses[&owner].economy.credits(), 0);
+    assert_eq!(arena.sim.houses[&owner].economy.spent_credits(), 1);
 }
 
 #[test]

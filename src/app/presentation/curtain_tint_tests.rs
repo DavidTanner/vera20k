@@ -1,7 +1,7 @@
-//! Native comparisons for the curtain's tint on buildings and SHP vehicles,
-//! from `tools/superweapon_oracle.py`'s sections `drawshp_curtain_arm`,
-//! `building_anim_light`, `building_colour_word`, `anim_colour_word`,
-//! `blit_pickers` and `blitters`.
+//! Native comparisons for the curtain's tint on buildings, SHP vehicles and
+//! voxel aircraft, from `tools/superweapon_oracle.py`'s sections
+//! `drawshp_curtain_arm`, `draw_curtain_arm`, `building_anim_light`,
+//! `building_colour_word`, `anim_colour_word`, `blit_pickers` and `blitters`.
 
 use super::*;
 use crate::map::entities::EntityCategory;
@@ -34,10 +34,13 @@ fn timer(value: &Value) -> CdTimer {
 
 /// A Techno of the row's class under the row's curtain, at its tint stage.
 fn curtained(row: &Value) -> GameEntity {
-    let mut entity = GameEntity::test_default(1, "GAPOWR", "Americans", 10, 10);
-    if row["kind"] != "unit" {
-        entity.category = EntityCategory::Structure;
-    }
+    let category = match row["kind"].as_str() {
+        Some("unit") => EntityCategory::Unit,
+        Some("aircraft") => EntityCategory::Aircraft,
+        _ => EntityCategory::Structure,
+    };
+    let mut entity =
+        GameEntity::test_default_of_category(1, "GAPOWR", "Americans", 10, 10, category);
     entity.invulnerability = Some(InvulnerabilityState::with_tint(
         timer(&row["curtain"]),
         InvulnKind::ForceShield,
@@ -77,8 +80,20 @@ fn rules(force_color: i32) -> RuleSet {
 /// other rows are its residuals.
 #[test]
 fn the_shp_draw_curtain_arm_matches_native() {
+    assert_curtain_arm_matches("drawshp_curtain_arm");
+}
+
+/// The same for each `draw_curtain_arm` row (TechnoClass::Draw `0x00706776..
+/// 0x007067E4`, the voxel draw's arm, run natively) for an aircraft and a
+/// building: the intensity the voxel draw takes.
+#[test]
+fn the_voxel_draw_curtain_arm_matches_native() {
+    assert_curtain_arm_matches("draw_curtain_arm");
+}
+
+fn assert_curtain_arm_matches(section: &str) {
     let oracle = oracle();
-    let rows = oracle["drawshp_curtain_arm"].as_array().unwrap();
+    let rows = oracle[section].as_array().unwrap();
     assert_eq!(rows.len(), 92);
     let mut sim = Simulation::new();
     let mut compared = 0;

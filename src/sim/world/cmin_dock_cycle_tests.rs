@@ -76,7 +76,7 @@ fn frame(s: &mut Scene) -> Sample {
 
 fn credits(s: &Scene) -> i32 {
     let owner = s.sim.interner.get("Americans").unwrap();
-    s.sim.houses[&owner].economy.credits
+    s.sim.houses[&owner].economy.credits()
 }
 
 /// A full Chrono Miner in Mission_Harvest's FINDING_HOME state at `cell`.

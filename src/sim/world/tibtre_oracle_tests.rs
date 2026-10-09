@@ -588,7 +588,7 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
             < before
     );
     let owner = s.sim.interner.get("Americans").unwrap();
-    let balance = s.sim.houses[&owner].economy.credits;
+    let balance = s.sim.houses[&owner].economy.credits();
     assert!(s.sim.apply_command_with_overlays(
         "Americans",
         &Command::MinerReturn {
@@ -600,12 +600,12 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
     ));
     for _ in 0..1800 {
         frame(&mut s);
-        if s.sim.houses[&owner].economy.credits > balance {
+        if s.sim.houses[&owner].economy.credits() > balance {
             break;
         }
     }
     assert!(
-        s.sim.houses[&owner].economy.credits > balance,
+        s.sim.houses[&owner].economy.credits() > balance,
         "real refinery unload credits the harvested resource"
     );
 }

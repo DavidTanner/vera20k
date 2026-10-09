@@ -27,7 +27,8 @@ fn terminal_art(die1_count: i32, die2_count: i32) -> IniFile {
 }
 
 fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet) {
-    let base = "[InfantryTypes]\n0=E1\n1=BRUTE\n2=BOOM\n[VehicleTypes]\n0=MTNK\n\
+    let base = "[Countries]\n0=Americans\n\
+         [InfantryTypes]\n0=E1\n1=BRUTE\n2=BOOM\n[VehicleTypes]\n0=MTNK\n\
          [AircraftTypes]\n[BuildingTypes]\n0=GAPILE\n1=BIG\n\
          [SuperWeaponTypes]\n0=IC\n1=GM\n\
          [IC]\nType=IronCurtain\nRechargeTime=1\n\
@@ -44,7 +45,7 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
          [E1]\nImage=GI\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\n\
          [BRUTE]\nImage=GI\nStrength=200\nSpeed=4\n\
          [MTNK]\nStrength=300\nSpeed=6\n\
-         [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\n";
+         [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\nOwner=Americans\n";
     let mut ini = IniFile::from_str(base);
     ini.merge(&IniFile::from_str(extra));
     let mut rules = if let Some(art) = art {

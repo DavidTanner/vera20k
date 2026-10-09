@@ -4,12 +4,14 @@ use crate::sim::production::{Factory, PRODUCTION_STEPS, ProductionCategory};
 
 fn factory_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=SLAV\n1=E1\n\
+        "[Countries]\n0=Americans\n\
+         [InfantryTypes]\n0=SLAV\n1=E1\n\
          [VehicleTypes]\n0=MTNK\n[AircraftTypes]\n0=HORN\n\
          [BuildingTypes]\n0=PARENT\n1=OTHER\n2=DEFENSE\n\
-         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\n\
+         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\nOwner=Americans\n\
          Enslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\n\
          [OTHER]\nCost=500\nStrength=1000\nFoundation=1x1\nTechLevel=1\nFactory=BuildingType\n\
+         Owner=Americans\n\
          [DEFENSE]\nCost=500\nStrength=1000\nFoundation=1x1\nBuildCat=Combat\nTechLevel=1\n\
          [SLAV]\nStrength=125\nSpeed=4\nStorage=4\n\
          [E1]\nCost=200\nStrength=125\nSpeed=4\nTechLevel=1\n\
@@ -157,10 +159,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .harvested_credits = 35;
+        .set_score_for_test(35);
     let expected = saved.houses[&owner].economy.clone();
-    assert!(expected.spent_credits > 0);
-    assert_eq!(expected.credits + expected.spent_credits, 50_123);
+    assert!(expected.spent_credits() > 0);
+    assert_eq!(expected.credits() + expected.spent_credits(), 50_123);
 
     let prepared = prepare_saved(&saved, rules, "wallet-authority").expect("prepare current save");
     let mut resources = crate::sim::runtime::SimResources::empty();
@@ -195,10 +197,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     }
     let resumed = runtime.simulation.houses[&owner].economy.clone();
     assert!(
-        resumed.spent_credits > expected.spent_credits,
+        resumed.spent_credits() > expected.spent_credits(),
         "restored production must charge again"
     );
-    assert_eq!(resumed.credits + resumed.spent_credits, 50_123);
+    assert_eq!(resumed.credits() + resumed.spent_credits(), 50_123);
     let factory = runtime
         .simulation
         .production
@@ -221,9 +223,9 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
         .expect("restored frame");
     let economy = &runtime.simulation.houses[&owner].economy;
-    assert_eq!(economy.credits, 50_123);
-    assert_eq!(economy.spent_credits, resumed.spent_credits);
-    assert_eq!(economy.harvested_credits, 35);
+    assert_eq!(economy.credits(), 50_123);
+    assert_eq!(economy.spent_credits(), resumed.spent_credits());
+    assert_eq!(economy.score(), 35);
 }
 
 #[test]
@@ -342,7 +344,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         let counts = saved
             .houses
             .get(&owner)
-            .map(|house| (house.tracking.clone(), house.economy.credits, house.stats));
+            .map(|house| (house.tracking.clone(), house.economy.credits(), house.stats));
         let identities: Vec<_> = saved
             .substrate
             .entities
@@ -388,7 +390,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         assert_eq!(
             restored.houses.get(&owner).map(|house| (
                 house.tracking.clone(),
-                house.economy.credits,
+                house.economy.credits(),
                 house.stats
             )),
             counts,

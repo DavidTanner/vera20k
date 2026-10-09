@@ -21,9 +21,6 @@ use crate::rules::ini_parser::IniFile;
 #[cfg(test)]
 use crate::rules::ruleset::RuleSet;
 
-/// Maximum combined lighting value per channel in current compatibility tint output.
-pub const TOTAL_AMBIENT_CAP: f32 = 2.0;
-
 /// Internal light unit scale. `1000 == 1.0`.
 pub const LIGHT_UNIT: i32 = 1000;
 
@@ -432,20 +429,12 @@ impl CellLightGrid {
         self.tint_or_default(cell)
     }
 
-    /// UnitClass body draw (`0x0073CEC0`) signed-adds ExtraUnitLight to the
-    /// cell's top scalar before dispatching either its SHP or VXL body draw.
-    pub fn unit_tint_at(&self, cell: (u16, u16), extra_light: i32) -> [f32; 3] {
+    /// A unit's, infantry's or aircraft's body draw signed-adds its class's
+    /// extra light to the cell's top scalar (UnitClass `0x0073CEC0`,
+    /// InfantryClass `0x00518F90`, AircraftClass `0x004144B0`); the caller
+    /// passes it (`app::presentation::lighting::body_extra_light`).
+    pub fn body_tint_at(&self, cell: (u16, u16), extra_light: i32) -> [f32; 3] {
         self.tint_for_top_scalar_with_extra_or_default(cell, extra_light)
-    }
-
-    /// InfantryClass body draw (`0x00518F90`) signed-adds ExtraInfantryLight
-    /// to the cell's top scalar before its SHP draw dispatch.
-    pub fn infantry_tint_at(&self, cell: (u16, u16), extra_light: i32) -> [f32; 3] {
-        self.tint_for_top_scalar_with_extra_or_default(cell, extra_light)
-    }
-
-    pub fn aircraft_tint_at(&self, cell: (u16, u16)) -> [f32; 3] {
-        self.techno_tint_at(cell)
     }
 
     pub fn building_body_tint_at(&self, cell: (u16, u16)) -> [f32; 3] {
@@ -1807,8 +1796,8 @@ mod tests {
         let mut grid = CellLightGrid::new();
         grid.insert_profiled_light((1, 2), [1.0, 0.88, 0.88], 1.0);
 
-        let unit = grid.unit_tint_at((1, 2), 200);
-        let infantry = grid.infantry_tint_at((1, 2), -125);
+        let unit = grid.body_tint_at((1, 2), 200);
+        let infantry = grid.body_tint_at((1, 2), -125);
         for (actual, expected) in unit.into_iter().zip([1.2, 1.056, 1.056]) {
             assert!((actual - expected).abs() < 0.0001);
         }
@@ -1827,8 +1816,8 @@ mod tests {
         grid.insert_profiled_light((1, 1), DEFAULT_TINT, 1.9);
         grid.insert_profiled_light((2, 2), DEFAULT_TINT, 0.1);
 
-        let over = grid.unit_tint_at((1, 1), 200);
-        let negative = grid.infantry_tint_at((2, 2), -200);
+        let over = grid.body_tint_at((1, 1), 200);
+        let negative = grid.body_tint_at((2, 2), -200);
         for channel in over {
             assert!((channel - 2.1).abs() < 0.0001);
         }
@@ -1842,11 +1831,11 @@ mod tests {
     #[test]
     fn gsi_13_10_missing_cell_uses_neutral_top_scalar_before_extra_light() {
         let grid = CellLightGrid::new();
-        let tint = grid.unit_tint_at((99, 99), 200);
+        let tint = grid.body_tint_at((99, 99), 200);
         for channel in tint {
             assert!((channel - 1.2).abs() < 0.0001);
         }
-        assert_eq!(grid.infantry_tint_at((99, 99), 0), DEFAULT_TINT);
+        assert_eq!(grid.body_tint_at((99, 99), 0), DEFAULT_TINT);
     }
 
     #[test]
@@ -1855,9 +1844,7 @@ mod tests {
         grid.set_compat_tint((4, 5), [0.7, 0.8, 0.9]);
 
         assert_eq!(grid.techno_tint_at((4, 5)), [0.7, 0.8, 0.9]);
-        assert_eq!(grid.unit_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
-        assert_eq!(grid.infantry_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
-        assert_eq!(grid.aircraft_tint_at((4, 5)), [0.7, 0.8, 0.9]);
+        assert_eq!(grid.body_tint_at((4, 5), 0), [0.7, 0.8, 0.9]);
         assert_eq!(grid.overlay_tint_at((4, 5)), [0.7, 0.8, 0.9]);
         assert_eq!(grid.terrain_object_tint_at((4, 5)), [0.7, 0.8, 0.9]);
         assert_eq!(grid.anim_tint_at((4, 5), None), [0.7, 0.8, 0.9]);
@@ -2148,7 +2135,7 @@ mod tests {
 
         let center = grid.tint_or_default((2, 2));
         // 1.8 + 1.0 = 2.8 → clamped to 2.0
-        assert!((center[0] - TOTAL_AMBIENT_CAP).abs() < 0.001);
+        assert!((center[0] - LIGHT_CLAMP_MAX as f32 / LIGHT_UNIT as f32).abs() < 0.001);
     }
 
     #[test]

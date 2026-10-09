@@ -2625,6 +2625,20 @@ impl Simulation {
             self.remove_building_gap_before_limbo(stable_id);
             // 6F6BD1: Removed_From_Game, also only on the first Limbo.
             self.update_house_presence(stable_id, false);
+            // BuildingClass::Limbo 0x00445946..0x00445988: an opened
+            // Helipad's docks leave its house's AirportDocks.
+            if let Some(rules) = context.rules()
+                && let Some(entity) = self.substrate.entities.get(stable_id)
+                && entity.category == EntityCategory::Structure
+                && entity.building_actually_placed
+                && let Some(object) = self.object_type(entity.type_ref(), rules)
+                && object.helipad
+            {
+                let owner = entity.owner();
+                if let Some(house) = self.houses.get_mut(&owner) {
+                    house.tracking.limbo_airport_docks(object.number_of_docks);
+                }
+            }
         }
         //6F6C2A/2F removes the retained contribution and clears+508 before
         //ObjectConceal; its result cannot roll these Techno writes back.
