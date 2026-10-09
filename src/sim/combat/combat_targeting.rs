@@ -228,7 +228,6 @@ pub(crate) fn greatest_threat_for_entity(
         &snapshot,
         obj,
         fog,
-        None,
         terrain,
         require_playfield_membership,
         zone_grid,
@@ -244,10 +243,6 @@ pub(crate) fn greatest_threat_for_entity(
 /// The walk, the per-cell single-candidate rule, the gate ladder and the
 /// weighted score all live in [`super::greatest_threat`]; this is the adapter
 /// the acquisition and retarget call sites already speak to.
-///
-/// `scan_range_override`: when `Some`, replaces the mission-derived radius with
-/// a hard cutoff. Used by garrisoned buildings whose scan range is derived from
-/// foundation size + OccupyWeaponRange.
 ///
 /// This replaces VERA's own `(distance², threat_class, stable_id)` nearest-first
 /// key, which had no native counterpart: gamemd scores each candidate and keeps
@@ -267,7 +262,6 @@ pub(crate) fn acquire_best_target(
     attacker: &AttackerSnapshot,
     attacker_obj: &ObjectType,
     fog: Option<&FogState>,
-    scan_range_override: Option<SimFixed>,
     terrain: Option<&ResolvedTerrainGrid>,
     require_playfield_membership: bool,
     zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
@@ -283,7 +277,6 @@ pub(crate) fn acquire_best_target(
         attacker,
         attacker_obj,
         fog,
-        scan_range_override,
         terrain,
         require_playfield_membership,
         zone_grid,

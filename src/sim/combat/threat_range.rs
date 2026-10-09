@@ -16,9 +16,11 @@
 //!   [`ScanRange::CanFireAt`].
 //! - **Area Guard** asks for `GuardRange=` **or** the wider of the type's two
 //!   weapon ranges, **doubled**, clamped to `[0,` [`AREA_GUARD_MAX_SCAN_CELLS`]`]`.
-//!   A non-zero radius is a hard Euclidean cutoff — the can-fire-at query is
-//!   not consulted at all. This is why a unit parked on Area Guard reaches out
-//!   roughly twice as far as the same unit sitting on plain Guard. The radius
+//!   A non-zero radius is a hard distance cutoff between the two objects'
+//!   GetCoords (`greatest_threat`'s `candidate_beyond_cutoff`) — the
+//!   can-fire-at query is not consulted at all. This is why a unit parked on
+//!   Area Guard reaches out roughly twice as far as the same unit sitting on
+//!   plain Guard. The radius
 //!   is zero only when neither slot reaches past zero: an open-topped
 //!   transport carrying a Spy (`MakeupKit` is `Range=-2`) caps both at -2
 //!   cells, and that zero takes the Guard zero case.
@@ -237,8 +239,10 @@ pub(crate) enum ScanRange {
     /// the attacker can actually fire at that candidate, which is a per-
     /// candidate question because weapon choice depends on the target.
     CanFireAt,
-    /// A hard Euclidean cutoff, in cells. The can-fire-at query is skipped.
-    Hard(SimFixed),
+    /// A non-zero `Threat_Range`, in leptons: `Evaluate_Candidate` refuses a
+    /// candidate farther than a positive one and skips the can-fire-at query
+    /// for any.
+    Hard(i32),
     /// Native's literal `-1` range argument (`PUSH -0x1 @ 0x006F9D70`), which
     /// `Evaluate_Candidate` treats as neither `> 0` (no distance reject) nor
     /// `== 0` (no Sight / can-fire-at fallback). Weapon legality still decides;
@@ -306,7 +310,7 @@ fn range_from_leptons(leptons: i32) -> ScanRange {
     if leptons == 0 {
         ScanRange::CanFireAt
     } else {
-        ScanRange::Hard(SimFixed::from_bits(leptons.wrapping_mul(256)))
+        ScanRange::Hard(leptons)
     }
 }
 
@@ -448,7 +452,7 @@ GuardRange=9\n\n\
                 ScanMission::Guard.literal_mask(),
                 type_weapon_ranges(&rules, obj(&rules, "WITHGUARD"), 0)
             ),
-            ScanRange::Hard(SimFixed::from_num(9))
+            ScanRange::Hard(9 * 256)
         );
     }
 
@@ -463,7 +467,7 @@ GuardRange=9\n\n\
                 ScanMission::Guard.literal_mask(),
                 type_weapon_ranges(&rules, obj(&rules, "WITHGUARD"), 0)
             ),
-            ScanRange::Hard(SimFixed::from_num(9))
+            ScanRange::Hard(9 * 256)
         );
     }
 
@@ -479,7 +483,7 @@ GuardRange=9\n\n\
                 ScanMission::AreaGuard.literal_mask(),
                 type_weapon_ranges(&rules, obj(&rules, "NOGUARD"), 0)
             ),
-            ScanRange::Hard(SimFixed::from_num(12))
+            ScanRange::Hard(12 * 256)
         );
     }
 
@@ -494,14 +498,11 @@ GuardRange=9\n\n\
             ScanMission::AreaGuard.literal_mask(),
             type_weapon_ranges(&rules, obj(&rules, "WITHGUARD"), 0),
         );
-        let ScanRange::Hard(cells) = clamped else {
+        let ScanRange::Hard(leptons) = clamped else {
             panic!("Area Guard always produces a hard cutoff");
         };
-        assert!(
-            cells > SimFixed::from_num(12),
-            "GuardRange must win: {cells}"
-        );
-        assert_eq!(clamped, ScanRange::Hard(SimFixed::from_num(16)));
+        assert!(leptons > 12 * 256, "GuardRange must win: {leptons}");
+        assert_eq!(clamped, ScanRange::Hard(16 * 256));
     }
 
     #[test]
@@ -514,7 +515,7 @@ GuardRange=9\n\n\
                 ScanMission::AreaGuard.literal_mask(),
                 type_weapon_ranges(&rules, obj(&rules, "ONLYPRIMARY"), 0)
             ),
-            ScanRange::Hard(SimFixed::from_num(8))
+            ScanRange::Hard(8 * 256)
         );
     }
 
@@ -655,7 +656,7 @@ GuardRange=9\n\n\
             let expected = |leptons: i64| match leptons {
                 -1 => ScanRange::NoCutoff,
                 0 => ScanRange::CanFireAt,
-                leptons => ScanRange::Hard(SimFixed::from_bits(leptons as i32 * 256)),
+                leptons => ScanRange::Hard(leptons as i32),
             };
             let native = row["threat_range"].as_array().unwrap();
             for (index, mode) in [-1, 0, 1, 2].into_iter().enumerate() {

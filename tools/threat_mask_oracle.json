@@ -1,4 +1,3636 @@
 {
+  "cutoff": [
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": 999,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": 1000,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": false,
+      "range": 1001,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 999,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1000,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1001,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1082,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1083,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1084,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 999,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1000,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        6248,
+        7744,
+        624
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1001,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1082,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1083,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1083,
+      "high_flying": false,
+      "range": 1084,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 999,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1000,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        6744,
+        -208
+      ],
+      "distance": 1000,
+      "high_flying": true,
+      "range": 1001,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 253,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 254,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 255,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 253,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 254,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5503,
+        7744,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 255,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 253,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 254,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": false,
+      "range": 255,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 253,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 254,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7999,
+        208
+      ],
+      "distance": 254,
+      "high_flying": true,
+      "range": 255,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": 1022,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": 1023,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": false,
+      "range": 1024,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1022,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1023,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        208
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1024,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": 1043,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": 1044,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1044,
+      "high_flying": false,
+      "range": 1045,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1022,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1023,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5972,
+        8468,
+        416
+      ],
+      "distance": 1023,
+      "high_flying": true,
+      "range": 1024,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": 4,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": 5,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": false,
+      "range": 6,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": 4,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": 5,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5245,
+        7748,
+        208
+      ],
+      "distance": 5,
+      "high_flying": true,
+      "range": 6,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": 3699,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": 3700,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3700,
+      "high_flying": false,
+      "range": 3701,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": 3604,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": 3605,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        8248,
+        9744,
+        1040
+      ],
+      "distance": 3605,
+      "high_flying": true,
+      "range": 3606,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        208
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": 311,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": 312,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 312,
+      "high_flying": false,
+      "range": 313,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5248,
+        7744,
+        520
+      ],
+      "distance": 0,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": 46338,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": 46339,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": false,
+      "range": 46340,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": 46338,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": 46339,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        51588,
+        7744,
+        208
+      ],
+      "distance": 46339,
+      "high_flying": true,
+      "range": 46340,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": 207,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": 208,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 208,
+      "high_flying": false,
+      "range": 209,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": -256,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": -1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": 0,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": 1,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": false,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": 179,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": 180,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    },
+    {
+      "admitted": true,
+      "calls": [
+        "candidate",
+        "scanner",
+        "candidate",
+        "scanner"
+      ],
+      "candidate": [
+        5120,
+        7617,
+        312
+      ],
+      "distance": 180,
+      "high_flying": true,
+      "range": 181,
+      "scanner": [
+        5248,
+        7744,
+        208
+      ]
+    }
+  ],
   "enemy_bonus": [
     {
       "bonus_bits": "4079000000000000",

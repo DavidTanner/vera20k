@@ -7,20 +7,22 @@
     1,
     33621247
   ],
-  "scope": "Greatest_Threat's flags word over masks; Evaluate_Candidate's All-To-Hunt and quarry terms over synthetic candidates, then its final acceptance; Calculate_Threat_Score's SpecialThreatValue term and EnemyHouseThreatBonus.",
+  "scope": "Greatest_Threat's flags word over masks; Evaluate_Candidate's All-To-Hunt and quarry terms over synthetic candidates, then its final acceptance; Calculate_Threat_Score's SpecialThreatValue term and EnemyHouseThreatBonus; Evaluate_Candidate's distance cutoff over coordinate offsets, the candidate's high-flying answer and positive, zero and negative ranges.",
   "assumptions": [
     "x87 control word 0x0E7F (PC53, chop), the harness default.",
     "Fixture objects carry only the fields the slices read."
   ],
   "substitutions": [
     "The candidate's WhatAmI (vt+0x2C), occupant count (vt+0x408) and current weapon (vt+0x3F4) answer from the case.",
+    "For the cutoff, the scanner's and the candidate's GetCoords (vt+0x48) write the case's coordinates and the candidate's vt+0x54 answers its high-flying flag; Sqrt_Approx and ftol run.",
     "Between the quarry slices, the ThreatAvoidance factor (0x6F88BF..0x6F8926) is skipped: 1.0, no score change."
   ],
   "entry_points": {
     "flags": "0x006F8F29",
     "quarry_terms": "0x006F875F",
     "finish": "0x006F8928",
-    "enemy_bonus": "0x0070CEDC"
+    "enemy_bonus": "0x0070CEDC",
+    "cutoff": "0x006F8049"
   },
-  "payload_sha256": "5f4b968a9de07c679528fec4409c67cff33150f3c832660d6574202ad4a0cdf2"
+  "payload_sha256": "c1e1b23fefdd7a509ed2c8fc707ec3ecf9a5cfb4fb91e7c5e4117276ade79fc9"
 }
