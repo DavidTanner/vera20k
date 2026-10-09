@@ -92,7 +92,7 @@
     "src/sim/world/object_turn.rs": "fc795e431e336b6b064d6433662caa8ea625d378a1793ee958baa63141b424d7",
     "src/sim/world/logic_vector.rs": "751c75dc09ee513db6b7f430831f78bd0a58937dfde368109451ea0903e43bc2",
     "src/sim/world/world_hash.rs": "1572be737c6241981d8f26da2f3c5a3e8bd37f3f6d956f367eb913c323b89e7c",
-    "src/sim/snapshot.rs": "4bb073bf87b63511967ad3380fe6b186610e8afffaaece5638e6c1b404481c77",
+    "src/sim/snapshot.rs": "c137494a87c08cffe85137f3d4bb18136112f1a8f8091fc40ac62fbd6414e953",
     "src/sim/mission/mod.rs": "e710dee05d20d7422ee82b7e65a0f01ae28fe61976df0c4fb8e6ea38a4f825d3",
     "src/sim/mission/authority.rs": "126b1a131edb0fcfd796b39aef4f9feeb721b574eaee232cc7c1cbe10f5aec4f",
     "src/sim/mission/state.rs": "f5d63e42907b4afdbf8383f5ab0347bd00436bf88d6ffadd4095fdeff8d547f9",

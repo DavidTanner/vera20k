@@ -2291,8 +2291,10 @@ fn lifecycle_authority_conceal_dirty_eligibility_emits_dirty_before_drawn_clear(
 
     let _ = sim.object_conceal(1);
     assert_eq!(
-        &sim.lifecycle_outputs[3..],
-        &[
+        sim.lifecycle_outputs,
+        vec![
+            LifecycleOutput::DisplayRemove { stable_id: 1 },
+            LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
             LifecycleOutput::DirtyTacticalRect { stable_id: 1 },
             LifecycleOutput::ClearDrawnState { stable_id: 1 },
             LifecycleOutput::ClearRedraw { stable_id: 1 },

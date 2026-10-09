@@ -3965,7 +3965,8 @@ mod tests {
         // 314 -> 315: no ready-building list beside the factories.
         // 315 -> 316: the native airfield loop replaces the legacy dock FSM.
         // 316 -> 317: the local owner's retained sidebar insertion history.
-        assert_eq!(super::SNAPSHOT_VERSION, 317);
+        // 317 -> 318: Foot MoveSound keeps its native signed-dword countdown.
+        assert_eq!(super::SNAPSHOT_VERSION, 318);
     }
 
     #[test]
