@@ -10,6 +10,10 @@
 #[path = "sinking_sound_tests.rs"]
 mod sinking_sound_tests;
 
+#[cfg(test)]
+#[path = "selection_voice_tests.rs"]
+mod selection_voice_tests;
+
 use std::sync::Arc;
 
 use crate::rules::error::RulesError;

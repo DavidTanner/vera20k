@@ -84,6 +84,7 @@ pub(crate) use techno_ai::queue_and_commence;
 mod command_schedule;
 pub(crate) mod techno_ai_cloak;
 pub(crate) mod unit_post;
+mod selection_voice;
 mod world_commands;
 mod world_hash;
 mod world_orders;
@@ -3237,10 +3238,11 @@ impl Simulation {
         self.scenario_rng.clone()
     }
 
-    // --- Main/global gameplay stream (`main_rng`) ---
-    // Its consumers borrow the field directly: the terrain-load variant draws
-    // (`terrain_load_draws`), the Gattling stage Report pick, the death-sound
-    // picks and the MoveSound index draw.
+    // --- Main/global process stream (`main_rng`) ---
+    // Its owning modules consume the same cursor: terrain-load variants
+    // (`terrain_load_draws`), selection_voice, Gattling Report, death sounds
+    // and MoveSound. Local selection calls the domain operation; it must not
+    // create a seeded copy that loses loading or live-consumer continuation.
 
     /// Test/replay helper for the per-game Scenario/Main pair only.
     ///

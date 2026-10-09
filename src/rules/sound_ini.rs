@@ -396,6 +396,20 @@ impl SoundRegistry {
         })
     }
 
+    /// ReadSoundList525430 reads at most127 bytes, tokenizes on commas, then
+    /// resolves each token through Voc FindPtr751520/FindIndex7515C0. Unknown
+    /// tokens are skipped, duplicates retained. The processed Rules section
+    /// owns reached pass order: empty/missing reads retain the prior vector;
+    /// a nonempty read replaces it, even when no token resolves.
+    pub(crate) fn read_rules_sound_list(&self, section: &IniSection, key: &str) -> Vec<String> {
+        section
+            .read_sound_list(key)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|name| self.get(name).map(|entry| entry.id.clone()))
+            .collect()
+    }
+
     /// The `[Defaults]` values this registry was read with.
     pub fn defaults(&self) -> &SoundDefaults {
         &self.defaults

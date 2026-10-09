@@ -816,56 +816,21 @@ impl ApplicationHandler for App {
                         return;
                     }
 
-                    let key_without_modifiers = event.key_without_modifiers();
-                    let binding_key = crate::app::input::hotkeys::binding_logical_key(
-                        &event.logical_key,
-                        &key_without_modifiers,
-                        event.location,
-                    );
-                    let hotkey_resolution = state.match_state.input.hotkey_bindings.resolve_event(
-                        binding_key,
-                        event.location,
-                        state.match_state.input.hotkey_modifiers,
-                    );
-                    if in_game && (is_escape || !dev_ui_consumed) {
-                        let type_select_consumed = dispatch::handle_type_select_key_edge(
+                    if in_game {
+                        let unmodified = event.key_without_modifiers();
+                        crate::app::input::keyboard::in_game_key_edge(
                             state,
-                            hotkey_resolution,
-                            code,
-                            event.state,
-                            event.repeat,
+                            crate::app::input::keyboard::InGameKeyEdge {
+                                physical: code,
+                                logical: &event.logical_key,
+                                unmodified: &unmodified,
+                                location: event.location,
+                                state: event.state,
+                                repeat: event.repeat,
+                            },
+                            dev_ui_consumed,
+                            paused_at_event,
                         );
-                        if event.state.is_pressed() && !event.repeat && !type_select_consumed {
-                            dispatch::handle_hotkey_pressed(state, hotkey_resolution, code);
-                        }
-                    }
-                    // A key received by the paused capture changes no held-key
-                    // state, including the Escape press that closes it.
-                    if in_game && !paused_at_event && !dev_ui_consumed {
-                        if event.state.is_pressed() {
-                            if let Some(scroll_key) =
-                                crate::app::input::hotkeys::fallback_scroll_key(hotkey_resolution)
-                            {
-                                state.match_state.input.keys_held.insert(scroll_key);
-                            } else if crate::app::input::hotkeys::physical_scroll_key(code)
-                                .is_none()
-                            {
-                                state.match_state.input.keys_held.insert(code);
-                            }
-                        } else {
-                            // A release always clears a previously admitted
-                            // scroll flag, even if NumLock or bindings changed
-                            // while the key was held.
-                            state.match_state.input.keys_held.remove(&code);
-                            if let Some(scroll_key) =
-                                crate::app::input::hotkeys::fallback_scroll_key(hotkey_resolution)
-                                    .or_else(|| {
-                                        crate::app::input::hotkeys::physical_scroll_key(code)
-                                    })
-                            {
-                                state.match_state.input.keys_held.remove(&scroll_key);
-                            }
-                        }
                     }
                 }
             }

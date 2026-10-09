@@ -496,8 +496,11 @@ pub struct ObjectType {
     pub eligibile_for_ally_building: bool,
     /// Whether selling/destruction can eject infantry crew from this structure.
     pub crewed: bool,
-    /// Sound ID played when this unit is selected (references sound.ini section).
-    pub voice_select: Option<String>,
+    /// `VoiceSelect=` at TechnoType+414. Constructor710D74..710D9A creates
+    /// an empty vector; ReadINI712B1D..712B87 calls ReadSoundList525430,
+    /// retaining the prior vector on an empty/missing read. Production binds
+    /// every resolved token, in order, against the fixed SOUNDMD catalog.
+    pub voice_select: Vec<String>,
     /// Sound ID played when this unit is ordered to move.
     pub voice_move: Option<String>,
     /// Sound ID played when this unit is ordered to attack.
@@ -2224,7 +2227,10 @@ impl ObjectType {
             base_normal: section.read_bool("BaseNormal", true),
             eligibile_for_ally_building: section.read_bool("EligibileForAllyBuilding", false),
             crewed: section.read_bool("Crewed", false),
-            voice_select: first_sound("VoiceSelect"),
+            voice_select: section
+                .read_sound_list("VoiceSelect")
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+                .unwrap_or_default(),
             voice_move: first_sound("VoiceMove"),
             voice_attack: first_sound("VoiceAttack"),
             voice_harvest: section.read_name("VoiceHarvest", 0x80).map(str::to_owned),

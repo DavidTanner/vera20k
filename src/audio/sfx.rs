@@ -432,16 +432,19 @@ fn apply_pan(samples: &mut [f32], pan: i32) {
 }
 
 /// The audio RNG contract: `Random::RandomRanged @ 0x0065C7E0` on the
-/// non-scenario `g_MainRng @ 0x00886B88` (seeded from the system clock in
-/// `Init_Random_Number_System @ 0x0052FC20`, never synchronised). Inclusive
-/// bounds; equal bounds return without drawing.
+/// non-scenario `g_MainRng @ 0x00886B88`, seeded from resolved g_RngSeed by
+/// Init_Random_Number_System52FC20. Inclusive bounds; equal bounds return
+/// without drawing. See SfxRng's existing stream residual below.
 pub trait SampleRng {
     fn ranged(&mut self, low: i32, high: i32) -> i32;
 }
 
-/// Presentation-side RNG for sample choice, pitch and volume shift. The
-/// native generator is clock-seeded, so only its draw contract matters; this
-/// is SplitMix64 with rejection sampling for an unbiased inclusive range.
+/// Existing separate presentation RNG for sample choice, pitch and volume
+/// shift: clock-seeded SplitMix64 with unbiased inclusive range reduction.
+/// RESIDUAL: native uses Main886B88. This older audio owner does not reproduce
+/// its values or shared continuation; consolidating sample/device/pump order
+/// is a separate audio mechanism. Unit selection consumes Simulation's
+/// existing Main owner and does not seed or copy this presentation stream.
 #[derive(Debug, Clone)]
 pub struct SfxRng {
     state: u64,

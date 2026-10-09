@@ -4,9 +4,66 @@ use crate::app::{App, AppState};
 use crate::ui::shell::keyboard::*;
 use crate::ui::shell::list::ShellListGeometry;
 use std::time::Instant;
-use winit::event::{KeyEvent, MouseButton};
-use winit::keyboard::{Key, NamedKey};
+use winit::event::{ElementState, KeyEvent, MouseButton};
+use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey};
 use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
+
+/// A keyboard edge after the front-end/dialog admission gates. Both a window
+/// event and a literal-key production capture enter this same binding owner.
+pub(crate) struct InGameKeyEdge<'a> {
+    pub physical: KeyCode,
+    pub logical: &'a Key,
+    pub unmodified: &'a Key,
+    pub location: KeyLocation,
+    pub state: ElementState,
+    pub repeat: bool,
+}
+
+pub(crate) fn in_game_key_edge(
+    state: &mut AppState,
+    edge: InGameKeyEdge<'_>,
+    dev_ui_consumed: bool,
+    paused_at_event: bool,
+) {
+    let is_escape = matches!(edge.logical, Key::Named(NamedKey::Escape));
+    let binding_key = hotkeys::binding_logical_key(edge.logical, edge.unmodified, edge.location);
+    let resolution = state.match_state.input.hotkey_bindings.resolve_event(
+        binding_key,
+        edge.location,
+        state.match_state.input.hotkey_modifiers,
+    );
+    if is_escape || !dev_ui_consumed {
+        let consumed = crate::app::input::dispatch::handle_type_select_key_edge(
+            state,
+            resolution,
+            edge.physical,
+            edge.state,
+            edge.repeat,
+        );
+        if edge.state.is_pressed() && !edge.repeat && !consumed {
+            crate::app::input::dispatch::handle_hotkey_pressed(state, resolution, edge.physical);
+        }
+    }
+    // Paused capture changes no held-key state, even on the closing Escape.
+    if paused_at_event || dev_ui_consumed {
+        return;
+    }
+    if edge.state.is_pressed() {
+        if let Some(scroll_key) = hotkeys::fallback_scroll_key(resolution) {
+            state.match_state.input.keys_held.insert(scroll_key);
+        } else if hotkeys::physical_scroll_key(edge.physical).is_none() {
+            state.match_state.input.keys_held.insert(edge.physical);
+        }
+    } else {
+        // Release clears an admitted scroll flag even after a binding/NumLock change.
+        state.match_state.input.keys_held.remove(&edge.physical);
+        if let Some(scroll_key) = hotkeys::fallback_scroll_key(resolution)
+            .or_else(|| hotkeys::physical_scroll_key(edge.physical))
+        {
+            state.match_state.input.keys_held.remove(&scroll_key);
+        }
+    }
+}
 
 pub(crate) fn layout(state: &AppState) -> Option<KeyboardLayout> {
     let dialog = state.frontend.keyboard_dialog.as_ref()?;
