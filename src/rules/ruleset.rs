@@ -4473,6 +4473,11 @@ impl RuleSet {
         Self::lookup_ci(&self.projectiles, id)
     }
 
+    /// Registered projectile types, including their retained animation references.
+    pub(crate) fn projectiles_iter(&self) -> impl Iterator<Item = &ProjectileType> {
+        self.projectiles.values()
+    }
+
     /// Deterministic hash of the processed source INI this RuleSet was built from
     /// (RULESMD, optional LANGRULE, selected mode, then the map's rules-shaped
     /// pass). Stamped into

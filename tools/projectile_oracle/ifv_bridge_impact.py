@@ -110,9 +110,9 @@ assert src.count(line)==1
 exec(src.replace(line,' # Stock bridge flags remain as loaded above.').replace('target=cells[16,20]','target=cells[10,20]'),impact.launch.__dict__)
 # Preserve stock tile/overlay identities and map extents at impact setup.
 src=inspect.getsource(impact.execute)
-lines=' for c in list(cells.values())+[0xabdc50]:\n  u.mem_write(c+0x38,dwords(-1));u.mem_write(c+0x44,dwords(-1))'
-assert src.count(lines)==1
-src=src.replace('seeded_struct(31)','seeded_struct(BRIDGE_SEED)').replace(lines,' # Stock tile/overlay identities remain as loaded above.').replace('u.mem_write(0x87f914,dwords(64,64))','u.mem_write(0x87f914,dwords(136,140))')
+line=' initialize_effect_world(m,cells)'
+assert src.count(line)==1
+src=src.replace(line,' initialize_effect_world(m,cells,seed=BRIDGE_SEED,map_size=(136,140),clear_terrain=False)')
 impact.BRIDGE_SEED=31
 src=src.replace('for _ in range(100):','for _ in range(0):').replace('count=1000000','count=6000000').replace("0x587180:'BridgeDriver'","0x587180:'BridgeDriver',0x576ba0:'HighBridgeBody',0x576770:'Rim',0x47dd70:'Fallout',0x56dae0:'Connectivity',0x6551c0:'RadarDirty',0x6d2790:'ScreenDirty',0x575ee0:'Notify',0x487720:'DirtyCell'").replace('0x65c780,0x65c7e0,0x5f4ec0):pending','0x65c780,0x65c7e0,0x5f4ec0,0x587180,0x576ba0):pending')
 exec(src,impact.__dict__)
@@ -153,6 +153,7 @@ def metadata():
   'Native OverlayType dense prefix/full BRIDGE2 and GEM01 reads, BridgeStrength constructor/read, bridge effect/SplashList/Wake constructor/read blocks, and full physical Anim ART readers execute. Overlay SHPs are missing; no overlay renderer claim.',
   'Independent seeds31/39 bound rejection/admission; collapse is primed by native576BA0, not a prior full weapon hit. Bullet94 and subsequent runtime effect IDs are actual partial fixture constructor order, not wholematch identity.',
   'Original Tactical constructor and Map/Radar/dirty vector initializers execute. Viewport800x600, camera0, known projection multiplier, GameSpeed4 and timeGetTime0 are supplied. Live-game flagA8E9A0=1 admits complete original Anim Unlimbo including native coordinate commit and Display submission. Source lifecycle/Bullet launch admission boundaries are inherited.',
+  'The shared Bullet admission boundary now executes original InLimbo clearing and coordinate fixup. Its later Conceal therefore includes DetachAll PointerExpired7258D0 and DisplayRemove4A9770 before drain; all other retained bridge, impact, ID, RNG and state outputs are unchanged.',
   'Stops after full Bullet queue drain with impact/bridge animations retained. No post-impact Anim scheduler/retirement or whole Rules Process chronology claim. Shared ifv_impact separately executes single XGRYSML2 lifetime.',
  ],substitutions=[
   'Shared ifv_impact transport boundaries plus verified WINMM timeGetTime import at6C8C40 supplied0. Only Python fixture setup statements are adapted in memory; no original executable instruction is patched or replaced.',

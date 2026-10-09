@@ -2762,6 +2762,32 @@
         },
         {
           "args": [
+            "0x241f4dc0",
+            "0x241f4dc0",
+            "0x5f4d67",
+            "0x1"
+          ],
+          "ecx": "0x241f4dc0",
+          "event": "PointerExpired",
+          "frame": 17,
+          "pc": "0x7258d0",
+          "return_pc": "0x5f5316"
+        },
+        {
+          "args": [
+            "0x241f4dc0",
+            "0x0",
+            "0x241f4dc0",
+            "0x1480"
+          ],
+          "ecx": "0x87f7e8",
+          "event": "DisplayRemove",
+          "frame": 17,
+          "pc": "0x4a9770",
+          "return_pc": "0x5f4d7e"
+        },
+        {
+          "args": [
             "0x0",
             "0x0",
             "0x0",
@@ -9496,6 +9522,32 @@
           "frame": 17,
           "pc": "0x5f4d30",
           "return_pc": "0x5f6625"
+        },
+        {
+          "args": [
+            "0x241f4dc0",
+            "0x241f4dc0",
+            "0x5f4d67",
+            "0x1"
+          ],
+          "ecx": "0x241f4dc0",
+          "event": "PointerExpired",
+          "frame": 17,
+          "pc": "0x7258d0",
+          "return_pc": "0x5f5316"
+        },
+        {
+          "args": [
+            "0x241f4dc0",
+            "0x0",
+            "0x241f4dc0",
+            "0x1480"
+          ],
+          "ecx": "0x87f7e8",
+          "event": "DisplayRemove",
+          "frame": 17,
+          "pc": "0x4a9770",
+          "return_pc": "0x5f4d7e"
         },
         {
           "args": [
@@ -17574,6 +17626,32 @@
           "frame": 17,
           "pc": "0x5f4d30",
           "return_pc": "0x5f6625"
+        },
+        {
+          "args": [
+            "0x241f4dd0",
+            "0x241f4dd0",
+            "0x5f4d67",
+            "0x1"
+          ],
+          "ecx": "0x241f4dd0",
+          "event": "PointerExpired",
+          "frame": 17,
+          "pc": "0x7258d0",
+          "return_pc": "0x5f5316"
+        },
+        {
+          "args": [
+            "0x241f4dd0",
+            "0x0",
+            "0x241f4dd0",
+            "0x1480"
+          ],
+          "ecx": "0x87f7e8",
+          "event": "DisplayRemove",
+          "frame": 17,
+          "pc": "0x4a9770",
+          "return_pc": "0x5f4d7e"
         },
         {
           "args": [

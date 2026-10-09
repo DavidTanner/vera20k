@@ -15,6 +15,40 @@ from tools.spatial_oracle.building_body_rules import RULES,SP,dwords
 from tools.projectile_oracle import guided_step as guided
 i32,xyz,vec=guided.i32,guided.xyz,guided.vec
 
+def bullet_addref_transport(m,address,events):
+ """Verified Bullet IUnknown Windows InterlockedIncrement boundary."""
+ if address!=0x46afe5:return False
+ u=m.u;sp=u.reg_read(UC_X86_REG_ESP);ptr=m.read32(sp);value=(m.read32(ptr)+1)&0xffffffff
+ u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value)
+ u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46afeb)
+ events.append(dict(call='KERNEL32.InterlockedIncrement',com_refcount=value))
+ return True
+
+def bullet_world_admission_transport(m,address,bullet,events):
+ """Supply world admission while retaining original Bullet coordinate fixup.
+
+ Native Unlimbo's prologue saves its ABI state. Admission guards are supplied
+ at5F4ECD; the original5F4F4A..5F4FAE type getter, virtual+6C fixup and
+ SetLocation then execute, including the original+80/+81 admission writes.
+ This corrects the former raw-copy boundary that left the Bullet InLimbo and
+ suppressed its later Conceal/DetachAll cleanup. Post-placement world effects remain the existing
+ supplied boundary, returning through original5F5210. Display calls retain
+ their prior supplied admission. No native coordinate result is computed here.
+ """
+ u=m.u
+ if address==0x5f4ec0:
+  assert u.reg_read(UC_X86_REG_ECX)==bullet
+  assert m.read32(bullet)==0x7e46e4
+  events.append(dict(call=hex(address),supplied_world_admission=True))
+  return True
+ if address in (0x5f4ecd,0x5f4fae) and u.reg_read(UC_X86_REG_ESI)==bullet:
+  u.reg_write(UC_X86_REG_EIP,0x5f4f4a if address==0x5f4ecd else 0x5f5210)
+  return True
+ if address in (0x4a9770,0x4a9720):
+  events.append(dict(call=hex(address),supplied_world_admission=True));m.ret(1,4)
+  return True
+ return False
+
 def prepare():
  m,_,cells,initial=guided.create(False);u=m.u
  u.mem_write(0xa8ed84,dwords(0))
@@ -70,17 +104,11 @@ def launch(origin=(2688,5248,1030),bridge=True):
    # Verified PE import KERNEL32.InterlockedIncrement. The single-threaded
    # Windows API boundary updates COM refcount only; native Abstract ID remains
    # original410230/68BCB0 and is never assigned by this hook.
-   sp=u.reg_read(UC_X86_REG_ESP);ptr=m.read32(sp);value=(m.read32(ptr)+1)&0xffffffff
-   u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46afeb)
-   events.append(dict(call='KERNEL32.InterlockedIncrement',com_refcount=value))
+   bullet_addref_transport(m,a,events)
   elif a==0x6fe562:bullet.append(u.reg_read(UC_X86_REG_EAX))
   elif a==0x6fe53f:scalars['get_speed']=u.reg_read(UC_X86_REG_EAX)
   elif a==0x6fea52:scalars['launch_amount']=i32(u,SP+0x28)
-  elif a in (0x5f4ec0,0x4a9770,0x4a9720):
-   sp=u.reg_read(UC_X86_REG_ESP)
-   if a==0x5f4ec0:
-    u.mem_write(bullet[0]+0x9c,bytes(u.mem_read(m.read32(sp+4),12)));u.mem_write(bullet[0]+0x90,b'\x01')
-   events.append(dict(call=hex(a),supplied_world_admission=True));m.ret(1,8 if a==0x5f4ec0 else 4)
+  elif bullet_world_admission_transport(m,a,bullet[0] if bullet else 0,events):pass
  h=u.hook_add(UC_HOOK_CODE,observe)
  try:run_checked(u,0x6fe4f2,(0x6ff01a,0x6ff751,0x6ff93c),count=1000000,required_addresses=(0x6c5090,0x466380,0x68bcb0,0x70bcb0,0x740f80,0x468670))
  except Exception:

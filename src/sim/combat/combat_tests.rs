@@ -9168,7 +9168,10 @@ fn projectile_shrapnel_reads_the_bullets_location_not_its_impact() {
     );
     let payload =
         ProjectilePayload::new(20, sim.interner.intern("WH"), sim.interner.intern("PARENT"));
-    let location = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 0);
+    // Supply an already-admitted point above ground. BulletType46C4F0 raises
+    // a ground-level launch; its separate native placement comparison covers
+    // that prefix, while this fixture isolates the shrapnel Location read.
+    let location = ProjectileCoord::new(5 * 256 + 128, 5 * 256 + 128, 1);
     let target = ProjectileTarget::Cell { rx: 8, ry: 5 };
     let id = sim.allocate_stable_id();
     sim.admit_projectile(

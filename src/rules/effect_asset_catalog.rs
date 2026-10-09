@@ -229,6 +229,14 @@ pub fn anim_class_roots(rules: &RuleSet) -> Vec<String> {
             insert(name);
         }
     }
+    // Bullet AI466826..4668B8 constructs the retained ART Trailer before
+    // moving the projectile. Its ordinary AnimClass needs the same binding
+    // as every other producer, including in headless matches.
+    for projectile in rules.projectiles_iter() {
+        if let Some(name) = projectile.trailer.as_deref() {
+            insert(name);
+        }
+    }
     for name in rules.general.infantry_death_anims.iter().flatten() {
         insert(name);
     }

@@ -329,7 +329,46 @@ impl Simulation {
             );
             return outcome;
         }
-        if let Some(projectile) = self.projectiles.get(id) {
+        if self.projectiles.get(id).is_some() {
+            let head = self
+                .projectiles
+                .begin_ai_visit(id, |anim| {
+                    self.substrate.anims.contains_key(anim)
+                        && !self.substrate.pending_delete.contains(&anim)
+                })
+                .expect("live Bullet has an AI prefix");
+            // Bullet466826..4668B8 constructs at the old Location after its
+            // visual update, before target/floor queries or flight. Registering
+            // an Anim here also preserves the live Logic cursor on impact.
+            if let Some(rules) = rules {
+                let trailer = self
+                    .projectiles
+                    .get(id)
+                    .and_then(|projectile| {
+                        rules.weapon(self.interner.resolve(projectile.payload.weapon))
+                    })
+                    .and_then(|weapon| weapon.projectile.as_deref())
+                    .and_then(|type_id| rules.projectile(type_id))
+                    .and_then(|kind| head.trailer(kind, self.session.binary_frame));
+                if let Some((name, position)) = trailer {
+                    self.spawn_named_anim(
+                        rules,
+                        name,
+                        crate::sim::anim_class::AnimWorldCoord {
+                            x: position.x,
+                            y: position.y,
+                            z: position.z,
+                        },
+                        1,
+                        0x600,
+                        0,
+                    );
+                }
+            }
+            let projectile = self
+                .projectiles
+                .get(id)
+                .expect("Bullet remains registered across its Trailer constructor");
             // BulletClass::AI @ 0x00467C3C reads the live firer (+0xB0),
             // then its +0x84 TechnoType receiver and JumpJet (+0xD94).
             // Do not cache this on launch: PointerExpired can null the firer.
@@ -390,8 +429,8 @@ impl Simulation {
             });
             let result = self
                 .projectiles
-                .advance_one(
-                    id,
+                .advance_after_head(
+                    head,
                     binary_frame,
                     |target_id| {
                         collision_world

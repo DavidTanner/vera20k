@@ -10,6 +10,7 @@
   "scope": "Five physical IFV impact controls: 125 original Bullet AI visits and 70 impact Anim AI visits through complete bounded retirement",
   "assumptions": [
     "Original cell-spread table initializer561910, selected physical readers, FireAt launch, guided flight, full Detonate4690B0 and AreaDamage489280, impact SelectAnim/constructor/Start and full Bullet/Anim retirement execute. Earlier launch supplied boundaries remain: source lifecycle/FLH, Unlimbo/Display admission and inter-frame structural-bit changes.",
+    "The shared launch boundary executes original Unlimbo admission-state writes, BulletType coordinate fixup and SetLocation. Correcting its former raw-coordinate copy clears InLimbo, so Conceal now executes DetachAll PointerExpired7258D0 and DisplayRemove4A9770 before drain. Every other retained payload field is unchanged by that boundary correction.",
     "Supplied GameActiveA8E9A0=1 admits original Anim Unlimbo/coordinate commit/Display submission. Flat level6 map cells, empty damage/air receivers, no tile/overlay identities and ScenarioDestroyableBridges=false. No damageable bridge topology; that is the separate ifv_bridge_impact fixture.",
     "Physical DRAGON and eight HE effect SHPs are read through native readers. Original partial pool construction gives Bullet29 then impact Anim30; no full startup/wholematch native-ID claim. Each control independently seeds Scenario RNG31.",
     "Host schedules pending drain after the Bullet tick, then one impact AnimAI per frame until its native retirement. All timer bodies execute; no whole Logic/Display scheduler claim. The LineTrail slot is null; ifv_trail_impact separately joins its admitted producer and detach.",
@@ -32,5 +33,5 @@
     "bullet_dtor": "0x00466560",
     "anim_dtor": "0x00426590"
   },
-  "payload_sha256": "0ac91156bad0f12b1f232751dcb8d31f2eb8e16e0c5548583eda3f407547a419"
+  "payload_sha256": "85ba83de90ce173972870bc1295082e603925f7107a4bdc0ba778fb71b334735"
 }

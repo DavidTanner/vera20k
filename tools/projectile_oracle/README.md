@@ -5,6 +5,25 @@ These tools execute the pinned retail `gamemd.exe` under Unicorn. See the
 identity. This page indexes the consolidated FireAt-tail, load-timer and collision
 fixtures; other projectile families still need their own inventory.
 
+## Bullet trailer animations
+
+[`projectile_trailer`](projectile_trailer.md) joins the original Bullet AI
+header and signed global-frame cadence to the full physical BBBLELRG
+constructor, independent lifetime and deferred retirement. It includes native
+divide faults, early waits, preflight coordinates, RNG continuation,
+Scalable reader inputs and the original Bullet placement/Fire consumers.
+Reproduce with
+`python -m tools.projectile_oracle.projectile_trailer --check`; the linked
+document specifies extracted retail inputs and the bounded coverage.
+
+The shared IFV admission transport now executes native coordinate fixup and
+admission-state writes. Its earlier raw copy retained constructor InLimbo and
+suppressed cleanup. Re-executed impact/bridge corpora include the resulting
+Conceal expiry/display removal; the LineTrail corpus corrects detach timing to
+Conceal before drain. The trailer witness executes full original Fire admission.
+See the linked document for those input boundaries and the separate Rust
+LineTrail timing residual.
+
 ## FireAt tail and BulletFire
 
 `fireat_fixture.py` owns the synthetic object/stack initialization, virtual and

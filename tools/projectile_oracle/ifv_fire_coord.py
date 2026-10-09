@@ -13,6 +13,7 @@ from unicorn.x86_const import *
 from tools.native_oracle import NATIVE_SHA256,NATIVE_FPCW,RET_MAGIC,run_checked,finish_vectors,provenance
 from tools.projectile_oracle.bridge_render_inputs import assets_root,lexical
 from tools.projectile_oracle.guided_step import create,i32,vec,xyz
+from tools.projectile_oracle.ifv_launch import bullet_addref_transport,bullet_world_admission_transport
 from tools.spatial_oracle.building_body_rules import RULES,SP,dwords
 
 
@@ -76,17 +77,11 @@ def launch_shot(m,source,st,w,cells,initial,origin,frame=0,bridge=False):
    # Verified PE import KERNEL32.InterlockedIncrement. The single-threaded
    # Windows API boundary updates COM refcount only; native Abstract ID remains
    # original410230/68BCB0 and is never assigned by this hook.
-   sp=u.reg_read(UC_X86_REG_ESP);ptr=m.read32(sp);value=(m.read32(ptr)+1)&0xffffffff
-   u.mem_write(ptr,dwords(value));u.reg_write(UC_X86_REG_EAX,value);u.reg_write(UC_X86_REG_ESP,sp+4);u.reg_write(UC_X86_REG_EIP,0x46afeb)
-   events.append(dict(call='KERNEL32.InterlockedIncrement',com_refcount=value))
+   bullet_addref_transport(m,a,events)
   elif a==0x6fe562:bullet.append(u.reg_read(UC_X86_REG_EAX))
   elif a==0x6fe53f:scalars['get_speed']=u.reg_read(UC_X86_REG_EAX)
   elif a==0x6fea52:scalars['launch_amount']=i32(u,SP+0x28)
-  elif a in (0x5f4ec0,0x4a9770,0x4a9720):
-   sp=u.reg_read(UC_X86_REG_ESP)
-   if a==0x5f4ec0:
-    u.mem_write(bullet[0]+0x9c,bytes(u.mem_read(m.read32(sp+4),12)));u.mem_write(bullet[0]+0x90,b'\x01')
-   events.append(dict(call=hex(a),supplied_world_admission=True));m.ret(1,8 if a==0x5f4ec0 else 4)
+  elif bullet_world_admission_transport(m,a,bullet[0] if bullet else 0,events):pass
  h=u.hook_add(UC_HOOK_CODE,observe)
  try:run_checked(u,0x6fe4f2,(0x6ff43f,0x6ff751,0x6ff93c),count=1000000,required_addresses=(0x6c5090,0x466380,0x68bcb0,0x70bcb0,0x740f80,0x468670))
  except Exception:
