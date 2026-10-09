@@ -286,7 +286,7 @@ mod tests {
         sim.session.house_order.push(soviet);
         let barracks = structure(&mut sim, &rules, "GAPILE", 3);
         structure(&mut sim, &rules, "GAPILE", 4);
-        structure(&mut sim, &rules, "GAYARD", 6);
+        let yard = structure(&mut sim, &rules, "GAYARD", 6);
         structure(&mut sim, &rules, "GAAIRC", 8);
         structure(&mut sim, &rules, "GAREFN", 10);
         let counts = |sim: &Simulation, house| {
@@ -310,6 +310,15 @@ mod tests {
         sim.uninit_with_rules(barracks, &rules);
         assert_eq!(counts(&sim, soviet), [0; 5]);
         assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 1]);
+
+        // Only the first Limbo recounts (`0x004458CE`); ChangeOwner moves a
+        // limbo factory's counter all the same.
+        sim.techno_limbo_with_rules(yard, &rules, None);
+        sim.techno_limbo_with_rules(yard, &rules, None);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 0]);
+        sim.change_owner_with_rules(yard, soviet, &rules, None);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, -1]);
+        assert_eq!(counts(&sim, soviet), [0, 0, 0, 0, 1]);
     }
 
     /// Short on power without a construction yard: silence, and the guard
