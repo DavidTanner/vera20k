@@ -76,7 +76,7 @@ fn a_completed_hospital_grants_its_infantry_count_and_limbo_takes_it_back() {
     let (mut sim, rules, owner) = scene();
     let hospital = spawn(&mut sim, &rules, "CAHOSP");
     // The spawn ran the production opening, so the grant is already applied by
-    // `grand_opening` — this is the live path, not a synthetic call.
+    // `grand_opening` 鈥?this is the live path, not a synthetic call.
     assert_eq!(
         sim.houses[&owner].self_heal_infantry, 1,
         "0x00446392..0x00446398 adds InfantryGainSelfHeal to house +0x164"
@@ -356,4 +356,209 @@ fn an_absent_self_heal_frame_key_cannot_divide_by_zero() {
         sim.substrate.entities.get(infantry).unwrap().health.current,
         10
     );
+}
+
+/// The same mechanism on a **real retail map**, so the keys come from the
+/// production map loader rather than an inline fixture.
+///
+/// `Arena.mmx` is a stock map that places a Tech Hospital (`[CATHOSP]`,
+/// `InfantryGainSelfHeal=1`). The test reads that building's parsed rules, then
+/// runs an owned hospital plus a damaged G.I. through the production AI stage
+/// and watches the health move on the `SelfHealInfantryFrames` cadence.
+///
+/// Ignored by default: it needs the retail install. Run it with
+/// `RA2_DIR=<install> cargo test -p vera20k --lib \
+///  world::techno_ai::selfheal_tests::the_mechanism_runs_on_a_real_map -- --ignored`.
+#[test]
+#[ignore = "needs a retail install; set RA2_DIR and pass --ignored"]
+fn the_mechanism_runs_on_a_real_map() {
+    let dir = std::env::var("RA2_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            crate::util::config::GameConfig::load()
+                .ok()
+                .map(|config| config.paths.ra2_dir)
+        })
+        .expect("set RA2_DIR (or a config.toml with ra2_dir) to run this test");
+    let mut scene = crate::headless_scenario::load(&dir, "Arena.mmx", 0x5E1F_4EA1)
+        .expect("load the retail map");
+    let runtime = &mut scene.runtime;
+
+    // The map's own Tech Hospital proves the production loader parsed the key.
+    let has_hospital = runtime
+        .simulation
+        .entities()
+        .values()
+        .any(|entity| runtime.simulation.resolve(entity.type_ref()) == "CATHOSP");
+    assert!(
+        has_hospital,
+        "Arena.mmx should place a Tech Hospital for this test"
+    );
+    {
+        let parses_gain = runtime.resources.rules.object("CATHOSP").unwrap();
+        assert_eq!(
+            parses_gain.infantry_gain_self_heal, 1,
+            "the production loader must read InfantryGainSelfHeal from retail rules"
+        );
+        assert_eq!(parses_gain.units_gain_self_heal, 0);
+    }
+
+    let owner = runtime.simulation.session.current_house.unwrap();
+    let owner_name = runtime.simulation.resolve(owner).to_owned();
+    let cadence = runtime.resources.rules.general.self_heal_infantry_frames;
+    assert_eq!(cadence, 50, "retail SelfHealInfantryFrames");
+
+    // A cell the production placement check admits, then a neighbouring cell at
+    // the same terrain level for the G.I.
+    let site = {
+        let sim = &runtime.simulation;
+        let rules = &runtime.resources.rules;
+        let registry = Some(&runtime.resources.overlay_registry);
+        let hospital = rules.object("CATHOSP").unwrap();
+        (6i16..70)
+            .flat_map(|ry| (6i16..70).map(move |rx| (rx, ry)))
+            .find(|&(rx, ry)| {
+                sim.terrain_cell_level(rx as u16, ry as u16).is_some()
+                    && crate::sim::build_site::can_place_building_at(
+                        sim, rules, registry, hospital, (rx, ry), Some(owner),
+                    )
+            })
+            .expect("a placeable hospital site on the retail map")
+    };
+    let level = runtime
+        .simulation
+        .terrain_cell_level(site.0 as u16, site.1 as u16)
+        .unwrap();
+
+    let (hospital, infantry, strength) = {
+        let rules = &runtime.resources.rules;
+        let hospital = runtime
+            .simulation
+            .spawn_object(
+                "CATHOSP",
+                &owner_name,
+                site.0 as u16,
+                site.1 as u16,
+                0,
+                rules,
+            )
+            .expect("spawn the hospital on an admitted site");
+        runtime
+            .simulation
+            .grand_opening(hospital, false, false, rules, None);
+        // Let the production spawn decide where a G.I. is admitted: try the
+        // hospital's own cell and near neighbours at the same terrain level.
+        let mut infantry = None;
+        'place: for distance in 0i16..8 {
+            for (rx, ry) in [
+                (site.0 + distance, site.1),
+                (site.0 - distance, site.1),
+                (site.0, site.1 + distance),
+                (site.0, site.1 - distance),
+            ] {
+                if rx <= 0 || ry <= 0 {
+                    continue;
+                }
+                if runtime
+                    .simulation
+                    .terrain_cell_level(rx as u16, ry as u16)
+                    != Some(level)
+                {
+                    continue;
+                }
+                if let Some(id) =
+                    runtime
+                        .simulation
+                        .spawn_object("E1", &owner_name, rx as u16, ry as u16, 0, rules)
+                {
+                    infantry = Some(id);
+                    break 'place;
+                }
+            }
+        }
+        let infantry = infantry.expect("an admitted cell for the G.I. near the hospital");
+        let strength = rules.object("E1").unwrap().strength;
+        (hospital, infantry, strength)
+    };
+    assert_eq!(
+        runtime.simulation.houses[&owner].self_heal_infantry, 1,
+        "the opening granted the house its infantry count"
+    );
+    let _ = hospital;
+
+    runtime
+        .simulation
+        .substrate
+        .entities
+        .get_mut(infantry)
+        .unwrap()
+        .health
+        .current = strength / 2;
+
+    // Step real frames; each heal step lands on a cadence multiple.
+    let start = strength / 2;
+    let mut previous = start;
+    let mut heals: Vec<(u32, u32, i32)> = Vec::new();
+    for _ in 0..(cadence as usize * 3) {
+        let due = runtime.simulation.take_due_commands();
+        let before = runtime.simulation.session.binary_frame;
+        runtime
+            .advance_frame(&due, crate::headless_scenario::SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .expect("frame");
+        let after = runtime.simulation.session.binary_frame;
+        let current = runtime
+            .simulation
+            .substrate
+            .entities
+            .get(infantry)
+            .map(|entity| entity.health.current);
+        if let Some(current) = current
+            && current != previous
+        {
+            // The pulse reads the frame the pass runs on, which is the committed
+            // counter *before* this advance (0 is itself a cadence multiple).
+            heals.push((before, after, current - previous));
+            previous = current;
+        }
+    }
+    let current = runtime
+        .simulation
+        .substrate
+        .entities
+        .get(infantry)
+        .expect("the G.I. is alive")
+        .health
+        .current;
+    assert!(
+        current > start,
+        "the hospital must heal its owner's infantry on a real map: {start} -> {current}"
+    );
+    assert!(
+        !heals.is_empty(),
+        "at least one heal step was observed over {} frames",
+        cadence as usize * 3
+    );
+    // Every step lands on a SelfHealInfantryFrames multiple and adds exactly the
+    // infantry amount times the house count (1 hospital). `advance_frame` commits
+    // the counter late, so the frame the pass read is the one before the advance,
+    // except that a pass which starts a frame reads the just-advanced value.
+    let amount = runtime.resources.rules.general.self_heal_infantry_amount;
+    for (before, after, delta) in &heals {
+        let runs_on = if (*before as i32) % cadence == 0 {
+            *before
+        } else {
+            *after
+        };
+        assert_eq!(
+            (runs_on as i32) % cadence,
+            0,
+            "a heal landed off the SelfHealInfantryFrames cadence (frames {before}->{after})"
+        );
+        assert_eq!(
+            *delta, amount,
+            "each step adds SelfHealInfantryAmount at one hospital (frame {runs_on})"
+        );
+    }
 }
