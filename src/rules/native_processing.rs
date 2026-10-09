@@ -12,6 +12,7 @@ use crate::rules::ini_parser::{IniFile, IniSection, is_native_none_type_name};
 use crate::rules::missile_spawn::MissileSpawnRules;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup, parse_prerequisites};
 use crate::rules::projectile_type::ProjectileArtState;
 use crate::rules::ruleset::{GeneralBuildingTypes, PrismSupportRules};
 use std::collections::{HashMap, HashSet};
@@ -502,6 +503,39 @@ impl ProcessedRulesLayers {
             .as_deref()
     }
 
+    /// The six `[General] Prerequisite*` lists after the last pass, in
+    /// [`PrerequisiteGroup::ALL`] order.
+    pub(crate) fn prerequisite_lists(&self) -> &[Vec<Prerequisite>; 6] {
+        &self
+            .native_type_construction_trace
+            .registry_state()
+            .rules_prerequisite_lists
+    }
+
+    /// Each TechnoType's `Prerequisite=` and `PrerequisiteOverride=` after
+    /// the last pass that read them.
+    pub(crate) fn prerequisite_states(
+        &self,
+    ) -> impl Iterator<Item = (ObjectCategory, &str, &[Prerequisite], &[Prerequisite])> {
+        self.native_type_construction_trace
+            .registry_state()
+            .families
+            .iter()
+            .filter_map(|(family, members)| {
+                family.object_category().map(|category| (category, members))
+            })
+            .flat_map(|(category, members)| {
+                members.iter().map(move |member| {
+                    (
+                        category,
+                        member.native_stored_id.as_str(),
+                        member.prerequisite.as_slice(),
+                        member.prerequisite_override.as_slice(),
+                    )
+                })
+            })
+    }
+
     /// `[General]` gates, WallTower and power plants (Rules `+0x86C..+0x87C`,
     /// `+0x89C..+0x8A8`), stored IDs.
     pub(crate) fn building_types(&self) -> &GeneralBuildingTypes {
@@ -710,6 +744,9 @@ pub(crate) struct NativeRulesRegistryState {
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
     rules_prerequisite_proc_alternate: Option<String>,
+    /// The six `[General] Prerequisite*` lists (Rules `+0x358..+0x3E4`), in
+    /// [`PrerequisiteGroup::ALL`] order.
+    rules_prerequisite_lists: [Vec<Prerequisite>; 6],
     rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
@@ -727,6 +764,7 @@ impl Default for NativeRulesRegistryState {
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
             rules_prerequisite_proc_alternate: None,
+            rules_prerequisite_lists: Default::default(),
             rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
@@ -772,6 +810,9 @@ impl NativeRulesRegistryState {
             rules_safety_altitude: self.rules_safety_altitude,
             rules_line_trail_override: self.rules_line_trail_override,
             rules_prism_support: self.rules_prism_support,
+            // Plain index vectors, so RulesClass keeps them; the next pass
+            // reads them as its default.
+            rules_prerequisite_lists: self.rules_prerequisite_lists,
             ..Self::default()
         }
     }
@@ -908,6 +949,10 @@ struct ProcessedType {
     /// reads747BBD..747E90, retained across every reached Rules pass.
     gunner_turrets: GunnerTurrets,
     recoil: crate::rules::recoil::RecoilConfig,
+    /// TechnoType `Prerequisite=` (`+0x638`) and `PrerequisiteOverride=`
+    /// (`+0x654`), each read with its current list as the default.
+    prerequisite: Vec<Prerequisite>,
+    prerequisite_override: Vec<Prerequisite>,
     weapon: WeaponReadState,
     warhead_anim: WarheadAnimReadState,
 }
@@ -932,6 +977,8 @@ impl ProcessedType {
             building_foundation: 0,
             gunner_turrets: GunnerTurrets::default(),
             recoil: crate::rules::recoil::RecoilConfig::default(),
+            prerequisite: Vec::new(),
+            prerequisite_override: Vec::new(),
             weapon: WeaponReadState::default(),
             warhead_anim: WarheadAnimReadState::default(),
         }
@@ -949,7 +996,6 @@ struct RulesPassProcessor {
     native_type_construction_events: Vec<NativeTypeConstructionEvent>,
     tiberiums: Vec<ProcessedType>,
     colors: Vec<(String, String)>,
-    prerequisite_groups: HashMap<&'static str, Vec<String>>,
     rules_gravity: i32,
     rules_missile_rot_var: f64,
     rules_safety_altitude: i32,
@@ -957,6 +1003,7 @@ struct RulesPassProcessor {
     rules_prism_support: PrismSupportRules,
     rules_prism_type: Option<String>,
     rules_prerequisite_proc_alternate: Option<String>,
+    rules_prerequisite_lists: [Vec<Prerequisite>; 6],
     rules_building_types: GeneralBuildingTypes,
     select_anim: SelectAnimRulesState,
 }
@@ -973,7 +1020,6 @@ impl Default for RulesPassProcessor {
             native_type_construction_events: Vec::new(),
             tiberiums: Vec::new(),
             colors: Vec::new(),
-            prerequisite_groups: HashMap::new(),
             rules_gravity: NativeRulesRegistryState::default().rules_gravity,
             rules_missile_rot_var: NativeRulesRegistryState::default().rules_missile_rot_var,
             rules_safety_altitude: NativeRulesRegistryState::default().rules_safety_altitude,
@@ -982,6 +1028,7 @@ impl Default for RulesPassProcessor {
             rules_prism_support: PrismSupportRules::default(),
             rules_prism_type: None,
             rules_prerequisite_proc_alternate: None,
+            rules_prerequisite_lists: Default::default(),
             rules_building_types: GeneralBuildingTypes::default(),
             select_anim: SelectAnimRulesState::default(),
         }
@@ -1000,6 +1047,7 @@ impl RulesPassProcessor {
             rules_prism_support: registry_state.rules_prism_support,
             rules_prism_type: registry_state.rules_prism_type,
             rules_prerequisite_proc_alternate: registry_state.rules_prerequisite_proc_alternate,
+            rules_prerequisite_lists: registry_state.rules_prerequisite_lists,
             rules_building_types: registry_state.rules_building_types,
             select_anim: registry_state.select_anim,
             ..Self::default()
@@ -1024,7 +1072,7 @@ impl RulesPassProcessor {
 
         // JumpjetControls and MultiplayerSettings contain no Type factory.
         self.allocate_ai_references(pass);
-        self.read_prerequisite_groups(pass);
+        self.read_prerequisite_lists(pass);
         self.allocate_general_references(pass);
         self.process_type_data(pass, fixed_art);
 
@@ -1166,20 +1214,6 @@ impl RulesPassProcessor {
             }
         }
         Some(resolved)
-    }
-
-    fn lookup_existing(&self, family: RulesTypeFamily, incoming: &str) -> Option<String> {
-        if incoming.is_empty()
-            || (family != RulesTypeFamily::Side && is_native_none_type_name(incoming))
-        {
-            return None;
-        }
-        self.families.get(&family)?.iter().find_map(|member| {
-            member
-                .native_stored_id
-                .eq_ignore_ascii_case(incoming)
-                .then(|| member.native_stored_id.clone())
-        })
     }
 
     fn allocate_ai_references(&mut self, pass: &IniFile) {
@@ -1415,31 +1449,31 @@ impl RulesPassProcessor {
         }
     }
 
-    fn read_prerequisite_groups(&mut self, pass: &IniFile) {
-        const KEYS: &[&str] = &[
-            "PrerequisitePower",
-            "PrerequisiteProc",
-            "PrerequisiteRadar",
-            "PrerequisiteTech",
-            "PrerequisiteBarracks",
-            "PrerequisiteFactory",
-        ];
-
+    /// `RulesClass::ReadGeneral` parses the six `[General] Prerequisite*`
+    /// lists (`0x0066E78C..0x0066EA6E`) before any of its own BuildingType
+    /// allocations, each with its current list as the default.
+    fn read_prerequisite_lists(&mut self, pass: &IniFile) {
         let Some(general) = pass.section("General") else {
             return;
         };
-        for &key in KEYS {
-            if !general.is_present(key) {
-                continue;
-            }
-            let resolved = general
-                .read_list(key, 0x80)
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|identity| self.lookup_existing(RulesTypeFamily::Building, identity))
-                .collect();
-            self.prerequisite_groups.insert(key, resolved);
+        for group in PrerequisiteGroup::ALL {
+            let parsed = parse_prerequisites(
+                general.read_list(group.general_key(), 0x80),
+                &self.rules_prerequisite_lists[group.index()],
+                |name| self.building_index(name),
+            );
+            self.rules_prerequisite_lists[group.index()] = parsed;
         }
+    }
+
+    /// `BuildingTypeClass::FindIndexByName @ 0x0045E7B0` on the BuildingTypes
+    /// allocated so far: the first case-insensitive match.
+    fn building_index(&self, name: &str) -> Option<i32> {
+        self.families
+            .get(&RulesTypeFamily::Building)?
+            .iter()
+            .position(|member| member.native_stored_id.eq_ignore_ascii_case(name))
+            .and_then(|index| i32::try_from(index).ok())
     }
 
     fn family_len(&self, family: RulesTypeFamily) -> usize {
@@ -1574,6 +1608,25 @@ impl RulesPassProcessor {
                 self.begin_rules_member_read(family, index, pass)
             {
                 self.process_techno_base(&raw, &effective);
+                // TechnoTypeClass::ReadINI parses `Prerequisite=` (`0x007141C5`)
+                // and `PrerequisiteOverride=` (`0x0071424B`) after `Dock=` and
+                // `DeploysInto=` (`0x00713180`, `0x00713279`), the reads above
+                // that can allocate a BuildingType, each with its current list
+                // as the default.
+                let member = &self.families[&family][index];
+                let prerequisite = parse_prerequisites(
+                    raw.read_list("Prerequisite", 0x80),
+                    &member.prerequisite,
+                    |name| self.building_index(name),
+                );
+                let prerequisite_override = parse_prerequisites(
+                    raw.read_list("PrerequisiteOverride", 0x80),
+                    &member.prerequisite_override,
+                    |name| self.building_index(name),
+                );
+                let member = &mut self.families.get_mut(&family).unwrap()[index];
+                member.prerequisite = prerequisite;
+                member.prerequisite_override = prerequisite_override;
                 self.families.get_mut(&family).unwrap()[index]
                     .recoil
                     .apply_pass(&raw);
@@ -2109,12 +2162,6 @@ impl RulesPassProcessor {
             tiberiums.set(&index.to_string(), &member.native_stored_id);
         }
         ini.replace_first_section(tiberiums);
-        if !self.prerequisite_groups.is_empty() {
-            let general = ini.projection_section_mut("General");
-            for (key, values) in self.prerequisite_groups {
-                general.set(key, &values.join(","));
-            }
-        }
 
         let mut colors = IniSection::new("Colors".to_string());
         for (name, value) in self.colors {
@@ -2179,6 +2226,7 @@ impl RulesPassProcessor {
                     rules_prism_support: self.rules_prism_support,
                     rules_prism_type: self.rules_prism_type,
                     rules_prerequisite_proc_alternate: self.rules_prerequisite_proc_alternate,
+                    rules_prerequisite_lists: self.rules_prerequisite_lists,
                     rules_building_types: self.rules_building_types,
                     select_anim: self.select_anim,
                 },
