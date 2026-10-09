@@ -20,6 +20,7 @@
 //!   of `BuildingClass::GetWeapon @ 0x004526F0`, with `BuildingClass::IsOccupied
 //!   @ 0x00458DD0` and the occupied reach (`HalfFoundation @ 0x00458E00` plus
 //!   `OccupyWeaponRange=`) that InRange and `Greatest_Threat` measure with.
+//!
 //! Executed query goldens: `tools/garrison_oracle/weapon_range.json` and its
 //! identity/coverage sidecar; occupied InRange: `tools/spatial_oracle/walk_cell_range.json`.
 //!
