@@ -239,20 +239,6 @@ fn air_impact_from_layer_z(
     })
 }
 
-pub(crate) fn air_impact_from_entity(
-    entity: &crate::sim::game_entity::GameEntity,
-    terrain: Option<&ResolvedTerrainGrid>,
-) -> Option<AoEAirImpact> {
-    Some(AoEAirImpact {
-        sub_x: entity.position.sub_x,
-        sub_y: entity.position.sub_y,
-        z_leptons: crate::sim::movement::ground_pose::object_world_z_leptons(
-            entity,
-            Some(terrain?),
-        ),
-    })
-}
-
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CellTargetDetach {

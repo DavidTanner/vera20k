@@ -235,18 +235,19 @@ impl Simulation {
     /// `Explodes=` gate, the impact cue by the impact cell's LandType
     /// (`0x004CD818..0x004CD891`), then UnInit (`0x004CD89B`). The object's
     /// own AI returns right after (`FootClass::AI 0x004DA87E`).
+    /// Returns whether the death weapon changed a bridge.
     pub(crate) fn fly_crash_impact(
         &mut self,
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-    ) {
+    ) -> bool {
         if !self.substrate.entities.contains(id) {
-            return;
+            return false;
         }
         self.aircraft_tracker_remove(id);
         self.set_object_height(id, 0, Some(rules), overlay_registry);
-        self.fire_death_weapon(id, rules, overlay_registry);
+        let bridge_state_changed = self.fire_death_weapon(id, rules, overlay_registry);
         self.play_crash_impact_sound(id, rules);
         // `FootClass::~FootClass` releases the crash sound the object holds
         // (`0x004D3677`): a one-shot plays out.
@@ -254,6 +255,7 @@ impl Simulation {
             .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });
         self.release_move_sound(id);
         self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
+        bridge_state_changed
     }
 
     /// A crashed Jumpjet's impact: State 5's owner work (`AircraftTracker::
@@ -268,15 +270,16 @@ impl Simulation {
     /// `0x004D3677`).
     ///
     /// An Infantry owner's notice (the Rocketeer's) keeps the infantryman
-    /// instead: [`Simulation::infantry_crash_impact`].
+    /// instead: [`Simulation::infantry_crash_impact`]. Returns whether the
+    /// death weapon changed a bridge.
     pub(crate) fn jumpjet_crash_impact(
         &mut self,
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-    ) {
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
-            return;
+            return false;
         };
         debug_assert_eq!(entity.category, EntityCategory::Unit);
         let (crashable, balloon_hover) = self
@@ -287,59 +290,34 @@ impl Simulation {
         self.aircraft_tracker_remove(id);
         if !crashable {
             // The notice goes unanswered: the wreck rests in State 6.
-            return;
+            return false;
         }
         self.set_object_height(id, 0, Some(rules), overlay_registry);
-        if balloon_hover {
-            self.fire_death_weapon(id, rules, overlay_registry);
+        let bridge_state_changed = if balloon_hover {
+            self.fire_death_weapon(id, rules, overlay_registry)
         } else {
             self.unit_death_explosion(rules, id, &mut Vec::new());
-        }
+            false
+        };
         self.sound_events
             .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });
         self.release_move_sound(id);
         self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
+        bridge_state_changed
     }
 
-    /// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` with no extra damage: a
-    /// real bullet of the chosen weapon (`CreateBullet @ 0x0046B050`, target
-    /// and owner the object itself) detonates at the object's Location
-    /// (`vt+0x48`, `0x0070D77C`; `DetonateAtCoord @ 0x004690B0`).
+    /// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` outside a damage
+    /// transaction, its detonation committed on its own. Returns whether it
+    /// changed a bridge.
     fn fire_death_weapon(
         &mut self,
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-    ) {
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return;
-        };
-        let Some(object) = self.object_type(entity.type_ref(), rules) else {
-            return;
-        };
-        let current_weapon = crate::sim::combat::combat_weapon::current_weapon(entity, object);
-        let impact = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-        let Some((damage, warhead, weapon)) = crate::sim::combat::fire_death_weapon_payload(
-            rules,
-            object,
-            current_weapon,
-            &mut self.interner,
-        ) else {
-            return;
-        };
-        let detonation = crate::sim::projectile::ProjectileDetonation {
-            projectile_id: id,
-            source_id: id,
-            target: crate::sim::projectile::ProjectileTarget::Entity(id),
-            impact: crate::sim::projectile::ProjectileCoord {
-                x: impact.x,
-                y: impact.y,
-                z: impact.z,
-            },
-            payload: crate::sim::projectile::ProjectilePayload::new(damage, warhead, weapon),
-            reason: crate::sim::projectile::ProjectileDetonationReason::DeathWeapon,
-        };
-        self.commit_logic_projectile_detonations(rules, overlay_registry, &[detonation]);
+    ) -> bool {
+        crate::sim::combat::death_weapon_detonation(self, id, rules).is_some_and(|detonation| {
+            self.commit_logic_projectile_detonations(rules, overlay_registry, &[detonation])
+        })
     }
 
     /// `0x004CD818..0x004CD891`: over Water (LandType 2) the type's

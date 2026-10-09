@@ -1826,6 +1826,35 @@ pub(crate) fn fire_death_weapon_payload(
     ))
 }
 
+/// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` with no extra damage: a real
+/// bullet of the [`fire_death_weapon_payload`] weapon (`CreateBullet @
+/// 0x0046B050`, owner and target the object itself) detonated at the object's
+/// GetCoords (vt+0x48, `0x0070D77C`; a building's foundation centre) through
+/// `DetonateAtCoord @ 0x004690B0`. `None` when no weapon fires.
+pub(crate) fn death_weapon_detonation(
+    world: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+) -> Option<ProjectileDetonation> {
+    let entity = world.substrate.entities.get(id)?;
+    let object = rules.object(world.interner.resolve(entity.type_ref()))?;
+    let current_weapon = combat_weapon::current_weapon(entity, object);
+    let impact = crate::sim::movement::ground_pose::object_get_coords(
+        entity,
+        world.resolved_terrain.as_ref(),
+    );
+    let (damage, warhead, weapon) =
+        fire_death_weapon_payload(rules, object, current_weapon, &mut world.interner)?;
+    Some(ProjectileDetonation {
+        projectile_id: id,
+        source_id: id,
+        target: ProjectileTarget::Entity(id),
+        impact: ProjectileCoord::new(impact.x, impact.y, impact.z),
+        payload: ProjectilePayload::new(damage, warhead, weapon),
+        reason: crate::sim::projectile::ProjectileDetonationReason::DeathWeapon,
+    })
+}
+
 /// One ordered accumulator for weapon emission and recursive receiver effects.
 /// DamageConsequences consumes its deferred work at the world delivery boundary.
 #[derive(Default)]
