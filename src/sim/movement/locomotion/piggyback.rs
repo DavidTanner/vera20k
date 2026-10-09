@@ -10,8 +10,8 @@
 //! and DropPod `0x007E8254`. Fly and Rocket have none.
 //!
 //! The verified bodies this module is modelled on are Drive's —
-//! `Begin_Piggyback` @ `0x004AF8E0` (`E_POINTER` on null, **`E_FAIL` when the
-//! slot is already occupied**, else store and AddRef), `End_Piggyback` @
+//! `Begin_Piggyback` @ `0x004AF8E0` (`E_POINTER` on null, **`E_FAIL` when its
+//! own slot is already occupied**, else store and AddRef), `End_Piggyback` @
 //! `0x004AF930` (`E_POINTER` on a null out-pointer, **`S_FALSE` when empty**,
 //! else transfer and null the slot), `Is_Ok_To_End` @ `0x004AF970`, and
 //! `Save` @ `0x004AF800`, whose one-byte presence flag precedes the
@@ -89,10 +89,11 @@ impl LocomotorRuntimePayload {
 /// The suspended locomotor: the complete object a BEGIN displaced, boxed as
 /// the one nested COM object the class `Save` persists.
 ///
-/// It holds no stash of its own because BEGIN refuses when the displaced
-/// object has one. Native E_FAIL (`0x004AF8F4`) instead tests the receiving
-/// object's own slot, which a fresh object never fills; neither case arises,
-/// since the setter reuses an active Drive rather than BEGIN over it.
+/// It keeps its own stash, so the objects form a chain: BEGIN tests only the
+/// receiving object's slot (Drive `0x004AF8F4`, Teleport `0x00719EA9`),
+/// which a fresh object never fills. The Chrono Warp's Teleport suspends a
+/// Chrono Miner's Drive with the miner's Teleport inside it (`0x006CCB4A`),
+/// and the Unit setter's Drive then suspends that Teleport (`0x0074276F`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StashedLocomotor(Box<LocomotorState>);
 
@@ -133,6 +134,14 @@ impl StashedLocomotor {
         self.0.clear_track_occupation_projections();
     }
 
+    /// A suspended warp Teleport finishing its own Process step
+    /// ([`LocomotorState::warp_teleport_mut`]).
+    pub(in crate::sim::movement) fn warp_teleport_mut(
+        &mut self,
+    ) -> Option<&mut super::super::teleport_movement::TeleportRuntime> {
+        self.0.warp_teleport_mut()
+    }
+
     #[cfg(test)]
     pub(in crate::sim::movement) fn install_drive_state_for_test(
         &mut self,
@@ -149,7 +158,8 @@ impl StashedLocomotor {
         self.0.install_ship_state_for_test(retained)
     }
 
-    /// Nothing processes a suspended object; only fixtures write it.
+    /// The suspended object, for fixtures. Production writes only a suspended
+    /// warp Teleport's state ([`Self::warp_teleport_mut`]).
     #[cfg(test)]
     pub(crate) fn suspended_mut_for_test(&mut self) -> &mut LocomotorState {
         &mut self.0
@@ -174,13 +184,14 @@ pub enum EndOutcome {
     RefusedNull,
 }
 
-/// Stash the active object and install `incoming` in its place. An occupied
-/// slot is an atomic E_FAIL-style refusal.
+/// Stash the active object, with any stash of its own, and install
+/// `incoming` in its place. An occupied slot on `incoming` is an atomic
+/// E_FAIL-style refusal.
 fn begin_with(state: &mut LocomotorState, incoming: Option<LocomotorState>) -> BeginOutcome {
     let Some(incoming) = incoming else {
         return BeginOutcome::RefusedNull;
     };
-    if state.piggyback.is_some() {
+    if incoming.piggyback.is_some() {
         return BeginOutcome::RefusedNested;
     }
     let displaced = std::mem::replace(state, incoming);
@@ -261,23 +272,46 @@ mod tests {
         LocomotorState::for_test_kind(LocomotorKind::Teleport)
     }
 
+    /// BEGIN refuses a null object and, as Drive (`0x004AF8F4`) and Teleport
+    /// (`0x00719EA9`) do, an incoming object whose own slot is occupied. It
+    /// suspends an active object that holds a stash whole, so END peels the
+    /// chain one object at a time.
     #[test]
-    fn begin_rejects_null_and_nested_object_without_mutation() {
+    fn begin_chains_over_a_stash_and_end_peels_one_object() {
         let mut state = teleporter();
         assert_eq!(begin_with(&mut state, None), BeginOutcome::RefusedNull);
+        let mut occupied = LocomotorState::for_test_kind(LocomotorKind::Ship);
+        assert_eq!(
+            begin(&mut occupied, LocomotorKind::Drive, 0),
+            BeginOutcome::Installed
+        );
         let before = state.clone();
+        assert_eq!(
+            begin_with(&mut state, Some(occupied)),
+            BeginOutcome::RefusedNested
+        );
+        assert_eq!(state, before);
 
         assert_eq!(
             begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
-        let nested_before = state.clone();
+        let driving = state.clone();
         assert_eq!(
-            begin(&mut state, LocomotorKind::Ship, 0),
-            BeginOutcome::RefusedNested
+            begin(&mut state, LocomotorKind::Teleport, 0),
+            BeginOutcome::Installed
         );
-        assert_eq!(state.piggyback, nested_before.piggyback);
-        assert_eq!(before.kind, LocomotorKind::Teleport);
+        assert_eq!(state.kind, LocomotorKind::Teleport);
+        assert_eq!(state.piggyback.as_deref(), Some(&driving));
+        assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
+
+        let released = end(&mut state).expect("the Teleport");
+        assert_eq!(released.kind, LocomotorKind::Teleport);
+        assert_eq!(state, driving);
+        let released = end(&mut state).expect("the Drive");
+        assert_eq!(released.kind, LocomotorKind::Drive);
+        assert_eq!(state, before);
+        assert!(end(&mut state).is_none());
     }
 
     /// BEGIN installs a freshly constructed object and suspends the displaced

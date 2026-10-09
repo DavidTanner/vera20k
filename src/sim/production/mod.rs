@@ -74,6 +74,8 @@ pub use self::production_types::*;
 pub(crate) use self::can_build::{CanBuild, can_build, find_factory, initialize_factory_primary};
 pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
 #[cfg(test)]
+pub(crate) use self::factory_lifecycle::complete_held_building_for_test;
+#[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::construct_active_factory_fixture;
 #[cfg(test)]
 pub(in crate::sim) use self::factory_lifecycle::release_delivered_mobile;

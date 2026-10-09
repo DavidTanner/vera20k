@@ -3,7 +3,7 @@
 //! Shared types used across production sub-modules: queue items, build options,
 //! placement previews, and the central `ProductionState` struct.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -186,7 +186,6 @@ impl BuildOption {
 /// Player production state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductionState {
-    pub ready_by_owner: BTreeMap<InternedId, VecDeque<InternedId>>,
     active_producer_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, u64>>,
     pub next_enqueue_order: u64,
     /// Ore growth/spread configuration resolved from merged INI sources.
@@ -288,7 +287,6 @@ impl ProductionState {
 impl Default for ProductionState {
     fn default() -> Self {
         Self {
-            ready_by_owner: BTreeMap::new(),
             active_producer_by_owner: BTreeMap::new(),
             next_enqueue_order: 1,
             ore_growth_config: OreGrowthConfig::disabled(),

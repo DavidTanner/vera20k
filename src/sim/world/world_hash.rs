@@ -161,7 +161,7 @@ mod locomotor_field_hash_tests {
         entity.category = EntityCategory::Unit;
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Teleport);
         if stashed {
-            assert!(locomotor.begin_drive_piggyback_for_teleporter(0));
+            assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
         }
         if let Some(mutate) = mutate {
             match locomotor.piggyback.as_mut() {
@@ -950,22 +950,15 @@ impl Simulation {
         }
     }
 
-    /// Hash all production-related state: queues, ready items, resources.
+    /// Hash all production-related state: queues, held objects, resources.
     fn hash_production(&self, hasher: &mut impl Hasher) {
         let retired_tiberium_fold = false;
-        // P5d: the per-`BuildQueueItem` `queues_by_owner` fold is RETIRED — the
-        // queue-of-record now lives in the factory registry (active build = `Factory`
-        // head fields; tail = `Factory.queue` of `QueueEntry`) and folds in
-        // `hash_factory_registry`. `remaining_base_frames` no longer exists (it was a
-        // `BuildQueueItem` field); the sidebar ETA derives it from `progress` at view time
-        // and it is intentionally NOT hashed (the 18->19 shape change). `ready_by_owner`,
-        // `active_producer_by_owner`, and `next_enqueue_order` are UNCHANGED below.
-        for (owner, ready) in &self.production.ready_by_owner {
-            owner.hash(hasher);
-            for type_id in ready {
-                type_id.hash(hasher);
-            }
-        }
+        // The queue-of-record lives in the factory registry (active build = `Factory`
+        // head fields; tail = `Factory.queue` of `QueueEntry`), and so does a completed
+        // building waiting for placement; both fold in `hash_factory_registry`.
+        // `remaining_base_frames` no longer exists (it was a `BuildQueueItem` field);
+        // the sidebar ETA derives it from `progress` at view time and it is
+        // intentionally NOT hashed (the 18->19 shape change).
         for (owner, categories) in self.production.primary_factory_entries() {
             owner.hash(hasher);
             for (category, sid) in categories {

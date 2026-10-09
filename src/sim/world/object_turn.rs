@@ -357,7 +357,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_some_and(|entity| entity.chrono_warp().is_some())
+                .is_some_and(|entity| entity.active_chrono_warp().is_some())
         {
             let bridge_state_changed = self.process_chrono_warp(stable_id, rules, ctx)?;
             return Ok(LocomotorProcess {

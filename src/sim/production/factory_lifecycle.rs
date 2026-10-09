@@ -1,9 +1,9 @@
 //! Complete mutations of factory-held Techno identity and its accounting.
 //!
 //! The registry owns queue/charge kernels. This world-facing owner completes
-//! their constructor, disposal, ready projection and successor work before an
-//! operation returns. Native StartProduction/AbandonProduction/StartNextQueued:
-//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0; see FACTORY_CREDIT_SYSTEM_GHIDRA_REPORT.md.
+//! their constructor, disposal and successor work before an operation returns.
+//! Native StartProduction/AbandonProduction/StartNextQueued:
+//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0.
 //! Delivery selection and placement keep their existing phase positions and
 //! call settlement only after their successful world effects have committed.
 
@@ -249,31 +249,12 @@ pub fn cancel_by_type_for_owner(
     match outcome {
         CancelOutcome::NoMatch => return false,
         CancelOutcome::QueuedRemoved => {}
-        CancelOutcome::AbandonedActive { object, finished } => {
+        CancelOutcome::AbandonedActive(object) => {
             settle_abandoned(sim, rules, owner_id, object);
-            if finished {
-                remove_ready_entry(sim, owner_id, type_interned);
-            }
             advance_after_delivery(sim, rules, owner_id, category);
         }
     }
     sim.production.factories.prune_all_idle();
-    true
-}
-
-/// Drop one `ready_by_owner` entry of `type_id`: its finished building left
-/// the factory.
-fn remove_ready_entry(sim: &mut Simulation, owner: InternedId, type_id: InternedId) -> bool {
-    let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner) else {
-        return false;
-    };
-    let Some(index) = ready_queue.iter().position(|&ready| ready == type_id) else {
-        return false;
-    };
-    ready_queue.remove(index);
-    if ready_queue.is_empty() {
-        sim.production.ready_by_owner.remove(&owner);
-    }
     true
 }
 
@@ -338,19 +319,6 @@ fn discard_active_factory_entity(
         );
     }
 }
-fn consume_ready_building(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner_id: InternedId,
-    type_id: InternedId,
-    category: ProductionCategory,
-) -> bool {
-    if !remove_ready_entry(sim, owner_id, type_id) {
-        return false;
-    }
-    advance_after_delivery(sim, rules, owner_id, category);
-    true
-}
 /// Publish the completion edge once, without releasing the held object.
 pub(super) fn publish_completion(
     sim: &mut Simulation,
@@ -377,11 +345,6 @@ pub(super) fn publish_completion(
         .object(sim.interner.resolve(type_id))
         .is_some_and(|object| object.category == ObjectCategory::Building)
     {
-        sim.production
-            .ready_by_owner
-            .entry(owner)
-            .or_default()
-            .push_back(type_id);
         sim.sound_events
             .push(SimSoundEvent::BuildingComplete { owner });
     }
@@ -466,26 +429,40 @@ impl ReadyFactoryObject {
     }
 
     /// Building Unlimbo/build-up/superweapon effects precede factory release.
-    pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
-        consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
+    pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) {
+        advance_after_delivery(sim, rules, self.owner, self.category);
     }
 
     /// Primary and autofill overlays are already stamped when the constructor
-    /// identity is consumed. Ready removal and successor construction follow.
-    pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
+    /// identity is consumed. Successor construction follows.
+    pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) {
         let _ = sim.discard_constructed_limbo(self.entity_id, Some(rules));
         record_last_built(sim, rules, self.owner, self.type_id);
-        consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
+        advance_after_delivery(sim, rules, self.owner, self.category);
     }
 }
 
+/// `owner`'s completed `type_id` waiting in its `category` factory: the
+/// factory `FactoryClass::IsComplete @ 0x004CA130` answers (its object at the
+/// last stage), holding an object of that type.
+///
+/// RESIDUAL: `HouseClass::Place_Production @ 0x004FB0E0` uses the event's type
+/// only to choose the factory and places whatever object that factory holds
+/// (`0x004FB18C`); VERA refuses a PLACE whose type is not the held object's.
+/// Trigger: a building PLACE naming another type of the same factory, which
+/// the sidebar never sends. Effect: native places the held building, VERA
+/// refuses the event.
 pub(super) fn ready_object(
     sim: &Simulation,
     owner: InternedId,
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<ReadyFactoryObject> {
-    let object = sim.production.factories.view(owner, category)?.object?;
+    let object = sim
+        .production
+        .factories
+        .view(owner, category)?
+        .complete_object()?;
     if object.type_id != type_id {
         return None;
     }
@@ -498,6 +475,43 @@ pub(super) fn ready_object(
         type_id,
         entity_id,
     })
+}
+
+/// Fixture: `owner`'s `type_id` completed in its House factory and held there
+/// with its completion published, as a finished building waits for placement.
+/// Returns the held object's identity.
+#[cfg(test)]
+pub(crate) fn complete_held_building_for_test(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    type_id: InternedId,
+) -> u64 {
+    let object = sim
+        .object_type(type_id, rules)
+        .expect("completed-building fixture type");
+    let (category, cost) = (production_category_for_object(object), object.cost.max(0));
+    let enqueue_order = sim.production.next_enqueue_order;
+    assert!(
+        sim.production
+            .factories
+            .test_enqueue_kernel(owner, category, type_id, enqueue_order, cost),
+        "the fixture arms one fresh factory head"
+    );
+    sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
+    let held = start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
+        .expect("the fixture constructs its object at StartProduction");
+    assert!(sim.production.factories.test_arm_ready(owner, category));
+    super::production_queue::publish_production_changes(sim, rules);
+    assert!(
+        sim.production
+            .factories
+            .view(owner, category)
+            .and_then(|factory| factory.complete_object())
+            .is_some_and(|object| object.completion_accounted),
+        "the Strip publishes the completed building"
+    );
+    held
 }
 
 /// Fixture-only bridge for tests that deliberately seed a registry kernel.
@@ -523,10 +537,6 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
     let lifecycle = registry.apply_revalidation(&reval_plan);
     for (owner, abandoned) in lifecycle.abandoned {
         settle_abandoned(sim, rules, owner, abandoned);
-    }
-    // An abandoned finished building no longer waits for placement.
-    for (owner, type_id) in lifecycle.abandoned_finished {
-        remove_ready_entry(sim, owner, type_id);
     }
     sim.production.factories = registry;
     for (owner, category, type_id) in lifecycle.promoted {
@@ -624,44 +634,9 @@ pub(crate) fn validate_restored_factory_state(
     rules: &RuleSet,
 ) -> Result<(), FactoryRestoreError> {
     use crate::map::entities::EntityCategory;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
     let fail = |owner, reason| FactoryRestoreError { owner, reason };
-    let mut ready = BTreeMap::new();
-    for (&owner, entries) in &sim.production.ready_by_owner {
-        if sim.interner.try_resolve(owner).is_none() {
-            return Err(fail(owner, "ready owner is absent from the interner"));
-        }
-        for &type_id in entries {
-            let object = sim
-                .interner
-                .try_resolve(type_id)
-                .and_then(|name| rules.object(name))
-                .ok_or_else(|| fail(owner, "ready type is absent from bound rules"))?;
-            if object.category != ObjectCategory::Building {
-                return Err(fail(owner, "ready entry is not a building"));
-            }
-            let category = production_category_for_object(object);
-            if ready.insert((owner, category), type_id).is_some() {
-                return Err(fail(owner, "multiple ready entries claim one factory"));
-            }
-            let factory = sim
-                .production
-                .factories
-                .view(owner, category)
-                .ok_or_else(|| fail(owner, "ready entry has no factory"))?;
-            let held = factory
-                .object
-                .ok_or_else(|| fail(owner, "ready entry has no active object"))?;
-            if held.type_id != type_id {
-                return Err(fail(owner, "ready type disagrees with active object"));
-            }
-            if !factory.ready || !held.completion_accounted {
-                return Err(fail(owner, "ready entry precedes completion publication"));
-            }
-        }
-    }
-
     let mut roots = BTreeSet::new();
     for (&holder, factory) in sim.production.factories.keyed_factories() {
         let (owner, category) = (factory.owner, factory.category);
@@ -767,12 +742,6 @@ pub(crate) fn validate_restored_factory_state(
                 owner,
                 "completion accounting precedes completed progress",
             ));
-        }
-        if held.completion_accounted
-            && object.category == ObjectCategory::Building
-            && ready.get(&(owner, category)) != Some(&held.type_id)
-        {
-            return Err(fail(owner, "accounted building has no ready entry"));
         }
     }
 

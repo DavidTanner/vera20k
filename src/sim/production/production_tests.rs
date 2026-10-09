@@ -1169,7 +1169,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         .view(americans, ProductionCategory::Ship)
         .unwrap();
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);

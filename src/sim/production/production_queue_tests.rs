@@ -4,7 +4,7 @@
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
     credits_for_owner, dispatch_production_changes_for_tests, enqueue_by_type,
-    queue_view_for_owner, suspend_production,
+    queue_view_for_owner, ready_buildings_for_owner, suspend_production,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
@@ -443,7 +443,6 @@ fn busy_factory_exit_without_an_alternate_refunds_player_product_and_promotes_qu
         .factories
         .view(owner, ProductionCategory::Vehicle)
         .unwrap();
-    assert!(!factory.ready);
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let successor = factory.object.unwrap().entity_id.unwrap();
@@ -903,7 +902,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
                 .production
                 .factories
                 .view(owner, ProductionCategory::Infantry)
-                .is_some_and(|factory| factory.ready);
+                .is_some_and(|factory| factory.complete_object().is_some());
             completed
         })
         .expect("the paid native step ladder completes");
@@ -2028,7 +2027,7 @@ fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
         .view(americans_id, ProductionCategory::Vehicle)
         .unwrap();
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
@@ -2226,8 +2225,7 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
 }
 
 /// Canceling a finished building abandons the factory's object, refunding the cost
-/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6), and
-/// drops the ready entry with it.
+/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6).
 #[test]
 fn cancel_by_type_removes_ready_building_and_refunds() {
     use super::cancel_by_type_for_owner;
@@ -2259,21 +2257,20 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
+    assert_eq!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
 
     let before_credits = credits_for_owner(&sim, "Americans");
 
     let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN", false);
     assert!(cancelled, "should cancel ready building");
 
-    // Ready queue should be empty now.
-    let ready_count = sim
-        .production
-        .ready_by_owner
-        .get(&americans_id)
-        .map(|q| q.len())
-        .unwrap_or(0);
-    assert_eq!(ready_count, 0, "ready queue should be empty after cancel");
+    assert!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").is_empty(),
+        "no building waits for placement after the cancel"
+    );
     assert!(
         sim.production
             .factories

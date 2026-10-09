@@ -14,7 +14,6 @@ use super::factory_lifecycle;
 use super::production_spawn::{
     ProductionDeliveryKind, mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
-use super::production_tech::production_category_for_object;
 use super::production_types::*;
 
 /// `owner`'s Available_Money, by house name; 0 for a house that does not
@@ -128,8 +127,8 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
         .any(|o| o.enabled)
 }
 
-/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, publishes
-/// building readiness, and issues mobile PLACE6A8EB8 without releasing its head.
+/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, announces a
+/// completed building, and issues mobile PLACE6A8EB8 without releasing its head.
 /// The next frame's input prefix visits Strip before Logic/Factory and appends
 /// PLACE after already accepted OutList events, for that frame's
 /// Event4C710B -> House4FB0E0 tail. Native controls observe completion267/484
@@ -808,27 +807,29 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
         .collect()
 }
 
+/// The owner's completed buildings waiting for placement: the object of its
+/// Buildings and Defenses factories once `FactoryClass::IsComplete @
+/// 0x004CA130` answers, which the sidebar strip also reads to draw "Ready".
 pub fn ready_buildings_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: &str,
 ) -> Vec<ReadyBuildingView> {
-    let owner_id = sim.interner.get(owner);
-    let ready = owner_id.and_then(|id| sim.production.ready_by_owner.get(&id));
-    ready
-        .map(|ready| {
-            ready
-                .iter()
-                .filter_map(|&type_id| {
-                    let type_str = sim.interner.resolve(type_id);
-                    let obj = rules.object(type_str)?;
-                    Some(ReadyBuildingView {
-                        type_id,
-                        display_name: obj.name.clone().unwrap_or_else(|| type_str.to_string()),
-                        queue_category: production_category_for_object(obj),
-                    })
-                })
-                .collect()
+    let Some(owner_id) = sim.interner.get(owner) else {
+        return Vec::new();
+    };
+    [ProductionCategory::Building, ProductionCategory::Defense]
+        .into_iter()
+        .filter_map(|category| {
+            let factory = sim.production.factories.view(owner_id, category)?;
+            let type_id = factory.complete_object()?.type_id;
+            let type_str = sim.interner.resolve(type_id);
+            let obj = rules.object(type_str)?;
+            Some(ReadyBuildingView {
+                type_id,
+                display_name: obj.name.clone().unwrap_or_else(|| type_str.to_string()),
+                queue_category: category,
+            })
         })
-        .unwrap_or_default()
+        .collect()
 }

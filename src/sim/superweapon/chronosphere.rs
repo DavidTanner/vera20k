@@ -33,21 +33,20 @@
 //!   crate receiver is unfinished (`crates::pickup`). Trigger: a crate on a
 //!   warped vehicle's destination cell. Effect: the crate stays until
 //!   something enters the cell, without the launch's crate draws.
-//! - A Foot whose active locomotor already holds a piggyback (a Chrono Miner
-//!   driving on its Drive) is not warped: native stacks the new Teleport over
-//!   the Drive over the Teleport, which VERA's one-slot piggyback cannot hold.
-//!   Trigger: a driving Chrono Miner in the source block. Effect: it stays.
 //! - A Ship Unit's `Force_Track(-1, destination)` (`0x006A0310`) is not
 //!   ported; only Drive's is. Trigger: a naval Unit in the source block.
 //!   Effect: its retained track state is not reset to the destination.
+//! - The Drive the warp hands back keeps `Force_Track`'s head and
+//!   destination, both in its own cell. Native Drive::Process runs
+//!   Process_Movement on it (`0x004B0A79`), whose path search there takes
+//!   the zero-cost-route arm, unexecuted (`movement::track_path`'s residual).
+//!   VERA runs Process_Movement only for a Drive with an order adapter or a
+//!   track (#689), so the Drive keeps both, stays moving and does not end
+//!   until a destination comes. Trigger: every Drive Unit the warp carries.
+//!   Effect: unestablished; native may turn the hull, or end a Chrono
+//!   Miner's Drive, before its next order.
 //! - An off-map cell of either block reads the shared dummy cell's
 //!   coordinates natively; VERA reads the requested cell's.
-//! - A Chrono Miner warped off its own Teleport: the NULL destinations of
-//!   states 5 and 7 run the Unit setter's Teleporter arm, which natively
-//!   installs a Drive over the warp's Teleport (Begin_Piggyback on the new
-//!   Drive, `0x00742684..0x0074277E`); VERA's one-slot piggyback refuses it.
-//!   Trigger: a Chrono Miner on its Teleport in the source block. Effect:
-//!   its warp ends without the Drive interludes, so the END comes earlier.
 //! - The warp latch (`TechnoClass+0x27C`) has two more writers,
 //!   `FootClass::ChronoWarpTo @ 0x004DF7F0` (`0x004DF9EA`) and
 //!   `InfantryClass::ChronoWarpTo @ 0x00522FE0` (`0x005231C1`), reached only
@@ -386,11 +385,7 @@ fn arm_chrono_warp(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    if entity
-        .locomotor
-        .as_ref()
-        .is_none_or(|locomotor| locomotor.piggyback.is_some())
-    {
+    if entity.locomotor.is_none() {
         return;
     }
     let category = entity.category;
@@ -423,9 +418,10 @@ fn arm_chrono_warp(
     else {
         return;
     };
-    if !locomotor.begin_piggyback(LocomotorKind::Teleport, frame) {
-        return;
-    }
+    // Whatever is active goes into the fresh Teleport's slot, a driving
+    // Chrono Miner's Drive with the miner's Teleport inside it; the result
+    // goes unread (`0x006CCB4A`).
+    locomotor.begin_piggyback(LocomotorKind::Teleport, frame);
     if category != EntityCategory::Unit {
         let Some(entity) = sim.substrate.entities.get(id) else {
             return;

@@ -58,6 +58,18 @@
 //!   (`0x00719304..0x00719325`) stay dormant. Trigger: a map's chrono
 //!   reinforcements. Effect: they don't arrive (VERA has no reinforcement
 //!   action); porting them needs these branches.
+//! - A destination given while warping in (states 2 to 7, the latch down)
+//!   runs the Unit setter's Teleporter arm, whose Drive suspends the warp's
+//!   Teleport (`locomotor_owner::begin_drive_for_teleporter`), refuses the
+//!   destination while its owner warps (`0x004AFD40`) and ends at the Foot
+//!   AI tail. The NavCom it published stays, so state 5's NULL destination,
+//!   which the prologue runs, installs another Drive: FootClass::AI's
+//!   Process runs that Drive, and state 6's TimerCheck with its scan draw
+//!   waits for the next prologue. That frame and draw order is read, not
+//!   executed. Natively the prologue also runs a Drive active at its call
+//!   (`0x007362A7..0x007362F5`); VERA runs none. Trigger: a destination for
+//!   a Chrono Miner in the warp's last frames. Effect: TimerCheck's draw
+//!   moves a frame and the warp's END up to one; the Drive goes nowhere.
 //! - PostWarpValidation's hover arm (`0x00718864..0x007188AF`): a Hover type
 //!   with `PoweredUnit=` (TechnoType `+0x410`) whose house has no matching
 //!   powering building (`HouseClass @ 0x0050E1B0`) loses its hover; VERA
@@ -98,13 +110,15 @@ fn foot(category: EntityCategory) -> bool {
 }
 
 impl Simulation {
+    /// The warp of the Teleport running this Process, which the Unit
+    /// setter may have suspended under a Drive by now.
     fn chrono_warp_mut(&mut self, id: u64) -> Option<&mut ChronoWarp> {
         self.substrate
             .entities
             .get_mut(id)?
             .locomotor
             .as_mut()?
-            .teleport_runtime_mut()?
+            .warp_teleport_mut()?
             .chrono_mut()
     }
 
@@ -230,7 +244,7 @@ impl Simulation {
                     .entities
                     .get_mut(id)
                     .and_then(|entity| entity.locomotor.as_mut())
-                    .and_then(|locomotor| locomotor.teleport_runtime_mut())
+                    .and_then(|locomotor| locomotor.warp_teleport_mut())
                 {
                     runtime.end_chrono();
                 }
