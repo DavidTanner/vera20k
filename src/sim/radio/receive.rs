@@ -16,9 +16,6 @@
 //! RESIDUALS (no represented reader or sender):
 //! - `RadioClass+0xD4..+0xDC`, the last three distinct received messages
 //!   (`0x0065A829`), is not kept.
-//! - Building radio8's Helipad/UnitRepair proximity arm (`0x0043CD2B..0x0043CDC8`)
-//!   remains with those specialized service mechanisms. Stock GAPILE has
-//!   neither flag and reaches the common reciprocal release below.
 //! - The bus carries no overlay registry, so RUN_AWAY's Scatter reaches an
 //!   Infantry receiver without one, and its overlay reads fail on any cell
 //!   holding an overlay (ore included); the error is logged. When

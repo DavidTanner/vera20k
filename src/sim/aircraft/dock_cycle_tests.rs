@@ -139,3 +139,142 @@ fn a_guarding_aircraft_with_a_target_leaves_its_pad_to_attack() {
     }
     assert!(relaunched, "a guarding aircraft holding a Target attacks");
 }
+
+/// The loop on a retail map through the production loader and the player's
+/// order path: two Harriers of a human house, beside its Airforce Command
+/// (`GAAIRC`, four docks), strike an enemy Rhino, fly home, land on the pads
+/// their radio contacts name, reload and guard there.
+#[test]
+#[ignore = "physical retail map, rules and art (RA2_DIR)"]
+fn retail_harriers_strike_return_reload_and_guard_at_their_airfield() {
+    use crate::sim::command::{Command, CommandEnvelope};
+    use crate::sim::house_state::HouseState;
+    use crate::sim::runtime::SimRuntime;
+    let retail = std::path::PathBuf::from(std::env::var_os("RA2_DIR").expect("RA2_DIR"));
+    let mut scenario =
+        crate::headless_scenario::load(&retail, "Death.mmx", 0x5EED_0001).expect("retail map");
+    let SimRuntime {
+        simulation: sim,
+        resources,
+    } = &mut scenario.runtime;
+    let rules = &resources.rules;
+    // Both houses human, so no house AI moves the Rhino.
+    let mut owners = Vec::new();
+    for (index, name) in ["Player", "Enemy"].into_iter().enumerate() {
+        let id = sim.interner.intern(name);
+        let mut house = HouseState::new(id, index as u8, None, true, 0, 10);
+        house.multiplay_passive = true;
+        sim.houses.insert(id, house);
+        sim.session.house_order.push(id);
+        owners.push(id);
+    }
+    let mut cells: Vec<(u16, u16)> = sim
+        .resolved_terrain
+        .iter()
+        .flat_map(|terrain| terrain.iter().map(|cell| (cell.rx, cell.ry)))
+        .collect();
+    let (sum_x, sum_y) = cells.iter().fold((0_i64, 0_i64), |(x, y), &(rx, ry)| {
+        (x + i64::from(rx), y + i64::from(ry))
+    });
+    let centre = (sum_x / cells.len() as i64, sum_y / cells.len() as i64);
+    let reach = |(rx, ry): (u16, u16)| {
+        (i64::from(rx) - centre.0).pow(2) + (i64::from(ry) - centre.1).pow(2)
+    };
+    cells.sort_by_key(|&cell| (reach(cell), cell));
+    // Each object takes the cell nearest the map centre at least `cells_out`
+    // cells out that admits it; the airfield a site its owner could build on
+    // (`BuildingTypeClass::CanPlaceAt @ 0x00464AC0`).
+    let airfield_type = rules.object("GAAIRC").expect("GAAIRC");
+    let mut spawn = |name: &str, owner: usize, cells_out: i64| {
+        let house = sim.interner.resolve(owners[owner]).to_owned();
+        for &(rx, ry) in cells
+            .iter()
+            .filter(|&&cell| reach(cell) >= cells_out * cells_out)
+        {
+            let site = (rx as i16, ry as i16);
+            if name == "GAAIRC"
+                && !crate::sim::build_site::can_place_building_at(
+                    sim,
+                    rules,
+                    None,
+                    airfield_type,
+                    site,
+                    Some(owners[owner]),
+                )
+            {
+                continue;
+            }
+            if let Some(id) = sim.spawn_object(name, &house, rx, ry, 0, rules) {
+                return id;
+            }
+        }
+        panic!("no room for {name}")
+    };
+    let airfield = spawn("GAAIRC", 0, 0);
+    let harriers = [spawn("ORCA", 0, 4), spawn("ORCA", 0, 5)];
+    let rhino = spawn("HTNK", 1, 18);
+    sim.resolve_type_handles(rules);
+    let tick = sim.session.tick + 1;
+    let orders: Vec<CommandEnvelope> = harriers
+        .iter()
+        .map(|&attacker_id| {
+            CommandEnvelope::new(
+                owners[0],
+                tick,
+                Command::Attack {
+                    attacker_id,
+                    target_id: rhino,
+                },
+            )
+        })
+        .collect();
+    let runtime = &mut scenario.runtime;
+    let mut seen = [(); 2].map(|_| Milestones::default());
+    let mut fired = [false; 2];
+    for frame in 0..9000 {
+        let batch = if frame == 0 { &orders[..] } else { &[][..] };
+        runtime
+            .advance_frame_for_tooling(batch, crate::headless_scenario::SIM_TICK_MS)
+            .expect("frame");
+        let sim = &runtime.simulation;
+        for (n, &harrier) in harriers.iter().enumerate() {
+            let entity = sim
+                .substrate
+                .entities
+                .get(harrier)
+                .expect("Harrier survives");
+            let ammo = entity.aircraft_ammo.as_ref().expect("Harrier ammo");
+            fired[n] |= ammo.current < ammo.max;
+            let linked = entity.radio_contacts.contains(airfield)
+                && sim
+                    .substrate
+                    .entities
+                    .get(airfield)
+                    .is_some_and(|af| af.radio_contacts.contains(harrier));
+            let height = air_movement::current_fly_height(entity, sim.resolved_terrain.as_ref());
+            let seen = &mut seen[n];
+            seen.entered |= fired[n] && mission(sim, harrier) == Some(MissionType::Enter);
+            seen.linked |= linked;
+            seen.landed_linked |= fired[n] && linked && height == 0;
+            seen.reloaded |= seen.landed_linked && ammo.current == ammo.max;
+            if seen.reloaded
+                && mission(sim, harrier) == Some(MissionType::Guard)
+                && height == 0
+                && linked
+                && !air_movement::fly_moving(entity)
+            {
+                seen.guarding_frames += 1;
+            }
+        }
+        if seen.iter().all(|seen| seen.guarding_frames >= 300) {
+            break;
+        }
+    }
+    for (n, seen) in seen.iter().enumerate() {
+        assert!(fired[n], "Harrier {n} fires: {seen:?}");
+        assert!(seen.entered, "Harrier {n} Enters its dock: {seen:?}");
+        assert!(seen.landed_linked, "Harrier {n} lands linked: {seen:?}");
+        assert!(seen.reloaded, "Harrier {n} reloads: {seen:?}");
+        assert!(seen.guarding_frames >= 300, "Harrier {n} guards: {seen:?}");
+    }
+}

@@ -5,7 +5,7 @@
 //! and Mission_Enter (`sim::aircraft`) find a dock through
 //! [`Simulation::aircraft_find_docking_bay`] and fly to the pad its radio
 //! contact slot names; the dock's own Mission_Repair reloads it
-//! (`docking::building_dock`).
+//! (`docking::airfield_reload`).
 //!
 //! [`Simulation::aircraft_find_docking_bay`]: crate::sim::world::Simulation::aircraft_find_docking_bay
 //!

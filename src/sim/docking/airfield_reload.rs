@@ -180,11 +180,9 @@ impl ReloadHost for WorldReload<'_> {
     fn release(&mut self, contact: u64) {
         crate::sim::world::enter_idle_mode(self.sim, contact, self.rules, self.registry);
         let now = self.sim.session.binary_frame;
-        let _ = self.sim.mission_assign_exact(
-            contact,
-            MissionId::from_known(MissionType::Guard),
-            now,
-        );
+        let _ =
+            self.sim
+                .mission_assign_exact(contact, MissionId::from_known(MissionType::Guard), now);
     }
 
     fn queue_guard(&mut self) {
@@ -196,3 +194,7 @@ impl ReloadHost for WorldReload<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "airfield_reload_tests.rs"]
+mod tests;
