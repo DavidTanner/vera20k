@@ -1387,7 +1387,8 @@ impl Simulation {
                 return false;
             }
             let actor = self.substrate.entities.get_mut(id).expect("same arm actor");
-            if super::locomotor_owner::try_end_drive_at_foot_idle(actor) {
+            // 0x0074250E..0x0074258A: a piggyback that may end ends instead.
+            if super::locomotor_owner::try_end_piggyback(actor) {
                 return false;
             }
             super::navcom::track_stop_moving(actor);

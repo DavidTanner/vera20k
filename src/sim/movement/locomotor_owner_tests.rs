@@ -706,7 +706,7 @@ fn foot_queue_operations_match_original_memory_witnesses() {
 }
 
 #[test]
-fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
+fn drive_end_uses_native_gates_and_preserves_owner_state() {
     for denied in [0, 1, 2, 3] {
         let (mut sim, _) = fixture();
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -730,7 +730,7 @@ fn foot_idle_drive_end_uses_native_gates_and_preserves_owner_state() {
         }
         let before = owned_state(entity);
         let speed = entity.foot_speed.clone();
-        assert_eq!(try_end_drive_at_foot_idle(entity), denied == 0);
+        assert_eq!(try_end_piggyback(entity), denied == 0);
         assert_eq!(entity.foot_speed, speed);
         if denied != 0 {
             assert_eq!(owned_state(entity), before);
