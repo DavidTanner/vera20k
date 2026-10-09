@@ -591,7 +591,9 @@ fn completed_building_moves_into_ready_placement_pool() {
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     let americans = sim.interner.intern("Americans");
     let gacnst = sim.interner.intern("GACNST");
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     let built_before = sim.houses[&americans].stats.built();
     // P5d: arm the Building build directly in the registry (queue-of-record), then force it
     // to the completed-held state so Strip publication moves it into the ready-placement pool.
@@ -654,7 +656,7 @@ fn place_ready_building_spawns_and_consumes_ready_item() {
 
     let americans = sim.interner.intern("Americans");
     // The house whose Record_Last_Built counts the placement.
-    super::credits_entry_for_owner(&mut sim, "Americans");
+    super::house_for_test(&mut sim, "Americans");
     ready_building(&mut sim, &rules, "Americans", "GACNST");
     let built_before = sim.houses[&americans].stats.built();
     let held_id = sim
@@ -1276,7 +1278,9 @@ fn free_unit_total_placement_failure_refunds_once_and_leaves_no_entity() {
             grid.set_blocked(rx, ry, true);
         }
     }
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 100;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(100);
     sim.spawn_object("NAINDP", "Americans", 40, 40, 0, &rules)
         .expect("the Industrial Plant unlimbos");
     let americans = sim.interner.get("Americans").expect("owner should exist");
@@ -1826,7 +1830,9 @@ fn empty_cell_wall_placement_still_works_but_wall_on_overlay_rejects() {
     overlay_sim.overlay_grid = Some(overlay_grid);
     ready_building(&mut overlay_sim, &rules, "Americans", "GAWALL");
     let placement_credits = 1_337;
-    *super::credits_entry_for_owner(&mut overlay_sim, "Americans") = placement_credits;
+    super::house_for_test(&mut overlay_sim, "Americans")
+        .economy
+        .set_credits_for_test(placement_credits);
     assert!(overlay_sim.rebuild_dynamic_navigation(&rules));
     let owner = overlay_sim.interner.get("Americans").expect("owner");
     let wall = rules.object("GAWALL").expect("wall rules");
@@ -1944,7 +1950,9 @@ fn gsi_04_07_command_places_authoritative_owned_wall_without_entity() {
     let (rules, registry) = gsi_04_07_wall_placement_contract();
     let path_grid = PathGrid::new(64, 64);
     let mut sim = placement_sim();
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
     sim.overlay_grid = Some(OverlayGrid::new(64, 64));
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |_| {}));
@@ -2041,7 +2049,9 @@ fn gsi_04_07_regular_wall_autofill_is_cardinal_ordered_bounded_and_consumes_once
     sim.resolved_terrain = Some(resolved_clear_grid_with_override(64, 64, |_| {}));
     ready_building(&mut sim, &rules, "Americans", "GAWALL");
     let placement_credits = 1_337;
-    *super::credits_entry_for_owner(&mut sim, "Americans") = placement_credits;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(placement_credits);
     let owner = sim.interner.get("Americans").expect("owner");
     let wall_type = sim.interner.get("GAWALL").expect("wall type");
     let wall = rules.object("GAWALL").expect("wall rules");
@@ -3327,7 +3337,9 @@ fn a_sale_refunds_regardless_of_health_and_clears_peer_contacts() {
             owner,
             crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
         );
-        *super::credits_entry_for_owner(&mut sim, "Americans") = 1000;
+        super::house_for_test(&mut sim, "Americans")
+            .economy
+            .set_credits_for_test(1000);
         spawn_structure(&mut sim, 1, "Americans", "GAPOWR", 20, 20);
         if let Some(ge) = sim.substrate.entities.get_mut(1) {
             ge.health = Health { current: health };
@@ -3387,7 +3399,9 @@ fn sell_back_admits_by_control_buildup_and_firestorm_wall() {
             owner,
             crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
         );
-        *super::credits_entry_for_owner(&mut sim, "Americans") = 1000;
+        super::house_for_test(&mut sim, "Americans")
+            .economy
+            .set_credits_for_test(1000);
         spawn_structure(&mut sim, 1, "Americans", type_id, 20, 20);
         sim
     };
@@ -3475,7 +3489,9 @@ fn sell_player_built_garrisoned_building_demolishes_and_ejects_alive() {
     use crate::sim::passenger::{PassengerCargo, PassengerRole};
     let mut sim = placement_sim();
     let rules = sell_rules();
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 0;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(0);
 
     // Spawn a CanBeOccupied building OWNED by Americans with NO original_owner
     // (player-built, not captured). NABNKR in sell_rules has Cost=0 so the
@@ -3774,10 +3790,11 @@ fn stock_infantry_fallback_unit_ready_uses_producer_getcoords() {
         .entity_id
         .unwrap();
     let cost = sim.cost_of(owner, rules.object("E1").unwrap(), &rules);
-    assert_eq!(
-        sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
-        cost
-    );
+    sim.houses
+        .get_mut(&owner)
+        .unwrap()
+        .economy
+        .spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     // The focused publisher helper increments both clocks before applying
     // due PLACE, so159 ->160 reaches the measured native fallback call frame.
@@ -3832,7 +3849,7 @@ fn successful_placement_requests_building_slam_once() {
     let rules = build_catalog_rules();
     let mut sim = placement_sim();
     spawn_structure(&mut sim, 1, "Americans", "GACNST", 18, 18);
-    super::credits_entry_for_owner(&mut sim, "Americans");
+    super::house_for_test(&mut sim, "Americans");
     ready_building(&mut sim, &rules, "Americans", "GACNST");
     let americans = sim.interner.intern("Americans");
 

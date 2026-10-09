@@ -56,10 +56,7 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             crate::sim::credit_income::add_credits(&mut runtime.simulation, owner, 123);
         }
         if tick == 10 {
-            assert_eq!(
-                crate::sim::credit_income::spend_money(&mut runtime.simulation, owner, 17),
-                17
-            );
+            crate::sim::credit_income::spend_money(&mut runtime.simulation, owner, 17);
         }
         let commands = match tick {
             1 => vec![queue(owner, tank, tick)],
@@ -76,7 +73,7 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
         runtime
             .advance_frame(&commands, TICK_MS, crate::sim::world::TickLane::Ordinary)
             .expect("production frame");
-        let cash = runtime.simulation.houses[&owner].economy.credits;
+        let cash = runtime.simulation.houses[&owner].economy.credits();
         assert_eq!(
             cash,
             super::credits_for_owner(&runtime.simulation, "Americans")
@@ -93,9 +90,9 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
         }
     }
     let economy = &runtime.simulation.houses[&owner].economy;
-    assert!(economy.spent_credits > 0);
+    assert!(economy.spent_credits() > 0);
     assert_eq!(
-        economy.credits,
+        economy.credits(),
         START_CREDITS + 123 - 17,
         "active cancellation refunds every factory charge without losing intervening income/debits"
     );
@@ -231,7 +228,7 @@ fn record(
 fn event_tail_enqueue_first_charges_one_rate_later() {
     let (mut sim, rules) = scenario();
     let (owner, _, infantry, _) = ids(&sim);
-    let credits_before = sim.houses[&owner].economy.credits;
+    let credits_before = sim.houses[&owner].economy.credits();
 
     let start_frame = sim.session.binary_frame;
     sim.advance_tick(
@@ -254,16 +251,16 @@ fn event_tail_enqueue_first_charges_one_rate_later() {
     assert_eq!(progress, 0);
     assert_eq!(timer.start_frame(), start_frame as i32);
     assert!(rate > 1);
-    assert_eq!(sim.houses[&owner].economy.credits, credits_before);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits_before);
 
     for _ in 1..rate {
         sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
         assert_eq!(factory(&sim).0, 0);
     }
-    assert_eq!(sim.houses[&owner].economy.credits, credits_before);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits_before);
     sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     assert_eq!(factory(&sim).0, 1);
-    assert!(sim.houses[&owner].economy.credits < credits_before);
+    assert!(sim.houses[&owner].economy.credits() < credits_before);
 }
 
 /// (P5d derived-state) An underfunded mid-build factory (on_hold) renders as Building in
@@ -364,7 +361,7 @@ fn economy_conservation_over_replay() {
 
     let initial: i64 = [am, al]
         .iter()
-        .map(|o| sim.houses[o].economy.credits as i64)
+        .map(|o| sim.houses[o].economy.credits() as i64)
         .sum();
 
     sim.queue_commands(pending);
@@ -377,7 +374,7 @@ fn economy_conservation_over_replay() {
             .iter()
             .map(|o| {
                 let h = &sim.houses[o];
-                h.economy.credits as i64 + h.economy.spent_credits as i64
+                h.economy.credits() as i64 + h.economy.spent_credits() as i64
             })
             .sum();
         assert_eq!(
@@ -387,7 +384,7 @@ fn economy_conservation_over_replay() {
         );
         if [am, al]
             .iter()
-            .any(|o| sim.houses[o].economy.spent_credits > 0)
+            .any(|o| sim.houses[o].economy.spent_credits() > 0)
         {
             any_spent = true;
         }
@@ -446,7 +443,7 @@ fn economy_conservation_through_cancel_refund() {
 
     let initial: i64 = [am, al]
         .iter()
-        .map(|o| sim.houses[o].economy.credits as i64)
+        .map(|o| sim.houses[o].economy.credits() as i64)
         .sum();
     let mtnk_cost = sim
         .object_type(mtnk, &rules)
@@ -455,7 +452,7 @@ fn economy_conservation_through_cancel_refund() {
 
     let mut prev: BTreeMap<InternedId, i32> = [am, al]
         .iter()
-        .map(|&o| (o, sim.houses[&o].economy.credits))
+        .map(|&o| (o, sim.houses[&o].economy.credits()))
         .collect();
     let mut cumulative_refunded: i64 = 0;
 
@@ -465,7 +462,7 @@ fn economy_conservation_through_cancel_refund() {
 
         // Every per-owner credit INCREASE is a refund (no deposits in this scenario).
         for &o in &[am, al] {
-            let now = sim.houses[&o].economy.credits;
+            let now = sim.houses[&o].economy.credits();
             let delta = now - *prev.get(&o).unwrap();
             if delta > 0 {
                 cumulative_refunded += delta as i64;
@@ -477,7 +474,7 @@ fn economy_conservation_through_cancel_refund() {
             .iter()
             .map(|o| {
                 let h = &sim.houses[o];
-                h.economy.credits as i64 + h.economy.spent_credits as i64
+                h.economy.credits() as i64 + h.economy.spent_credits() as i64
             })
             .sum();
         assert_eq!(
@@ -546,7 +543,8 @@ fn revalidate_abandons_build_with_no_factory_and_drops_queued() {
         "no-factory build abandoned + queued dropped -> factory pruned"
     );
     assert_eq!(
-        sim.houses[&am].economy.credits, 50_000,
+        sim.houses[&am].economy.credits(),
+        50_000,
         "an uncharged abandon refunds nothing (credits unchanged)"
     );
 }
@@ -595,9 +593,9 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     );
     sim.substrate.entities.remove(3);
 
-    let credits_before = sim.houses[&am].economy.credits;
+    let credits_before = sim.houses[&am].economy.credits();
     sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
-    let refund = sim.houses[&am].economy.credits - credits_before;
+    let refund = sim.houses[&am].economy.credits() - credits_before;
     assert_eq!(
         refund, spent,
         "factory-loss abandon refunds exactly the already-charged portion"

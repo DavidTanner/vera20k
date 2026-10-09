@@ -1557,10 +1557,21 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     );
 }
 
+/// Each house has its own wallet; a house that does not exist has no money
+/// and is not made up.
 #[test]
 fn owner_credits_are_isolated() {
     let mut sim = Simulation::new();
-    *super::credits_entry_for_owner(&mut sim, "Americans") -= 750;
+    super::house_for_test(&mut sim, "Soviet");
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .add_credits(-750);
     assert_eq!(credits_for_owner(&sim, "Americans"), STARTING_CREDITS - 750);
     assert_eq!(credits_for_owner(&sim, "Soviet"), STARTING_CREDITS);
+    assert_eq!(credits_for_owner(&sim, "Germans"), 0);
+    assert!(
+        sim.interner
+            .get("Germans")
+            .is_none_or(|id| !sim.houses.contains_key(&id))
+    );
 }

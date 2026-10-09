@@ -18,12 +18,25 @@ use super::production_spawn::{
 use super::production_tech::production_category_for_object;
 use super::production_types::*;
 
+/// `owner`'s Available_Money, by house name; 0 for a house that does not
+/// exist.
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
     sim.interner
         .get(owner)
-        .and_then(|id| sim.houses.get(&id))
-        .map(|h| h.economy.credits)
-        .unwrap_or(STARTING_CREDITS)
+        .map_or(0, |id| crate::sim::credit_income::available_money(sim, id))
+}
+
+/// `owner`'s house, created as a human house holding [`STARTING_CREDITS`]
+/// when the test never made one.
+#[cfg(test)]
+pub(in crate::sim) fn house_for_test<'a>(
+    sim: &'a mut Simulation,
+    owner: &str,
+) -> &'a mut crate::sim::house_state::HouseState {
+    let key = sim.interner.intern(owner);
+    sim.houses.entry(key).or_insert_with(|| {
+        crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10)
+    })
 }
 
 pub fn power_balance_for_owner(sim: &Simulation, _rules: &RuleSet, owner: &str) -> (i32, i32) {
@@ -48,26 +61,6 @@ pub fn theoretical_power_for_owner(sim: &Simulation, owner: &str) -> i32 {
         .get(&owner_id)
         .map(|state| state.theoretical_total_power)
         .unwrap_or(0)
-}
-
-pub(in crate::sim) fn credits_entry_for_owner<'a>(
-    sim: &'a mut Simulation,
-    owner: &str,
-) -> &'a mut i32 {
-    let key = sim.interner.intern(owner);
-    // Ensure house entry exists (auto-create with defaults if missing).
-    // is_human defaults to true: in real games the app loading path seeds every house
-    // with its actual flag, so the only callers that hit this fallback are
-    // tests / edge cases that never declared a player. Defaulting to human
-    // keeps those paths from accidentally activating AI-only behavior
-    // (e.g., AIVirtualPurifiers credit bonus in the deposit path).
-    if !sim.houses.contains_key(&key) {
-        sim.houses.insert(
-            key,
-            crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10),
-        );
-    }
-    &mut sim.houses.get_mut(&key).unwrap().economy.credits
 }
 
 /// The options the player's sidebar shows for `owner`, by category

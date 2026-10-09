@@ -826,10 +826,10 @@ impl Simulation {
                 b"house-spatial-threat-v1".hash(hasher);
                 threat.hash(hasher);
             }
-            house.economy.credits.hash(hasher);
+            house.economy.credits().hash(hasher);
             // The sole cash balance retains its original position in the hash stream.
-            house.economy.spent_credits.hash(hasher);
-            house.economy.harvested_credits.hash(hasher);
+            house.economy.spent_credits().hash(hasher);
+            house.economy.harvested_credits().hash(hasher);
             // Live score totals affect the later terminal Scenario draw, and
             // House504080/503040 preserves them through native load. The
             // retained-ship chain needs both its initial and terminal loss.

@@ -639,13 +639,17 @@ fn native_decide_unit_fate_corpus() {
             .get_mut(&controller_house)
             .unwrap()
             .economy
-            .credits = int("money");
+            .set_credits_for_test(int("money"));
         let mut power_state = crate::sim::power_system::PowerState::default();
         power_state.total_output = int("produced");
         power_state.total_drain = int("drained");
         sim.power_states.insert(controller_house, power_state);
         let russians = sim.interner.get("Russians").unwrap();
-        sim.houses.get_mut(&russians).unwrap().economy.credits = 0;
+        sim.houses
+            .get_mut(&russians)
+            .unwrap()
+            .economy
+            .set_credits_for_test(0);
         let mut power_state = crate::sim::power_system::PowerState::default();
         power_state.total_output = 0;
         power_state.total_drain = 100;

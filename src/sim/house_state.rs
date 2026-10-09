@@ -928,10 +928,7 @@ impl HouseState {
             stats: MatchStatistics::default(),
             building_capture_notified: false,
             discovered_by_current_house: false,
-            economy: Economy {
-                credits,
-                ..Economy::default()
-            },
+            economy: Economy::new(credits),
             strategy_emergency: HouseStrategyEmergencyState::default(),
             strategy_timer: strategy_timer_at_construction(),
             team_creation: Default::default(),
@@ -1126,7 +1123,7 @@ pub fn income_ppm_for_owner(
     house_state_for_owner(houses, owner, interner)
         .and_then(|h| h.country)
         .map(|c| rules.country_income_ppm(interner.resolve(c)))
-        .unwrap_or(crate::sim::economy::INCOME_PPM_SCALE)
+        .unwrap_or(crate::rules::ruleset::INCOME_PPM_SCALE)
 }
 
 /// Map side name string to numeric index.
@@ -1395,7 +1392,7 @@ mod ai_activation_latch_tests {
             house.is_defeated = true;
             house.multiplay_passive = true;
             house.difficulty = difficulty;
-            house.economy.credits = 4321;
+            house.economy.add_credits(4321);
 
             house.update_ai_activation(true, 5);
             let once = house.ai_activation;
@@ -1412,7 +1409,7 @@ mod ai_activation_latch_tests {
                 }
             );
             assert_eq!(house.current_iq, 5);
-            assert_eq!(house.economy.credits, 4321);
+            assert_eq!(house.economy.credits(), 4321);
             assert!(house.is_defeated);
             assert!(house.multiplay_passive);
             assert_eq!(house.difficulty, difficulty);

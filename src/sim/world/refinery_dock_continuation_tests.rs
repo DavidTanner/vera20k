@@ -349,7 +349,7 @@ fn compare(s: &Scene, native: &Value, context: &str) {
         "facing":{"desired":e.body_facing.destination(),"start":e.body_facing.start_word(),"timer_start":e.body_facing.timer_start_frame().map_or(-1,|n|n as i32),"duration":e.body_facing.timer_duration()},
         "unloading":u8::from(e.miner.as_ref().is_some_and(|m|m.unload_active)),
         "harvesting":u8::from(e.miner.as_ref().is_some_and(|m|m.harvesting)),
-        "storage":storage,"balance":house.economy.credits,"score":house.economy.harvested_credits,
+        "storage":storage,"balance":house.economy.credits(),"score":house.economy.harvested_credits(),
         "scenario_rng":{"disabled":view.disabled,"index_a":view.index_a,"index_b":view.index_b,"state":view.words}
     });
     for (key, value) in fields.as_object().unwrap() {

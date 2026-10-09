@@ -415,8 +415,8 @@ fn update_repair_and_power_matches_the_original() {
         );
         assert_eq!(
             json!([
-                house.economy.credits,
-                house.economy.spent_credits,
+                house.economy.credits(),
+                house.economy.spent_credits(),
                 u8::from(house.repair_start_latch),
                 [
                     house.repair_latch_timer.start_frame(),
@@ -543,7 +543,7 @@ fn a_build_up_holds_the_repair_until_its_completion_frame() {
                 json!([
                     building.health.current,
                     u8::from(building.repairing),
-                    house.economy.credits,
+                    house.economy.credits(),
                     u8::from(house.repair_start_latch),
                     [
                         house.repair_latch_timer.start_frame(),

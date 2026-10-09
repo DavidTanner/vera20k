@@ -119,7 +119,10 @@ impl ParityDigest {
             entity_count += 1;
         }
 
-        let house_credits: Vec<i32> = houses.values().map(|house| house.economy.credits).collect();
+        let house_credits: Vec<i32> = houses
+            .values()
+            .map(|house| house.economy.credits())
+            .collect();
 
         Self {
             tick,

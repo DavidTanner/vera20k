@@ -159,10 +159,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .harvested_credits = 35;
+        .set_harvested_for_test(35);
     let expected = saved.houses[&owner].economy.clone();
-    assert!(expected.spent_credits > 0);
-    assert_eq!(expected.credits + expected.spent_credits, 50_123);
+    assert!(expected.spent_credits() > 0);
+    assert_eq!(expected.credits() + expected.spent_credits(), 50_123);
 
     let prepared = prepare_saved(&saved, rules, "wallet-authority").expect("prepare current save");
     let mut resources = crate::sim::runtime::SimResources::empty();
@@ -197,10 +197,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     }
     let resumed = runtime.simulation.houses[&owner].economy.clone();
     assert!(
-        resumed.spent_credits > expected.spent_credits,
+        resumed.spent_credits() > expected.spent_credits(),
         "restored production must charge again"
     );
-    assert_eq!(resumed.credits + resumed.spent_credits, 50_123);
+    assert_eq!(resumed.credits() + resumed.spent_credits(), 50_123);
     let factory = runtime
         .simulation
         .production
@@ -223,9 +223,9 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
         .expect("restored frame");
     let economy = &runtime.simulation.houses[&owner].economy;
-    assert_eq!(economy.credits, 50_123);
-    assert_eq!(economy.spent_credits, resumed.spent_credits);
-    assert_eq!(economy.harvested_credits, 35);
+    assert_eq!(economy.credits(), 50_123);
+    assert_eq!(economy.spent_credits(), resumed.spent_credits());
+    assert_eq!(economy.harvested_credits(), 35);
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         let counts = saved
             .houses
             .get(&owner)
-            .map(|house| (house.tracking.clone(), house.economy.credits, house.stats));
+            .map(|house| (house.tracking.clone(), house.economy.credits(), house.stats));
         let identities: Vec<_> = saved
             .substrate
             .entities
@@ -390,7 +390,7 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
         assert_eq!(
             restored.houses.get(&owner).map(|house| (
                 house.tracking.clone(),
-                house.economy.credits,
+                house.economy.credits(),
                 house.stats
             )),
             counts,

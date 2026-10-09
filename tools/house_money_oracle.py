@@ -1,0 +1,151 @@
+"""Native references for the house wallet's money primitives.
+
+Run python -m tools.house_money_oracle --check (or explicit --write).
+Rust consumer: src/sim/economy.rs (tests).
+
+Sections, each case executed in a fresh emulator on a house whose silo
+storage (+0x2FC) and capacity (+0x310) are empty, as VERA keeps them:
+- spend_money: HouseClass::Spend_Money 0x4F9790 over the cash arm, the
+  shortfall arm (a negative balance included) and 32-bit wrap of the
+  balance and the spending statistic (+0x2DC).
+- add_credits: HouseClass::Add_Credits 0x4F9950.
+- add_tiberium_credits: HouseClass::Add_Tiberium_Credits 0x4F9610, the
+  refinery deposit: the balance (+0x30C) and the score (+0x54E8) after
+  `amount` units of a tiberium worth `value` for a house whose
+  HouseType IncomeMult (+0x148) is `income`. A row names the amount as
+  VERA builds it, `bales` x `scale_ppm` / 1e6, and the IncomeMult as
+  `income_ppm` / 1e6; both pass to the original as floats.
+- available_money: HouseClass::Available_Money 0x4F6990 (the money
+  interface's slot +0x18, called on House+0x24).
+"""
+import struct
+from pathlib import Path
+
+from tools.ai_base_building_oracle import Emu, FAKE, HOUSE, HOUSE_TYPE
+from tools.native_oracle import finish_vectors, provenance
+
+SPEND_MONEY = 0x4F9790
+ADD_CREDITS = 0x4F9950
+ADD_TIBERIUM_CREDITS = 0x4F9610
+AVAILABLE_MONEY = 0x4F6990
+
+TIBERIUMS = 0xB0F4EC
+TIBERIUM_LIST = FAKE + 0x40000
+TIBERIUM = FAKE + 0x41000
+
+BALANCE = 0x30C
+SPENT = 0x2DC
+SCORE = 0x54E8
+INCOME_MULT = 0x148
+MONEY_INTERFACE = 0x24
+
+INT_MAX = 0x7FFFFFFF
+INT_MIN = -0x80000000
+
+
+def f32(value):
+    return struct.unpack('<I', struct.pack('<f', value))[0]
+
+
+def house(balance, *, spent=0, score=0, income_ppm=1_000_000):
+    emu = Emu()
+    emu.write32(HOUSE + 0x34, HOUSE_TYPE)
+    emu.write32(HOUSE_TYPE + INCOME_MULT, f32(income_ppm / 1_000_000))
+    emu.write32(HOUSE + BALANCE, balance)
+    emu.write32(HOUSE + SPENT, spent)
+    emu.write32(HOUSE + SCORE, score)
+    return emu
+
+
+def spend_money():
+    rows = []
+    for name, balance, spent, amount in (
+        ('cash covers the amount', 1000, 0, 300),
+        ('cash covers it exactly', 1000, 50, 1000),
+        ('shortfall takes the balance', 1000, 0, 1500),
+        ('nothing to take', 0, 7, 50),
+        ('a negative balance is taken and zeroed', -200, 100, 50),
+        ('a negative amount adds to the balance', 100, 0, -50),
+        ('a negative amount within a negative balance', -200, 0, -300),
+        ('the balance wraps', INT_MAX, 0, -1),
+        ('the statistic wraps', 10, INT_MAX, 1),
+    ):
+        emu = house(balance, spent=spent)
+        emu.invoke(SPEND_MONEY, ecx=HOUSE, args=(amount & 0xFFFFFFFF,))
+        rows.append({'name': name, 'balance': balance, 'spent': spent, 'amount': amount,
+                     'expected': {'balance': emu.read_i32(HOUSE + BALANCE),
+                                  'spent': emu.read_i32(HOUSE + SPENT)}})
+    return rows
+
+
+def add_credits():
+    rows = []
+    for name, balance, amount in (
+        ('adds', 100, 50),
+        ('a negative amount subtracts past zero', 100, -500),
+        ('wraps', INT_MAX, 1),
+    ):
+        emu = house(balance)
+        emu.invoke(ADD_CREDITS, ecx=HOUSE, args=(amount & 0xFFFFFFFF,))
+        rows.append({'name': name, 'balance': balance, 'amount': amount,
+                     'expected': {'balance': emu.read_i32(HOUSE + BALANCE)}})
+    return rows
+
+
+def add_tiberium_credits():
+    rows = []
+    for name, balance, score, bales, scale_ppm, value, income_ppm in (
+        ('a deposit', 500, 70, 40, 1_000_000, 25, 1_000_000),
+        ('gems', 0, 0, 12, 1_000_000, 50, 1_000_000),
+        ('a purifier bonus truncates once', 100, 3, 10, 250_000, 25, 1_000_000),
+        ('three purifiers', 0, 0, 3, 750_000, 25, 1_000_000),
+        ('IncomeMult 1.25', 10, 0, 7, 1_000_000, 25, 1_250_000),
+        ('IncomeMult 0.5 with a bonus', 0, 0, 3, 250_000, 25, 500_000),
+        ('a negative balance truncates toward zero', -100, -9, 10, 250_000, 25, 1_000_000),
+        ('IncomeMult 0.9 is a float', 0, 0, 40, 1_000_000, 25, 900_000),
+    ):
+        emu = house(balance, score=score, income_ppm=income_ppm)
+        emu.write32(TIBERIUMS, TIBERIUM_LIST)
+        emu.write32(TIBERIUM_LIST, TIBERIUM)
+        emu.write32(TIBERIUM + 0xB8, value)
+        amount = f32(bales * scale_ppm / 1_000_000)
+        emu.invoke(ADD_TIBERIUM_CREDITS, ecx=HOUSE, args=(amount, 0))
+        rows.append({'name': name, 'balance': balance, 'score': score, 'bales': bales,
+                     'scale_ppm': scale_ppm, 'value': value, 'income_ppm': income_ppm,
+                     'expected': {'balance': emu.read_i32(HOUSE + BALANCE),
+                                  'score': emu.read_i32(HOUSE + SCORE)}})
+    return rows
+
+
+def available_money():
+    rows = []
+    for name, balance, income_ppm in (
+        ('the balance', 700, 1_000_000),
+        ('a negative balance', -50, 1_250_000),
+    ):
+        emu = house(balance, income_ppm=income_ppm)
+        answer = emu.invoke(AVAILABLE_MONEY, args=(HOUSE + MONEY_INTERFACE,))
+        rows.append({'name': name, 'balance': balance, 'income_ppm': income_ppm,
+                     'expected': struct.unpack('<i', struct.pack('<I', answer))[0]})
+    return rows
+
+
+def generate():
+    return dict(spend_money=spend_money(), add_credits=add_credits(),
+                add_tiberium_credits=add_tiberium_credits(),
+                available_money=available_money())
+
+
+if __name__ == '__main__':
+    finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
+        scope=('HouseClass::Spend_Money, Add_Credits, Add_Tiberium_Credits and '
+               'Available_Money on a house with empty silo storage. Synthetic fixtures '
+               'only; the silo-drain arm of Spend_Money is not reached.'),
+        assumptions=['The house holds no silo storage (+0x2FC) and no capacity (+0x310), '
+                     'so Spend_Money never drains buildings and Update_Silo_Damage_Frames '
+                     'returns at once.'],
+        substitutions=[],
+        entry_points={'spend_money': SPEND_MONEY, 'add_credits': ADD_CREDITS,
+                      'add_tiberium_credits': ADD_TIBERIUM_CREDITS,
+                      'available_money': AVAILABLE_MONEY},
+    ))

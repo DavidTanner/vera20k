@@ -132,7 +132,7 @@ pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: Int
     if !house.is_controlled_by_human(game_mode_nonzero) {
         return;
     }
-    let credits = house.economy.credits;
+    let credits = house.economy.credits();
     let mut timer = house.eva_funds_timer;
     let mut guard = house.eva_low_power_guard;
 

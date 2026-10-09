@@ -219,18 +219,17 @@ impl Factory {
             self.balance / (steps_left as i32)
         };
 
-        // Affordability PRE-CHECK (no spend on a stall, so the oracle's spent total
-        // stays clean). Exactly-affordable (available == charge) PROCEEDS (strict <).
-        if economy.available() < charge {
+        // The house's Available_Money (`0x004C9BDE`) against the charge: an
+        // exactly affordable charge proceeds; a stall spends nothing.
+        if economy.available_money() < charge {
             self.progress -= 1; // rewind the tentative step (net-zero advance)
             self.on_hold = true; // UI "On Hold"
             return StepOutcome::Stalled; // nothing spent, balance unchanged
         }
 
-        // Pay-as-you-go: spend exactly `charge`, decrement balance by the same.
+        // Spend_Money(charge) (`0x004C9BF5`), and the balance drops by the same.
         self.on_hold = false; // a successful step clears a prior hold
-        let paid = economy.spend(charge);
-        debug_assert_eq!(paid, charge, "an afforded charge must be paid in full");
+        economy.spend_money(charge);
         self.balance -= charge; // charge <= balance always (stepsLeft >= 1) -> no underflow
 
         // Completion settlement on reaching 54. The steps_left==1 charge already
@@ -1746,7 +1745,7 @@ mod tests {
             let mut order_results = Vec::new();
             for frame in start_frame..=row["last_frame"].as_u64().unwrap() as u32 {
                 let economy = &mut houses.get_mut(&owner).unwrap().economy;
-                economy.credits += deposits.get(&frame).copied().unwrap_or(0);
+                economy.add_credits(deposits.get(&frame).copied().unwrap_or(0));
                 // A SUSPEND is `Suspend(1)`; a resume is Begin_Production's
                 // same-type build start, which VERA takes only for a user hold.
                 for &(_, kind) in orders.iter().filter(|(at, _)| *at == frame) {
@@ -1775,7 +1774,7 @@ mod tests {
                 reg.step_all(&mut houses, frame);
                 let f = &reg.factories[&FactoryHolder::House(owner, category)];
                 if f.step_timer.start_frame() != before {
-                    let credits = houses[&owner].economy.credits;
+                    let credits = houses[&owner].economy.credits();
                     attempts.push(serde_json::json!([frame, f.progress, f.on_hold, credits]));
                 }
             }
@@ -1804,8 +1803,8 @@ mod tests {
                     f.balance,
                     f.on_hold,
                     f.suspended,
-                    economy.credits,
-                    economy.spent_credits,
+                    economy.credits(),
+                    economy.spent_credits(),
                 ),
                 (
                     int(&end["stage"]),
@@ -1827,10 +1826,7 @@ mod tests {
         // From a fresh armed start with funds: 53 `Stepped` then 1 `Completed` (C2);
         // progress reaches 54 (E1: the 54th call is Completed, not a plain Stepped).
         let mut f = armed_factory(700);
-        let mut econ = Economy {
-            credits: 700,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(700);
         let mut stepped = 0;
         let mut completed = 0;
         for _ in 0..PRODUCTION_STEPS {
@@ -1859,10 +1855,7 @@ mod tests {
         // (C3/C15). Boundary set {1, 25, 700, 99991}.
         for cost in [1i32, 25, 700, 99991] {
             let mut f = armed_factory(cost);
-            let mut econ = Economy {
-                credits: cost,
-                ..Economy::default()
-            };
+            let mut econ = Economy::new(cost);
             loop {
                 match f.advance_one_step(&mut econ) {
                     StepOutcome::Stepped => {}
@@ -1871,10 +1864,15 @@ mod tests {
                 }
             }
             assert_eq!(
-                econ.spent_credits, cost,
+                econ.spent_credits(),
+                cost,
                 "cost {cost}: total spent == full cost"
             );
-            assert_eq!(econ.credits, 0, "cost {cost}: oracle drained to exactly 0");
+            assert_eq!(
+                econ.credits(),
+                0,
+                "cost {cost}: oracle drained to exactly 0"
+            );
             assert_eq!(f.balance, 0, "cost {cost}: balance ends 0");
         }
     }
@@ -1886,17 +1884,14 @@ mod tests {
         // Stepped); the final value-54 step charges 0. Conservation depends on the
         // /1 step, not the guard step.
         let mut f = armed_factory(1);
-        let mut econ = Economy {
-            credits: 1,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(1);
         let mut total = 0;
         loop {
-            let before = econ.spent_credits;
+            let before = econ.spent_credits();
             match f.advance_one_step(&mut econ) {
-                StepOutcome::Stepped => total += econ.spent_credits - before,
+                StepOutcome::Stepped => total += econ.spent_credits() - before,
                 StepOutcome::Completed => {
-                    total += econ.spent_credits - before;
+                    total += econ.spent_credits() - before;
                     break;
                 }
                 other => panic!("unexpected {other:?}"),
@@ -1914,10 +1909,7 @@ mod tests {
         // The balance drains on the steps_left==1 step (value 53, charge=balance/1),
         // NOT the final value-54 step (the div-by-zero guard, which charges 0).
         let mut f = armed_factory(700);
-        let mut econ = Economy {
-            credits: 700,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(700);
         while f.progress < PRODUCTION_STEPS - 2 {
             assert!(matches!(
                 f.advance_one_step(&mut econ),
@@ -1932,25 +1924,25 @@ mod tests {
         let remainder = f.balance;
         assert!(remainder > 0, "balance is nonzero at progress 52");
         // The steps_left==1 step (value 53) charges the WHOLE remainder, once.
-        let spent_before = econ.spent_credits;
+        let spent_before = econ.spent_credits();
         assert!(
             matches!(f.advance_one_step(&mut econ), StepOutcome::Stepped),
             "value-53 is a Stepped"
         );
         assert_eq!(
-            econ.spent_credits - spent_before,
+            econ.spent_credits() - spent_before,
             remainder,
             "drains the whole remainder once"
         );
         assert_eq!(f.balance, 0, "balance zeroed on the steps_left==1 step");
         // The final value-54 step is the div-by-zero guard: charges 0, Completed.
-        let spent_before2 = econ.spent_credits;
+        let spent_before2 = econ.spent_credits();
         assert!(matches!(
             f.advance_one_step(&mut econ),
             StepOutcome::Completed
         ));
         assert_eq!(
-            econ.spent_credits - spent_before2,
+            econ.spent_credits() - spent_before2,
             0,
             "the final step charges 0 (guard)"
         );
@@ -1966,10 +1958,7 @@ mod tests {
         // progress unchanged, NOTHING spent (C4). cost 700 -> first charge 700/53 = 13.
         let mut f = armed_factory(700);
         let first_charge = 700 / (PRODUCTION_STEPS as i32 - 1); // 700/53 = 13
-        let mut econ = Economy {
-            credits: first_charge - 1,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(first_charge - 1);
         assert!(matches!(
             f.advance_one_step(&mut econ),
             StepOutcome::Stalled
@@ -1979,9 +1968,9 @@ mod tests {
             f.progress, 0,
             "the tentative step is rewound (net-zero advance)"
         );
-        assert_eq!(econ.spent_credits, 0, "a stall spends nothing");
+        assert_eq!(econ.spent_credits(), 0, "a stall spends nothing");
         assert_eq!(
-            econ.credits,
+            econ.credits(),
             first_charge - 1,
             "the oracle wallet is untouched"
         );
@@ -1992,16 +1981,13 @@ mod tests {
         // available == charge PROCEEDS (the strict-< boundary).
         let mut f = armed_factory(700);
         let first_charge = 700 / (PRODUCTION_STEPS as i32 - 1); // 13
-        let mut econ = Economy {
-            credits: first_charge,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(first_charge);
         assert!(matches!(
             f.advance_one_step(&mut econ),
             StepOutcome::Stepped
         ));
         assert_eq!(f.progress, 1);
-        assert_eq!(econ.spent_credits, first_charge);
+        assert_eq!(econ.spent_credits(), first_charge);
     }
 
     #[test]
@@ -2025,7 +2011,7 @@ mod tests {
             steps, PRODUCTION_STEPS as i32,
             "a free build still takes 54 steps"
         );
-        assert_eq!(econ.spent_credits, 0, "free build spends nothing");
+        assert_eq!(econ.spent_credits(), 0, "free build spends nothing");
         assert_eq!(f.balance, 0);
     }
 
@@ -2034,10 +2020,7 @@ mod tests {
         // remaining_balance_after must equal the balance the stepper actually holds.
         for cost in [1i32, 25, 700, 99991] {
             let mut f = armed_factory(cost);
-            let mut econ = Economy {
-                credits: cost,
-                ..Economy::default()
-            };
+            let mut econ = Economy::new(cost);
             for k in 0..PRODUCTION_STEPS {
                 assert_eq!(
                     f.balance,
@@ -2055,16 +2038,13 @@ mod tests {
         // floor division never loses/gains a credit: the last charging step takes the
         // whole remainder, so the per-step charges sum to exactly the cost.
         let mut f = armed_factory(25);
-        let mut econ = Economy {
-            credits: 25,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(25);
         loop {
             if matches!(f.advance_one_step(&mut econ), StepOutcome::Completed) {
                 break;
             }
         }
-        assert_eq!(econ.spent_credits, 25);
+        assert_eq!(econ.spent_credits(), 25);
     }
 
     // ---- P4 cancel / refund / FIFO tests ----
@@ -2098,10 +2078,7 @@ mod tests {
     #[test]
     fn abandon_reports_the_unpaid_balance() {
         let mut f = armed_factory(700);
-        let mut econ = Economy {
-            credits: 700,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(700);
         while f.progress < 20 {
             assert!(matches!(
                 f.advance_one_step(&mut econ),
@@ -2118,10 +2095,10 @@ mod tests {
                 entity_id: None,
             }
         );
-        assert_eq!(700 - abandoned.balance, econ.spent_credits);
+        assert_eq!(700 - abandoned.balance, econ.spent_credits());
         assert_eq!(
-            econ.credits,
-            700 - econ.spent_credits,
+            econ.credits(),
+            700 - econ.spent_credits(),
             "cancel pays nothing"
         );
         assert!(f.object.is_none(), "the partial object is destroyed");
@@ -2156,10 +2133,7 @@ mod tests {
         // `FactoryClass::AbandonProduction @ 0x004C9FF0` deletes the object finished or
         // not (`0x004CA0FC`) and refunds Cost - Balance, the whole cost once finished.
         let mut f = armed_factory(700);
-        let mut econ = Economy {
-            credits: 700,
-            ..Economy::default()
-        };
+        let mut econ = Economy::new(700);
         loop {
             if matches!(f.advance_one_step(&mut econ), StepOutcome::Completed) {
                 break;
@@ -2183,10 +2157,7 @@ mod tests {
         for cost in [1i32, 25, 700, 99991] {
             for stop_at in [0u16, 1, 20, 53, PRODUCTION_STEPS] {
                 let mut f = armed_factory(cost);
-                let mut econ = Economy {
-                    credits: cost,
-                    ..Economy::default()
-                };
+                let mut econ = Economy::new(cost);
                 while f.progress < stop_at {
                     if matches!(f.advance_one_step(&mut econ), StepOutcome::Completed) {
                         break;
@@ -2194,7 +2165,7 @@ mod tests {
                 }
                 if let Some(abandoned) = f.abandon_production() {
                     assert_eq!(
-                        econ.credits + cost - abandoned.balance,
+                        econ.credits() + cost - abandoned.balance,
                         cost,
                         "cost {cost} stop {stop_at}: the refund returns the wallet to start"
                     );
@@ -2583,7 +2554,7 @@ mod tests {
             (soldier_factory.progress, soldier_factory.on_hold),
             (0, true)
         );
-        assert_eq!(houses[&owner].economy.credits, 0);
+        assert_eq!(houses[&owner].economy.credits(), 0);
     }
 
     /// Original `TechnoClass::Time_To_Build @ 0x006F47A0` totals from

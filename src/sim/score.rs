@@ -83,7 +83,7 @@ impl Simulation {
                         house.country,
                         !house.is_defeated,
                         house.stats,
-                        house.economy.harvested_credits,
+                        house.economy.harvested_credits(),
                     )
                 })
             else {
@@ -144,7 +144,7 @@ mod tests {
         let mut house = HouseState::new(owner, 0, None, false, 0, 10);
         house.is_defeated = fixture.defeated;
         house.multiplay_passive = fixture.passive;
-        house.economy.harvested_credits = fixture.harvested;
+        house.economy.set_harvested_for_test(fixture.harvested);
         house.stats = crate::sim::house_state::MatchStatistics::from_totals_for_test(
             fixture.units_killed,
             fixture.buildings_killed,
@@ -357,7 +357,7 @@ mod tests {
         let human = sim.interner.intern("Human");
         let mut human_house = HouseState::new(human, 0, None, true, 0, 10);
         human_house.is_defeated = true;
-        human_house.economy.harvested_credits = 200;
+        human_house.economy.set_harvested_for_test(200);
         human_house.outcome_state = Some(HouseOutcomeState {
             kind: HouseOutcomeKind::Defeat,
             savour_until_tick: 0,
@@ -367,7 +367,7 @@ mod tests {
 
         let opponent = sim.interner.intern("Opponent");
         let mut opponent_house = HouseState::new(opponent, 1, None, false, 0, 10);
-        opponent_house.economy.harvested_credits = 100;
+        opponent_house.economy.set_harvested_for_test(100);
         sim.houses.insert(opponent, opponent_house);
         sim.session.house_order = vec![human, opponent];
         sim
