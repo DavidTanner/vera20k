@@ -31,18 +31,18 @@ impl SoundEventRandom for SfxPlayer {
 /// Keep this call at the frame's original sound-publication point: feedback
 /// rolls precede listener gating and must not move to playback or simulation.
 ///
-/// `admit_radar` is the local client's `CreateRadarEvent @ 0x0065FA70`. Each
-/// arm below ports a native caller that tests the local player before that
-/// call, so it applies the same test first and then calls `admit_radar` at
-/// most once, in producer order; the result is the rate limit on the arm's EVA
-/// line. That ordering belongs to those callers, not to radar events: a caller
-/// with no such test must admit unconditionally.
+/// `admit_radar` is the local client's `CreateRadarEvent @ 0x0065FA70`. Caller
+/// admission can already belong to the producer: `StructureAbandoned` carries
+/// the simulation's `House50B6F0` admission. Legacy arms still compare the local
+/// owner's name before calling `admit_radar`. Each reached request calls it at
+/// most once, in producer order; its result gates the caller's EVA line. That
+/// ordering belongs to the caller, not to radar events.
 ///
-/// RESIDUAL: the owner tests here compare against the local owner's name.
-/// Native `0x0050B6F0` passes any `PlayerControl` house in campaign
-/// (`GameMode == 0`), which can differ from the local owner. Trigger: a
-/// campaign with a second player-controlled house; effect: its radar events
-/// and EVA lines are dropped. Campaign play is not supported yet.
+/// RESIDUAL: the remaining legacy owner tests compare the local owner's name.
+/// Native `0x0050B6F0` accepts either the human or `PlayerControl` flag in
+/// campaign (`GameMode == 0`). Trigger: a campaign human/player-controlled
+/// house whose name differs from the local owner; effect: those legacy arms
+/// drop its radar events and EVA lines. Campaign play is not supported yet.
 pub(super) fn dispatch_sim_sound_events(
     events: impl IntoIterator<Item = SimSoundEvent>,
     sim: &Simulation,
@@ -421,8 +421,10 @@ pub(super) fn dispatch_sim_sound_events(
                     type_override: None,
                 }
             }
-            SimSoundEvent::StructureAbandoned { owner } => {
-                if !owner_is_local(&sim.interner, owner, local_owner_name) {
+            SimSoundEvent::StructureAbandoned { radar, .. } => {
+                //458200's producer already ran House50B6F0. Native gates
+                //EVA on successful radar admission, before refreshing art.
+                if !admit_radar(radar) {
                     continue;
                 }
                 GameSoundEvent::Eva {
@@ -1142,6 +1144,125 @@ mod tests {
         fn roll_percent(&mut self) -> i32 {
             self.calls.push("percent");
             self.rolls.pop_front().expect("scripted percentage draw")
+        }
+    }
+
+    /// Original458200 calls global Voc before radar15 and speaks only when
+    /// that radar request accepts. Simulation already admitted House50B6F0;
+    /// a campaign human need not be the local-owner name used by other arms.
+    #[test]
+    fn building_abandoned_dispatch_matches_native_sound_radar_and_eva_order() {
+        use crate::sim::radar::{RadarEventRequest, RadarEventType};
+        use std::cell::RefCell;
+
+        let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/garrison_oracle/allegiance.json",
+        ))
+        .unwrap();
+        assert_eq!(fixture["schema_version"], 1);
+        let rules = dispatch_rules();
+        for name in [
+            "empty_player_abandons",
+            "radar_refusal_suppresses_eva",
+            "campaign_human_abandons",
+            "campaign_player_control_abandons",
+        ] {
+            let row = fixture["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["input"]["name"] == name)
+                .unwrap();
+            let input = &row["input"];
+            let calls = row["output"]["calls"].as_array().unwrap();
+            let native_sound = calls
+                .iter()
+                .find(|call| call["op"] == "abandoned_sound")
+                .unwrap();
+            assert_eq!(native_sound["pan"], 0x2000);
+            assert_eq!(native_sound["volume_bits"], "3f800000");
+            assert_eq!(native_sound["handle"], 0);
+            let native_radar = calls
+                .iter()
+                .find(|call| call["op"] == "radar_event")
+                .unwrap();
+            let request = RadarEventRequest::new(
+                RadarEventType::StructureAbandoned,
+                native_radar["cell"][0].as_u64().unwrap() as u16,
+                native_radar["cell"][1].as_u64().unwrap() as u16,
+            );
+            assert_eq!(
+                request.event_type as u8,
+                native_radar["event"].as_u64().unwrap() as u8
+            );
+            let mut sim = Simulation::new();
+            sim.session.game_mode_nonzero = input["game_mode"].as_u64().unwrap() != 0;
+            let houses = input["houses"].as_array().unwrap();
+            let owner_name = houses[input["current_owner"].as_u64().unwrap() as usize]["name"]
+                .as_str()
+                .unwrap();
+            let local_name = houses[input["local_house"].as_u64().unwrap() as usize]["name"]
+                .as_str()
+                .unwrap();
+            let owner = sim.interner.intern(owner_name);
+            let sound_name = format!("NativeSound{}", native_sound["sound"].as_i64().unwrap());
+            let events = [
+                SimSoundEvent::VocCentered {
+                    sound_id: sound_name.clone(),
+                },
+                SimSoundEvent::StructureAbandoned {
+                    owner,
+                    radar: request,
+                },
+            ];
+            let observed = RefCell::new(Vec::new());
+            let mut gate = |actual| {
+                assert_eq!(actual, request, "{name}");
+                observed.borrow_mut().push("radar_event");
+                native_radar["accepted"].as_bool().unwrap()
+            };
+            let mut random = ScriptedRandom::default();
+            let mut output = SoundEventQueue::new();
+            // Observe each prepared producer event at the existing dispatcher
+            // boundary, preserving one ledger across the sound and radar calls.
+            // The producer's choice/order is replayed separately in sim tests.
+            for event in events {
+                dispatch_sim_sound_events(
+                    [event],
+                    &sim,
+                    &rules,
+                    Some(local_name),
+                    Some(&mut random),
+                    &mut gate,
+                    &mut output,
+                );
+                for emitted in output.drain() {
+                    match emitted {
+                        GameSoundEvent::VocAt {
+                            sound_id,
+                            source: None,
+                        } => {
+                            assert_eq!(sound_id, sound_name, "{name}");
+                            observed.borrow_mut().push("abandoned_sound");
+                        }
+                        GameSoundEvent::Eva {
+                            event,
+                            type_override: None,
+                        } => {
+                            assert_eq!(event, "EVA_StructureAbandoned", "{name}");
+                            observed.borrow_mut().push("abandoned_eva");
+                        }
+                        unexpected => panic!("{name}: unexpected event {unexpected:?}"),
+                    }
+                }
+            }
+            let expected = calls
+                .iter()
+                .map(|call| call["op"].as_str().unwrap())
+                .filter(|op| matches!(*op, "abandoned_sound" | "radar_event" | "abandoned_eva"))
+                .collect::<Vec<_>>();
+            assert_eq!(*observed.borrow(), expected, "{name}");
+            assert!(random.calls.is_empty(), "{name}: no notification RNG");
         }
     }
 

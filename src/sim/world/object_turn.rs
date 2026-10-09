@@ -48,6 +48,13 @@ pub(super) struct LiveObjectPassOutcome {
     pub destroyed_structure: bool,
     pub bridge_state_changed: bool,
     pub tube_turn_owned_ids: BTreeSet<u64>,
+    ownership_changed: bool,
+}
+
+impl LiveObjectPassOutcome {
+    pub(super) fn ownership_changed(&self) -> bool {
+        self.ownership_changed
+    }
 }
 
 #[derive(Default)]
@@ -72,6 +79,7 @@ pub(super) struct ObjectTurnOutcome {
     destroyed_structure: bool,
     bridge_state_changed: bool,
     tube_owned: bool,
+    ownership_changed: bool,
 }
 
 /// What one object's locomotor Process did this turn.
@@ -761,6 +769,7 @@ impl Simulation {
             outcome.movement.merge(turn.movement);
             outcome.destroyed_structure |= turn.destroyed_structure;
             outcome.bridge_state_changed |= turn.bridge_state_changed;
+            outcome.ownership_changed |= turn.ownership_changed;
             if turn.tube_owned {
                 outcome.tube_turn_owned_ids.insert(stable_id);
             }
@@ -797,6 +806,7 @@ impl Simulation {
             .is_some_and(|entity| entity.category == EntityCategory::Structure);
         let ai = sim.object_ai_visit_one_with_effects(stable_id, rules, object_ctx);
         outcome.bridge_state_changed |= ai.bridge_state_changed;
+        outcome.ownership_changed |= ai.ownership_changed();
         if was_structure
             && sim
                 .substrate

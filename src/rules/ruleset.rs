@@ -45,6 +45,10 @@ use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SIM_ONE, SimFixed, sim_from_f32};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
+#[cfg(test)]
+#[path = "building_abandoned_sound_tests.rs"]
+mod building_abandoned_sound_tests;
+
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
 pub struct CountryRules {
@@ -792,6 +796,12 @@ pub struct GeneralRules {
     /// Parsed from [AudioVisual] BuildingGarrisonedSound (typically "BuildingGarrisoned").
     /// None = no sound configured. Resolved at app layer to a sound.ini entry.
     pub building_garrisoned_sound: Option<String>,
+    /// Rules+1C0, [AudioVisual] BuildingAbandonedSound. Constructor6658D4
+    /// stores -1. Reader669C23..669C62 follows BuildingGarrisonedSound and
+    /// precedes BuildingRepairedSound: ReadString128, Voc Find7514D0, retain
+    /// the previous ID for absent/empty/unknown names. Bound by the shared
+    /// sound-reference reader over the processed rules passes.
+    pub building_abandoned_sound: Option<String>,
     /// Global wall/building sale cue from `[AudioVisual] SellSound=`.
     pub sell_sound: Option<String>,
     /// Base-alert siren from `[AudioVisual] BaseUnderAttackSound=` (stock
@@ -1919,6 +1929,7 @@ impl Default for GeneralRules {
             dead_bodies: Vec::new(),
             guard_area_targeting_delay: 36,
             building_garrisoned_sound: None,
+            building_abandoned_sound: None,
             sell_sound: None,
             base_under_attack_sound: None,
             building_die_sound: None,
@@ -2792,6 +2803,7 @@ impl GeneralRules {
             building_garrisoned_sound: audio_visual
                 .read_name("BuildingGarrisonedSound", 0x80)
                 .map(str::to_owned),
+            building_abandoned_sound: None,
             sell_sound: audio_visual.read_name("SellSound", 0x80).map(str::to_owned),
             base_under_attack_sound: audio_visual
                 .read_name("BaseUnderAttackSound", 0x80)
@@ -3543,6 +3555,9 @@ impl RuleSet {
         self.general.construction_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "Construction"));
+        self.general.building_abandoned_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "BuildingAbandonedSound"));
         self.general.building_repaired_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "BuildingRepairedSound"));

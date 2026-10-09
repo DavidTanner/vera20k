@@ -977,9 +977,6 @@ pub(crate) fn sell_building_occupants(
         let Some(cargo) = entity.passenger_role.cargo() else {
             return 0;
         };
-        if cargo.is_empty() {
-            return 0;
-        }
         let Some(obj) = sim.object_type(entity.type_ref(), rules) else {
             return 0;
         };
@@ -997,6 +994,20 @@ pub(crate) fn sell_building_occupants(
             cargo.passengers.clone(),
         )
     };
+
+    // SellBuilding457DEB clears CurrentFireIdx before testing Occupants.Count,
+    // including CheckAutoSellOrCivilian's red-health call on an empty building.
+    if let Some(cargo) = sim
+        .substrate
+        .entities
+        .get_mut(building_id)
+        .and_then(|building| building.passenger_role.cargo_mut())
+    {
+        cargo.garrison_fire_index = 0;
+    }
+    if passenger_ids.is_empty() {
+        return 0;
+    }
 
     let ejected = eject_garrison_passengers_at_edges(
         sim,

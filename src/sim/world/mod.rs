@@ -691,12 +691,13 @@ pub enum SimSoundEvent {
     /// ownership transfer is reported separately from building reconciliation.
     /// App layer plays EVA_StructureGarrisoned if owner is local human.
     StructureGarrisoned { owner: InternedId },
-    /// Last occupant left a garrisoned building (cargo 1→0).
-    /// Owner is the **pre-revert** owner — the player whose garrison
-    /// just emptied. Matches gamemd's CheckAutoSellOrCivilian which
-    /// fires EVA before ChangeOwner. App layer plays EVA_StructureAbandoned
-    /// if owner is local human.
-    StructureAbandoned { owner: InternedId },
+    /// CheckAutoSellOrCivilian458200 abandoned an empty map garrison.
+    /// House50B6F0 already admitted the old owner. The sound precedes radar
+    /// admission; EVA plays only when CreateRadarEvent accepts the request.
+    StructureAbandoned {
+        owner: InternedId,
+        radar: crate::sim::radar::RadarEventRequest,
+    },
     /// First-occupant SFX from rulesmd [AudioVisual] BuildingGarrisonedSound.
     /// Positional cue gated on owner == local human.
     BuildingGarrisonedSfx { owner: InternedId, rx: u16, ry: u16 },
@@ -6353,7 +6354,6 @@ impl Simulation {
         // tick raw-store consumers (vision, power, production, movement, miner,
         // aircraft, …) are dying-gated, so a corpse is excluded until that drain.
         let mut bridge_state_changed = false;
-        let mut passenger_ownership_changed = false;
 
         if lane == TickLane::Ordinary {
             executed_commands += self.apply_due_frame_ingress_commands(commands, execute_tick);
@@ -6429,6 +6429,7 @@ impl Simulation {
         // Receipts are frame-local: an aborted earlier frame must not leak one.
         self.fire_requests = Default::default();
         let object_pass = self.advance_live_object_pass(rules, overlay_registry)?;
+        let ownership_changed = object_pass.ownership_changed();
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         let movement_stats = object_pass.movement;
         destroyed_structure |= object_pass.destroyed_structure;
@@ -6558,8 +6559,7 @@ impl Simulation {
             // --- Phase 6: Passengers ---
             // Retaliation is not a phase: every receiver issues its Mission
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
-            passenger_ownership_changed =
-                passenger::tick_passenger_system(self, rules, overlay_registry);
+            passenger::tick_passenger_system(self, rules, overlay_registry);
             self.tick_order_intents_post_combat_except(
                 Some(rules),
                 &tube_turn_owned_ids,
@@ -6699,7 +6699,7 @@ impl Simulation {
                 terminal_score_finalized,
                 spawned_entities,
                 destroyed_structure,
-                ownership_changed: passenger_ownership_changed,
+                ownership_changed,
                 bridge_state_changed,
                 movement: movement_stats,
             },

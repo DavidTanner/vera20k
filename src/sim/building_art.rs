@@ -15,6 +15,9 @@ mod admission;
 #[cfg(test)]
 #[path = "building_art_expiry_tests.rs"]
 mod expiry_tests;
+#[cfg(test)]
+#[path = "building_art_garrison_tests.rs"]
+mod garrison_tests;
 #[path = "building_art_power.rs"]
 mod power;
 #[path = "building_art_storage.rs"]
@@ -204,6 +207,34 @@ impl Simulation {
             rules.general.condition_yellow,
         );
         self.set_building_damage_state(id, damaged, rules);
+    }
+
+    /// Original458330, called by the garrison allegiance transition. Visit
+    /// only live slots, in native order, and sample HP and occupant count
+    /// again after each replacement:451890 can replace other slots too.
+    /// Selection/caller evidence: tools/garrison_oracle/allegiance.py.
+    pub(crate) fn refresh_garrison_anims(&mut self, id: u64, rules: &RuleSet) {
+        for slot in [18, 3, 4, 5, 6] {
+            let Some(entity) = self.substrate.entities.get(id) else {
+                return;
+            };
+            if entity.building_anim_slots[slot].is_none() {
+                continue;
+            }
+            let Some(object) = self.object_type(entity.type_ref(), rules) else {
+                return;
+            };
+            let damaged = requested_damage_state(
+                entity.health,
+                object.strength,
+                rules.general.condition_yellow,
+            );
+            let garrisoned = entity
+                .passenger_role
+                .cargo()
+                .is_some_and(|cargo| !cargo.is_empty());
+            self.set_building_anim_slot(id, slot as u8, damaged, garrisoned, 0, rules);
+        }
     }
 
     /// Original451750. Empty selected names leave before451890 and therefore
