@@ -2134,7 +2134,7 @@ fn infantry_crosses_hills_high_bridge_at_deck_height() {
 // `AttackMove` arm and the `Move` arm hand `movement::issue_move_command_with_layered`
 // the *same* fourteen arguments, so the path build is not a separate code path
 // and the A* goal is resolved identically. What differs is the order machinery
-// wrapped round it — `queue_megamission_with_teardown(MissionType::AttackMove)`,
+// wrapped round it — `queue_megamission(MissionType::AttackMove)`,
 // the `attack_target` / `passively_acquired_target` clear, and the
 // `OrderIntent::AttackMove` stamp, which arms a per-tick resume in
 // `tick_order_intents_post_combat_except` (`world_orders.rs`)

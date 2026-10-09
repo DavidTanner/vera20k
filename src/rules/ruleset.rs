@@ -1341,9 +1341,11 @@ pub struct GeneralRules {
     pub repair_percent: f64,
 
     // -- Aircraft ammo reload --
-    /// Ticks to reload one ammo point at an airfield (from ReloadRate= minutes in [General]).
-    /// Default: 270 ticks (0.3 min × 60 sec × 15 ticks/sec).
-    pub reload_rate_ticks: u32,
+    /// `[General] ReloadRate=` — `RulesClass+0x1508`, ReadDouble (call
+    /// `0x00670C8E`) over the constructor's .05 (`0x0066738F`), in minutes.
+    /// A dock's Mission_Repair returns `ftol(ReloadRate * 900)` after a visit
+    /// that serviced a contact (`0x0044C92F`).
+    pub reload_rate: f64,
 
     // -- Movement delay timers --
     /// Retained [AI] PathDelay double, in minutes (Rules+1760).
@@ -1607,17 +1609,8 @@ pub(crate) fn damage_spark_spawn_threshold(band: f64) -> u32 {
     threshold.min(DAMAGE_SPARK_ROLL_COUNT as u128) as u32
 }
 
-/// `[General] URepairRate=` and `ReloadRate=` defaults, in minutes.
+/// `[General] URepairRate=` default, in minutes.
 const U_REPAIR_RATE_MINUTES: f64 = 0.016;
-const RELOAD_RATE_MINUTES: f64 = 0.3;
-
-/// A `[General]` minutes value as whole logic ticks (at least one), rounded
-/// from `f32` minutes.
-fn minutes_to_ticks(minutes: f64) -> u32 {
-    ((minutes as f32) * 60.0 * (crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND as f32))
-        .round()
-        .max(1.0) as u32
-}
 
 /// One side's paradrop lists as `RulesClass::ReadGeneral` keeps them
 /// (`0x0067062F..0x006707C1`), each emptied by the constructor
@@ -2030,8 +2023,8 @@ impl Default for GeneralRules {
             unit_repair_rate: U_REPAIR_RATE_MINUTES,
             repair_step: 5,
             repair_percent: 0.25,
-            // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
-            reload_rate_ticks: minutes_to_ticks(RELOAD_RATE_MINUTES),
+            // RulesClass constructor 0x0066738F.
+            reload_rate: 0.05,
             // PathDelay=.01 min = 0.6 sec = 9 ticks at 15 Hz.
             path_delay: 0.016,
             // BlockagePathDelay=60 frames (directly in frames, not minutes).
@@ -3004,9 +2997,7 @@ impl GeneralRules {
             repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
             repair_step: general.read_int("RepairStep", defaults.repair_step),
             unit_repair_rate: general.read_double("URepairRate", defaults.unit_repair_rate),
-            reload_rate_ticks: minutes_to_ticks(
-                general.read_double("ReloadRate", RELOAD_RATE_MINUTES),
-            ),
+            reload_rate: general.read_double("ReloadRate", defaults.reload_rate),
             path_delay,
             blockage_path_delay_ticks,
             // ReadGeneral670235..670267 uses the same475D70 signed vector

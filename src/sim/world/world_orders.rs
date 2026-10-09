@@ -1142,9 +1142,8 @@ impl Simulation {
     ///
     /// Skips entities that can't or shouldn't pursue:
     /// - Structures (can't move)
-    /// - Aircraft (own state machine in `attack_mission.rs`), and a paradrop
-    ///   or Spy Plane, whose native missions steer it and hold its target cell
-    ///   ([`crate::sim::aircraft::native_missions_steer`])
+    /// - Aircraft, whose native mission handlers steer them
+    ///   ([`crate::sim::aircraft::dispatch_mission`])
     /// - Deployed-fire infantry (locked while deployed)
     /// - Entities inside transports
     /// - Dying entities, and Health-0 wrecks, which run no mission
@@ -1238,9 +1237,7 @@ impl Simulation {
             if entity.category == EntityCategory::Structure {
                 continue;
             }
-            if entity.aircraft_mission.is_some()
-                || crate::sim::aircraft::native_missions_steer(entity)
-            {
+            if entity.category == EntityCategory::Aircraft {
                 continue;
             }
             if entity.is_deployed() {

@@ -7,7 +7,7 @@
 use super::Simulation;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, IdleEntry, attack_mission, enter_idle_mode_for};
+use crate::sim::aircraft::{attack_mission, enter_idle_mode_for};
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::{combat_weapon, fire_coord};
 use crate::sim::components::NavTargetRef;
@@ -18,7 +18,8 @@ use crate::sim::world::edge_cell::Edge;
 impl Simulation {
     ///418006..418030: raw Target presence chooses1/10, preserving pending ammo.
     /// The caller already cleared readiness. Search belongs to the next visit.
-    pub(crate) fn aircraft_begin_attack(&mut self, id: u64) -> AircraftMission {
+    /// Each visit returns Mission+0xBC and the frames it returns.
+    pub(crate) fn aircraft_begin_attack(&mut self, id: u64) -> (u8, i32) {
         let present = attack_mission::aircraft_target_present(
             self.substrate
                 .entities
@@ -28,14 +29,14 @@ impl Simulation {
                 .as_ref(),
             &self.substrate.entities,
         );
-        self.aircraft_attack_visit(id, if present { 1 } else { 10 }, 1)
+        (if present { 1 } else { 10 }, 1)
     }
 
     ///418031..41809C, after enter_attack_state consumes pending ammo/clears
     /// readiness. A refused void destination setter can retain the OLD NavCom;
     /// neither FindFireLocation's result nor Fly MoveTo's adapter bool decides
     /// whether state3 is entered. Executable corpus: aircraft_reengagement.*.
-    pub(crate) fn aircraft_reengage(&mut self, id: u64, rules: &RuleSet) -> AircraftMission {
+    pub(crate) fn aircraft_reengage(&mut self, id: u64, rules: &RuleSet) -> (u8, i32) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let target = entity
             .attack_target
@@ -66,16 +67,17 @@ impl Simulation {
         };
         //418D1D: the Attack dispatch reads MissionControl Rate, then draws even
         // when there was no target/ammo or when the destination was refused.
-        let delay = self.mission_rate_epilogue(rules, MissionType::Attack);
-        self.aircraft_attack_visit(id, state, delay)
+        (
+            state,
+            self.mission_rate_epilogue(rules, MissionType::Attack),
+        )
     }
 
     ///4180A1..4182A2 after the shared entry prefix. Strafe classification wins
     /// over Fighter. Other aircraft approach their retained firing position,
     /// not a freshly substituted target cell. Corpus: aircraft_approach.*.
-    pub(crate) fn aircraft_approach(&mut self, id: u64, rules: &RuleSet) -> AircraftMission {
-        let state = self.advance_aircraft_approach(id, rules);
-        self.aircraft_attack_visit(id, state, 1)
+    pub(crate) fn aircraft_approach(&mut self, id: u64, rules: &RuleSet) -> (u8, i32) {
+        (self.advance_aircraft_approach(id, rules), 1)
     }
 
     fn advance_aircraft_approach(&mut self, id: u64, rules: &RuleSet) -> u8 {
@@ -183,45 +185,24 @@ impl Simulation {
         }
     }
 
-    /// `AircraftMission::Attack` is the sole owner of Mission+BC for aircraft;
-    /// MissionState::handler_state is not mirrored for this class. Writes the
-    /// visit's mission delay and returns the mission holding its state.
-    pub(crate) fn aircraft_attack_visit(
-        &mut self,
-        id: u64,
-        state: u8,
-        delay: i32,
-    ) -> AircraftMission {
-        let entity = self.substrate.entities.get_mut(id).unwrap();
-        entity
-            .mission
-            .write_dispatch_epilogue(self.session.binary_frame as i32, delay);
-        AircraftMission::Attack { sub_state: state }
-    }
-
     /// [`attack_mission::strike_leaves`], taken here because VERA's combat
-    /// phase visits only an object that holds a target. `Some` asks the
-    /// combat phase for the visit; `None` leaves for state 10.
-    pub(crate) fn aircraft_strike_target(&self, id: u64, state: u8) -> Option<TargetKind> {
+    /// phase visits only an object that holds a target: whether the combat
+    /// phase runs the strike visit, else the aircraft leaves for state 10.
+    pub(crate) fn aircraft_strikes(&self, id: u64, state: u8) -> bool {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let attack = entity.attack_target.as_ref();
         let target = attack_mission::aircraft_target_present(attack, &self.substrate.entities);
         let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
-        if attack_mission::strike_leaves(state, target, ammo) {
-            return None;
-        }
-        attack.map(|attack| attack.target)
+        attack.is_some() && !attack_mission::strike_leaves(state, target, ammo)
     }
 
-    /// State 10 (`0x00418BEC`) after the entry prefix. Returns the mission
-    /// holding the visit's state and the `Enter_Idle_Mode(0, 1)` (`vt+0x484`)
-    /// it made.
+    /// State 10 (`0x00418BEC`) after the entry prefix.
     pub(crate) fn aircraft_exit(
         &mut self,
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
-    ) -> (AircraftMission, IdleEntry) {
+    ) -> (u8, i32) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let facts = attack_mission::ExitFacts {
             ammo: entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current),
@@ -236,25 +217,22 @@ impl Simulation {
                 .as_aircraft()
                 .is_some_and(|leaf| leaf.airstrike_manager_present()),
         };
-        let mut host = WorldExit {
-            sim: self,
-            id,
-            rules,
-            registry,
-            idle: IdleEntry::NotCalled,
-        };
-        let visit = attack_mission::exit_visit(&facts, &mut host);
-        let idle = host.idle;
+        let visit = attack_mission::exit_visit(
+            &facts,
+            &mut WorldExit {
+                sim: self,
+                id,
+                rules,
+                registry,
+            },
+        );
         if let Some(latch) = visit.latch
             && let Some(entity) = self.substrate.entities.get_mut(id)
             && entity.mission_leaf.as_aircraft().is_some()
         {
             entity.mission_leaf.set_aircraft_action_latch(latch);
         }
-        (
-            self.aircraft_attack_visit(id, visit.state, visit.delay),
-            idle,
-        )
+        (visit.state, visit.delay)
     }
 }
 
@@ -264,7 +242,6 @@ struct WorldExit<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
-    idle: IdleEntry,
 }
 
 impl attack_mission::ExitHost for WorldExit<'_> {
@@ -296,6 +273,6 @@ impl attack_mission::ExitHost for WorldExit<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
+        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
     }
 }

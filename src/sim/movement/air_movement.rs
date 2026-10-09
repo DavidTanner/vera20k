@@ -9,7 +9,7 @@
 
 use crate::map::entities::EntityCategory;
 use crate::sim::components::DriveCoord;
-use crate::sim::movement::locomotor::{AirMovePhase, LocomotorState};
+use crate::sim::movement::locomotor::LocomotorState;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 
 /// Fly interface+84 /4CFE20 reads TYPE Speed, not Foot's adjusted speed.
@@ -258,23 +258,20 @@ pub(crate) fn fly_moving(entity: &crate::sim::game_entity::GameEntity) -> bool {
         .is_some_and(super::fly_height::FlyRuntime::moving)
 }
 
-/// Horizontal_Step's landing distance and speed (`0x004CF4F1`,
-/// `0x004CF50E`): within 0x80 leptons (XY) of the retained destination with
-/// the current speed under 0.05. VERA's airfield docking states read it.
-pub(crate) fn fly_landing_arrival(entity: &crate::sim::game_entity::GameEntity) -> bool {
-    let Some(loco) = entity.locomotor.as_ref() else {
-        return false;
-    };
-    let Some(state) = loco.fly_runtime() else {
-        return false;
-    };
-    let destination = state.destination();
-    let xy = super::ground_pose::position_world_xy(&entity.position);
-    crate::sim::cell_kernel::native_xy_distance(
-        destination.x.wrapping_sub(xy[0]),
-        destination.y.wrapping_sub(xy[1]),
-    ) < 0x80
-        && state.current_speed < MIN_CREEP_SPEED
+/// `FlyLocomotionClass::Get_Status @ 0x004CFE50` (ILocomotion `+0x90`): 1
+/// while descending, 0 while ascending, else 2 moving (`Is_Moving`) or 3.
+/// `None` without a Fly locomotor.
+pub(crate) fn fly_status(entity: &crate::sim::game_entity::GameEntity) -> Option<i32> {
+    let state = entity.locomotor.as_ref()?.fly_runtime()?;
+    Some(if state.landing() {
+        1
+    } else if state.taking_off() {
+        0
+    } else if super::motion_query::is_moving(entity) == Some(true) {
+        2
+    } else {
+        3
+    })
 }
 
 /// What an air Process visit reports to the object turn.
@@ -426,16 +423,6 @@ fn missile_flight_override(
     None
 }
 
-/// Derived compatibility view for aircraft missions; the integer physical
-/// height avoids a false never-cruising state above the altitude cache's range.
-pub(crate) fn fly_mission_phase(
-    entity: &crate::sim::game_entity::GameEntity,
-    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
-) -> Option<AirMovePhase> {
-    let state = entity.locomotor.as_ref()?.fly_runtime()?;
-    Some(state.mission_phase(current_fly_height(entity, terrain)))
-}
-
 /// The type's FlightLevel (type vt+0xBC): its `FlightLevel=`, else
 /// `[General] FlightLevel=`. A world without rules has no type to ask; its
 /// Fly flies at 500 (headless fixtures).
@@ -510,6 +497,7 @@ mod tests {
     use super::*;
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
+    use crate::sim::movement::locomotor::AirMovePhase;
     use crate::util::fixed_math::SIM_HALF;
 
     #[test]

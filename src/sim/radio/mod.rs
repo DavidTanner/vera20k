@@ -338,8 +338,9 @@ pub enum RadioMessage {
     CanDock = 0x0E,
     CanEnter = 0x0F,
     IsUnitLinked = 0x11, // name inferred
-    /// MOVE_HERE: the payload cell is where the receiver should be; a Foot
-    /// already in it answers [`RadioResponse::AlreadyThere`] (`0x004D9139`).
+    /// MOVE_HERE: the payload target (a cell, or the dock itself) is where
+    /// the receiver should be; a Foot already in its cell answers
+    /// [`RadioResponse::AlreadyThere`] (`0x004D9139`).
     MoveToCell = 0x12,
     /// "Do you need to move?": a Foot answers ROGER with no NavCom or a
     /// stopped locomotor, else NEGATORY (`0x004D90E8`).
@@ -361,9 +362,15 @@ pub enum RadioMessage {
     SecondaryLockSet = 0x1A, // name inferred
     SecondaryLockClear = 0x1B, // name inferred
     RepairTick = 0x1C,
-    HelipadReserveAck = 0x1D, // name inferred
-    DeploySetNav = 0x1E,      // name inferred
-    LinkPassenger = 0x1F,
+    /// A reload dock's "are you ready to go?" (Building Mission_Repair
+    /// `0x0044C873`): an aircraft answers ROGER with no Target and its Ammo
+    /// full (`0x00419153`).
+    QueryReloaded = 0x1D, // name inferred
+    DeploySetNav = 0x1E, // name inferred
+    /// A reload dock's one-round reload (`0x0044C8DF`): a Techno at its
+    /// type's `Ammo=` answers NEGATORY, else takes one round and answers
+    /// ROGER (`0x006F4C9C`).
+    Reload = 0x1F, // name inferred
     IsRepairing = 0x22,
     IsOccupied = 0x23,
 }
@@ -400,12 +407,12 @@ impl RadioResponse {
     }
 }
 
-/// Optional data carried alongside a radio message (e.g. the CAN_DOCK accepted
-/// cell or the MOVE_TO_CELL goal).
+/// Optional data carried alongside a radio message (e.g. the MOVE_HERE goal).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RadioPayload {
-    /// Target cell `(x, y)`, when the message carries one.
-    pub cell: Option<(u16, u16)>,
+    /// The `AbstractClass*` the message's parameter points at, when it carries
+    /// one: a refinery's pad cell or a helipad itself for MOVE_HERE.
+    pub target: Option<crate::sim::components::NavTargetRef>,
     /// The bounded Find_Docking_Bay wide scan's native A8E7AC context.
     /// Only CAN_LOAD consumes it; it is a query argument, never saved state.
     ignore_dock_capacity: bool,
@@ -446,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_defaults_to_no_cell() {
-        assert_eq!(RadioPayload::default().cell, None);
+    fn payload_defaults_to_no_target() {
+        assert_eq!(RadioPayload::default().target, None);
     }
 }

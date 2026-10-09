@@ -3951,8 +3951,8 @@ pub(super) fn emit_admitted_fire(
             .substrate
             .entities
             .get(snap.stable_id)
-            .and_then(|entity| entity.aircraft_mission.as_ref())
-            .is_some_and(|mission| mission.is_attacking())
+            .and_then(crate::sim::aircraft::attack_state)
+            .is_some()
     {
         out.ammo_deduct.push(snap.stable_id);
     }
@@ -4690,16 +4690,16 @@ pub(crate) fn tick_combat(
         if entity.category == EntityCategory::Infantry || !attacker_reaches_fire(entity) {
             continue;
         }
-        // Skip snapshot for entities blocked by locomotor state.
-        // An aircraft's Mission_Attack visit runs whenever its dispatch asked
-        // for it; the visit opens with its own prefix.
+        // An aircraft fires only in the Mission_Attack strike visit its
+        // dispatch asked for (FireAt in states 4..9, `0x0041832E`), which
+        // opens with its own prefix: AircraftClass::AI has no fire slot of
+        // its own, and its other missions fire nothing.
         let requested = fire_requests.aircraft.contains(&id);
-        let blocked = !requested
-            && (fire_blocked.contains(&id)
-                || entity
-                    .aircraft_mission
-                    .as_ref()
-                    .is_some_and(|mission| mission.is_attacking()));
+        if entity.category == EntityCategory::Aircraft && !requested {
+            continue;
+        }
+        // Skip snapshot for entities blocked by locomotor state.
+        let blocked = !requested && fire_blocked.contains(&id);
         // A building shoots only the FireAt its own visit asked for this
         // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
         // (`techno_ai::building_missions`).

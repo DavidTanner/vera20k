@@ -204,8 +204,6 @@ pub struct ProductionState {
     /// This has a different gate from `terrain_animations`: a non-animated
     /// spawner rejects new ore, while an animated non-spawner still draws RNG.
     pub tiberium_spawning_terrain_cells: BTreeSet<(u16, u16)>,
-    /// Airfield dock reservations — multi-slot (NumberOfDocks per airfield).
-    pub airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks,
     /// Per-(house, category) factory registry — the authoritative production state
     /// machine AND (as of P5d) the queue-of-record: the active build is the `Factory` head
     /// fields, the FIFO tail is `Factory.queue` of `QueueEntry`. Mutated directly by
@@ -256,6 +254,13 @@ impl ProductionState {
         self.active_producer_by_owner
             .retain(|_, categories| !categories.is_empty());
     }
+    /// The building's own primary byte (`TechnoClass+0x3D3`): it is its
+    /// house's primary factory of some category.
+    pub(crate) fn is_primary_factory(&self, id: u64) -> bool {
+        self.active_producer_by_owner
+            .values()
+            .any(|categories| categories.values().any(|&primary| primary == id))
+    }
     pub(crate) fn retain_primary_factory_links(&mut self, live: &std::collections::BTreeSet<u64>) {
         for categories in self.active_producer_by_owner.values_mut() {
             categories.retain(|_, id| live.contains(id));
@@ -290,7 +295,6 @@ impl Default for ProductionState {
             terrain_objects: BTreeMap::new(),
             terrain_object_cells: BTreeMap::new(),
             tiberium_spawning_terrain_cells: BTreeSet::new(),
-            airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks::default(),
             factories: FactoryRegistry::default(),
         }
     }

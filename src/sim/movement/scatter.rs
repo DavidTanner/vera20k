@@ -6,12 +6,9 @@
 //! - Unit `0x00743A50`: [`Simulation::unit_scatter_null`].
 //! - Infantry `0x0051D0D0`: `infantry_scatter`.
 //! - Aircraft `0x0041A590`: when the current mission's MissionControl
-//!   `Scatter=` is set, `Enter_Idle_Mode(0, 1)` (`0x004176F0`); it reads
-//!   neither the coordinate nor the flags. RESIDUAL: not dispatched, so the
-//!   idle mode (`aircraft::enter_idle_mode_now`) is not entered here.
-//!   Trigger: a landed aircraft asked to scatter. Effect: it keeps its
-//!   mission instead of re-entering idle mode. Frequency: rare, since a
-//!   landed aircraft is seldom in a blocked cell.
+//!   `Scatter=` (`+0x9`) is set, `Enter_Idle_Mode(0, 1)` (`0x004176F0`,
+//!   `aircraft::enter_idle_mode_for`); it reads neither the coordinate nor
+//!   the flags.
 //! - Every other class inherits ObjectClass `0x005F43A0` (`RET 0xC`).
 //!
 //! A null coordinate is the all-zero CoordStruct each caller passes
@@ -278,6 +275,12 @@ impl Simulation {
                 Ok(false)
             }
             EntityCategory::Infantry => self.infantry_scatter_null(id, flags, rules, registry),
+            EntityCategory::Aircraft => {
+                if mission_permits_scatter(entity, rules) {
+                    crate::sim::aircraft::enter_idle_mode_for(self, id, rules, registry);
+                }
+                Ok(false)
+            }
             _ => Ok(false),
         }
     }

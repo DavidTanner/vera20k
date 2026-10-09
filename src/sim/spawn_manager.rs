@@ -1201,23 +1201,6 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             self.sim.session.binary_frame,
             &crate::sim::mission::authority::EntityReadyInputProvider,
         );
-        let Some(child) = self.sim.substrate.entities.get_mut(child) else {
-            return;
-        };
-        match mission {
-            MissionType::Move => crate::sim::aircraft::queue_move_state(child),
-            // `AircraftClass::AI` pays a pending release (`0x0041505E`)
-            // whenever the current mission is not Attack, so the queue goes
-            // through the mission owner and VERA's state follows it.
-            MissionType::Attack => {
-                if let Some(state) = child.aircraft_mission.as_mut()
-                    && !state.is_attacking()
-                {
-                    *state = crate::sim::aircraft::AircraftMission::Attack { sub_state: 0 };
-                }
-            }
-            _ => {}
-        }
     }
 
     fn assign_target(&mut self, child: u64, target: Option<TargetKind>) {

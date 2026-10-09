@@ -47,14 +47,6 @@ pub(crate) fn fire_blocked(entity: &crate::sim::game_entity::GameEntity) -> bool
         return true;
     }
 
-    // Attack dispatch is admitted by a call-local mission receipt in the
-    // combat host. Docked aircraft cannot fire.
-    if let Some(ref mission) = entity.aircraft_mission
-        && mission.is_docked_idle()
-    {
-        return true;
-    }
-
     // A building still playing its build-up runs its Construction
     // mission, not Mission_Attack.
     if entity.building_up() {

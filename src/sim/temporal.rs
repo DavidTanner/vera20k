@@ -848,7 +848,7 @@ impl Simulation {
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
-            crate::sim::world::queue_foot_enter_idle_mode(self, attacker, rules);
+            crate::sim::world::enter_idle_mode(self, attacker, rules, None);
         }
     }
 

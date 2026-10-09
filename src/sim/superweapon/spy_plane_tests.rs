@@ -497,7 +497,7 @@ fn spyplane_missions_match_native() {
         sim.sound_events.clear();
         let now = sim.session.binary_frame;
 
-        crate::sim::aircraft::dispatch_native_mission(&mut sim, id, &rules, None);
+        crate::sim::aircraft::dispatch_mission(&mut sim, id, &rules, Default::default());
 
         let plane = sim.substrate.entities.get(id).unwrap();
         let queued = events(row, "queue")

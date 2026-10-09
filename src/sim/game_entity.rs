@@ -16,7 +16,6 @@
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::map::entities::EntityCategory;
-use crate::sim::aircraft::AircraftMission;
 use crate::sim::animation::Animation;
 use crate::sim::cloak_disguise::{CloakRuntime, DisguiseRuntime};
 use crate::sim::combat::combat_weapon::WeaponSlot;
@@ -922,9 +921,6 @@ pub struct GameEntity {
     /// Present on all Aircraft, including signed negative native Ammo counts.
     /// Non-aircraft entities have no aircraft ammo owner.
     pub aircraft_ammo: Option<AircraftAmmo>,
-    /// Aircraft mission state machine — controls attack runs, guard, RTB, idle.
-    /// Present on aircraft with Fly locomotor. None for non-aircraft and jumpjets.
-    pub aircraft_mission: Option<AircraftMission>,
     /// Infantry sub-cell position (0–4). Only meaningful for infantry.
     pub sub_cell: Option<u8>,
     /// Whether this entity can be crushed by vehicles (Crushable= in rules.ini).
@@ -1723,7 +1719,6 @@ impl GameEntity {
             berserk: BerserkState::default(),
             pending_entry: None,
             aircraft_ammo: None,
-            aircraft_mission: None,
             // Infantry get sub-cell 2 (first distinct position) at spawn so
             // they don't all pile up at cell center when multiple are created.
             sub_cell: if category == EntityCategory::Infantry {

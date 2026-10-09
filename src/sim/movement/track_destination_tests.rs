@@ -41,116 +41,101 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
     assert_eq!(rows.len(), 84);
     for row in rows {
         let input = &row["input"];
-        // AircraftMission owns represented aircraft dispatches. Replay those
-        // too, with an intentionally stale raw current slot, against the same
-        // native current-mission results. Queued Attack still uses MissionCom.
-        for represented_dispatch in [false, true] {
-            if represented_dispatch && input["entry"] != "aircraft" {
-                continue;
-            }
-            let mut sim = crate::sim::world::Simulation::with_seed(1);
-            sim.session.binary_frame = input["frame"].as_u64().unwrap() as u32;
-            let mut rules = crate::rules::ruleset::RuleSet::from_ini(
-                &crate::rules::ini_parser::IniFile::from_str(""),
-            )
-            .unwrap();
-            rules.general.blockage_path_delay_ticks = input["blockage"].as_i64().unwrap() as i32;
-            let mut e = actor(input);
-            let aircraft = input["entry"] == "aircraft";
-            if aircraft {
-                e.category = crate::map::entities::EntityCategory::Aircraft;
-            }
-            let current = input["mission"].as_i64().unwrap() as i32;
-            e.mission.apply_test_fixture(MissionTestFixture {
-                current: MissionId::from_raw(if represented_dispatch { -1 } else { current }),
-                queued: MissionId::from_raw(input["queued"].as_i64().unwrap() as i32),
-                suspended: MissionId::NONE,
-                movement_bypass_latch: 0,
-                handler_state: 0,
-                mission_start_frame: 0,
-                ai_counter: 0,
-                dispatch_timer: MissionDispatchTimer::at_frame(0),
-            });
-            if represented_dispatch {
-                e.aircraft_mission = Some(if current == 1 {
-                    crate::sim::aircraft::AircraftMission::Attack { sub_state: 1 }
-                } else {
-                    crate::sim::aircraft::AircraftMission::Idle
-                });
-            }
-            e.attack_target = (input["target"] == true)
-                .then(|| crate::sim::combat::AttackTarget::for_cell(11, 10));
-            e.navigation.nav_com = (input["nav"] != false).then(|| NavTargetRef::cell(11, 10));
-            e.foot_locomotor_swap_active = input["swap"] == true;
-            if input["bunker"] == true {
-                e.bunker_link = crate::sim::game_entity::BunkerLink::Installed(2);
-            }
-            if input["open_transport"] == true {
-                e.passenger_role = crate::sim::passenger::PassengerRole::Inside {
-                    transport_id: 2,
-                    open_topped: true,
-                };
-            }
-            sim.substrate.entities.insert(e);
-            if aircraft {
-                sim.assign_null_destination(1, Some(&rules), None);
-            } else {
-                sim.foot_null_destination(1, Some(&rules), None);
-            }
-            let e = sim.substrate.entities.get(1).unwrap();
-            let (destination, head) = if input["family"] == "drive" {
-                let runtime = e
-                    .locomotor
-                    .as_ref()
-                    .and_then(|l| l.selected_drive_runtime())
-                    .and_then(|r| r.retained())
-                    .unwrap();
-                (runtime.destination(), runtime.head_to())
-            } else {
-                let runtime = e
-                    .locomotor
-                    .as_ref()
-                    .and_then(|l| l.selected_ship_runtime())
-                    .and_then(|r| r.retained())
-                    .unwrap();
-                (runtime.destination(), runtime.head_to())
-            };
-            assert_eq!(
-                destination.unwrap_or(ZERO),
-                coord(&row["destination"]),
-                "{input}"
-            );
-            assert_eq!(head.unwrap_or(ZERO), coord(&row["head"]), "{input}");
-            let path = &e.navigation.path_runtime;
-            for (key, actual) in [
-                ("nav", json!(e.navigation.nav_com.is_some())),
-                ("aux", json!(e.navigation.nav_com_aux.is_some())),
-                ("path", json!(e.navigation.path_replay.directions)),
-                ("blocked", json!(path.path_blocked)),
-                ("retries", json!(path.retries_left)),
-                (
-                    "movement_timer",
-                    json!([
-                        path.movement_timer.start_frame() as u32,
-                        path.movement_timer.duration()
-                    ]),
-                ),
-                (
-                    "blocked_timer",
-                    json!([
-                        path.blocked_timer.start_frame() as u32,
-                        path.blocked_timer.duration()
-                    ]),
-                ),
-            ] {
-                assert_eq!(actual, row[key], "{key}: {input}");
-            }
-            assert_eq!(
-                json!(sim.scenario_rng.next_u32()),
-                row["next_random"],
-                "{input}"
-            );
+        let mut sim = crate::sim::world::Simulation::with_seed(1);
+        sim.session.binary_frame = input["frame"].as_u64().unwrap() as u32;
+        let mut rules = crate::rules::ruleset::RuleSet::from_ini(
+            &crate::rules::ini_parser::IniFile::from_str(""),
+        )
+        .unwrap();
+        rules.general.blockage_path_delay_ticks = input["blockage"].as_i64().unwrap() as i32;
+        let mut e = actor(input);
+        let aircraft = input["entry"] == "aircraft";
+        if aircraft {
+            e.category = crate::map::entities::EntityCategory::Aircraft;
         }
+        let current = input["mission"].as_i64().unwrap() as i32;
+        e.mission.apply_test_fixture(MissionTestFixture {
+            current: MissionId::from_raw(current),
+            queued: MissionId::from_raw(input["queued"].as_i64().unwrap() as i32),
+            suspended: MissionId::NONE,
+            movement_bypass_latch: 0,
+            handler_state: 0,
+            mission_start_frame: 0,
+            ai_counter: 0,
+            dispatch_timer: MissionDispatchTimer::at_frame(0),
+        });
+        e.attack_target =
+            (input["target"] == true).then(|| crate::sim::combat::AttackTarget::for_cell(11, 10));
+        e.navigation.nav_com = (input["nav"] != false).then(|| NavTargetRef::cell(11, 10));
+        e.foot_locomotor_swap_active = input["swap"] == true;
+        if input["bunker"] == true {
+            e.bunker_link = crate::sim::game_entity::BunkerLink::Installed(2);
+        }
+        if input["open_transport"] == true {
+            e.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+                transport_id: 2,
+                open_topped: true,
+            };
+        }
+        sim.substrate.entities.insert(e);
+        if aircraft {
+            sim.assign_null_destination(1, Some(&rules), None);
+        } else {
+            sim.foot_null_destination(1, Some(&rules), None);
+        }
+        let e = sim.substrate.entities.get(1).unwrap();
+        let (destination, head) = if input["family"] == "drive" {
+            let runtime = e
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_drive_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (runtime.destination(), runtime.head_to())
+        } else {
+            let runtime = e
+                .locomotor
+                .as_ref()
+                .and_then(|l| l.selected_ship_runtime())
+                .and_then(|r| r.retained())
+                .unwrap();
+            (runtime.destination(), runtime.head_to())
+        };
+        assert_eq!(
+            destination.unwrap_or(ZERO),
+            coord(&row["destination"]),
+            "{input}"
+        );
+        assert_eq!(head.unwrap_or(ZERO), coord(&row["head"]), "{input}");
+        let path = &e.navigation.path_runtime;
+        for (key, actual) in [
+            ("nav", json!(e.navigation.nav_com.is_some())),
+            ("aux", json!(e.navigation.nav_com_aux.is_some())),
+            ("path", json!(e.navigation.path_replay.directions)),
+            ("blocked", json!(path.path_blocked)),
+            ("retries", json!(path.retries_left)),
+            (
+                "movement_timer",
+                json!([
+                    path.movement_timer.start_frame() as u32,
+                    path.movement_timer.duration()
+                ]),
+            ),
+            (
+                "blocked_timer",
+                json!([
+                    path.blocked_timer.start_frame() as u32,
+                    path.blocked_timer.duration()
+                ]),
+            ),
+        ] {
+            assert_eq!(actual, row[key], "{key}: {input}");
+        }
+        assert_eq!(
+            json!(sim.scenario_rng.next_u32()),
+            row["next_random"],
+            "{input}"
+        );
     }
 }
 

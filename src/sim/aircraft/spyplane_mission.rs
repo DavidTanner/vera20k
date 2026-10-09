@@ -3,7 +3,7 @@
 //! `Mission_SpyplaneOverfly @ 0x004157C0` (mission 31, `+0x270`).
 //! `MissionClass::AI @ 0x005B3060` runs the current one when its timer is
 //! due (jump table `0x005B34E8`, cases 30 and 31) and restarts the timer
-//! with the frames it returns ([`super::dispatch_native_mission`]).
+//! with the frames it returns ([`super::dispatch_mission`]).
 //!
 //! Approach flies at its Target, the clicked cell. Each visit within its
 //! weapon's `Range=` of the cell takes a camera snapshot and plays

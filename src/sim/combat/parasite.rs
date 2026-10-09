@@ -30,7 +30,7 @@
 //! - Area Guard after a release: Enter_Idle_Mode (Infantry `0x0051CD3E..`,
 //!   Unit `0x00738B67..`) picks Area Guard for DefaultToGuardArea types
 //!   (DOG/ADOG/DRON and 8 more) and, IQ-gated, for AI houses; the shared
-//!   selector (`queue_foot_enter_idle_mode`) still picks Guard. Effect: a
+//!   selector (`enter_idle_mode`) still picks Guard. Effect: a
 //!   released dog or drone guards in place instead of chasing nearby targets.
 //!   Frequency: every release. Owner: the Enter_Idle_Mode selector port.
 //! - Unlimbo's Can_Enter_Cell (`0x005F4F1B..0x005F4F44`) runs on the unbracketed
@@ -300,7 +300,7 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.movement_target = None;
         }
-        crate::sim::world::queue_foot_enter_idle_mode(self, owner, rules);
+        crate::sim::world::enter_idle_mode(self, owner, rules, None);
     }
 
     /// A successful ExitUnit or PointerExpired release re-adds the owner to

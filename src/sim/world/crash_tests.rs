@@ -1498,7 +1498,8 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
         if !entity.crashing && frame % 15 == 0 {
             println!(
                 "frame {frame}: height {height}, health {}, mission {:?}",
-                entity.health.current, entity.aircraft_mission
+                entity.health.current,
+                entity.mission.current().known()
             );
         }
         if entity.crashing {

@@ -43,6 +43,7 @@ mod jumpjet_cruise;
 pub(crate) use infantry_terminal::InfantryDeathSequence;
 pub(crate) use infantry_terminal::{InfantryDeathPostlude, InfantryTerminal};
 mod aircraft_attack;
+mod aircraft_enter;
 mod aircraft_fire_location;
 mod aircraft_move;
 pub(crate) mod damage_consequences;
@@ -74,11 +75,11 @@ mod substrate;
 mod techno_ai;
 pub(crate) use techno_ai::ObjectAiCtx;
 pub(crate) use techno_ai::dispatch_foot_mission;
+pub(crate) use techno_ai::enter_idle_mode;
 pub(crate) use techno_ai::foot_enter_idle_mode_selection;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
 pub(crate) use techno_ai::passive_target_acquire;
 pub(crate) use techno_ai::queue_and_commence;
-pub(crate) use techno_ai::queue_foot_enter_idle_mode;
 pub(crate) use techno_ai::team_leader_greatest_threat;
 mod command_schedule;
 pub(crate) mod techno_ai_cloak;
@@ -154,7 +155,6 @@ use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::CommandEnvelope;
 use crate::sim::components::{AnimClassSpawnDescriptor, Position};
-use crate::sim::docking::aircraft_dock;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::house_state::HouseState;
 use crate::sim::house_strategy;
@@ -5008,16 +5008,16 @@ impl Simulation {
     ///   `WeaponsFactory=` building (`BuildingType+0x16BD`, the war-factory
     ///   exit link): `Assign_Destination(0, 1)` (`0x0070182F`),
     ///   `Assign_Target(0)` and `Enter_Idle_Mode(0, 1)` (`+0x484`), which
-    ///   reads the NEW owner:
+    ///   reads the NEW owner ([`enter_idle_mode`]):
     ///   - a war or chrono miner takes the Unit leaf's harvester arm
     ///     (`Simulation::unit_enter_idle_mode`): Harvest for the new owner,
     ///     Guard when that owner is human and the miner stands off ore, and
     ///     nothing while in radio contact (a miner docked at its refinery) or
     ///     while the Guard above is still only queued (a miner caught
     ///     mid-track);
-    ///   - any other Unit or Infantry takes VERA's Foot selector
-    ///     (`queue_foot_enter_idle_mode`) in place of the Unit `0x00738970`
-    ///     and Infantry `0x0051CBA0` leaves (residual below);
+    ///   - any other Unit or Infantry takes VERA's Foot selector in place of
+    ///     the Unit `0x00738970` and Infantry `0x0051CBA0` leaves (residual
+    ///     below);
     ///   - a Building (`0x0044D6A0` with `initial = 0`) calls `0x00447780(1)`
     ///     and `Queue_Mission(Guard, 0)`.
     ///
@@ -5037,9 +5037,8 @@ impl Simulation {
     ///   released Foot of such a type. Effect: Guard instead of AreaGuard.
     ///   Frequency: nil in stock (every `DefaultToGuardArea=` type is
     ///   psionic-immune and no stock house sets GUARD_AREA).
-    /// - Aircraft Enter_Idle_Mode (`0x004176F0`,
-    ///   `aircraft::enter_idle_mode_now`) is not called here, and no stock
-    ///   aircraft can be captured; the trailing `+0x423`-gated
+    /// - No stock aircraft can be captured, so the Aircraft Enter_Idle_Mode
+    ///   (`0x004176F0`) here is dormant; the trailing `+0x423`-gated
     ///   `vt+0x498`/`vt+0x494` and `vt+0x488(0, 0, 0, 0, 0)` calls are
     ///   unidentified.
     ///
@@ -5104,18 +5103,7 @@ impl Simulation {
             entity.movement_target = None;
         }
         let _ = self.assign_target_represented(stable_id, None, Some(rules));
-        match category {
-            EntityCategory::Unit => {
-                self.unit_enter_idle_mode(stable_id, Some(rules), false);
-            }
-            EntityCategory::Infantry => {
-                queue_foot_enter_idle_mode(self, stable_id, rules);
-            }
-            EntityCategory::Structure => {
-                self.building_enter_idle_mode(stable_id, false, Some(rules));
-            }
-            EntityCategory::Aircraft => {}
-        }
+        enter_idle_mode(self, stable_id, rules, None);
     }
 
     /// Legacy non-lifecycle contact scrub retained only for separately classified
@@ -6613,7 +6601,6 @@ impl Simulation {
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
             crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
-            aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {
                 self.refresh_fog(&vision_config, Some(rules));
             }

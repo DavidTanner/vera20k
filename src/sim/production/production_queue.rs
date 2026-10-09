@@ -12,8 +12,7 @@ use crate::sim::world::Simulation;
 use super::PRODUCTION_STEPS;
 use super::factory_lifecycle;
 use super::production_spawn::{
-    ProductionDeliveryKind, ProductionSpawnSelection, mark_war_factory_spawn_contact,
-    unlimbo_held_naval_unit,
+    ProductionDeliveryKind, mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
 use super::production_types::*;
 
@@ -257,40 +256,36 @@ pub(in crate::sim) fn exit_produced_object(
             entity.set_archive_target(archive);
         }
     }
-    let (selection, airfield) = if kind == UnitChoiceKind::Aircraft {
-        let Some(cell) = super::production_spawn::free_helipad_cell(sim, rules, producer_id) else {
-            return BuildingExit::Failed;
-        };
-        (
-            ProductionSpawnSelection {
-                producer_id,
-                cell,
-                delivery: ProductionDeliveryKind::Standard,
-            },
-            Some(producer_id),
-        )
-    } else {
-        let Some(producer) = sim.substrate.entities.get(producer_id) else {
-            return BuildingExit::Failed;
-        };
-        let Some(selection) = super::production_spawn::spawn_selection_at_producer(
+    if kind == UnitChoiceKind::Aircraft {
+        let airport_bound = product_type.airport_bound;
+        return exit_aircraft(
             sim,
             rules,
-            (
-                producer_id,
-                producer.position.rx,
-                producer.position.ry,
-                sim.interner.resolve(producer.type_ref()),
-            ),
-            Some(stable_id),
-            Some(type_name),
-            product_type.category,
-            product_type.naval,
+            producer_id,
+            stable_id,
+            airport_bound,
             overlay_registry,
-        ) else {
-            return BuildingExit::Failed;
-        };
-        (selection, None)
+        );
+    }
+    let Some(producer) = sim.substrate.entities.get(producer_id) else {
+        return BuildingExit::Failed;
+    };
+    let Some(selection) = super::production_spawn::spawn_selection_at_producer(
+        sim,
+        rules,
+        (
+            producer_id,
+            producer.position.rx,
+            producer.position.ry,
+            sim.interner.resolve(producer.type_ref()),
+        ),
+        Some(stable_id),
+        Some(type_name),
+        product_type.category,
+        product_type.naval,
+        overlay_registry,
+    ) else {
+        return BuildingExit::Failed;
     };
     let (rx, ry) = selection.cell;
     let is_unit = product_type.category == crate::rules::object_type::ObjectCategory::Vehicle;
@@ -539,36 +534,13 @@ pub(in crate::sim) fn exit_produced_object(
     let Some(spawned) = spawned else {
         return BuildingExit::Failed;
     };
-    // Aircraft spawned on helipad: reserve dock slot then set
-    // DockedIdle carrying the assigned pad index.
-    if let Some(af_id) = airfield {
-        let max_slots = sim
-            .substrate
-            .entities
-            .get(af_id)
-            .and_then(|af| {
-                let af_type = sim.interner.resolve(af.type_ref());
-                let af_obj = rules.object(af_type)?;
-                Some(af_obj.dock_contact_capacity())
-            })
-            .unwrap_or(1);
-        // The fresh spawn books its pad; on a single-pad helipad it always
-        // wins pad 0.
-        sim.reserve_airfield_pad(af_id, spawned, max_slots);
-        if let Some(entity) = sim.substrate.entities.get_mut(spawned) {
-            entity.aircraft_mission =
-                Some(crate::sim::aircraft::AircraftMission::DockedIdle { airfield_id: af_id });
-        }
-    }
     let stable_id = spawned;
     // A Slave Miner leaving its war factory starts its hunt instead of
     // taking the rally point (`sim::slave_manager`).
     let hunting = matches!(selection.delivery, ProductionDeliveryKind::Standard)
         && sim.slave_master_leaves_factory(stable_id, rules);
     // Auto-move newly produced unit to rally point (if set).
-    // Skip for aircraft docked on helipad — they wait for orders.
-    if airfield.is_none()
-        && !hunting
+    if !hunting
         && !land_factory
         && !matches!(selection.delivery, ProductionDeliveryKind::Infantry { .. })
     {
@@ -668,6 +640,104 @@ pub(in crate::sim) fn exit_produced_object(
         }
     }
     BuildingExit::Placed
+}
+
+/// The aircraft arm of `BuildingClass::ExitObject_Main @ 0x00443C60`
+/// (`0x00443CB4..`), after the production-mode step and the unit-choice
+/// clear: with a contact slot free or already its own (`0x0065ADF0`,
+/// `0x00443CD4`) the aircraft is unlimboed at the factory's dock coordinate
+/// for it (vt+0xA8, `0x00447B20`) facing Rules PoseDir (`0x00417FD0`), its
+/// Z first zeroed (`ObjectClass::SetZ @ 0x005F6060`). The factory then sends
+/// it HELLO and TETHER (vt+0x278, answers ignored): HELLO links the slot,
+/// TETHER tethers only an aircraft that is not `AirportBound=`
+/// (`0x006F4B4B`). The aircraft moves to the dock coordinate of that slot
+/// (vt+0x1B4) and takes the factory as its dock (`+0x6CC`). One that is not
+/// `AirportBound=` also takes the factory's rally point (`+0x218`) as its
+/// destination and queues Move. Unlimbo's own idle mode
+/// (`TechnoClass::Unlimbo @ 0x006F6E2A`) picks its mission before the link.
+///
+/// Without a slot an `AirportBound=` aircraft fails (`0x00443D12`).
+/// RESIDUAL: any other flies in from the map edge (`0x00443D18..`: a cell
+/// off the house's edge with one Scenario `RandomRanged(0, height)` draw,
+/// Unlimbo there, the rally point or the cell near the factory as its
+/// destination, `Assign_Mission(Move)`); VERA fails it too. Dormant: every
+/// buildable retail aircraft is `AirportBound=`.
+fn exit_aircraft(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    producer_id: u64,
+    stable_id: u64,
+    airport_bound: bool,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+) -> crate::sim::ai_base_building::BuildingExit {
+    use crate::sim::ai_base_building::BuildingExit;
+    use crate::sim::radio::{self, RadioMessage, RadioPayload};
+    let linkable = sim
+        .substrate
+        .entities
+        .get(producer_id)
+        .is_some_and(|producer| producer.radio_contacts.has_free_or(stable_id));
+    if !linkable {
+        return BuildingExit::Failed;
+    }
+    sim.set_object_z(stable_id, 0, Some(rules), overlay_registry);
+    let dock_coordinate = |sim: &Simulation| {
+        crate::sim::movement::building_dock_coordinate(
+            &sim.substrate.entities,
+            producer_id,
+            Some(stable_id),
+            sim.resolved_terrain.as_ref(),
+            rules,
+            &sim.interner,
+        )
+        .expect("an aircraft factory has a dock coordinate")
+    };
+    let placed = sim.with_object_placement_scope(|sim| {
+        let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
+            stable_id,
+            dock_coordinate(sim),
+            rules.general.pose_dir as u8,
+            crate::sim::world::PlacementEvidence::EvaluateMark,
+            rules,
+            overlay_registry,
+        )?;
+        for message in [RadioMessage::Hello, RadioMessage::Tether] {
+            radio::transmit(
+                sim,
+                producer_id,
+                spawned,
+                message,
+                RadioPayload::default(),
+                Some(rules),
+            );
+        }
+        let pad = dock_coordinate(sim);
+        sim.foot_set_location_marked(spawned, pad, Some(rules), overlay_registry);
+        sim.set_aircraft_dock(spawned, Some(producer_id));
+        let rally = sim
+            .substrate
+            .entities
+            .get(producer_id)
+            .and_then(|producer| producer.archive_target());
+        if let Some(rally) = rally
+            && !airport_bound
+        {
+            sim.assign_aircraft_destination(spawned, Some(rally.into()), rules);
+            let _ = sim.mission_queue_exact(
+                spawned,
+                crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Move),
+                0,
+                sim.session.binary_frame,
+                &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+            );
+        }
+        Some(spawned)
+    });
+    if placed.is_some() {
+        BuildingExit::Placed
+    } else {
+        BuildingExit::Failed
+    }
 }
 
 /// Build a queue snapshot for one owner, including progress metadata for UI.

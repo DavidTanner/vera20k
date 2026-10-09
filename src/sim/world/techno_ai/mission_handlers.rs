@@ -779,6 +779,13 @@ impl MissionHandlerEvaluation {
             queue: Some(mission),
         }
     }
+
+    /// The frames the handler returns. The aircraft Guard bodies
+    /// (`aircraft_guard`) tail into the Foot ones, which queue nothing and
+    /// keep their Target.
+    pub(super) const fn delay(&self) -> i32 {
+        self.delay
+    }
 }
 
 /// Undeployed half of Infantry Guard521320, original5214F7..5216B6.
@@ -926,25 +933,41 @@ impl Simulation {
     }
 }
 
-/// EnterIdle(0,1) through the actual class receiver, with deferred Mission
-/// assignment. Parasite/Temporal/team release paths use the same Foot base
-/// and concrete Infantry/Unit tail as Unlimbo and locomotor callbacks.
-pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+/// `Enter_Idle_Mode(0, 1)` (vt+0x484) through the object's class receiver,
+/// with deferred Mission assignment: Unit `0x00738970`
+/// ([`Simulation::unit_enter_idle_mode`]), Infantry `0x0051CBA0`
+/// ([`Simulation::infantry_enter_idle_mode`]), Aircraft `0x004176F0`
+/// ([`crate::sim::aircraft::enter_idle_mode_for`]) and Building `0x0044D6A0`
+/// ([`Simulation::building_enter_idle_mode`]). Unlimbo's `(1, 1)` is
+/// [`foot_unlimbo_idle_mode`].
+pub(crate) fn enter_idle_mode(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+) {
     match sim.substrate.entities.get(id).map(|entity| entity.category) {
         Some(EntityCategory::Unit) => {
             sim.unit_enter_idle_mode(id, Some(rules), false);
         }
         Some(EntityCategory::Infantry) => {
-            sim.infantry_enter_idle_mode(id, rules, None);
+            sim.infantry_enter_idle_mode(id, rules, registry);
         }
-        _ => {}
+        Some(EntityCategory::Aircraft) => {
+            crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+        }
+        Some(EntityCategory::Structure) => {
+            sim.building_enter_idle_mode(id, false, Some(rules));
+        }
+        None => {}
     }
 }
 
-/// `TechnoClass::Unlimbo @ 0x006F6E2A..0x006F6E4F` for a Foot on the
-/// ground: `Enter_Idle_Mode(1, 1)` (`InfantryClass::Enter_Idle_Mode @
-/// 0x0051CBA0`, `UnitClass::Enter_Idle_Mode @ 0x00738970`), then
-/// Ready_To_Commence and Commence, so the mission it picks is current at once.
+/// `TechnoClass::Unlimbo @ 0x006F6E2A..0x006F6E4F` for a Foot:
+/// `Enter_Idle_Mode(1, 1)` (`InfantryClass::Enter_Idle_Mode @ 0x0051CBA0`,
+/// `UnitClass::Enter_Idle_Mode @ 0x00738970`, `AircraftClass::
+/// Enter_Idle_Mode @ 0x004176F0`), then Ready_To_Commence and Commence, so
+/// the mission it picks is current at once.
 /// A fresh object with nowhere to go takes Guard; a map placement then assigns
 /// its authored mission over it. A factory-built vehicle used to keep no
 /// mission at all, so its dispatch took the missionless 450-frame arm instead
@@ -963,9 +986,7 @@ pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &
 ///   `Passengers=` and cargo, outside a team) is not taken; it gets Guard.
 ///   Trigger: an unarmed transport leaving the factory loaded. Effect: it
 ///   keeps its cargo aboard.
-/// - buildings have their own Unlimbo/mission owner. Aircraft still use a
-///   separate legacy AircraftMission producer and omit the common passive
-///   scan; migrating that class's mission lifecycle is a separate mechanism.
+/// - buildings have their own Unlimbo/mission owner.
 pub(crate) fn foot_unlimbo_idle_mode(
     sim: &mut Simulation,
     id: u64,
@@ -975,6 +996,11 @@ pub(crate) fn foot_unlimbo_idle_mode(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
+    if entity.category == EntityCategory::Aircraft {
+        crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+        sim.mission_host_promote(id, sim.session.binary_frame, rules);
+        return;
+    }
     let vehicle = entity.category == EntityCategory::Unit;
     if !vehicle && entity.category != EntityCategory::Infantry {
         return;
@@ -1443,7 +1469,7 @@ const AREA_GUARD_CADENCE_JITTER_MAX: u32 = 5;
 /// PR#798), Tesla ElectricAssault adjacency4D6F44 (+68E, Overpowerable), the
 /// AI C4/Sabotage arm4D6DDA and the early containment/waypoint/harvester arms.
 /// They retain their existing boundaries; these controls do not certify them.
-fn evaluate_foot_area_guard(
+pub(super) fn evaluate_foot_area_guard(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
@@ -1546,6 +1572,18 @@ fn evaluate_foot_area_guard(
         let _ = sim.infantry_idle_action(id, rules);
     }
     let base = mission_cadence(rules, MissionType::AreaGuard);
+    // `0x004D7040..0x004D7048`: an aircraft (What_Am_I 2) doubles the Rate
+    // before the draw.
+    let base = if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|entity| entity.category == EntityCategory::Aircraft)
+    {
+        base.wrapping_add(base)
+    } else {
+        base
+    };
     let jitter = sim
         .scenario_rng
         .next_range_u32_inclusive(AREA_GUARD_CADENCE_JITTER_MIN, AREA_GUARD_CADENCE_JITTER_MAX)
@@ -1558,8 +1596,7 @@ fn evaluate_foot_area_guard(
     // `0x004D714A` is a signed divide by 6). The draw is never skipped — the
     // band only scales what it produced.
     //
-    // Aircraft doubles this before the draw, but this dispatcher admits
-    // Unit/Infantry only. Target-present Approach_Target remains required.
+    // Target-present Approach_Target remains required.
     let delay = if foot_dispatch_in_cadence_band(sim, rules, id) {
         jittered / 6
     } else {
@@ -1665,7 +1702,7 @@ fn evaluate_foot_area_guard(
 ///   with an Allied player only. Downstream risk: VERA implements no
 ///   distributed-fire mechanism at all (recorded at `target_scan`), so
 ///   the counter this gate reads has no VERA counterpart to bind to.
-fn evaluate_foot_guard_cadence(
+pub(super) fn evaluate_foot_guard_cadence(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,

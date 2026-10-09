@@ -36,12 +36,11 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             suspended: crate::sim::mission::MissionId::NONE,
             queued: crate::sim::mission::MissionId::NONE,
             movement_bypass_latch: 0,
-            handler_state: 0,
+            handler_state: 4,
             mission_start_frame: 0,
             ai_counter: 0,
             dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
         });
-    entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 4 });
     entity.aircraft_ammo = Some(AircraftAmmo::new(2));
     entity.aircraft_ammo.as_mut().unwrap().current = input["ammo"].as_i64().unwrap_or(2) as i32;
     entity.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
@@ -103,7 +102,7 @@ fn aircraft_release_control_matches_316_original_mission_suffixes() {
             row["input"]["ammo"].as_i64().unwrap() as i32,
             "{row}"
         );
-        let Some(AircraftMission::Attack { sub_state }) = entity.aircraft_mission else {
+        let Some(sub_state) = crate::sim::aircraft::attack_state(entity) else {
             panic!("{row}")
         };
         assert_eq!(sub_state as u64, row["state"].as_u64().unwrap(), "{row}");
@@ -131,8 +130,15 @@ fn aircraft_release_control_matches_316_original_mission_suffixes() {
 #[test]
 fn aircraft_request_preserves_rearm_and_state3_does_not_fire_early() {
     let (mut sim, rules) = fixture(&serde_json::json!({"burst":2,"fighter":true}));
-    sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-        Some(AircraftMission::Attack { sub_state: 3 });
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .mission
+        .set_current_for_test(
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+            3,
+        );
     assert!(
         dispatch(&mut sim, &rules)
             .consequences
@@ -246,10 +252,7 @@ fn aircraft_release_runs_through_advance_tick() {
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.aircraft_ammo.as_ref().unwrap().release_pending());
     assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 2);
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 1 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(1));
 }
 
 #[test]
@@ -292,8 +295,8 @@ fn a_strafer_drops_five_bombs_on_one_pass() {
         if fired > 0 {
             bombs.push((frame, fired));
         }
-        let Some(AircraftMission::Attack { sub_state }) =
-            sim.substrate.entities.get(1).unwrap().aircraft_mission
+        let Some(sub_state) =
+            crate::sim::aircraft::attack_state(sim.substrate.entities.get(1).unwrap())
         else {
             break;
         };
@@ -337,10 +340,7 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
             .is_empty()
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 5 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(5));
     assert_eq!(entity.mission.dispatch_timer().delay(), 1);
 
     let before = sim.scenario_rng.clone();
@@ -352,10 +352,7 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
             .is_empty()
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 1 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(1));
     let mut expected = before;
     let rate = rules
         .mission_control

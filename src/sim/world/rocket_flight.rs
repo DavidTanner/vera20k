@@ -464,14 +464,16 @@ pub(super) mod retail_tests {
                 launched.get_or_insert(frame);
                 // The current mission and Mission_Move's or Mission_Attack's
                 // state.
-                let state = match entity.aircraft_mission {
+                let current = entity.mission.current().known();
+                let state = matches!(
+                    current,
                     Some(
-                        crate::sim::aircraft::AircraftMission::Move { sub_state }
-                        | crate::sim::aircraft::AircraftMission::Attack { sub_state },
-                    ) => Some(sub_state),
-                    _ => None,
-                };
-                let mission = (entity.mission.current().known(), state);
+                        crate::sim::mission::MissionType::Move
+                            | crate::sim::mission::MissionType::Attack
+                    )
+                )
+                .then(|| crate::sim::aircraft::handler_state(entity));
+                let mission = (current, state);
                 let visit = (mission, entity.navigation.nav_com);
                 if moves.last().is_none_or(|&(_, last)| last != visit) {
                     moves.push((frame, visit));

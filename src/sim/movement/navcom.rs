@@ -538,18 +538,8 @@ impl crate::sim::world::Simulation {
         };
         publish_null_nav_com(entity);
         let attack = MissionId::from_known(MissionType::Attack);
-        // AircraftMission owns the current aircraft dispatch. Its represented
-        // Guard -> Attack transition does not update MissionState's current
-        // slot yet; use that dispatch owner when present, and the raw slot for
-        // receivers without it. Queued missions remain owned by MissionState.
-        // Original current/queued Attack gate: track_destination_null_boundary;
-        // the real Aircraft/Fly Attack call: aircraft_reengagement.
-        let current_attack = entity.aircraft_mission.as_ref().map_or_else(
-            || entity.mission.current() == attack,
-            crate::sim::aircraft::AircraftMission::is_attacking,
-        );
         let attacking_aircraft = entity.category == crate::map::entities::EntityCategory::Aircraft
-            && (current_attack || entity.mission.queued() == attack)
+            && (entity.mission.current() == attack || entity.mission.queued() == attack)
             && entity.attack_target.is_some();
         if !attacking_aircraft {
             self.locomotor_stop_moving(id, rules, registry)

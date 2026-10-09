@@ -903,7 +903,13 @@ use crate::sim::world::Simulation;
 // lack them.
 // 314 -> 315: ProductionState drops ready_by_owner; a completed building
 // waiting for placement is its factory's held object. Prior records carry it.
-const SNAPSHOT_VERSION: u32 = 315;
+// 315 -> 316: the native airfield loop replaces the legacy dock state:
+// AircraftAmmo keeps the aircraft's dock (+0x6CC) in place of its dock phase,
+// airfield, reload timer and rescan cooldown, GameEntity drops AircraftMission
+// (Mission+0xBC holds Mission_Move's and Mission_Attack's states), and
+// ProductionState drops the AirfieldDocks pad reservations. Prior records
+// cannot resume.
+const SNAPSHOT_VERSION: u32 = 316;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1808,13 +1814,13 @@ fn restore_object_references(
             )?;
         }
         if let Some(ammo) = entity.aircraft_ammo.as_ref()
-            && let Some(target_id) = ammo.target_airfield
+            && let Some(target_id) = ammo.dock()
         {
             require_resolved_reference(
                 entity_ids.contains(&target_id),
                 "EntityStore",
                 entity_id,
-                "aircraft_ammo.target_airfield",
+                "aircraft_ammo.dock",
                 "EntityStore",
                 target_id,
             )?;
@@ -2065,11 +2071,9 @@ fn restore_object_references(
     }
 
     // The primary-factory links (the native primary byte, written by
-    // Building448070 and the player's cycle order) and the airfield pad
-    // reservations name objects by id. Restore prunes ids the validated object
-    // graph no longer holds.
+    // Building448070 and the player's cycle order) name objects by id.
+    // Restore prunes ids the validated object graph no longer holds.
     sim.production.retain_primary_factory_links(&entity_ids);
-    sim.production.airfield_docks.cleanup_dead(&entity_ids);
 
     Ok(())
 }
@@ -3937,55 +3941,8 @@ mod tests {
         // 312 -> 313: the house's one score.
         // 313 -> 314: the house's factory counters.
         // 314 -> 315: no ready-building list beside the factories.
-        assert_eq!(super::SNAPSHOT_VERSION, 315);
-    }
-
-    #[test]
-    fn dock_indices_above_byte_range_survive_restore_and_release() {
-        use crate::sim::aircraft::AircraftMission;
-        use crate::sim::docking::aircraft_dock::AircraftAmmo;
-        use crate::sim::game_entity::GameEntity;
-        let mut sim = Simulation::new();
-        let type_id = sim.intern("PAD");
-        let owner = sim.intern("Americans");
-        for id in 1..=301 {
-            assert_eq!(sim.allocate_stable_id(), id);
-            let mut entity = GameEntity::test_default(id, "PAD", "Americans", 0, 0);
-            entity.type_ref = type_id;
-            entity.owner = owner;
-            if id > 1 {
-                let pad = sim
-                    .production
-                    .airfield_docks
-                    .try_reserve(1, id, 300)
-                    .unwrap();
-                assert_eq!(u64::from(pad), id - 2);
-                entity.aircraft_mission = Some(AircraftMission::DockedIdle { airfield_id: 1 });
-                let mut ammo = AircraftAmmo::new(3);
-                ammo.target_airfield = Some(1);
-                entity.aircraft_ammo = Some(ammo);
-            }
-            sim.substrate.entities.insert(entity);
-        }
-        sim.scenario_rng = crate::sim::rng::SimRng::new(0);
-        let before = sim.state_hash();
-        let bytes = GameSnapshot::save(&sim, 0, 0, "wide-dock-indices", 0);
-        let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
-        restored.restore_after_snapshot_load().unwrap();
-        assert_eq!(restored.state_hash(), before);
-        assert_eq!(
-            restored.production.airfield_docks.pad_for(301),
-            Some((1, 299))
-        );
-        restored.production.airfield_docks.release(301);
-        assert_eq!(
-            restored.production.airfield_docks.pad_for(300),
-            Some((1, 298))
-        );
-        assert_eq!(
-            restored.production.airfield_docks.try_reserve(1, 301, 300),
-            Some(299)
-        );
+        // 315 -> 316: the native airfield loop replaces the legacy dock FSM.
+        assert_eq!(super::SNAPSHOT_VERSION, 316);
     }
 
     #[test]

@@ -489,11 +489,7 @@ pub(crate) fn commence_entity_mission(
             entity.mission_leaf.clear_aircraft_action_for_commence();
         }
     }
-    let commenced = verb::commence_base(&mut entity.mission, now);
-    if commenced {
-        crate::sim::aircraft::commence_handler_state(entity);
-    }
-    commenced
+    verb::commence_base(&mut entity.mission, now)
 }
 
 /// The `RandomRanged(0, 2)` ceiling of the Rate epilogue.

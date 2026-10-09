@@ -115,6 +115,70 @@ impl Simulation {
         best.map_or(own_cell, |(_, cell)| cell)
     }
 
+    /// [`Self::aircraft_find_nearest_friendly_airfield`] as the destination
+    /// its callers hand the class setter: the `CellClass` the cell names
+    /// (`MapClass::GetCellAt`), a cell off the map being the shared dummy.
+    pub(crate) fn aircraft_nearest_friendly_airfield_cell(
+        &self,
+        id: u64,
+        rules: &RuleSet,
+    ) -> crate::sim::components::NavTargetRef {
+        let cell = self.aircraft_find_nearest_friendly_airfield(id, rules);
+        let (x, y) = self
+            .resolved_terrain
+            .as_ref()
+            .map_or(cell, |t| t.native_cell_coord(t.native_cell_identity(cell)));
+        crate::sim::components::NavTargetRef::cell(x as u16, y as u16)
+    }
+
+    /// `AircraftClass::Find_Docking_Bay @ 0x0041BBD0` (vt+0x528) with the
+    /// type's `Dock=` list and `(0, 0)`, as the idle mode (`0x004179A4`,
+    /// `0x00417B0C`), Mission_Guard (`0x0041A7E0`) and the Enter order
+    /// (`0x0041AB3C`) ask it: an AirportBound aircraft keeps its dock
+    /// (`+0x6CC`) while that dock answers its CAN_LOAD ROGER; otherwise the
+    /// dock is cleared and set to what `FootClass::Find_Docking_Bay(list, 0,
+    /// 0)` answers ([`find_docking_bay`]).
+    ///
+    /// [`find_docking_bay`]: crate::sim::miner::miner_system::find_docking_bay
+    pub(crate) fn aircraft_find_docking_bay(&mut self, id: u64, rules: &RuleSet) -> Option<u64> {
+        let entity = self.substrate.entities.get(id)?;
+        let airport_bound = rules
+            .object(self.interner.resolve(entity.type_ref()))
+            .is_some_and(|object| object.airport_bound);
+        let cached = entity.aircraft_ammo.as_ref().and_then(|ammo| ammo.dock());
+        if airport_bound && let Some(cached) = cached {
+            if crate::sim::radio::transmit(
+                self,
+                id,
+                cached,
+                crate::sim::radio::RadioMessage::CanEnter,
+                crate::sim::radio::RadioPayload::default(),
+                Some(rules),
+            ) == crate::sim::radio::RadioResponse::Roger
+            {
+                return Some(cached);
+            }
+            self.set_aircraft_dock(id, None);
+        }
+        let dock = crate::sim::miner::miner_system::find_docking_bay(self, rules, id, false, false);
+        self.set_aircraft_dock(id, dock);
+        dock
+    }
+
+    /// Aircraft `+0x6CC`'s writers ([`AircraftAmmo::set_dock`]).
+    ///
+    /// [`AircraftAmmo::set_dock`]: crate::sim::docking::aircraft_dock::AircraftAmmo::set_dock
+    pub(crate) fn set_aircraft_dock(&mut self, id: u64, dock: Option<u64>) {
+        if let Some(ammo) = self
+            .substrate
+            .entities
+            .get_mut(id)
+            .and_then(|entity| entity.aircraft_ammo.as_mut())
+        {
+            ammo.set_dock(dock);
+        }
+    }
+
     /// `MapClass::Find_Nearby_Passable_Cell @ 0x0056DC20` as `0x0041A160`
     /// asks it (`0x0041A279..0x0041A2C0`, `0x0041A313..0x0041A36B`,
     /// `0x0041A48E..0x0041A4D4`): SpeedType Foot, MovementZone Normal, the

@@ -7,7 +7,6 @@
 //! [`aircraft::attack_mission`]: crate::sim::aircraft::attack_mission
 
 use super::*;
-use crate::sim::aircraft::AircraftMission;
 use crate::sim::aircraft::attack_mission::{self, StrikeFacts, StrikeHost, strike_visit};
 
 #[cfg(test)]
@@ -92,17 +91,12 @@ pub(super) fn visit(
 ) {
     let id = snap.stable_id;
     // A phase-local receipt is not permission after an intervening mission change.
-    let Some(state) =
-        world
-            .substrate
-            .entities
-            .get(id)
-            .and_then(|entity| match entity.aircraft_mission {
-                Some(AircraftMission::Attack { sub_state }) if (4..=9).contains(&sub_state) => {
-                    Some(sub_state)
-                }
-                _ => None,
-            })
+    let Some(state) = world
+        .substrate
+        .entities
+        .get(id)
+        .and_then(crate::sim::aircraft::attack_state)
+        .filter(|state| (4..=9).contains(state))
     else {
         return;
     };
@@ -160,9 +154,7 @@ pub(super) fn visit(
     };
     let visit = strike_visit(&facts, &mut host);
     let entity = host.world.substrate.entities.get_mut(id).unwrap();
-    entity.aircraft_mission = Some(AircraftMission::Attack {
-        sub_state: visit.state,
-    });
+    entity.mission.set_handler_state(u32::from(visit.state));
     if let Some(latch) = visit.latch
         && entity.mission_leaf.as_aircraft().is_some()
     {

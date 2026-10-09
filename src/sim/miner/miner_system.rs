@@ -1310,35 +1310,40 @@ pub(crate) fn extract_bales_max(
         .collect()
 }
 
-/// One `FootClass::Find_Docking_Bay @ 0x004DF040` pass: for each `Dock=`
-/// type in list order, `FUN_004DEE80` scans the miner's OWN house's
-/// building list (`Owner @ TechnoClass+0x21C` → House+0x68, items `+0x6C`,
-/// count `+0x78`; VERA's `HouseBaseState::buildings`) in its order. Allies
-/// are never candidates, so a miner never deposits into an ally's wallet.
-/// Order decides equal-distance ties (strict `<` below): a captured
-/// refinery, appended to its new house's tail by ChangeOwner, loses them.
+/// One `FootClass::Find_Docking_Bay @ 0x004DF040` pass for a miner or an
+/// aircraft (`AircraftClass::Find_Docking_Bay @ 0x0041BBD0` calls it): for
+/// each `Dock=` type in list order, the scanner `FUN_004DEE80` walks the
+/// requester's OWN house's building list (`Owner @ TechnoClass+0x21C` →
+/// House+0x68, items `+0x6C`, count `+0x78`; VERA's
+/// `HouseBaseState::buildings`) in its order. Allies are never candidates, so
+/// a miner never deposits into an ally's wallet.
 ///
 /// Per-candidate gates in native order:
 /// - non-null and `+0x81 == 0` (`ObjectClass::InLimbo`), type == Dock type
 ///   (`+0x520`); the whole scan returns null when the house owns no instance
 ///   of that type (`HouseClass::CountOwnedInstances` at 0x004DEEA5);
 /// - narrow pass only (`wide != 1`, 0x004DEF02): `FUN_0065ADF0` on the
-///   building with the miner as argument (0x004DEF09) — a free `Contacts[]`
-///   slot (`+0xE4`, count `+0xE8`) or the miner already tracked. `+0xE8` is
-///   1 from the `RadioClass` ctor (0x0065A764) and then set by
-///   `BuildingClass::Constructor` 0x0043BCBD..0x0043BCD0 to
+///   building with the requester as argument (0x004DEF09) — a free
+///   `Contacts[]` slot (`+0xE4`, count `+0xE8`) or the requester already
+///   tracked. `+0xE8` is 1 from the `RadioClass` ctor (0x0065A764) and then
+///   set by `BuildingClass::Constructor` 0x0043BCBD..0x0043BCD0 to
 ///   `max([Type+0x1780] NumberOfDocks, 1)` via `Set_Contact_Count`; Rust
 ///   installs these slots in the shared constructor, and admission reads
 ///   them through `Contacts::has_free_or` (actual-slot oracle controls);
-/// - `MapClass::Can_Reach_Zone` from the miner's cell to the building's
-///   `GetCoords` cell (skipped when `WhatAmI() == Aircraft(2)`, never a
-///   miner) — see `refinery_zone_reachable`;
-/// - `Receive_Radio(0xF)` must return1 — the shared building radio receiver;
+/// - `MapClass::Can_Reach_Zone` from the requester's cell to the building's
+///   `GetCoords` cell, skipped for an Aircraft (`WhatAmI() == 2`,
+///   0x004DEF20) — see `refinery_zone_reachable`;
+/// - `Receive_Radio(0xF)` must return 1 — the shared building radio receiver;
 /// - distance `FUN_005F6500`: `dx² + dy²` in leptons between both objects'
-///   `GetCoords` (Z ignored); replace when `best == -1 || d < best` (strict,
-///   so ties keep the earlier Dock type / earlier-created building) or when
-///   the candidate is the primary factory (`TechnoClass+0x3D3`). VERA has no
-///   primary designation for refineries, so that override is absent here.
+///   `GetCoords` (Z ignored), 32-bit wrapping `IMUL`/`ADD`; the candidate
+///   replaces the best when the best is still -1, when it is strictly
+///   nearer (signed `JL`, so ties keep the earlier building) or when it is a
+///   primary factory (`TechnoClass+0x3D3`, 0x004DF004).
+///
+/// The outer pass keeps a type's answer when it has none yet, when that
+/// answer is strictly nearer than the best so far, when the best is -1 or
+/// when the answer is a primary factory (0x004DF08E..0x004DF0A7).
+///
 /// `wide` controls the scanner prefilter; `ignore_dock_capacity` is the
 /// explicit native A8E7AC receiver context. Harvest73EC1F supplies both for
 /// its wide pass. They are distinct: a wide scan without that context still
@@ -1346,31 +1351,34 @@ pub(crate) fn extract_bales_max(
 pub(crate) fn find_docking_bay(
     sim: &mut Simulation,
     rules: &RuleSet,
-    miner_id: u64,
+    requester: u64,
     wide: bool,
     ignore_dock_capacity: bool,
 ) -> Option<u64> {
-    let (owner, type_id, miner_x, miner_y, miner_cell, unit_mz) = {
-        let miner = sim.substrate.entities.get(miner_id)?;
+    let (owner, type_id, own_x, own_y, own_cell, unit_mz, aircraft) = {
+        let entity = sim.substrate.entities.get(requester)?;
+        let coords = object_get_coords(entity, sim.resolved_terrain.as_ref());
         (
-            miner.owner(),
-            miner.type_ref(),
-            i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>(),
-            i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>(),
-            (miner.position.rx, miner.position.ry),
-            miner
+            entity.owner(),
+            entity.type_ref(),
+            coords.x,
+            coords.y,
+            (entity.position.rx, entity.position.ry),
+            entity
                 .locomotor
                 .as_ref()
                 .map(|loc| loc.movement_zone)
                 .unwrap_or(MovementZone::Normal),
+            entity.category == EntityCategory::Aircraft,
         )
     };
-    let harvester = rules.object(sim.interner.resolve(type_id))?;
+    let requester_type = rules.object(sim.interner.resolve(type_id))?;
     // CAN_LOAD runs synchronously; retain the House's native scan order
     // without holding its projection across radio owner calls.
     let buildings = sim.houses.get(&owner)?.base_projection.buildings().to_vec();
-    let mut best: Option<(i64, u64)> = None;
-    for dock_type in &harvester.dock {
+    let mut result: Option<u64> = None;
+    let mut best = -1_i32;
+    for dock_type in &requester_type.dock {
         // `0x004DEE9B..0x004DEEAC`: a type of which the house tracks no
         // instance (`+0x5500`, `JZ`) finds nothing, whatever the list holds.
         if sim.interner.get(dock_type).is_none_or(|type_ref| {
@@ -1383,6 +1391,8 @@ pub(crate) fn find_docking_bay(
         }) {
             continue;
         }
+        let mut found: Option<u64> = None;
+        let mut nearest = -1_i32;
         for &sid in &buildings {
             let Some(entity) = sim.substrate.entities.get(sid) else {
                 continue;
@@ -1396,22 +1406,24 @@ pub(crate) fn find_docking_bay(
             if entity.dying || entity.health.current == 0 {
                 continue;
             }
-            if !wide && !entity.radio_contacts.has_free_or(miner_id) {
+            if !wide && !entity.radio_contacts.has_free_or(requester) {
                 continue;
             }
-            let dock = refinery_dock_cell(entity.position.rx, entity.position.ry);
-            if !refinery_zone_reachable(
-                sim,
-                sim.substrate.entities.get(miner_id)?,
-                unit_mz,
-                miner_cell,
-                dock,
-            ) {
-                continue;
+            if !aircraft {
+                let dock = refinery_dock_cell(entity.position.rx, entity.position.ry);
+                if !refinery_zone_reachable(
+                    sim,
+                    sim.substrate.entities.get(requester)?,
+                    unit_mz,
+                    own_cell,
+                    dock,
+                ) {
+                    continue;
+                }
             }
             if crate::sim::radio::transmit(
                 sim,
-                miner_id,
+                requester,
                 sid,
                 crate::sim::radio::RadioMessage::CanEnter,
                 crate::sim::radio::RadioPayload::docking_query(ignore_dock_capacity),
@@ -1428,17 +1440,25 @@ pub(crate) fn find_docking_bay(
             // `BuildingClass::GetCoords @ 0x00447AC0`: foundation centre, the
             // same point the state-2 too-far test measures to.
             let centre = object_get_coords(entity, sim.resolved_terrain.as_ref());
-            let (centre_x, centre_y) = (i64::from(centre.x), i64::from(centre.y));
-            let dx = miner_x - centre_x;
-            let dy = miner_y - centre_y;
-            let dist_sq = dx * dx + dy * dy;
-            match best {
-                Some((d, _)) if dist_sq >= d => {}
-                _ => best = Some((dist_sq, sid)),
+            let dx = own_x.wrapping_sub(centre.x);
+            let dy = own_y.wrapping_sub(centre.y);
+            let distance = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
+            if nearest == -1 || distance < nearest || sim.production.is_primary_factory(sid) {
+                found = Some(sid);
+                nearest = distance;
             }
         }
+        if let Some(found) = found
+            && (result.is_none()
+                || nearest < best
+                || best == -1
+                || sim.production.is_primary_factory(found))
+        {
+            result = Some(found);
+            best = nearest;
+        }
     }
-    best.map(|(_, sid)| sid)
+    result
 }
 
 /// `MapClass::Can_Reach_Zone` gate of the scanner `FUN_004DEE80`, called

@@ -10021,8 +10021,8 @@ fn gsi_08_08_kirov_vertical_bomb_falls_and_detonates() {
     .expect("Kirov bomb fixture parses");
 
     let mut store = EntityStore::new();
+    // Retail lists ZEP under `[VehicleTypes]`: the Kirov is a UnitClass.
     let mut kirov = make_entity_owned(1, "ZEP", 5, 5, 2000, "Soviet");
-    kirov.category = EntityCategory::Aircraft;
     let zep_object = rules.object("ZEP").expect("ZEP object type");
     let mut locomotor =
         crate::sim::movement::locomotor::LocomotorState::from_object_type(zep_object, 0);

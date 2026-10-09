@@ -487,7 +487,6 @@ impl Simulation {
         self.hash_houses(&mut hasher);
         self.hash_terminal_score_snapshot(&mut hasher);
         self.hash_production(&mut hasher);
-        self.production.airfield_docks.hash_state(&mut hasher);
         self.hash_power_states(&mut hasher);
         self.hash_fog_and_alliances(&mut hasher);
         self.hash_bridge_state(&mut hasher);
@@ -1257,15 +1256,9 @@ impl Simulation {
     fn hash_entities(&self, hasher: &mut impl Hasher) {
         for entity in self.substrate.entities.values() {
             entity.stable_id().hash(hasher);
-            // Both mission and legacy ammo FSMs still execute. Hash their
-            // actual saved state until their ownership migration retires one.
             if let Some(ammo) = entity.aircraft_ammo.as_ref() {
                 b"aircraft-ammo-v170".hash(hasher);
                 ammo.hash(hasher);
-            }
-            if let Some(mission) = entity.aircraft_mission.as_ref() {
-                b"aircraft-mission-v170".hash(hasher);
-                mission.hash(hasher);
             }
             // GSI-09.01: the `BuildingClass+0x6D0/+0x6D8` ProduceCash
             // timer and the `TechnoClass+0x1CC/+0x1D0` drain link pair.
@@ -4409,37 +4402,6 @@ mod bridge161_hash_projection_tests {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod aircraft_dock_hash_tests {
-    use super::Simulation;
-    use crate::sim::aircraft::AircraftMission;
-    use crate::sim::docking::aircraft_dock::AircraftAmmo;
-    use crate::sim::game_entity::GameEntity;
-
-    #[test]
-    fn aircraft_dock_reservations_affect_simulation_hash() {
-        let mut sim = Simulation::new();
-        let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
-        entity.aircraft_ammo = Some(AircraftAmmo::new(3));
-        entity.aircraft_mission = Some(AircraftMission::DockedIdle { airfield_id: 2 });
-        sim.substrate.entities.insert(entity);
-        let before_reservation = sim.state_hash();
-        sim.production.airfield_docks.try_reserve(2, 1, 300);
-        assert_ne!(
-            sim.state_hash(),
-            before_reservation,
-            "reservation admission changes future state"
-        );
-        let occupied = sim.state_hash();
-        sim.production.airfield_docks.release(1);
-        assert_ne!(
-            sim.state_hash(),
-            occupied,
-            "release changes future admission"
-        );
     }
 }
 

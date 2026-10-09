@@ -64,7 +64,6 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
     {
         return false;
     }
-    sim.run_dock_teardown(id, crate::sim::mission::retask::DockTeardown::AircraftOnly);
     // Event DEPLOY: the Unit's class setter takes a null destination
     // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
     // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).

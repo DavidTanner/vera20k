@@ -1,7 +1,7 @@
 //! Original-instruction witnesses for the retained release lifecycle. These
 //! tests do not certify the still-unwired Mission_Attack emission/navigation.
 
-use super::{AircraftMission, tick_aircraft_missions};
+use super::tick_aircraft_missions;
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::combat::AttackTarget;
@@ -95,10 +95,12 @@ fn aircraft_mission_entry_debits_match_original_instructions_and_save_restore() 
     assert_eq!(rows.len(), 72);
     for row in rows {
         let (mut sim, rules) = fixture(&row["input"]);
-        sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-            Some(AircraftMission::Attack {
-                sub_state: row["input"]["state"].as_u64().unwrap() as u8,
-            });
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission
+            .set_handler_state(row["input"]["state"].as_u64().unwrap() as u32);
         let saved = GameSnapshot::save(&sim, 0, 0, "pending aircraft release", 0);
         let mut restored = GameSnapshot::load(&saved).unwrap().sim;
         restored.restore_after_snapshot_load().unwrap();
@@ -118,10 +120,14 @@ fn aircraft_ai_consumes_pending_after_commence_using_native_current_mission() {
     assert_eq!(rows.len(), 144);
     for row in rows {
         let (mut sim, rules) = fixture(&row["input"]);
-        // Deliberately contradictory legacy mirror: the original AI reads the
-        // canonical selector, not AircraftMission or target presence.
-        sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-            Some(AircraftMission::Attack { sub_state: 4 });
+        // Deliberately contradictory handler state: the original AI reads
+        // the current mission, not Mission+0xBC or target presence.
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission
+            .set_handler_state(4);
         sim.object_ai_post_movement_promote_one(1, Some(&rules));
         assert_native(&sim, row);
         sim.object_ai_post_movement_promote_one(1, Some(&rules));
@@ -159,8 +165,6 @@ fn aircraft_pending_charge_is_hashed_and_init_does_not_clear_it() {
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.aircraft_ammo.as_mut().unwrap().begin_release();
     assert_ne!(before, sim.state_hash());
-    sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-        Some(AircraftMission::Attack { sub_state: 0 });
     tick_aircraft_missions(&mut sim, &rules);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.aircraft_ammo.as_ref().unwrap().release_pending());
@@ -173,17 +177,14 @@ fn aircraft_mission_request_does_not_invent_a_successful_release() {
     let input = serde_json::json!({"ammo":1,"pending":false,"latch_6d2":false});
     let (mut sim, rules) = fixture(&input);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 4 });
+    entity.mission.set_handler_state(4);
     entity.attack_target = Some(AttackTarget::for_cell(10, 9));
     for _ in 0..4 {
         tick_aircraft_missions(&mut sim, &rules);
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 1);
         assert!(!entity.aircraft_ammo.as_ref().unwrap().release_pending());
-        assert!(matches!(
-            entity.aircraft_mission,
-            Some(AircraftMission::Attack { sub_state: 4 })
-        ));
+        assert_eq!(crate::sim::aircraft::attack_state(entity), Some(4));
         assert!(entity.attack_target.is_some());
     }
 }

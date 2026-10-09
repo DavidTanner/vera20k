@@ -3141,7 +3141,7 @@ impl Simulation {
             || listener
                 .aircraft_ammo
                 .as_ref()
-                .is_some_and(|ammo| ammo.target_airfield == Some(expired_id))
+                .is_some_and(|ammo| ammo.dock() == Some(expired_id))
             || listener
                 .miner
                 .as_ref()
@@ -3621,10 +3621,12 @@ impl Simulation {
         // radio contact expiry owns the admitted visit.
         let clear_dock =
             control == PointerExpiryControl::Uninit && listener.pending_entry() == Some(expired_id);
+        // Aircraft PointerExpired clears its dock (`+0x6CC`) for either
+        // control (`0x0041B673..0x0041B67F`).
         let clear_airfield = listener
             .aircraft_ammo
             .as_ref()
-            .is_some_and(|ammo| ammo.target_airfield == Some(expired_id));
+            .is_some_and(|ammo| ammo.dock() == Some(expired_id));
         let clear_refinery = listener
             .miner
             .as_ref()
@@ -3689,7 +3691,7 @@ impl Simulation {
             crate::sim::docking::building_dock::expire_reference(listener, expired_id);
         }
         if clear_airfield && let Some(ammo) = listener.aircraft_ammo.as_mut() {
-            ammo.target_airfield = None;
+            ammo.set_dock(None);
         }
         if clear_refinery && let Some(miner) = listener.miner.as_mut() {
             miner.reserved_refinery = None;

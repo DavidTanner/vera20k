@@ -275,15 +275,24 @@ fn fly_hash_distinguishes_targets_and_native_flags() {
 
 #[test]
 fn repeated_aircraft_attack_visits_do_not_divide_the_fly_target() {
-    use crate::sim::aircraft::{AircraftMission, tick_aircraft_missions};
+    use crate::sim::aircraft::tick_aircraft_missions;
     let row = vectors()
         .into_iter()
         .find(|r| r["input"]["name"] == "ordinary_False_1500")
         .unwrap();
     let (mut sim, rules) = fixture(&row);
     for sub_state in [3, 4, 3, 4] {
-        sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-            Some(AircraftMission::Attack { sub_state });
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission
+            .set_current_for_test(
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Attack,
+                ),
+                sub_state,
+            );
         tick_aircraft_missions(&mut sim, &rules);
         assert_eq!(
             sim.substrate

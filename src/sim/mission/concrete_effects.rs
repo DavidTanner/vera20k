@@ -344,8 +344,12 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                         .expect("represented Infantry destination dependencies must be available");
                     return true;
                 }
-                crate::map::entities::EntityCategory::Aircraft
-                | crate::map::entities::EntityCategory::Structure
+                // `AircraftClass::Assign_Destination @ 0x0041AA80`.
+                crate::map::entities::EntityCategory::Aircraft => {
+                    sim.assign_aircraft_destination(prepared.receiver, Some(requested), rules);
+                    return true;
+                }
+                crate::map::entities::EntityCategory::Structure
                 | crate::map::entities::EntityCategory::Unit
                 | crate::map::entities::EntityCategory::Infantry => {}
             }
@@ -484,10 +488,7 @@ pub(crate) fn represented_assign_target_admitted(
     let requested = if requested.is_some()
         && entity.category == crate::map::entities::EntityCategory::Aircraft
         && entity.spawn_owner_id.is_some()
-        && matches!(
-            entity.aircraft_mission,
-            Some(crate::sim::aircraft::AircraftMission::Attack { sub_state: 5..=9 })
-        )
+        && matches!(crate::sim::aircraft::attack_state(entity), Some(5..=9))
         && let Some(ammo) = entity.aircraft_ammo.as_mut()
         && ammo.current != 0
     {

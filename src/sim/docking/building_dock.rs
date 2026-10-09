@@ -1067,9 +1067,11 @@ pub(crate) fn depot_owns_enter(sim: &Simulation, rules: Option<&RuleSet>, id: u6
 }
 
 /// `FootClass::TryEnterTransport` parking tail (`0x0070D8F0`), used by the
-/// shared Enter mission when it has neither a contact nor an archive. The
-/// Foot's native pending-entry pointer owns the pending depot; a valid nearby
-/// cell queues Move and keeps that entry. The caller commences afterward.
+/// shared Enter mission when it has neither a contact nor an archive, and by
+/// the aircraft's (`0x00419D86`, `0x00419E1B`). The Foot's native
+/// pending-entry pointer owns the pending depot; a valid nearby cell becomes
+/// the destination through the class setter (vt+0x480) and Move is queued,
+/// keeping that entry. The caller commences afterward.
 pub(crate) fn park_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     let Some(depot) = sim
         .substrate
@@ -1096,12 +1098,17 @@ pub(crate) fn park_pending_entry(sim: &mut Simulation, rules: &RuleSet, id: u64)
     else {
         return false;
     };
-    sim.set_unit_destination(
-        id,
-        crate::sim::components::NavTargetRef::cell(x, y),
-        rules,
-        true,
-    );
+    let cell = crate::sim::components::NavTargetRef::cell(x, y);
+    if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|actor| actor.category == crate::map::entities::EntityCategory::Aircraft)
+    {
+        sim.assign_aircraft_destination(id, Some(cell), rules);
+    } else {
+        sim.set_unit_destination(id, cell, rules, true);
+    }
     let _ = sim.mission_queue_exact(
         id,
         MissionId::from_known(MissionType::Move),
@@ -1260,7 +1267,10 @@ pub(crate) fn mission_repair(
     let building = sim.substrate.entities.get(depot)?;
     let object = sim.object_type(building.type_ref(), rules)?;
     if !object.unit_repair {
-        return None;
+        // The ConstructionYard, Hospital and Armory arms come first.
+        let reload =
+            object.unit_reload && !object.construction_yard && !object.hospital && !object.armory();
+        return reload.then(|| super::airfield_reload::mission_reload(sim, rules, depot, registry));
     }
     let status = building.mission.handler_state();
     let current = building

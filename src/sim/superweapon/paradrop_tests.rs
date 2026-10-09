@@ -702,7 +702,7 @@ fn paradrop_missions_match_native() {
         let now = sim.session.binary_frame;
 
         let (observed, records) = observe(7, || {
-            crate::sim::aircraft::dispatch_native_mission(&mut sim, id, &rules, None);
+            crate::sim::aircraft::dispatch_mission(&mut sim, id, &rules, Default::default());
         });
 
         let dropped = events(row, "drop_payload").next().is_some();
