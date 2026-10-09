@@ -234,7 +234,9 @@ pub(super) fn scene_with(input: &Value, rules: RuleSet, ini: &IniFile) -> Scene 
         1 => crate::sim::house_state::HouseDifficulty::Normal,
         _ => crate::sim::house_state::HouseDifficulty::Easy,
     };
-    house.economy.credits = input["balance"].as_i64().unwrap_or(0) as i32;
+    house
+        .economy
+        .set_credits_for_test(input["balance"].as_i64().unwrap_or(0) as i32);
     if input["income_mult"].is_number() {
         house.country = Some(owner);
     }
@@ -599,8 +601,8 @@ fn compare_unload(s: &Scene, row: &Value, context: &str) {
         .get(&s.sim.interner.get("Americans").unwrap())
         .unwrap();
     let (balance, score) = (
-        i64::from(house.economy.credits),
-        i64::from(house.economy.harvested_credits),
+        i64::from(house.economy.credits()),
+        i64::from(house.economy.score()),
     );
     if row["input"]["name"] == "unload_gate_income_mult" {
         // RESIDUAL (documented on `refinery_dock`): native 0.9f pays

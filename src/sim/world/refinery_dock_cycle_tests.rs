@@ -51,7 +51,7 @@ fn run_until_unloading(s: &mut Scene) {
 
 fn credits(s: &Scene) -> i32 {
     let owner = s.sim.interner.get("Americans").unwrap();
-    s.sim.houses[&owner].economy.credits
+    s.sim.houses[&owner].economy.credits()
 }
 
 /// Advance one production frame; returns the owner's credits after it.

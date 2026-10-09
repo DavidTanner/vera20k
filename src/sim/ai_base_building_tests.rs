@@ -92,7 +92,9 @@ fn the_production_mode_steps_as_native() {
         let house = sim.houses.get_mut(&owner).unwrap();
         house.is_human = flag(&row["human"]);
         house.player_control = flag(&row["control"]);
-        house.economy.credits = int(&row["money"]) as i32;
+        house
+            .economy
+            .set_credits_for_test(int(&row["money"]) as i32);
         house
             .ai_production
             .set_for_test(int(&row["mode"]) as i32, -1, true);
@@ -459,7 +461,7 @@ fn a_computer_yard_places_its_building_on_the_node_cell() {
     let (mut sim, rules, owner, yard, product) = exit_fixture();
     let plain = rules.building_type_index("PLAIN").unwrap();
     let house = sim.houses.get_mut(&owner).unwrap();
-    house.economy.credits = 100;
+    house.economy.set_credits_for_test(100);
     house.ai_production.set_for_test(0, plain, true);
 
     let exit = exit_building(&mut sim, &rules, yard, product, None);

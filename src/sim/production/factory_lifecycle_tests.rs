@@ -149,7 +149,7 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
         ));
         assert_eq!(held_id(&sim, owner, ProductionCategory::Vehicle), parent);
         assert_eq!(children(&sim, parent), child_ids);
-        assert_eq!(sim.houses[&owner].economy.credits, 50_000);
+        assert_eq!(sim.houses[&owner].economy.credits(), 50_000);
         assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
         assert!(cancel_by_type_for_owner(
@@ -339,7 +339,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     super::publish_production_changes(&mut sim, &rules);
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
     let mut expected = sim.scenario_rng.clone();
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     // A PRODUCE of the type waiting finished takes Begin_Production's resume
     // branch (0x004FA5A8..0x004FA5C4), which the build start refuses at stage 54
     // (0x004C9ECD): nothing is queued or charged.
@@ -353,7 +353,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
             .queue
             .is_empty()
     );
-    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits);
     // A different queued type does not intercept cancellation of the ready head.
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "GAPOWR"));
     assert!(cancel_by_type_for_owner(
@@ -364,7 +364,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
         false
     ));
     assert_gone(&sim, parent, &child_ids);
-    assert_eq!(sim.houses[&owner].economy.credits, credits + 1000);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits + 1000);
     assert_eq!(counts(&sim, owner), (before.0 + 1, before.1));
     assert!(
         sim.production
@@ -414,7 +414,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
         let balance = factory.balance;
         sim.cost_of(owner, rules.object("SMIN").unwrap(), &rules) - balance
     };
-    let before = sim.houses[&owner].economy.credits;
+    let before = sim.houses[&owner].economy.credits();
     let mut expected = sim.scenario_rng.clone();
     // The producing factory remains; only the active type loses its
     // prerequisite, which its house stops counting on the map.
@@ -423,7 +423,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     let promotion_frame = sim.session.binary_frame;
     sim.advance_tick(&[], Some(&rules), None, None, 67);
     assert_gone(&sim, parent, &child_ids);
-    assert_eq!(sim.houses[&owner].economy.credits, before + spent);
+    assert_eq!(sim.houses[&owner].economy.credits(), before + spent);
     let successor = held_id(&sim, owner, ProductionCategory::Vehicle);
     assert_eq!(
         sim.interner
@@ -460,10 +460,10 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
         sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_eq!(progress(&sim), 0);
     }
-    assert_eq!(sim.houses[&owner].economy.credits, before + spent);
+    assert_eq!(sim.houses[&owner].economy.credits(), before + spent);
     sim.advance_tick(&[], Some(&rules), None, None, 67);
     assert_eq!(progress(&sim), 1);
-    assert!(sim.houses[&owner].economy.credits < before + spent);
+    assert!(sim.houses[&owner].economy.credits() < before + spent);
 }
 
 #[test]
@@ -487,7 +487,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
         .unwrap()
         .tracking
         .set_buildings_for_test(0);
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     let rng = (
         sim.main_rng.logical_state(),
         sim.scenario_rng.logical_state(),
@@ -508,7 +508,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     assert_eq!(factory.queue.len(), 1);
     let object = sim.substrate.entities.get(held).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
-    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, allocated);
     assert_eq!(
         (
@@ -559,12 +559,12 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
             sim.cost_of(owner, rules.object(parent_type).unwrap(), &rules) - balance
         };
         sim.substrate.entities.remove(1);
-        let before = sim.houses[&owner].economy.credits;
+        let before = sim.houses[&owner].economy.credits();
         let allocated = sim.substrate.next_stable_object_id;
         let rng = sim.scenario_rng.logical_state();
         sim.advance_tick(&[], Some(&rules), None, None, 67);
         assert_gone(&sim, parent, &child_ids);
-        assert_eq!(sim.houses[&owner].economy.credits, before + spent);
+        assert_eq!(sim.houses[&owner].economy.credits(), before + spent);
         assert_eq!(sim.owned_object_counts(owner).1, 0);
         assert_eq!(sim.substrate.next_stable_object_id, allocated);
         assert_eq!(sim.scenario_rng.logical_state(), rng);
@@ -606,7 +606,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     );
     // This is FindFactory's absent producer branch, not a present, full pad.
     sim.substrate.entities.remove(5);
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     let rng = (
         sim.main_rng.logical_state(),
         sim.scenario_rng.logical_state(),
@@ -626,7 +626,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     assert!(sim.substrate.entities.get(held).unwrap().lifecycle.in_limbo);
-    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, allocated);
     assert_eq!(
         (
@@ -657,7 +657,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     super::publish_production_changes(&mut sim, &rules);
     assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
     let tracked = sim.houses[&owner].tracking.buildings();
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
 
     // With a Construction Yard standing, the ready building waits.
     super::revalidate_and_step_factories(&mut sim, &rules);
@@ -667,7 +667,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     super::revalidate_and_step_factories(&mut sim, &rules);
     assert!(!sim.substrate.entities.contains(held));
     assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
-    assert_eq!(sim.houses[&owner].economy.credits, credits + 800);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits + 800);
     assert!(
         sim.production
             .ready_by_owner
@@ -696,13 +696,13 @@ fn a_held_vehicle_goes_with_the_last_war_factory() {
             .test_arm_ready(owner, ProductionCategory::Vehicle)
     );
     assert_eq!(sim.houses[&owner].tracking.units_for_test(), 1);
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
 
     sim.substrate.entities.remove(1);
     super::revalidate_and_step_factories(&mut sim, &rules);
     assert_gone(&sim, held, &child_ids);
     assert_eq!(sim.houses[&owner].tracking.units_for_test(), 0);
-    assert_eq!(sim.houses[&owner].economy.credits, credits + 700);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits + 700);
 }
 
 /// A 900-credit tank buildable from a war factory, and an Industrial Plant type
@@ -788,11 +788,11 @@ fn a_cancel_refunds_the_cost_of_at_cancel_time() {
     // The first step pays 900 / 53.
     assert_eq!(progress(&mut sim), (1, 884));
     spawn_plant(&mut sim, &rules);
-    let before = sim.houses[&owner].economy.credits;
+    let before = sim.houses[&owner].economy.credits();
     assert!(cancel_by_type_for_owner(
         &mut sim, &rules, "Russians", "HTNK", false
     ));
-    assert_eq!(sim.houses[&owner].economy.credits, before + 675 - 884);
+    assert_eq!(sim.houses[&owner].economy.credits(), before + 675 - 884);
 }
 
 /// Exit4440BC calls FreeRadio65ADC0: stock one-slot barracks return1 while
@@ -814,10 +814,12 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let first = held_id(&sim, owner, category);
     // Supply the paid-completion wallet and Balance0 through their existing
     // owners. The actual constructor, publication, PLACE and HELLO2/9 tail run.
-    assert_eq!(
-        sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
-        cost
+    let economy = &mut sim.houses.get_mut(&owner).unwrap().economy;
+    assert!(
+        economy.available_money() >= cost,
+        "the wallet covers the build"
     );
+    economy.spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     assert!(dispatch_production_changes_for_tests(
         &mut sim, &rules, None
@@ -847,10 +849,12 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert_ne!(refused, first);
     // This completed second head and post-payment wallet are supplied test
     // priors. No live GI turn is invented to keep the first real link occupied.
-    assert_eq!(
-        sim.houses.get_mut(&owner).unwrap().economy.spend(cost),
-        cost
+    let economy = &mut sim.houses.get_mut(&owner).unwrap().economy;
+    assert!(
+        economy.available_money() >= cost,
+        "the wallet covers the build"
     );
+    economy.spend_money(cost);
     assert!(sim.production.factories.test_arm_ready(owner, category));
     assert_eq!(
         sim.production
@@ -882,8 +886,8 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let completed = sim.production.factories.view(owner, category).unwrap();
     assert!(completed.ready);
     assert_eq!(completed.queue.len(), 1);
-    let credits = sim.houses[&owner].economy.credits;
-    let spent = sim.houses[&owner].economy.spent_credits;
+    let credits = sim.houses[&owner].economy.credits();
+    let spent = sim.houses[&owner].economy.spent_credits();
     let refund = sim.cost_of(owner, rules.object("E1").unwrap(), &rules);
     let prior_ids: Vec<_> = sim
         .substrate
@@ -904,8 +908,8 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         !sim.substrate.entities.contains(refused),
         "scalar cleanup is synchronous"
     );
-    assert_eq!(sim.houses[&owner].economy.credits, credits + refund);
-    assert_eq!(sim.houses[&owner].economy.spent_credits, spent);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits + refund);
+    assert_eq!(sim.houses[&owner].economy.spent_credits(), spent);
     let factory = sim.production.factories.view(owner, category).unwrap();
     let successor = factory.object.unwrap().entity_id.unwrap();
     assert!(successor > refused);

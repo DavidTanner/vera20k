@@ -896,7 +896,9 @@ use crate::sim::world::Simulation;
 // instead. Prior records cannot resume.
 // 311 -> 312: HouseTracking saves the house's AirportDocks (+0x2D4). Prior
 // records lack it.
-const SNAPSHOT_VERSION: u32 = 312;
+// 312 -> 313: the house score (+0x54E8) is one Economy field; MatchStatistics
+// drops its kill half. Prior records cannot resume.
+const SNAPSHOT_VERSION: u32 = 313;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3927,7 +3929,8 @@ mod tests {
         // 309 -> 310: the dead infantry scatter timer.
         // 310 -> 311: the legacy dock Launching phase.
         // 311 -> 312: the house's AirportDocks.
-        assert_eq!(super::SNAPSHOT_VERSION, 312);
+        // 312 -> 313: the house's one score.
+        assert_eq!(super::SNAPSHOT_VERSION, 313);
     }
 
     #[test]

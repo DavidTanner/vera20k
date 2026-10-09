@@ -43,6 +43,8 @@ pub use self::production_placement::{
 };
 #[cfg(test)]
 pub(crate) use self::production_queue::dispatch_production_changes_for_tests;
+#[cfg(test)]
+pub(in crate::sim) use self::production_queue::house_for_test;
 pub use self::production_queue::{
     build_options_for_owner, credits_for_owner, has_build_option_for_owner,
     power_balance_for_owner, publish_production_changes, queue_view_for_owner,
@@ -78,7 +80,6 @@ pub(in crate::sim) use self::factory_lifecycle::release_delivered_mobile;
 pub(in crate::sim) use self::factory_lifecycle::{
     refresh_factory_rates_for_house, revalidate_and_step_factories,
 };
-pub(in crate::sim) use self::production_queue::credits_entry_for_owner;
 #[cfg(test)]
 pub(in crate::sim) use self::production_queue::exit_produced_object;
 pub(crate) use self::wall_placement::stamp_wall_with_autofill;

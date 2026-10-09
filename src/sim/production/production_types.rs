@@ -12,7 +12,8 @@ use crate::sim::intern::InternedId;
 use crate::sim::ore_growth::{OreGrowthConfig, OreGrowthState};
 use crate::sim::production::factory::FactoryRegistry;
 
-/// Initial credits for the local player.
+/// A test house's opening balance.
+#[cfg(test)]
 pub const STARTING_CREDITS: i32 = 5000;
 
 /// One queued item formatted for UI rendering.

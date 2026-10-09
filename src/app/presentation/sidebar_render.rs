@@ -14,8 +14,8 @@
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::render::batch::BatchTexture;
-use crate::ui::sidebar::{self, SidebarView};
 use crate::sim::production;
+use crate::ui::sidebar::{self, SidebarView};
 
 // Re-export instance builders so callers don't need to know about the split.
 pub(crate) use crate::app::presentation::sidebar_build::{
@@ -36,6 +36,13 @@ pub(crate) fn current_sidebar_view(state: &AppState) -> Option<&SidebarView> {
         .view()
 }
 
+/// The money the credits counter counts toward: `CreditsClass::AI @
+/// 0x004A2600` reads the player's Available_Money and shows a balance at or
+/// below zero as 0 (`0x004A2687..0x004A2698`).
+pub(crate) fn counter_credits(sim: &crate::sim::world::Simulation, owner: &str) -> i32 {
+    production::credits_for_owner(sim, owner).max(0)
+}
+
 /// Advance the displayed balance at the authoritative gameplay-frame seam.
 pub(crate) fn advance_sidebar_credits_after_frame(
     state: &mut AppState,
@@ -54,7 +61,7 @@ pub(crate) fn advance_sidebar_credits_after_frame(
     else {
         return;
     };
-    let credits = production::credits_for_owner(sim, &owner_name);
+    let credits = counter_credits(sim, &owner_name);
     let Some(tick) = state
         .match_state
         .match_presentation
@@ -135,7 +142,7 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
             production::queue_view_for_owner(sim, rules, &owner_name),
             production::ready_buildings_for_owner(sim, rules, &owner_name),
             producer_focus,
-            production::credits_for_owner(sim, &owner_name),
+            counter_credits(sim, &owner_name),
             power_produced,
             power_drained,
             sw_views,
