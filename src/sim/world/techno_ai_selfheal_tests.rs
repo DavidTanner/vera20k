@@ -127,8 +127,14 @@ fn limbo_clamps_a_shortfall_at_zero() {
     );
 }
 
+/// The full owner transfer, through the production entry rather than the
+/// counter helper: `TechnoClass::ChangeOwner` writes the new owner first and
+/// takes the counts off the old house afterwards at `0x00448AC8`, while the new
+/// house gains them from the `Grand_Opening(1)` the same function calls at
+/// `0x00448CEF`. Driving only the helper misses exactly that split — and did:
+/// the old house kept its count and the new one gained a second one.
 #[test]
-fn change_owner_moves_the_counts_and_requires_the_placed_byte() {
+fn an_owner_change_moves_the_counter_between_houses() {
     let (mut sim, rules, owner) = scene();
     let new_owner = sim.interner.intern("Americans");
     sim.houses
@@ -136,29 +142,39 @@ fn change_owner_moves_the_counts_and_requires_the_placed_byte() {
     let hospital = spawn(&mut sim, &rules, "CAHOSP");
     assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
 
-    // `+0x6E4` clear: every arm returns before touching a counter.
+    sim.change_owner_with_rules(hospital, new_owner, &rules, None);
+
+    assert_eq!(
+        sim.houses[&owner].self_heal_infantry(),
+        0,
+        "0x00448AC8 takes the count off the house that lost the building"
+    );
+    assert_eq!(
+        sim.houses[&new_owner].self_heal_infantry(),
+        1,
+        "0x00448CEF's Grand_Opening gives it to the new house, exactly once"
+    );
+}
+
+#[test]
+fn the_old_owners_share_requires_the_placed_byte() {
+    let (mut sim, rules, owner) = scene();
+    let hospital = spawn(&mut sim, &rules, "CAHOSP");
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
+
+    // `+0x6E4` clear: both arms of `0x00448AC8`/`0x00448B0A` return before
+    // touching a counter, even though the type's count is non-zero.
     sim.substrate
         .entities
         .get_mut(hospital)
         .unwrap()
         .building_actually_placed = false;
-    sim.transfer_house_self_heal(hospital, owner, new_owner, &rules);
+    sim.remove_old_owner_self_heal(hospital, owner, &rules);
     assert_eq!(
         sim.houses[&owner].self_heal_infantry(),
         1,
-        "still the old house"
+        "the old house keeps its count while the building is not placed"
     );
-    assert_eq!(sim.houses[&new_owner].self_heal_infantry(), 0);
-
-    // Placed: the old owner loses it (clamped) and the new owner gains it.
-    sim.substrate
-        .entities
-        .get_mut(hospital)
-        .unwrap()
-        .building_actually_placed = true;
-    sim.transfer_house_self_heal(hospital, owner, new_owner, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_infantry(), 0);
-    assert_eq!(sim.houses[&new_owner].self_heal_infantry(), 1);
 }
 
 #[test]

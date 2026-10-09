@@ -4572,23 +4572,28 @@ impl Simulation {
     }
 
     /// `BuildingClass::ChangeOwner`'s self-heal share
-    /// (`0x00448AC8..0x00448B04` for infantry, `0x00448B0A..` for units): the
-    /// old owner loses the counts (clamped at zero) and the new owner gains
-    /// them. Every arm first tests the type's count and the building's own
-    /// `+0x6E4` "actually placed on the map" byte.
-    pub(crate) fn transfer_house_self_heal(
+    /// (`0x00448AC8..0x00448B04` for infantry, `0x00448B0A..0x00448B46` for
+    /// units): **the old owner loses the type's counts**, and a negative result
+    /// is raised to zero. Both arms first test the type's count and the
+    /// building's own `+0x6E4` "actually placed on the map" byte.
+    ///
+    /// There is no new-owner add in that block. `ChangeOwner` gives the counts to
+    /// the new house through the virtual `Grand_Opening(1)` it calls at
+    /// `0x00448CEF`, whose entry (`0x00445F80`, `mov al,[ebp+0x6E4]`) reaches the
+    /// add at `0x00446382..0x004463B4` for the current owner — so this function
+    /// must not credit anyone, and its caller must run it with the *passed* old
+    /// owner: `TechnoClass::ChangeOwner` has already written the new owner by
+    /// then, which is why an earlier version that read the entity's current
+    /// owner back never took the counters off the house that lost the building.
+    pub(crate) fn remove_old_owner_self_heal(
         &mut self,
         stable_id: u64,
         old_owner: InternedId,
-        new_owner: InternedId,
         rules: &RuleSet,
     ) {
-        let Some((owner, infantry, units)) = self.structure_self_heal_gain(stable_id, rules) else {
+        let Some((_, infantry, units)) = self.structure_self_heal_gain(stable_id, rules) else {
             return;
         };
-        if owner != old_owner {
-            return;
-        }
         let placed = self
             .substrate
             .entities
@@ -4599,9 +4604,6 @@ impl Simulation {
         }
         if let Some(house) = self.houses.get_mut(&old_owner) {
             house.revoke_self_heal(infantry, units);
-        }
-        if let Some(house) = self.houses.get_mut(&new_owner) {
-            house.grant_self_heal(infantry, units);
         }
     }
 
@@ -5036,12 +5038,15 @@ impl Simulation {
             }
         }
         // A hospital's or machine shop's self-heal counts leave the old house
-        // and join the new one (`0x00448AC8..0x00448B04`), each arm gated on
-        // the type's count and the building's own `+0x6E4` byte.
+        // here (`0x00448AC8..0x00448B04`, `0x00448B0A..0x00448B46`, each arm
+        // gated on the type's count and the building's own `+0x6E4` byte). The
+        // new house gains them from the `Grand_Opening(1)` below — the one
+        // `ChangeOwner` calls at `0x00448CEF` — not from this block, so the
+        // counters move exactly once.
         if category == EntityCategory::Structure
             && let Some(rules) = rules
         {
-            self.transfer_house_self_heal(stable_id, old_owner, new_owner, rules);
+            self.remove_old_owner_self_heal(stable_id, old_owner, rules);
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.
