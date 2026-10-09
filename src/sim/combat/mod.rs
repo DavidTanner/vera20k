@@ -3340,26 +3340,23 @@ pub(crate) fn lepton_distance_sq_raw(
 /// Pursuit no longer reaches it: `World::tick_attack_pursuit` measures through
 /// `pursuit_in_range` → `compute_in_range`, matching the approach search
 /// `FootClass::Greatest_Threat_Scan @ 0x004D5690`, which decides with `InRange`
-/// 0x006F7220 itself. Two production readers still take the plain radius, each
-/// recorded on its own call site:
+/// 0x006F7220 itself. Two production readers still take the plain radius,
+/// both garrison paths, each recorded on its own call site:
 ///
 /// - the fire gate's GARRISON branch (`resolve_attacker_fire`, the
 ///   `is_garrison || effective_range != weapon.range` arm);
-/// - `ScanRange::Hard` in `greatest_threat::evaluate_candidate`, the
-///   garrison passive scan's override.
+/// - the garrisoned building's auto-acquire scan in `world_receiver`.
 ///
 /// The remaining readers are the no-resolved-terrain fallbacks in the fire
 /// gate, the cursor and pursuit, which cannot run a walk at all and therefore
 /// agree with each other rather than diverging.
 ///
-/// - Trigger: a garrisoned occupant firing, or a garrison passive scan
-///   choosing a candidate, across a wall or a ≥4-Level step, or down at a
-///   lower target.
+/// - Trigger: a garrisoned occupant choosing or firing at a target across a
+///   wall or a ≥4-Level step, or down at a lower target.
 /// - Player effect: garrisoned infantry shoot through a wall the identical
-///   infantry standing in the open is refused; the passive scan can pick a
-///   candidate behind one. Every retail `OccupyWeapon=` fires `InvisibleHigh`
-///   (`SubjectToElevation=yes`), so a garrison four levels above its target
-///   reaches 659 leptons farther in gamemd than here.
+///   infantry standing in the open is refused. Every retail `OccupyWeapon=`
+///   fires `InvisibleHigh` (`SubjectToElevation=yes`), so a garrison four
+///   levels above its target reaches 659 leptons farther in gamemd than here.
 /// - Frequency: routine on urban maps, where garrisoning is a normal opening.
 /// - Downstream risk: none to deterministic state; both stages agree with each
 ///   other, so it is a uniformly wrong answer, not a stall. The cure is

@@ -1,7 +1,7 @@
 //! `tools/threat_mask_oracle.py`'s native rows replayed: `Greatest_Threat`'s
 //! flags word, `Evaluate_Candidate`'s All-To-Hunt and quarry terms with its
-//! final acceptance, and `Calculate_Threat_Score`'s SpecialThreatValue term
-//! with `EnemyHouseThreatBonus=`.
+//! final acceptance, `Calculate_Threat_Score`'s SpecialThreatValue term
+//! with `EnemyHouseThreatBonus=`, and `Evaluate_Candidate`'s distance cutoff.
 
 use super::*;
 use crate::sim::house_state::HouseState;
@@ -95,6 +95,35 @@ fn special_threat_and_enemy_house_bonus_match_the_original() {
             ScoreX87::store_f64_masked_chop(score).bits(),
             u64::from_str_radix(row["result_bits"].as_str().unwrap(), 16).unwrap(),
             "bonus row {number}: {row}"
+        );
+    }
+}
+
+#[test]
+fn distance_cutoff_matches_the_original() {
+    let rows = rows("cutoff");
+    assert_eq!(rows.len(), 173);
+    for (number, row) in rows.iter().enumerate() {
+        let coord = |key: &str| DriveCoord {
+            x: int(&row[key][0]),
+            y: int(&row[key][1]),
+            z: int(&row[key][2]),
+        };
+        let high_flying = flag(&row["high_flying"]);
+        assert_eq!(
+            cutoff_distance(coord("scanner"), coord("candidate"), high_flying),
+            int(&row["distance"]),
+            "cutoff row {number}: {row}"
+        );
+        assert_eq!(
+            !candidate_beyond_cutoff(
+                coord("scanner"),
+                coord("candidate"),
+                high_flying,
+                int(&row["range"])
+            ),
+            flag(&row["admitted"]),
+            "cutoff row {number}: {row}"
         );
     }
 }
