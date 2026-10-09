@@ -350,7 +350,6 @@ fn recorded_fire_error(fixture: &SuppliedFootFixture, case: &Value, rules: &Rule
             .unwrap(),
         target: fixture.target(&case["input"]["target"]),
         weapon_index: 0,
-        garrison: None,
     }
     .fire_error(true) as i32
 }

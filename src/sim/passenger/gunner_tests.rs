@@ -49,7 +49,14 @@ fn assert_selection(sim: &Simulation, ifv: u64, expected: (i32, i32)) {
 
 fn assert_current_weapon(sim: &Simulation, rules: &RuleSet, ifv: u64, expected: &str) {
     assert_eq!(
-        current_weapon(entity(sim, ifv), rules.object("FV").expect("retail FV")),
+        current_weapon(
+            entity(sim, ifv),
+            rules.object("FV").expect("retail FV"),
+            &sim.substrate.entities,
+            rules,
+            &sim.interner,
+        )
+        .map(|weapon| weapon.id.as_str()),
         Some(expected)
     );
 }

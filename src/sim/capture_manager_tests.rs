@@ -448,7 +448,6 @@ fn get_fire_error_refuses_an_uncapturable_target() {
             obj: rules.object("YURI").unwrap(),
             target: Some(crate::sim::combat::TargetKind::Entity(target)),
             weapon_index: 0,
-            garrison: None,
         }
         .fire_error(false)
     };

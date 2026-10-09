@@ -453,7 +453,6 @@ fn bridge_code(sim: &crate::sim::world::Simulation, rules: &RuleSet, firer: &str
         obj: rules.object(firer).unwrap(),
         target: Some(crate::sim::combat::TargetKind::Entity(2)),
         weapon_index: 0,
-        garrison: None,
     }
     .fire_error(false)
 }

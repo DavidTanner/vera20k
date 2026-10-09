@@ -7,20 +7,24 @@
     1,
     33621247
   ],
-  "scope": "Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm), the arcing arm's 2-D distance, its arc test (48AB90, 48ACF0, 48ABC0) under supplied Gravity/Floater and its bridge ceiling (6F74D7); explicit supplied object/weapon/map fields.",
+  "scope": "Original6F7970->6F77B0->6F7220 Infantry and occupied-Building Cell/object-target range and lookup ordering, including live Building GetCoords/GetWeapon/IsOccupied/HalfFoundation and the occupied range replacement; the +0x82 OpenToppedRangeBonus stage; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm), the arcing arm's 2-D distance, its arc test (48AB90, 48ACF0, 48ABC0) under supplied Gravity/Floater and its bridge ceiling (6F74D7); explicit supplied object/weapon/map fields.",
   "assumptions": [
-    "Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows' Floater +0x295, SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.",
+    "Supplied original Infantry table7EB058 (object target and Infantry source), Building table7E3EBC (Building source), and Cell table7E4EEC; no bunker/veteran range bonuses. Building source rows supply type+520, Foundation+EF0, occupancy flags+157B/+157C, vector+688/count+694/index+69C and Infantry occupants with OccupyWeapon+E04. Upgrades+702=0. The open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows' Floater +0x295, SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.",
     "Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor's 0/1.0/0.0 otherwise.",
     "Rules+0x16B8 Gravity and BulletType+0x295 Floater are supplied per row, Gravity 0 unless given: a zero gravity gives launch speed 0 and Can_Reach48ABC0 admits the row. Rows exercise gravity 6, 6 halved by Floater, -6 and 0, a zero 2-D distance, and the bridge ceiling on a real cell, without and with retail gravity, and through a Dummy target centre that truncates into a real cell.",
-    "No constructors or complete PerCell/weapon selection/flight behavior claimed."
+    "Rules+F48 OccupyWeaponRange is5 unless supplied. Building rows distinguish short/long weapon Range from occupied reach, false occupancy flags and no occupants, minimum/sentinel stages, AirRangeBonus replacement and subsequent elevation bonus, odd/even foundations and CellRangefinding centre. The two production reach inputs use occupy range3, weapon512/2048 and native Building Location(2688,2688,0) against Infantry Location(2688,3712/3968,0). No constructors, INI/ART readers, complete acquisition/ring/scoring, PerCell or shot/flight behavior claimed."
   ],
   "substitutions": [
-    "GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. No other callable substitution."
+    "Infantry source rows: GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. Building source rows execute original GetWeapon, IsOccupied, occupant count and HalfFoundation against supplied type/occupant fields. No other callable substitution."
   ],
   "entry_points": {
     "coordinate_cell_wrapper": "0x006F7970",
     "range_source": "0x006F77B0",
     "range": "0x006F7220",
+    "building_coords": "0x00447AC0",
+    "building_get_weapon": "0x004526F0",
+    "is_occupied": "0x00458DD0",
+    "half_foundation": "0x00458E00",
     "elevation_direct": "0x006F6F60",
     "elevation_arcing": "0x006F70E0",
     "cell_height": "0x00487D50",
@@ -35,5 +39,14 @@
     "floater_gravity": "0x0048ACF0",
     "can_reach": "0x0048ABC0"
   },
-  "payload_sha256": "d4249dde95fc94b71b140cd99a074b4cd6f109c0671e06586e24f773f30eba2d"
+  "commands": [
+    "python -m tools.spatial_oracle.walk_cell_range --write",
+    "python -m tools.spatial_oracle.walk_cell_range --check"
+  ],
+  "source_normalized_lf_sha256": {
+    "walk_cell_range": "26c1c5f1e767c6bcb97733c0fd654429aa815c850c7a3fa3ed0f9064d70f115c",
+    "native_oracle": "67a69b8e446a8134fbff1128c1fe15025350f329fc25585af29ea725746f2ceb",
+    "map_queries": "f1c798f50bf8a69ebe53c6d0e2327ce395ad99ba5c7017e74e353757770f4305"
+  },
+  "payload_sha256": "2348cb911edbac5cad43d38de2b59670b74c663b657f58092e4fafdef5979df7"
 }

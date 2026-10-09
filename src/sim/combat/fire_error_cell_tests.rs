@@ -145,7 +145,6 @@ fn original_object_cell_queries_keep_physical_aliases_and_dummy_fields() {
             obj: rules.object("TANK").unwrap(),
             target: Some(TargetKind::Entity(2)),
             weapon_index: 0,
-            garrison: None,
         };
         let mut query = WorldQuery::new(&subject);
         let expected = CellFacts {
@@ -203,7 +202,6 @@ fn cell_target_equality_uses_real_aliases_and_one_shared_dummy() {
         obj: rules.object("TANK").unwrap(),
         target: Some(TargetKind::Cell(u16::MAX, 1)),
         weapon_index: 0,
-        garrison: None,
     };
     assert_eq!(WorldQuery::new(&subject).firer_cell(), FirerCell::Target);
 
@@ -222,7 +220,6 @@ fn cell_target_equality_uses_real_aliases_and_one_shared_dummy() {
         obj: rules.object("TANK").unwrap(),
         target: Some(TargetKind::Cell(42, 42)),
         weapon_index: 0,
-        garrison: None,
     };
     assert_eq!(subject.facts().target.land_type, 6);
     assert_eq!(
@@ -261,7 +258,6 @@ fn sensor_reads_retained_identity_after_another_query_stamps_dummy() {
         obj: rules.object("TANK").unwrap(),
         target: Some(TargetKind::Entity(2)),
         weapon_index: 0,
-        garrison: None,
     };
     let mut query = WorldQuery::new(&subject);
     query.retain_target_center_cell();
@@ -354,7 +350,6 @@ fn original_early_fire_error_retains_cell_between_temporal_and_lifted_gates() {
             obj: rules.object("TANK").unwrap(),
             target: Some(TargetKind::Entity(2)),
             weapon_index: 0,
-            garrison: None,
         };
         let mut facts = subject.facts();
         match row.name.as_str() {
@@ -418,7 +413,6 @@ fn original_cell_center_query_reads_the_retained_receiver_coordinate() {
             obj: rules.object("TANK").unwrap(),
             target: Some(target),
             weapon_index: 0,
-            garrison: None,
         };
         let mut query = WorldQuery::new(&subject);
         query.retain_target_center_cell();

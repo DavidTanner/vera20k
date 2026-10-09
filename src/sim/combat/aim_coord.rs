@@ -26,11 +26,6 @@ use crate::sim::world::Simulation;
 /// Cell+58 uses the existing read-only structural bridge coordinate owner.
 /// Its mapless/off-map fallback remains an existing coverage limit; retained
 /// shared-Dummy Cell identity belongs to the separate Cell Attack chain.
-///
-/// RESIDUAL: Building GetCurrentWeapon4526F0 substitutes the firing garrison
-/// occupant's weapon. The represented lookup uses the building's type slot;
-/// every retail occupant weapon is Inviso and never reaches FireAt's lead,
-/// so this boundary remains dormant for retail firing.
 pub(crate) fn led_target_coordinate(
     world: &Simulation,
     rules: &RuleSet,
@@ -81,8 +76,15 @@ pub(crate) fn led_target_coordinate(
     );
     let Some(current_weapon) = rules
         .object(world.interner.resolve(firer.type_ref()))
-        .and_then(|firer_type| super::combat_weapon::current_weapon(firer, firer_type))
-        .and_then(|id| rules.weapon(id))
+        .and_then(|firer_type| {
+            super::combat_weapon::current_weapon(
+                firer,
+                firer_type,
+                &world.substrate.entities,
+                rules,
+                &world.interner,
+            )
+        })
     else {
         return target_coord;
     };

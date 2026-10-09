@@ -636,7 +636,8 @@ fn techno_ai_shell(
         // something shoots it. A passenger inside a closed transport is gated
         // out by the mission read, an open-topped transport's rider scans from
         // the Guard its boarding gave it (`SetInOpenTransport 0x00710470`), and
-        // a garrisoned occupant fires through the garrison path instead.
+        // a garrisoned occupant's weapon is fired by its building
+        // (`BuildingClass::GetWeapon @ 0x004526F0`).
         // The supported Foot mission cadence branches run here as well.
         EntityCategory::Infantry => {
             if let Some(rules) = rules
@@ -2648,6 +2649,129 @@ mod tests {
                 .object(sim.interner.resolve(scout.type_ref()))
                 .unwrap()
                 .strength,
+        );
+    }
+
+    /// One boarded `OCCUPANT` (`OccupyWeapon=` of `range` cells) in a 2x2
+    /// house at (10, 10), and an unarmed enemy at `enemy`, on flat ground
+    /// through `advance_tick`. Answers the house's target and the enemy's
+    /// health.
+    fn run_garrison(range: &str, enemy: (u16, u16)) -> (Option<TargetKind>, i32) {
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(&format!(
+                "[General]\nNormalTargetingDelay=27\nGuardAreaTargetingDelay=36\n\n\
+             [CombatDamage]\nOccupyWeaponRange=3\n\n\
+             [InfantryTypes]\n0=OCCUPANT\n[AircraftTypes]\n\
+             [VehicleTypes]\n0=UNARM\n[BuildingTypes]\n0=HOUSE\n\n\
+             [HOUSE]\nStrength=750\nArmor=wood\nSight=5\n\
+             CanBeOccupied=yes\nCanOccupyFire=yes\nMaxNumberOccupants=5\n\n\
+             [OCCUPANT]\nLocomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n\
+             Strength=125\nArmor=none\nSpeed=4\nSight=10\nOccupier=yes\n\
+             Primary=Gun\nOccupyWeapon=Gun\n\n\
+             [UNARM]\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\n\
+             Strength=300\nArmor=heavy\nSpeed=6\nSight=10\n\n\
+             [Gun]\nDamage=20\nROF=30\nRange={range}\nWarhead=AP\nProjectile=InvisibleHigh\n\n\
+             [InvisibleHigh]\nInviso=yes\nSubjectToElevation=yes\n\n\
+             [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n"
+            )),
+            &IniFile::from_str("[HOUSE]\nFoundation=2x2\n"),
+        )
+        .expect("garrison passive-acquire rules parse");
+        assert_eq!(rules.object("HOUSE").unwrap().foundation, "2x2");
+        run_boarded_garrison(&rules, "HOUSE", "OCCUPANT", "UNARM", enemy)
+    }
+
+    fn run_boarded_garrison(
+        rules: &RuleSet,
+        building_type: &str,
+        occupant_type: &str,
+        enemy_type: &str,
+        enemy: (u16, u16),
+    ) -> (Option<TargetKind>, i32) {
+        let mut sim = Simulation::with_seed(0x5CA1_AB1E_000B);
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, rules);
+        sim.spawn_from_map(
+            &[
+                passive_map_entity(
+                    "Americans",
+                    building_type,
+                    10,
+                    10,
+                    EntityCategory::Structure,
+                ),
+                passive_map_entity("Americans", occupant_type, 9, 10, EntityCategory::Infantry),
+                passive_map_entity("Soviet", enemy_type, enemy.0, enemy.1, EntityCategory::Unit),
+            ],
+            Some(rules),
+        );
+        sim.substrate.entities.get_mut(2).unwrap().passenger_role =
+            crate::sim::passenger::PassengerRole::Boarding {
+                target_transport_id: 1,
+            };
+        for _ in 0..160 {
+            let _ = sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
+        }
+        assert!(
+            sim.substrate
+                .entities
+                .get(1)
+                .and_then(|house| house.passenger_role.cargo())
+                .is_some_and(|cargo| cargo.passengers == [2]),
+            "precondition: the occupant boarded"
+        );
+        (
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .attack_target
+                .as_ref()
+                .map(|attack| attack.target),
+            sim.substrate.entities.get(3).unwrap().health.current,
+        )
+    }
+
+    /// An occupied building takes its occupant's weapon (`BuildingClass::GetWeapon
+    /// @ 0x004526F0`) but measures with its reach, HalfFoundation (`0x00458E00`)
+    /// plus `OccupyWeaponRange=`: InRange replaces the weapon's range with it
+    /// (`0x006F727E..0x006F729F`) and the passive scan's ring bound is one cell
+    /// more (`0x006F917F..0x006F91A3`). This 2x2 house reaches 1 + 3 = 4 cells,
+    /// 1024 leptons, from its centre (the corner of cells (10, 10) and
+    /// (11, 11)). An enemy 905 leptons away is shot with a 2-cell gun; one 1159
+    /// leptons away is not taken with an 8-cell gun.
+    #[test]
+    fn an_occupied_building_acquires_and_fires_at_its_reach() {
+        let (target, health) = run_garrison("2", (10, 14));
+        assert_eq!(target, Some(TargetKind::Entity(3)));
+        assert!(
+            health < 300,
+            "the occupant's 2-cell gun fired at 905 leptons"
+        );
+        let (target, health) = run_garrison("8", (10, 15));
+        assert_eq!(target, None, "1159 leptons is beyond the reach");
+        assert_eq!(health, 300);
+    }
+
+    #[test]
+    fn a_retail_garrison_acquires_and_fires_with_its_art_foundation() {
+        let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+            return;
+        };
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+            .expect("retail RULESMD and fixed ARTMD");
+        assert_eq!(rules.object("CABUNK01").unwrap().foundation, "2x2");
+        let initial_health = rules.object("AMCV").unwrap().strength;
+        let (target, health) = run_boarded_garrison(&rules, "CABUNK01", "E1", "AMCV", (10, 16));
+        assert_eq!(target, Some(TargetKind::Entity(3)));
+        assert!(
+            health < initial_health,
+            "the retail GI fired from the bunker"
+        );
+        let (target, health) = run_boarded_garrison(&rules, "CABUNK01", "E1", "AMCV", (10, 17));
+        assert_eq!(target, None);
+        assert_eq!(
+            health, initial_health,
+            "the MCV outside occupied reach was not shot"
         );
     }
 

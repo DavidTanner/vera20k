@@ -1086,13 +1086,17 @@ fn retail_ifv_death_arm_follows_its_passengers_slot() {
         .iter()
         .filter(|id| {
             let ifv_mode = rules.object(id).unwrap().ifv_mode;
-            crate::sim::combat::death_arm_explodes(&rules, fv, 0, ifv_mode)
+            let numbered = crate::sim::combat::combat_weapon::weapon_for_index(fv, 0, ifv_mode)
+                .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
+            crate::sim::combat::death_arm_explodes(fv, 0, numbered)
         })
         .map(String::as_str)
         .collect();
     exploding.sort_unstable();
     assert_eq!(exploding, ["CIVAN", "IVAN", "TERROR"]);
-    assert!(!crate::sim::combat::death_arm_explodes(&rules, fv, 0, 0));
+    let slot0 = crate::sim::combat::combat_weapon::weapon_for_index(fv, 0, 0)
+        .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
+    assert!(!crate::sim::combat::death_arm_explodes(fv, 0, slot0));
 }
 
 /// A transport the local player had selected (`0x00737C98..0x00737CB6`)

@@ -1312,11 +1312,17 @@ pub(crate) fn handle_death(
                 // inlined, credited to the killing hit's source) before its
                 // death weapon. A unit that does not explode lets them escape
                 // after this arm (`finish_concrete_death`).
-                let current_weapon_number =
-                    world.substrate.entities.get(dead_id).map_or(0, |entity| {
-                        super::combat_weapon::attacker_facts(entity, obj).current_weapon_number
-                    });
-                let explodes = death_arm_explodes(rules, obj, veterancy, current_weapon_number);
+                let numbered_weapon = world.substrate.entities.get(dead_id).and_then(|entity| {
+                    super::combat_weapon::get_weapon(
+                        entity,
+                        obj,
+                        super::combat_weapon::attacker_facts(entity, obj).current_weapon_number,
+                        &world.substrate.entities,
+                        rules,
+                        &world.interner,
+                    )
+                });
+                let explodes = death_arm_explodes(obj, veterancy, numbered_weapon);
                 if explodes && callbacks_enabled(world) {
                     let attacker = killing_attacker(world, damage_events, dead_id);
                     world.kill_passengers(dead_id, attacker, rules, overlay_registry);
@@ -2405,69 +2411,59 @@ fn admit_attacker_fire<'r>(
 
     // Weapon selection, none of which asks legality (GetFireError below, or
     // the building's own visit, does): a delayed building shot resolves the
-    // slot it saved while arming, and a building's Mission_Attack shot the
-    // weapon its visit selected ([`super::BuildingShot::Mission`]). A garrison
-    // fires its occupant's weapon whatever the target (ladder arm B's index 0,
-    // whose GetWeapon `0x004526F0` answers the occupant's weapon); everything
+    // slot it saved while arming, a building's Mission_Attack shot the weapon
+    // its visit selected ([`super::BuildingShot::Mission`]), and everything
     // else runs the native selection ladder (`What_Weapon_Should_I_Use`
-    // `0x006F3330`).
-    let (mut weapon_index, mut selected, is_garrison) =
-        if let Some(saved_slot) = delayed_building_slot {
-            let index = match saved_slot {
-                WeaponSlot::Primary => 0,
-                WeaponSlot::Secondary => 1,
-            };
-            let selected = combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, index)?;
-            (selected.index, Some(selected), false)
-        } else if let Some(ref gs) = snap.garrison {
-            // An occupant without a weapon is refused by the visit's GetFireError
-            // (T21, CANT), whose drop tail lets the target go.
-            let selected = rules
-                .object(world.interner.resolve(gs.occupant_type_id))
-                .and_then(|occupant| {
-                    combat_weapon::occupant_weapon(rules, occupant, gs.occupant_veterancy)
-                })
-                .and_then(|weapon| {
-                    Some(combat_weapon::SelectedWeapon {
-                        weapon_id: &weapon.id,
-                        weapon,
-                        warhead: combat_weapon::warhead_of(rules, weapon)?,
-                        slot: WeaponSlot::Primary,
-                        index: 0,
-                    })
-                })?;
-            (selected.index, Some(selected), true)
-        } else if let Some(weapon) = mission_building_weapon {
-            (
-                weapon,
-                combat_weapon::resolve_weapon_index(rules, obj, snap.veterancy, weapon),
-                false,
-            )
-        } else {
-            let attacker_facts = world
-                .substrate
-                .entities
-                .get(snap.stable_id)
-                .map(|entity| combat_weapon::attacker_facts(entity, obj))
-                .unwrap_or_else(|| combat_weapon::attacker_facts_from_snapshot(snap, obj));
-            let Some((index, selected)) = combat_weapon::select_weapon_against(
+    // `0x006F3330`). Each index resolves through GetWeapon
+    // ([`combat_weapon::resolve_weapon_index`]), so an occupied building fires
+    // its firing occupant's weapon (`0x004526F0`).
+    let firer = world.substrate.entities.get(snap.stable_id)?;
+    let is_garrison = snap.garrison.is_some();
+    let (mut weapon_index, mut selected) = if let Some(saved_slot) = delayed_building_slot {
+        let index = match saved_slot {
+            WeaponSlot::Primary => 0,
+            WeaponSlot::Secondary => 1,
+        };
+        let selected = combat_weapon::resolve_weapon_index(
+            rules,
+            firer,
+            obj,
+            index,
+            &world.substrate.entities,
+            &world.interner,
+        )?;
+        (selected.index, Some(selected))
+    } else if let Some(weapon) = mission_building_weapon {
+        (
+            weapon,
+            combat_weapon::resolve_weapon_index(
                 rules,
+                firer,
                 obj,
-                &attacker_facts,
-                snap.owner,
-                Some(&snap.target),
+                weapon,
                 &world.substrate.entities,
                 &world.interner,
-                world.resolved_terrain.as_ref(),
-                fog_enabled.then_some(&world.fog.alliances),
-            ) else {
-                out.remove_attack.push(snap.stable_id);
-                return None;
-            };
-            (index, selected, false)
+            ),
+        )
+    } else {
+        let Some((index, selected)) = combat_weapon::select_weapon_against(
+            rules,
+            firer,
+            obj,
+            &combat_weapon::attacker_facts(firer, obj),
+            Some(&snap.target),
+            &world.substrate.entities,
+            &world.interner,
+            world.resolved_terrain.as_ref(),
+            fog_enabled.then_some(&world.fog.alliances),
+        ) else {
+            out.remove_attack.push(snap.stable_id);
+            return None;
         };
+        (index, selected)
+    };
 
-    let infantry_fire = snap.category == EntityCategory::Infantry && !is_garrison;
+    let infantry_fire = snap.category == EntityCategory::Infantry;
     let sequences = rules.animation_sequence(world.interner.resolve(snap.type_id));
     let firing_at_entry = infantry_fire
         && world
@@ -2499,15 +2495,6 @@ fn admit_attacker_fire<'r>(
     // arm, whose GetFireError (`0x0044B00F`) answered OK, or
     // ProcessDelayedFire's expiry, whose GetFireError (`0x00450476`) did;
     // neither is asked again.
-    let garrison_fire = if is_garrison {
-        let (Some(gs), Some(selected)) = (snap.garrison.as_ref(), selected.as_ref()) else {
-            return None;
-        };
-        let cells = gs.half_foundation as i32 + rules.garrison_rules.occupy_weapon_range;
-        Some((selected.weapon, SimFixed::from_num(cells.max(1))))
-    } else {
-        None
-    };
     let subject = |world: &Simulation,
                    answer: &mut dyn FnMut(&fire_error_world::FireSubject<'_>)| {
         if let Some(firer) = world.substrate.entities.get(snap.stable_id) {
@@ -2520,7 +2507,6 @@ fn admit_attacker_fire<'r>(
                 obj,
                 target: Some(snap.target),
                 weapon_index,
-                garrison: garrison_fire,
             });
         }
     };
@@ -2711,9 +2697,9 @@ fn admit_attacker_fire<'r>(
         let target = actor.attack_target.as_ref().map(|attack| attack.target);
         (weapon_index, selected) = combat_weapon::select_weapon_against(
             rules,
+            actor,
             obj,
             &combat_weapon::attacker_facts(actor, obj),
-            actor.owner(),
             target.as_ref(),
             &world.substrate.entities,
             &world.interner,
@@ -2729,7 +2715,6 @@ fn admit_attacker_fire<'r>(
             obj,
             target,
             weapon_index,
-            garrison: None,
         }
         .fire_error(true);
         *fire_error_out = Some(code);
@@ -2945,7 +2930,6 @@ fn retaliation_reaches(
             source,
             source_type,
         ),
-        garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     }
     .in_range();
     let human = world.owner_is_human(victim.owner());
@@ -3454,26 +3438,22 @@ pub(super) fn emit_admitted_fire(
         let delta = match launch_scatter_is_flak {
             Some(flak) => {
                 // vt+0x168 (`TechnoClass::GetWeaponRange @ 0x007012C0`) for
-                // the fired weapon: an open-topped firer's passengers cap it.
-                // A building's weapon lookup (`0x004526F0`) returns the firing
-                // occupant's weapon, which a garrison shot already selected.
-                let range = if is_garrison {
-                    weapon.range_leptons
-                } else {
-                    world.substrate.entities.get(snap.stable_id).map_or(
-                        weapon.range_leptons,
-                        |firer| {
-                            combat_weapon::weapon_range(
-                                firer,
-                                obj,
-                                selected.index,
-                                &world.substrate.entities,
-                                rules,
-                                &world.interner,
-                            )
-                        },
-                    )
-                };
+                // the fired weapon: an open-topped firer's passengers cap it,
+                // and an occupied building answers its firing occupant's
+                // weapon, the one this shot fires.
+                let range = world.substrate.entities.get(snap.stable_id).map_or(
+                    weapon.range_leptons,
+                    |firer| {
+                        combat_weapon::weapon_range(
+                            firer,
+                            obj,
+                            selected.index,
+                            &world.substrate.entities,
+                            rules,
+                            &world.interner,
+                        )
+                    },
+                );
                 crate::sim::projectile::launch::fireat_launch_scatter(
                     delta,
                     rules.combat_damage.ballistic_scatter,
@@ -3741,18 +3721,23 @@ pub(super) fn emit_admitted_fire(
     if let Some(entity) = world.substrate.entities.get_mut(snap.stable_id) {
         entity.fire_voxel_recoil(obj.has_turret);
     }
-    let rof_weapon = if is_garrison {
-        world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .and_then(|building| {
-                super::fire_error_world::garrison_weapon(world, rules, building, obj)
-            })
-            .map_or(weapon, |(occupant_weapon, _)| occupant_weapon)
-    } else {
-        weapon
-    };
+    // GetROF (`0x006FCFA0`) reads its weapon through GetWeapon (vt+0x3F8,
+    // `0x006FCFCA`), after the advance above.
+    let rof_weapon = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .and_then(|firer| {
+            combat_weapon::get_weapon(
+                firer,
+                obj,
+                selected.index,
+                &world.substrate.entities,
+                rules,
+                &world.interner,
+            )
+        })
+        .unwrap_or(weapon);
 
     let next_index = burst.next_index();
     let mid_burst = next_index < rof_weapon.burst;
@@ -4155,9 +4140,11 @@ pub(crate) fn visit_fire(
                 let obj = rules.object(world.interner.resolve(actor.type_ref()))?;
                 let selected = combat_weapon::resolve_weapon_index(
                     rules,
+                    actor,
                     obj,
-                    actor.veterancy(),
                     weapon_index,
+                    &world.substrate.entities,
+                    &world.interner,
                 )?;
                 let coords = resolve_target_coords(&target, &world.substrate.entities)?;
                 let type_ref = match target {
@@ -4305,198 +4292,6 @@ pub(crate) fn tick_combat(
     // Infantry Guard521320 owns radiation self-fire inside its class visit.
     // There is no late global target synthesizer after all Infantry firing.
 
-    // Garrison auto-acquire: idle garrisoned buildings scan for hostile targets.
-    // RESIDUAL G22 (`greatest_threat.rs`): native acquires for an occupied
-    // building through the passive Greatest_Threat scan, whose ring bound
-    // (`0x006F917F..0x006F91A3`) and In_Range gate (`0x006F727E..0x006F729F`)
-    // each have an IsOccupied arm VERA's scan does not model yet. The target
-    // this picks reaches fire through the building's Guard -> Attack mission
-    // flip (`techno_ai::building_missions`), like a passive pick, so it takes
-    // the best-ranked candidate the building's own GetFireError does not
-    // refuse for good (AMMO, ILLEGAL, CANT, RANGE: Mission_Attack's drop tail,
-    // `0x0044B0DE`) and commits it through BuildingClass::SetTarget. A refused
-    // pick would otherwise churn Guard -> Attack -> Guard every frame, the
-    // Guard dispatch's draw skipped each time.
-    for &id in &keys {
-        let (is_candidate, owner, pos_rx, pos_ry, sub_x, sub_y, type_id, _barrel_facing) = {
-            let entity = match world.substrate.entities.get(id) {
-                Some(e) => e,
-                None => continue,
-            };
-            if entity.category != EntityCategory::Structure
-                || entity.attack_target.is_some()
-                || entity.dying
-                || !entity.is_alive()
-                || fire_blocked.contains(&id)
-            {
-                continue;
-            }
-            (
-                true,
-                entity.owner(),
-                entity.position.rx,
-                entity.position.ry,
-                entity.position.sub_x,
-                entity.position.sub_y,
-                entity.type_ref(),
-                entity.barrel_facing,
-            )
-        };
-        if !is_candidate {
-            continue;
-        }
-
-        let obj = match rules.object(world.interner.resolve(type_id)) {
-            Some(o) => o,
-            None => continue,
-        };
-        if !obj.can_be_occupied || !obj.can_occupy_fire {
-            continue;
-        }
-
-        // Read cargo info (immutable borrow).
-        let (occ_id, half_foundation) = {
-            let entity = match world.substrate.entities.get(id) {
-                Some(e) => e,
-                None => continue,
-            };
-            let cargo = match entity.passenger_role.cargo() {
-                Some(c) if !c.is_empty() => c,
-                _ => continue,
-            };
-            let fi = cargo.garrison_fire_index as usize % cargo.count() as usize;
-            let occ_id = cargo.passengers[fi];
-            let (fw, fh) = foundation_dimensions(&obj.foundation);
-            (occ_id, fw.min(fh) / 2)
-        };
-
-        // The warhead of the occupant's weapon, which the building's GetWeapon
-        // (`0x004526F0`) answers for every target.
-        let Some(occupy_warhead) = world
-            .substrate
-            .entities
-            .get(occ_id)
-            .and_then(|occ| {
-                rules
-                    .object(world.interner.resolve(occ.type_ref()))
-                    .and_then(|occupant| {
-                        combat_weapon::occupant_weapon(rules, occupant, occ.veterancy())
-                    })
-            })
-            .and_then(|weapon| combat_weapon::warhead_of(rules, weapon))
-        else {
-            continue;
-        };
-
-        // Native In_Range's IsOccupied arm (`0x006F727E..0x006F729F`): the
-        // candidate must lie within `(HalfFoundation + OccupyWeaponRange) << 8`.
-        // The `+ 1` belongs to the ring walk's bound only; accepting that
-        // outer ring would hand Mission_Attack a target its GetFireError
-        // answers RANGE, and the building would churn Guard -> Attack -> Guard.
-        let scan_cells = half_foundation as i32 + rules.garrison_rules.occupy_weapon_range;
-        let scan_range = SimFixed::from_num(scan_cells.max(1));
-
-        // Scan for the best hostile target; whether the weapon may fire at
-        // all is the pick's GetFireError below.
-        let mut ranked: Vec<(i64, u8, u64)> = Vec::new();
-        let owner_str = world.interner.resolve(owner);
-        for candidate in world.substrate.entities.values() {
-            if candidate.stable_id() == id
-                || candidate.health.current == 0
-                || candidate.dying
-                || candidate.lifecycle.in_limbo
-                || candidate.passenger_role.is_inside_transport()
-            {
-                continue;
-            }
-            if candidate.owner() == owner {
-                continue;
-            }
-            if let Some(fog_state) = fog {
-                let candidate_owner_str = world.interner.resolve(candidate.owner());
-                if fog_state.is_friendly(owner_str, candidate_owner_str) {
-                    continue;
-                }
-                if !fog_state.is_cell_visible(owner, candidate.position.rx, candidate.position.ry) {
-                    continue;
-                }
-            }
-            // Evaluate_Candidate's Verses floor (`0x006F7D1F`), on the warhead
-            // of the occupant's weapon.
-            let target_armor = rules
-                .object(world.interner.resolve(candidate.type_ref()))
-                .map_or("none", |o| o.armor.as_str());
-            if occupy_warhead.verses_f64[armor_index(target_armor)]
-                <= super::greatest_threat::VERSES_FLOOR
-            {
-                continue;
-            }
-            // Flat distance, as GetFireError's garrison range check measures it
-            // (`fire_error_world::garrison_weapon`), so a pick here is one
-            // Mission_Attack does not refuse for RANGE.
-            let dist_sq = lepton_distance_sq_raw(
-                pos_rx,
-                pos_ry,
-                sub_x,
-                sub_y,
-                candidate.position.rx,
-                candidate.position.ry,
-                candidate.position.sub_x,
-                candidate.position.sub_y,
-            );
-            if !is_within_range_leptons(dist_sq, scan_range) {
-                continue;
-            }
-            // Same VERA-internal two-bucket ordering as `threat_class`, on the
-            // native `Is_Armed` model rather than `Primary=` so a `[SREF]` or
-            // `[YAGGUN]` candidate is not ranked as an unarmed bystander.
-            let class = match rules.object(world.interner.resolve(candidate.type_ref())) {
-                Some(o) if combat_weapon::is_armed(candidate, o) => 0u8,
-                _ => 1,
-            };
-            ranked.push((dist_sq, class, candidate.stable_id()));
-        }
-        ranked.sort_unstable();
-
-        let world_view: &Simulation = world;
-        let pick = world_view.substrate.entities.get(id).and_then(|building| {
-            ranked
-                .iter()
-                .map(|&(_, _, target_id)| target_id)
-                .find(|&target_id| {
-                    let target = TargetKind::Entity(target_id);
-                    let code = fire_error_world::FireSubject {
-                        world: world_view,
-                        rules,
-                        overlay_registry,
-                        fog,
-                        firer: building,
-                        obj,
-                        target: Some(target),
-                        weapon_index: 0,
-                        garrison: fire_error_world::garrison_weapon(
-                            world_view, rules, building, obj,
-                        ),
-                    }
-                    .fire_error(true);
-                    !matches!(
-                        code,
-                        fire_error::FireError::Ammo
-                            | fire_error::FireError::Illegal
-                            | fire_error::FireError::Cant
-                            | fire_error::FireError::Range
-                    )
-                })
-        });
-        if let Some(target_id) = pick {
-            let _ = world.assign_target_represented(
-                id,
-                Some(TargetKind::Entity(target_id)),
-                Some(rules),
-            );
-        }
-    }
-
     // Phase 1: snapshot all attackers.
     let mut snapshots: Vec<AttackerSnapshot> = Vec::new();
     for &id in &keys {
@@ -4557,38 +4352,18 @@ pub(crate) fn tick_combat(
             continue;
         }
 
-        // Resolve any garrison occupant, then build the snapshot through the
-        // shared `build_attacker_snapshot` so the field-reads stay
-        // byte-identical to the per-object Fire→Facing host.
-        let garrison_cargo: Option<(u8, u8, u64)> = if entity.category == EntityCategory::Structure
-        {
-            entity.passenger_role.cargo().and_then(|c| {
-                if c.is_empty() {
-                    return None;
-                }
-                let fi = c.garrison_fire_index;
-                let count = c.count() as u8;
-                let oi = fi as usize % count as usize;
-                Some((fi, count, c.passengers[oi]))
-            })
-        } else {
-            None
-        };
-        let garrison = garrison_cargo.and_then(|(fire_idx, count, occ_id)| {
-            let obj = rules.object(world.interner.resolve(entity.type_ref()))?;
-            if !obj.can_be_occupied || !obj.can_occupy_fire {
-                return None;
-            }
-            let occ = world.substrate.entities.get(occ_id)?;
-            let (fw, fh) = foundation_dimensions(&obj.foundation);
-            Some(GarrisonSnapshot {
-                occupant_type_id: occ.type_ref(),
-                occupant_veterancy: occ.veterancy(),
-                fire_index: fire_idx,
-                occupant_count: count,
-                half_foundation: fw.min(fh) / 2,
-            })
-        });
+        // An occupied building's fire state ([`combat_weapon::is_occupied`]),
+        // then the snapshot through the shared `build_attacker_snapshot` so
+        // the field-reads stay byte-identical to the per-object Fire→Facing
+        // host.
+        let garrison = rules
+            .object(world.interner.resolve(entity.type_ref()))
+            .filter(|obj| combat_weapon::is_occupied(entity, obj))
+            .and_then(|_| entity.passenger_role.cargo())
+            .map(|cargo| GarrisonSnapshot {
+                fire_index: cargo.garrison_fire_index,
+                occupant_count: cargo.count() as u8,
+            });
 
         snapshots.push(AttackerSnapshot {
             building_shot,

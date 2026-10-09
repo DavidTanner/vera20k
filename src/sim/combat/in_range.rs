@@ -25,11 +25,11 @@
 //! `0x0048AB90`, `Ballistic_Can_Reach` `0x0048ABC0`, owned by
 //! `util::native_ballistics`) and the bridge ceiling (`0x006F74D7`).
 //!
-//! Still missing from the range value: the garrison (`IsOccupied`,
-//! `0x006F727E`) and bunker (`0x006F72A2`) arms. The arcing arm's launch speed
-//! comes from that range, so a bunkered cannon tank, short of its
-//! `BunkerWeaponRangeBonus=` (512 leptons in retail), is also refused uphill
-//! shots native allows.
+//! An occupied building's range is its reach instead of its weapon's
+//! (`IsOccupied`, `0x006F727E`). Still missing from the range value: the
+//! bunker arm (`0x006F72A2`). The arcing arm's launch speed comes from that
+//! range, so a bunkered cannon tank, short of its `BunkerWeaponRangeBonus=`
+//! (512 leptons in retail), is also refused uphill shots native allows.
 //!
 //! Depends on: rules (ObjectType, Weapon, ProjectileType, ElevationModel), map
 //! (terrain height + bridge), sim/combat/line_of_fire, sim/map/bridge_topology
@@ -45,12 +45,15 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::weapon_type::WeaponType;
 use crate::sim::cell_kernel::native_cell_own_coords;
 use crate::sim::combat::TargetKind;
+use crate::sim::combat::combat_weapon;
 use crate::sim::combat::line_of_fire::{self, LineOfFireInputs};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::air_movement::{is_high_flying_in_query, is_low_flying_in_query};
-use crate::sim::movement::ground_pose::{object_center_xy, object_world_z_leptons};
+use crate::sim::movement::ground_pose::{
+    object_center_xy, object_get_coords, object_world_z_leptons,
+};
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{
     BRIDGE_DECK_HEIGHT_LEPTONS, LEPTONS_PER_LEVEL, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS,
@@ -81,8 +84,8 @@ fn cells_fixed_to_leptons(cells: SimFixed) -> i64 {
 /// caller adds the open-topped passenger bonus here for both abstract and
 /// retained Cell targets, and then the elevation bonus.
 ///
-/// Not ported: the garrison arm, which replaces the range (`0x006F727E`), and
-/// the bunker arm (`0x006F72A2`).
+/// The garrison arm that replaces it is [`occupied_range_leptons`]; the bunker
+/// arm (`0x006F72A2`) is not ported.
 fn initial_range_leptons(
     attacker: &GameEntity,
     target: &TargetKind,
@@ -108,6 +111,26 @@ fn initial_range_leptons(
     }
 
     range_lep
+}
+
+/// `0x006F727E..0x006F729F`: an occupied building
+/// ([`combat_weapon::is_occupied`]) measures with its reach
+/// ([`combat_weapon::occupied_reach_cells`]) shifted to leptons (`SHL EDI,0x8`)
+/// in place of the range so far, AirRangeBonus included. The bunker and
+/// open-topped arms then add to it, and both arms measure from it.
+fn occupied_range_leptons(
+    attacker: &GameEntity,
+    rules: &RuleSet,
+    interner: &StringInterner,
+) -> Option<i64> {
+    // Only a building overrides vt+0x400; every other class answers false
+    // (`0x0041BFB0`) without a type lookup.
+    if attacker.category != EntityCategory::Structure {
+        return None;
+    }
+    let obj = rules.object(interner.resolve(attacker.type_ref()))?;
+    combat_weapon::is_occupied(attacker, obj)
+        .then(|| i64::from(combat_weapon::occupied_reach_cells(obj, rules).wrapping_shl(8)))
 }
 
 /// `0x006F72C8..0x006F72E1`: a passenger of an open-topped transport
@@ -397,7 +420,10 @@ fn compute_range_target(
         }
         // CellClass+54 is the false Abstract predicate; it has no map query.
         RangeTarget::Cell(_) => weapon_range_lep,
-    } + open_topped_range_bonus_leptons(attacker, rules);
+    };
+    let initial_range_lep = occupied_range_leptons(attacker, rules, interner)
+        .unwrap_or(initial_range_lep)
+        + open_topped_range_bonus_leptons(attacker, rules);
 
     let projectile = weapon
         .projectile
@@ -733,10 +759,12 @@ fn fire_source_for_target(
     rules_context: (&RuleSet, &StringInterner),
 ) -> Option<(i64, i64, i64)> {
     let terrain = cells.terrain();
-    let mut x = i64::from(attacker.position.rx) * 256 + attacker.position.sub_x.to_num::<i64>();
-    let mut y = i64::from(attacker.position.ry) * 256 + attacker.position.sub_y.to_num::<i64>();
-    // Object+48 supplies the same physical origin for every target class.
-    let mut z = i64::from(object_world_z_leptons(attacker, Some(terrain)));
+    // `this->GetCoords()` at `0x006F77D3`, for every target class: a
+    // building's foundation centre, any other object's Location.
+    let origin = object_get_coords(attacker, Some(terrain));
+    let mut x = i64::from(origin.x);
+    let mut y = i64::from(origin.y);
+    let mut z = i64::from(origin.z);
 
     if weapon.cell_rangefinding {
         // 6F7821..6F7845 truncates signed world XY toward zero before the
@@ -990,28 +1018,51 @@ mod tests {
         .unwrap();
         // The projectile's Arcing=, SubjectToElevation= and Floater=
         // combinations, one bit each.
-        let mut variants: [RuleSet; 8] = std::array::from_fn(|bits| {
+        let projectile_ini = |bits: usize| {
             let flag = |bit: usize| if bits & bit != 0 { "yes" } else { "no" };
-            rules_with_weapon(
-                &format!(
-                    "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing={}\n\
+            format!(
+                "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing={}\n\
                      SubjectToElevation={}\nFloater={}\nSubjectToWalls=no\nSubjectToCliffs=no",
-                    flag(4),
-                    flag(2),
-                    flag(1)
-                ),
-                "",
-                "",
+                flag(4),
+                flag(2),
+                flag(1)
             )
-        });
+        };
+        let mut variants: [RuleSet; 8] =
+            std::array::from_fn(|bits| rules_with_weapon(&projectile_ini(bits), "", ""));
+        // GameEntity fixtures use the thread's interner; register these
+        // identities before taking the read-only snapshot for native queries.
+        for name in ["ATKR", "TGT", "Test"] {
+            crate::sim::intern::test_intern(name);
+        }
         let interner = test_interner();
         let entities = EntityStore::new();
         for (index, row) in rows.as_array().unwrap().iter().enumerate() {
             let input = &row["input"];
-            let rules = &mut variants[usize::from(input["arcing"] == true) * 4
+            let bits = usize::from(input["arcing"] == true) * 4
                 + usize::from(input["subject_to_elevation"] == true) * 2
-                + usize::from(input["floater"] == true)];
+                + usize::from(input["floater"] == true);
+            let mut building_rules = input.get("building").map(|building| {
+                let foundation = crate::rules::foundation::FOUNDATION_TABLE[
+                    building["foundation_id"].as_u64().unwrap() as usize
+                ];
+                RuleSet::from_ini_with_fixed_art_for_test(
+                    &IniFile::from_str(&format!(
+                        "[BuildingTypes]\n0=ATKR\n[InfantryTypes]\n0=TGT\n\
+                         [ATKR]\nPrimary=GUN\nCanBeOccupied={}\nCanOccupyFire={}\nAirRangeBonus={}\n\
+                         [TGT]\nStrength=300\n[GUN]\n{}\n[WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+                        building["can_be_occupied"].as_bool().unwrap_or(true),
+                        building["can_occupy_fire"].as_bool().unwrap_or(true),
+                        input["air_range_bonus"].as_i64().unwrap_or(0) / 256,
+                        projectile_ini(bits),
+                    )),
+                    &IniFile::from_str(&format!("[ATKR]\nFoundation={}\n", foundation.name)),
+                ).unwrap()
+            });
+            let rules = building_rules.as_mut().unwrap_or(&mut variants[bits]);
             rules.general.gravity = input["gravity"].as_i64().unwrap_or(0) as i32;
+            rules.garrison_rules.occupy_weapon_range =
+                input["occupy_range"].as_i64().unwrap_or(5) as i32;
             rules.garrison_rules.open_topped_range_bonus =
                 input["open_topped_bonus"].as_i64().unwrap_or(2) as i32;
             rules.elevation_model = input.get("elevation").map_or_else(
@@ -1059,12 +1110,32 @@ mod tests {
             );
             let mut actor =
                 GameEntity::test_default(1, "ATKR", "Test", (x / 256) as u16, (y / 256) as u16);
-            actor.category = EntityCategory::Infantry;
+            actor.category = if let Some(building) = input.get("building") {
+                actor
+                    .foundation
+                    .clone_from(&rules.object("ATKR").unwrap().foundation);
+                let mut cargo = crate::sim::passenger::PassengerCargo::new(5, 0);
+                for id in 2..2 + building["occupants"].as_u64().unwrap_or(1) {
+                    assert!(cargo.board(id, 1));
+                }
+                actor.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
+                EntityCategory::Structure
+            } else {
+                EntityCategory::Infantry
+            };
             actor.position.sub_x = SimFixed::from_num(x % 256);
             actor.position.sub_y = SimFixed::from_num(y % 256);
             actor.position.exact_z_leptons = Some(z);
             actor.lifecycle.cell_marked = input["marked"].as_bool().unwrap_or(false);
             actor.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
+            if !row["source_geometry"].is_null() {
+                let geometry = object_get_coords(&actor, Some(&terrain));
+                assert_eq!(
+                    serde_json::json!([geometry.x, geometry.y, geometry.z]),
+                    row["source_geometry"],
+                    "row {index}: GetCoords"
+                );
+            }
             if input["open_topped"] == true {
                 actor.passenger_role = crate::sim::passenger::PassengerRole::Inside {
                     transport_id: 2,

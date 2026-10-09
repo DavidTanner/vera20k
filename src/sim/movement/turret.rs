@@ -207,7 +207,7 @@ pub(crate) fn facing_update(
         && !entity.turret_rotation_latch
     {
         if has_turret {
-            if !current_weapon_is_omni_fire(entity, rules, interner) {
+            if !current_weapon_is_omni_fire(entity, entities, rules, interner) {
                 out.turret_destination = Some(tgt);
             }
         } else if obj
@@ -289,6 +289,7 @@ fn nav_destination_facing(entity: &GameEntity, entities: &EntityStore) -> Option
 /// any direction and never turns the turret.
 pub(crate) fn current_weapon_is_omni_fire(
     entity: &GameEntity,
+    entities: &EntityStore,
     rules: Option<&RuleSet>,
     interner: &crate::sim::intern::StringInterner,
 ) -> bool {
@@ -296,8 +297,7 @@ pub(crate) fn current_weapon_is_omni_fire(
     let Some(obj) = rules.object(interner.resolve(entity.type_ref())) else {
         return false;
     };
-    crate::sim::combat::combat_weapon::current_weapon(entity, obj)
-        .and_then(|weapon_id| rules.weapon(weapon_id))
+    crate::sim::combat::combat_weapon::current_weapon(entity, obj, entities, rules, interner)
         .is_some_and(|weapon| weapon.omni_fire)
 }
 
