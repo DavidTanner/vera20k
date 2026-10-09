@@ -740,6 +740,14 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
     sim.mission_host_promote(unit, now, rules);
 }
 
+/// What the aircraft receiver's transport gates read: `Carryall=`
+/// (`+0xDFC`), `Passengers=` (`+0x5E0`) and the cargo count (`+0x114`).
+struct AircraftHold {
+    carryall: bool,
+    passengers: i32,
+    cargo: i32,
+}
+
 /// `AircraftClass::Receive_Radio @ 0x004190B0`. An aircraft on Retreat or a
 /// paradrop or Spy Plane mission without an Airstrike (`+0x294`) answers
 /// every message 0 (`0x004190B6..0x004190E3`). Its own arms (table
@@ -761,14 +769,6 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
 ///   drop its Target and destination and queue Retreat. No retail sender
 ///   reaches an aircraft with DOCK_NOW, so VERA answers it 0;
 /// - 0x21 (`0x0041918C`), which nothing sends.
-/// What the aircraft receiver's transport gates read: `Carryall=`
-/// (`+0xDFC`), `Passengers=` (`+0x5E0`) and the cargo count (`+0x114`).
-struct AircraftHold {
-    carryall: bool,
-    passengers: i32,
-    cargo: i32,
-}
-
 fn aircraft_receive(
     sim: &mut Simulation,
     aircraft: u64,
