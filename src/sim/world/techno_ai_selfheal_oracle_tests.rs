@@ -50,7 +50,11 @@ fn the_count_predicate_matches_the_original() {
         // Each arm loads its own counter; the row records which offset that was.
         assert_eq!(
             row["house_offset"].as_i64().unwrap(),
-            if row["arm"] == "infantry" { 0x164 } else { 0x168 },
+            if row["arm"] == "infantry" {
+                0x164
+            } else {
+                0x168
+            },
             "{row}"
         );
     }

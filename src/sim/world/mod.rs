@@ -4555,8 +4555,7 @@ impl Simulation {
             return;
         }
         if let Some(house) = self.houses.get_mut(&owner) {
-            house.self_heal_infantry = house.self_heal_infantry.wrapping_add(infantry);
-            house.self_heal_units = house.self_heal_units.wrapping_add(units);
+            house.grant_self_heal(infantry, units);
         }
     }
 
@@ -4568,8 +4567,7 @@ impl Simulation {
             return;
         };
         if let Some(house) = self.houses.get_mut(&owner) {
-            house.self_heal_infantry = house.self_heal_infantry.wrapping_sub(infantry).max(0);
-            house.self_heal_units = house.self_heal_units.wrapping_sub(units).max(0);
+            house.revoke_self_heal(infantry, units);
         }
     }
 
@@ -4600,12 +4598,10 @@ impl Simulation {
             return;
         }
         if let Some(house) = self.houses.get_mut(&old_owner) {
-            house.self_heal_infantry = house.self_heal_infantry.wrapping_sub(infantry).max(0);
-            house.self_heal_units = house.self_heal_units.wrapping_sub(units).max(0);
+            house.revoke_self_heal(infantry, units);
         }
         if let Some(house) = self.houses.get_mut(&new_owner) {
-            house.self_heal_infantry = house.self_heal_infantry.wrapping_add(infantry);
-            house.self_heal_units = house.self_heal_units.wrapping_add(units);
+            house.grant_self_heal(infantry, units);
         }
     }
 

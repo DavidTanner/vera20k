@@ -514,6 +514,22 @@ pub(super) fn dispatch_draw_passes(
         unit_fill_tex,
         "status_unit_fill",
     );
+    // The self-heal status pip `DrawPipScalePips` draws after the strip
+    // (pips.shp frames 0x0D / 0x14).
+    let self_heal_pip_tex = state
+        .match_state
+        .match_presentation
+        .selection_overlay
+        .as_ref()
+        .and_then(|o| o.self_heal_pip())
+        .map(|pip| pip.texture());
+    draw_pooled_no_depth(
+        &mut pass,
+        &state.renderer.batch_renderer,
+        pool,
+        self_heal_pip_tex,
+        "self_heal_pips",
+    );
     // Tiberium cargo pips for harvesters (pips2.shp frames 0, 2, 5).
     let cargo_pip_tex = state
         .match_state

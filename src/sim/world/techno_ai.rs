@@ -953,9 +953,9 @@ fn house_heal_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, infantry: bool
     let owner = entity.owner();
     let count = sim.houses.get(&owner).map_or(0, |house| {
         if infantry {
-            house.self_heal_infantry
+            house.self_heal_infantry()
         } else {
-            house.self_heal_units
+            house.self_heal_units()
         }
     });
     if count <= 0 {

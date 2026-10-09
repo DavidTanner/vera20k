@@ -78,39 +78,43 @@ fn a_completed_hospital_grants_its_infantry_count_and_limbo_takes_it_back() {
     // The spawn ran the production opening, so the grant is already applied by
     // `grand_opening` 鈥?this is the live path, not a synthetic call.
     assert_eq!(
-        sim.houses[&owner].self_heal_infantry, 1,
+        sim.houses[&owner].self_heal_infantry(),
+        1,
         "0x00446392..0x00446398 adds InfantryGainSelfHeal to house +0x164"
     );
     assert_eq!(
-        sim.houses[&owner].self_heal_units, 0,
+        sim.houses[&owner].self_heal_units(),
+        0,
         "a hospital grants no unit self-heal"
     );
 
     let second = spawn(&mut sim, &rules, "CAHOSP");
     assert_eq!(
-        sim.houses[&owner].self_heal_infantry, 2,
+        sim.houses[&owner].self_heal_infantry(),
+        2,
         "each completed hospital adds its own count"
     );
 
     sim.remove_house_self_heal(hospital, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 1);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
     sim.remove_house_self_heal(second, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 0);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 0);
 }
 
 #[test]
 fn limbo_clamps_a_shortfall_at_zero() {
     let (mut sim, rules, owner) = scene();
     let shop = spawn(&mut sim, &rules, "CAMACH");
-    assert_eq!(sim.houses[&owner].self_heal_units, 1);
+    assert_eq!(sim.houses[&owner].self_heal_units(), 1);
 
     // A capture or scenario path can leave the counter short of the type's
     // count; 0x004459C2 tests the result and 0x004459CA raises it to zero.
     sim.remove_house_self_heal(shop, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_units, 0);
+    assert_eq!(sim.houses[&owner].self_heal_units(), 0);
     sim.remove_house_self_heal(shop, &rules);
     assert_eq!(
-        sim.houses[&owner].self_heal_units, 0,
+        sim.houses[&owner].self_heal_units(),
+        0,
         "clamped, not negative"
     );
 }
@@ -122,7 +126,7 @@ fn change_owner_moves_the_counts_and_requires_the_placed_byte() {
     sim.houses
         .insert(new_owner, HouseState::new(new_owner, 0, None, false, 0, 10));
     let hospital = spawn(&mut sim, &rules, "CAHOSP");
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 1);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
 
     // `+0x6E4` clear: every arm returns before touching a counter.
     sim.substrate
@@ -132,10 +136,11 @@ fn change_owner_moves_the_counts_and_requires_the_placed_byte() {
         .building_actually_placed = false;
     sim.transfer_house_self_heal(hospital, owner, new_owner, &rules);
     assert_eq!(
-        sim.houses[&owner].self_heal_infantry, 1,
+        sim.houses[&owner].self_heal_infantry(),
+        1,
         "still the old house"
     );
-    assert_eq!(sim.houses[&new_owner].self_heal_infantry, 0);
+    assert_eq!(sim.houses[&new_owner].self_heal_infantry(), 0);
 
     // Placed: the old owner loses it (clamped) and the new owner gains it.
     sim.substrate
@@ -144,8 +149,8 @@ fn change_owner_moves_the_counts_and_requires_the_placed_byte() {
         .unwrap()
         .building_actually_placed = true;
     sim.transfer_house_self_heal(hospital, owner, new_owner, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 0);
-    assert_eq!(sim.houses[&new_owner].self_heal_infantry, 1);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 0);
+    assert_eq!(sim.houses[&new_owner].self_heal_infantry(), 1);
 }
 
 #[test]
@@ -153,7 +158,7 @@ fn a_machine_shop_heals_non_organic_units_on_the_unit_cadence() {
     let (mut sim, rules, owner) = scene();
     let tank = spawn(&mut sim, &rules, "MTNK");
     sim.substrate.entities.get_mut(tank).unwrap().health.current = 100;
-    sim.houses.get_mut(&owner).unwrap().self_heal_units = 1;
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(0, 1);
 
     sim.session.binary_frame = 74;
     house_self_heal_step(&mut sim, tank, &rules);
@@ -171,8 +176,11 @@ fn a_machine_shop_heals_non_organic_units_on_the_unit_cadence() {
         "SelfHealUnitAmount(5) x the house count on a SelfHealUnitFrames frame"
     );
 
-    // A second shop doubles both the count and the step.
-    sim.houses.get_mut(&owner).unwrap().self_heal_units = 2;
+    // A second shop doubles both the count and the step: the fixture's single
+    // hand-set shop becomes two.
+    let house = sim.houses.get_mut(&owner).unwrap();
+    house.revoke_self_heal(0, 1);
+    house.grant_self_heal(0, 2);
     sim.session.binary_frame = 150;
     house_self_heal_step(&mut sim, tank, &rules);
     assert_eq!(
@@ -191,7 +199,7 @@ fn a_hospital_heals_organic_infantry_on_the_infantry_cadence() {
         .unwrap()
         .health
         .current = 100;
-    sim.houses.get_mut(&owner).unwrap().self_heal_infantry = 1;
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(1, 0);
 
     sim.session.binary_frame = 75;
     house_self_heal_step(&mut sim, infantry, &rules);
@@ -220,8 +228,8 @@ fn each_arm_ignores_the_other_classes_and_an_empty_counter() {
     }
 
     // Both counters stocked: each object takes exactly its own arm's amount.
-    sim.houses.get_mut(&owner).unwrap().self_heal_infantry = 1;
-    sim.houses.get_mut(&owner).unwrap().self_heal_units = 1;
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(1, 0);
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(0, 1);
     sim.session.binary_frame = 150; // divisible by both 50 and 75
     house_self_heal_step(&mut sim, infantry, &rules);
     house_self_heal_step(&mut sim, tank, &rules);
@@ -237,8 +245,7 @@ fn each_arm_ignores_the_other_classes_and_an_empty_counter() {
     );
 
     // No ability: neither object heals.
-    sim.houses.get_mut(&owner).unwrap().self_heal_infantry = 0;
-    sim.houses.get_mut(&owner).unwrap().self_heal_units = 0;
+    sim.houses.get_mut(&owner).unwrap().revoke_self_heal(1, 1);
     sim.substrate
         .entities
         .get_mut(infantry)
@@ -262,7 +269,7 @@ fn the_heal_stops_at_full_strength() {
     let tank = spawn(&mut sim, &rules, "MTNK");
     let strength = rules.object("MTNK").unwrap().strength;
     sim.substrate.entities.get_mut(tank).unwrap().health.current = strength - 3;
-    sim.houses.get_mut(&owner).unwrap().self_heal_units = 2;
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(0, 2);
 
     sim.session.binary_frame = 75;
     house_self_heal_step(&mut sim, tank, &rules);
@@ -287,7 +294,7 @@ fn the_production_ai_stage_consumes_the_hospital_count() {
     // Spawning the hospital runs the real opening, so the house ability comes
     // from the production lifecycle rather than a hand-set counter.
     spawn(&mut sim, &rules, "CAHOSP");
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 1);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
 
     let infantry = spawn(&mut sim, &rules, "E1");
     sim.substrate
@@ -316,7 +323,7 @@ fn the_production_ai_stage_consumes_the_hospital_count() {
         .map(|entity| entity.stable_id)
         .expect("hospital");
     sim.remove_house_self_heal(hospital, &rules);
-    assert_eq!(sim.houses[&owner].self_heal_infantry, 0);
+    assert_eq!(sim.houses[&owner].self_heal_infantry(), 0);
     sim.session.binary_frame = 100;
     sim.object_ai_stage(Some(&rules));
     assert_eq!(
@@ -340,7 +347,7 @@ fn an_absent_self_heal_frame_key_cannot_divide_by_zero() {
     assert_eq!(rules.general.self_heal_infantry_frames, 0);
     let hospital = spawn(&mut sim, &rules, "CAHOSP");
     sim.grant_house_self_heal(hospital, &rules);
-    sim.houses.get_mut(&owner).unwrap().self_heal_infantry = 1;
+    sim.houses.get_mut(&owner).unwrap().grant_self_heal(1, 0);
     let infantry = spawn(&mut sim, &rules, "E1");
     sim.substrate
         .entities
@@ -422,7 +429,12 @@ fn the_mechanism_runs_on_a_real_map() {
             .find(|&(rx, ry)| {
                 sim.terrain_cell_level(rx as u16, ry as u16).is_some()
                     && crate::sim::build_site::can_place_building_at(
-                        sim, rules, registry, hospital, (rx, ry), Some(owner),
+                        sim,
+                        rules,
+                        registry,
+                        hospital,
+                        (rx, ry),
+                        Some(owner),
                     )
             })
             .expect("a placeable hospital site on the retail map")
@@ -461,18 +473,17 @@ fn the_mechanism_runs_on_a_real_map() {
                 if rx <= 0 || ry <= 0 {
                     continue;
                 }
-                if runtime
-                    .simulation
-                    .terrain_cell_level(rx as u16, ry as u16)
-                    != Some(level)
-                {
+                if runtime.simulation.terrain_cell_level(rx as u16, ry as u16) != Some(level) {
                     continue;
                 }
-                if let Some(id) =
-                    runtime
-                        .simulation
-                        .spawn_object("E1", &owner_name, rx as u16, ry as u16, 0, rules)
-                {
+                if let Some(id) = runtime.simulation.spawn_object(
+                    "E1",
+                    &owner_name,
+                    rx as u16,
+                    ry as u16,
+                    0,
+                    rules,
+                ) {
                     infantry = Some(id);
                     break 'place;
                 }
@@ -483,7 +494,8 @@ fn the_mechanism_runs_on_a_real_map() {
         (hospital, infantry, strength)
     };
     assert_eq!(
-        runtime.simulation.houses[&owner].self_heal_infantry, 1,
+        runtime.simulation.houses[&owner].self_heal_infantry(),
+        1,
         "the opening granted the house its infantry count"
     );
     let _ = hospital;
@@ -505,7 +517,11 @@ fn the_mechanism_runs_on_a_real_map() {
         let due = runtime.simulation.take_due_commands();
         let before = runtime.simulation.session.binary_frame;
         runtime
-            .advance_frame(&due, crate::headless_scenario::SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &due,
+                crate::headless_scenario::SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+            )
             .expect("frame");
         let after = runtime.simulation.session.binary_frame;
         let current = runtime
