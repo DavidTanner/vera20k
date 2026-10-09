@@ -2,9 +2,10 @@
 //!
 //! Single owner of the gamemd-native bridge bit semantics and signed
 //! effective-height math, plus the service-facing handle for the traversal gate.
-//! Consumers (combat AoE and line of fire) construct a borrowed
-//! `CellBridgeView` over the canonical cell store and read these predicates
-//! instead of re-deriving each one at their own call site.
+//! Consumers (combat AoE, line of fire and InRange's elevation bonus)
+//! construct a borrowed `CellBridgeView` over the canonical cell store or a
+//! Map lookup's answer and read these predicates instead of re-deriving each
+//! one at their own call site.
 //!
 //! It holds the structural/anchor flag predicates, signed effective height,
 //! the list layer enum and the AoE object-layer selector.
@@ -17,7 +18,8 @@
 //!   parse only, which this module does not touch).
 
 use crate::map::bridge_facts::BridgeFlags;
-use crate::map::resolved_terrain::ResolvedTerrainCell;
+use crate::map::cell_index::NativeCellIdentity;
+use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainCell};
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 
 /// Which persistent cell list an object belongs to. The ground list and the
@@ -48,14 +50,23 @@ pub struct CellBridgeView {
 
 impl CellBridgeView {
     /// Build a view from the canonical resolved-terrain cell.
-    ///
+    pub fn from_resolved(cell: &ResolvedTerrainCell) -> Self {
+        Self::from_fields(cell.level, cell.bridge_facts.raw_flags)
+    }
+
+    /// The view of the cell a Map lookup answered through `cells`: a real cell
+    /// or the shared dummy, whose level and flags are current state too.
+    pub(crate) fn from_query(cells: &NativeCellQuery<'_>, cell: NativeCellIdentity) -> Self {
+        Self::from_fields(cells.ground_fields(cell).0, cells.flags(cell))
+    }
+
     /// The `u8 -> i8` cast on `level` is deliberate: it reproduces gamemd's
     /// signed reinterpretation of that byte (a raw level of `0xFE` is height
     /// `-2`, not `254`). This is the only place the cast lives.
-    pub fn from_resolved(cell: &ResolvedTerrainCell) -> Self {
+    fn from_fields(level: u8, raw_flags: u32) -> Self {
         CellBridgeView {
-            level: cell.level as i8,
-            flags: BridgeFlags(cell.bridge_facts.raw_flags),
+            level: level as i8,
+            flags: BridgeFlags(raw_flags),
         }
     }
 

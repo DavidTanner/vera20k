@@ -2137,6 +2137,54 @@ impl Default for GarrisonRules {
     }
 }
 
+/// `[ElevationModel]`: the range bonus `TechnoClass::InRange` gives a shot
+/// fired down at a lower target (`0x006F6F60` on the direct arm, `0x006F70E0`
+/// on the arcing arm). `RulesClass::ReadElevationModel @ 0x0066D150`, called
+/// by `RulesClass::Process` at `0x00668F46`, reads the three keys only when the
+/// pass has the section (`0x00526810`), each defaulting to its current value.
+#[derive(Debug, Clone, Copy)]
+pub struct ElevationModel {
+    /// `ElevationIncrement=` (`Rules+0x1838`, ReadInt `0x0066D183`): levels of
+    /// height per bonus step. InRange divides by it unchecked (`IDIV` at
+    /// `0x006F705A` and `0x006F71D6`).
+    ///
+    /// RESIDUAL: at 0, the constructor's value, that division faults natively
+    /// on the first `SubjectToElevation=` shot between two grounded objects;
+    /// VERA adds no bonus. Dormant: retail `rulesmd.ini` sets 4, so only a map
+    /// or mode that sets 0 reaches it.
+    pub increment: i32,
+    /// `ElevationIncrementBonus=` (`Rules+0x1840`, ReadDouble `0x0066D1AA`):
+    /// cells of range per step.
+    pub increment_bonus: NativeF64Bits,
+    /// `ElevationBonusCap=` (`Rules+0x1848`, ReadDouble `0x0066D1D1`): the most
+    /// cells the steps add.
+    pub bonus_cap: NativeF64Bits,
+}
+
+impl Default for ElevationModel {
+    /// The constructor's stores (`0x00667807..0x00667819`): `EBX` is 0 and
+    /// `EBP` holds `0x3FF00000`, the high dword of 1.0.
+    fn default() -> Self {
+        Self {
+            increment: 0,
+            increment_bonus: NativeF64Bits::ONE,
+            bonus_cap: NativeF64Bits::POSITIVE_ZERO,
+        }
+    }
+}
+
+impl ElevationModel {
+    fn from_ini(ini: &IniFile) -> Self {
+        let section = ini.section_or_empty("ElevationModel");
+        let d = Self::default();
+        Self {
+            increment: section.read_int("ElevationIncrement", d.increment),
+            increment_bonus: section.read_double_bits("ElevationIncrementBonus", d.increment_bonus),
+            bonus_cap: section.read_double_bits("ElevationBonusCap", d.bonus_cap),
+        }
+    }
+}
+
 impl GarrisonRules {
     fn from_ini(ini: &IniFile) -> Self {
         // The multipliers are float fields (`FSTP dword` after each ReadDouble,
@@ -3263,6 +3311,8 @@ pub struct RuleSet {
     /// "fire through walls anyway" decision, a different mechanism with no
     /// consumer in this tree.
     pub allied_wall_transparency: bool,
+    /// `[ElevationModel]`, InRange's range bonus for a shot fired downhill.
+    pub elevation_model: ElevationModel,
     /// Per-cell radiation-field constants from [Radiation].
     pub radiation: RadiationRules,
     /// Radar event visual parameters (ping rectangles on minimap).
@@ -3609,6 +3659,7 @@ impl RuleSet {
         let allied_wall_transparency: bool = ini
             .section_or_empty("WallModel")
             .read_bool("AlliedWallTransparency", false);
+        let elevation_model = ElevationModel::from_ini(ini);
         let radiation: RadiationRules = RadiationRules::from_ini(ini);
         let radar_event_config: RadarEventConfig = RadarEventConfig::from_ini(ini);
         let country_side_registry = parse_country_side_registry(ini);
@@ -4094,6 +4145,7 @@ impl RuleSet {
             powerups,
             garrison_rules,
             allied_wall_transparency,
+            elevation_model,
             radiation,
             radar_event_config,
             super_weapons,
@@ -8970,5 +9022,28 @@ Projectile=Invisible
                 "{object}"
             );
         }
+    }
+
+    /// Retail `[ElevationModel]` through the production reader: four levels a
+    /// step, two cells a step, two cells at most. Without the section the
+    /// constructor's 0, 1.0 and 0.0 stay.
+    #[test]
+    fn retail_elevation_model() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let two = NativeF64Bits::from_bits(2.0f64.to_bits());
+        let model = RuleSet::from_ini(&ini)
+            .expect("retail rules parse")
+            .elevation_model;
+        assert_eq!(
+            (model.increment, model.increment_bonus, model.bonus_cap),
+            (4, two, two)
+        );
+        let model = ElevationModel::from_ini(&IniFile::from_str("[General]\n"));
+        assert_eq!(
+            (model.increment, model.increment_bonus, model.bonus_cap),
+            (0, NativeF64Bits::ONE, NativeF64Bits::POSITIVE_ZERO)
+        );
     }
 }
