@@ -77,9 +77,7 @@ cargo run --release --bin vera20k
 النقاش يجري على [Discord](https://discord.gg/kmjRUn5m5F) وفي مجموعة QQ (1097193563).
 
 منطق اللعب في `src/sim/`، والرسم في `src/render/`، والقوائم والإدخال في `src/app/` و`src/ui/`؛
-ولا تحتاج إلى أدوات Python الموجودة في `tools/`. تشرح [نظرة عامة على البنية](https://yuriplanet.github.io/vera20k/ar/)
-كيف تتكامل أجزاء المحرك. شغّل الاختبارات باستخدام `cargo test -p vera20k --lib`. الاختبارات التي تحتاج إلى
-ملفات INI الخاصة باللعبة تتخطى نفسها وتُحتسب ناجحة مع ذلك، إلى أن تشغّل `cargo run --bin extract-ini [مجلد اللعبة]`.
+ولا تحتاج إلى أدوات Python الموجودة في `tools/`.
 
 تُرخَّص المساهمات بموجب GPLv3 مثل بقية المشروع؛ ولا توجد اتفاقية CLA.
 
