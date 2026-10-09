@@ -77,10 +77,6 @@ Tartışmalar [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ve QQ grubunda
 
 Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/` ve `src/ui/`
 içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
-[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir
-araya geldiğini açıklıyor. Testleri `cargo test -p vera20k --lib` ile çalıştırın. Oyunun INI
-dosyalarına ihtiyaç duyan testler, siz `cargo run --bin extract-ini [oyun klasörü]` komutunu
-çalıştırana kadar atlanır ve yine de başarılı sayılır.
 
 Katkılar da projenin geri kalanı gibi GPLv3 ile lisanslanır; CLA yoktur.
 

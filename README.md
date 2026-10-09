@@ -76,11 +76,7 @@ it next to the original and tell us what feels wrong. Open a PR and we'll take i
 Discussion is on [Discord](https://discord.gg/kmjRUn5m5F) and in the QQ group (1097193563).
 
 Gameplay is in `src/sim/`, rendering in `src/render/`, and menus and input in `src/app/` and
-`src/ui/`; you don't need the Python tools in `tools/`. The
-[architecture overview](https://yuriplanet.github.io/vera20k/) explains how the engine fits
-together. Run the tests with `cargo test -p vera20k --lib`. Tests that need the game's INI
-files skip themselves, and still count as passed, until you run
-`cargo run --bin extract-ini [game folder]`.
+`src/ui/`; you don't need the Python tools in `tools/`.
 
 Contributions are licensed under the GPLv3, like the rest of the project; there's no CLA.
 

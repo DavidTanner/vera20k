@@ -75,9 +75,7 @@ VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警
 直接提交 PR 即可，剩下的交给我们。讨论在 [Discord](https://discord.gg/kmjRUn5m5F) 和 QQ 群（1097193563）进行。
 
 游戏逻辑在 `src/sim/`，渲染在 `src/render/`，菜单和输入在 `src/app/` 和 `src/ui/`；
-你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
-用 `cargo test -p vera20k --lib` 运行测试。需要游戏 INI 文件的测试会自动跳过，但仍计为通过，
-直到你运行 `cargo run --bin extract-ini [游戏文件夹]`。
+你不需要 `tools/` 中的 Python 工具。
 
 贡献内容与项目其余部分一样采用 GPLv3 许可证；无需签署 CLA。
 
