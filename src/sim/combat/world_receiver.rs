@@ -125,7 +125,8 @@ pub(crate) fn collect_area(
 }
 
 /// `Apply_area_damage @ 0x00489280` outside a damage transaction (an
-/// anim's landing at `0x00423EAB`, the Psychic Dominator at `0x0053B16B`):
+/// anim's landing at `0x00423EAB`, the Psychic Dominator at `0x0053B16B`, a
+/// bomb's fuse at `0x006FA712`):
 /// the area's receivers around `impact` committed in order, then its bridge
 /// continuation (`0x00489E87`). `origin` is the source object, the source
 /// house and the warhead's id. Returns whether a bridge changed.
@@ -139,6 +140,100 @@ pub(crate) fn apply_area_damage(
     warhead: &WarheadType,
     origin: (u64, Option<InternedId>, InternedId),
 ) -> bool {
+    let area = collect_area_at(
+        world,
+        rules,
+        overlay_registry,
+        impact,
+        damage,
+        warhead,
+        origin,
+    );
+    let receipt =
+        world.commit_noncombat_aoe_receivers(rules, overlay_registry, &area.aoe.receivers);
+    let bridge_continued = continue_area_bridge_damage(
+        world,
+        rules,
+        overlay_registry,
+        area.cell,
+        damage,
+        origin.2,
+        area.z_leptons,
+        area.routed_wall,
+        receipt.area_result.expect("area receiver receipt"),
+    );
+    receipt.bridge_state_changed || bridge_continued
+}
+
+/// [`apply_area_damage`] inside a damage transaction (a TerrainClass death's
+/// C4 at `0x0071BABF`, a dying carrier's bomb at `0x0070267F`): the receivers
+/// commit in `run`, then the bridge continuation. Their effects and pings go
+/// back to the receiver that set the area off.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_area_damage_in_run(
+    world: &mut Simulation,
+    run: &mut ReceiverRun,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    impact: ProjectileCoord,
+    damage: i32,
+    warhead: &WarheadType,
+    origin: (u64, Option<InternedId>, InternedId),
+) -> (DeathEffects, Vec<UnderAttackEvent>) {
+    let area = collect_area_at(
+        world,
+        rules,
+        overlay_registry,
+        impact,
+        damage,
+        warhead,
+        origin,
+    );
+    let mut effects = DeathEffects::default();
+    append_fixture_tiberium(world, &mut effects.tiberium_reduction_requests);
+    #[cfg(test)]
+    effects.wall_mutations.extend(area.aoe.wall_mutations);
+    #[cfg(test)]
+    effects
+        .cell_target_detaches
+        .extend(area.aoe.cell_target_detaches);
+    let (nested, pings, area_result) =
+        commit_area_with_dispatch(world, run, &area.aoe.receivers, rules, overlay_registry);
+    effects.append(nested);
+    effects.bridge_state_changed |= continue_area_bridge_damage(
+        world,
+        rules,
+        overlay_registry,
+        area.cell,
+        damage,
+        origin.2,
+        area.z_leptons,
+        area.routed_wall,
+        area_result,
+    );
+    (effects, pings)
+}
+
+/// The first half of `Apply_area_damage @ 0x00489280` at `impact`, shared by
+/// the bullet's ordinary arm and the two entry points above: the impact
+/// cell's wall route, then the receivers collected around that cell, the air
+/// query at the impact's sub-cell and height.
+struct AreaAtImpact {
+    cell: (u16, u16),
+    z_leptons: i32,
+    routed_wall: bool,
+    aoe: combat_aoe::AoEDamageResult,
+}
+
+fn collect_area_at(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    overlay_registry: Option<&OverlayTypeRegistry>,
+    impact: ProjectileCoord,
+    damage: i32,
+    warhead: &WarheadType,
+    origin: (u64, Option<InternedId>, InternedId),
+) -> AreaAtImpact {
     let (rx, ry, sub_x, sub_y, z_leptons) = projectile_impact_cell(impact);
     let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), warhead);
     let aoe = collect_area(
@@ -156,19 +251,12 @@ pub(crate) fn apply_area_damage(
         }),
         z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32),
     );
-    let receipt = world.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
-    let bridge_continued = continue_area_bridge_damage(
-        world,
-        rules,
-        overlay_registry,
-        (rx, ry),
-        damage,
-        origin.2,
+    AreaAtImpact {
+        cell: (rx, ry),
         z_leptons,
         routed_wall,
-        receipt.area_result.expect("area receiver receipt"),
-    );
-    receipt.bridge_state_changed || bridge_continued
+        aoe,
+    }
 }
 
 fn commit_smudges(
@@ -385,49 +473,18 @@ pub(crate) fn commit_terrain(
         // Terrain71BABF passes its retained Object Location, not a fresh
         // sample of the ground/deck after nested callbacks.
         let impact = world.production.terrain_objects[&lethal.stable_id].world_coord();
-        let (rx, ry, sub_x, sub_y, world_z) = projectile_impact_cell(impact);
-        let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), &c4_warhead);
-        let aoe = {
-            let collected = collect_area(
-                world,
-                rules,
-                overlay_registry,
-                (rx, ry),
-                100,
-                &c4_warhead,
-                (RAD_NO_ATTACKER, None, c4_id),
-                Some(combat_aoe::AoEAirImpact {
-                    sub_x,
-                    sub_y,
-                    z_leptons: world_z,
-                }),
-                world_z.div_euclid(LEPTONS_PER_LEVEL as i32),
-            );
-            append_fixture_tiberium(world, &mut effects.tiberium_reduction_requests);
-            collected
-        };
-        #[cfg(test)]
-        effects.wall_mutations.extend(aoe.wall_mutations);
-
-        #[cfg(test)]
-        effects
-            .cell_target_detaches
-            .extend(aoe.cell_target_detaches);
-        let (nested, mut pings, area_result) =
-            commit_area_with_dispatch(world, run, &aoe.receivers, rules, overlay_registry);
-        effects.append(nested);
-        under_attack_events.append(&mut pings);
-        effects.bridge_state_changed |= continue_area_bridge_damage(
+        let (nested, mut pings) = apply_area_damage_in_run(
             world,
+            run,
             rules,
             overlay_registry,
-            (rx, ry),
+            impact,
             100,
-            c4_id,
-            world_z,
-            routed_wall,
-            area_result,
+            &c4_warhead,
+            (RAD_NO_ATTACKER, None, c4_id),
         );
+        effects.append(nested);
+        under_attack_events.append(&mut pings);
     }
 
     let finalized = crate::sim::terrain_object::finalize_terrain_lethal(
@@ -1157,28 +1214,12 @@ pub(crate) fn handle_death(
         "ReceiveDamage enters one concrete fatal postlude at a time"
     );
     let mut death_sounds: Vec<(InternedId, u16, u16)> = Vec::new();
-    #[cfg(test)]
-    let mut receiver_stage_trace = Vec::new();
-    let mut tiberium_reduction_requests: Vec<TiberiumReductionRequest> = Vec::new();
-    // Death-weapon detonations use the destroyed object's game-space position.
-    // The cell and z still drive damage/smudge dispatch; sub-cell leptons keep
-    // AnimList placement aligned with the detonation CoordStruct shape.
-    let mut death_aoe: Vec<DeathBlast> = Vec::new();
-    let mut despawned_ids: Vec<u64> = Vec::new();
-    let mut immediate_uninit_ids: Vec<u64> = Vec::new();
     let mut explosion_effects: Vec<ExplosionEffect> = Vec::new();
     let mut voxel_debris: Vec<crate::sim::voxel_anim::VoxelDebrisSpawn> = Vec::new();
-    let mut combat_light_requests: Vec<CombatLightRequest> = Vec::new();
-    let mut bridge_state_changed = false;
-    #[cfg(test)]
-    let mut wall_mutations: Vec<WallMutation> = Vec::new();
-    #[cfg(test)]
-    let mut cell_target_detaches: Vec<combat_aoe::CellTargetDetach> = Vec::new();
-    let mut smudge_spawn_requests: Vec<SmudgeSpawnRequest> = Vec::new();
-    let mut rad_detonations: Vec<crate::sim::radiation::RadDetonation> = Vec::new();
     let mut under_attack_events: Vec<UnderAttackEvent> = Vec::new();
-    let mut unit_lost_events: Vec<UnitLostEvent> = Vec::new();
     let mut structure_destroyed: bool = false;
+    // What the death weapon and the bomb set off, after this arm's own effects.
+    let mut blast_effects = DeathEffects::default();
     for &dead_id in dead_entities {
         // Native702035 re-enters this branch for an already-zero receiver.
         // Keep unique diagnostic IDs, without suppressing receiver effects.
@@ -1189,37 +1230,19 @@ pub(crate) fn handle_death(
             if e.category == EntityCategory::Structure {
                 structure_destroyed = true;
             }
-            let air_impact = combat_aoe::air_impact_from_entity(e, world.resolved_terrain.as_ref());
             let world_z_leptons = object_world_z_leptons(e, world.resolved_terrain.as_ref());
             (
                 e.type_ref(),
                 e.position.rx,
                 e.position.ry,
-                e.position.sub_x,
-                e.position.sub_y,
-                e.position.z,
                 world_z_leptons,
-                air_impact,
                 e.owner(),
                 e.category,
                 e.veterancy(),
             )
         });
 
-        if let Some((
-            type_id,
-            rx,
-            ry,
-            sub_x,
-            sub_y,
-            z,
-            world_z_leptons,
-            air_impact,
-            owner,
-            category,
-            veterancy,
-        )) = dead_info
-        {
+        if let Some((type_id, rx, ry, world_z_leptons, owner, category, veterancy)) = dead_info {
             // `0x00702050..0x00702065`: the death arm first frees a master's
             // slaves to the killing hit's source (FreeSlaves, no house).
             if callbacks_enabled(world) {
@@ -1298,76 +1321,28 @@ pub(crate) fn handle_death(
                     let attacker = killing_attacker(world, damage_events, dead_id);
                     world.kill_passengers(dead_id, attacker, rules, overlay_registry);
                 }
-                // `Fire_Death_Weapon` fires the object's GetCurrentWeapon
-                // (vtable `+0x3F4`, `0x0070D6C6`).
-                let current_weapon = world
-                    .substrate
-                    .entities
-                    .get(dead_id)
-                    .and_then(|entity| super::combat_weapon::current_weapon(entity, obj));
+                // `Fire_Death_Weapon(0)` (`0x0070266D`): its bullet
+                // detonates here, inside this ReceiveDamage, through the
+                // DetonateAtCoord every bullet takes. An IvanBomb warhead (the
+                // Crazy Ivan's own bomber) plants a bomb on the dying object
+                // instead of damaging (`0x00469343`), which goes off below.
                 if explodes
-                    && let Some((dmg, wh_id, weapon_id)) =
-                        fire_death_weapon_payload(rules, obj, current_weapon, &mut world.interner)
+                    && let Some(detonation) = super::death_weapon_detonation(world, dead_id, rules)
                 {
-                    // Fire_Death_Weapon @ 0x0070D690 detonates a real bullet at
-                    // the dying object: an IvanBomb warhead (the Crazy Ivan's
-                    // own bomber) plants a bomb on it instead of damaging
-                    // (DetonateAtCoord `0x00469343`), which goes off below.
-                    //
-                    // RESIDUAL — that bullet's DetonateAtCoord tail
-                    // (`0x00469AA4`) is not run: for an Inviso projectile it
-                    // takes one Scenario draw for the anim-coordinate scatter,
-                    // which VERA's projectile path takes and this death path
-                    // does not. Trigger: every death of a type whose death
-                    // weapon is Inviso (stock: IVAN, TERROR, DTRUCK, CAOILD,
-                    // CAMISC01/02, AMMOCRAT). Effect: the Scenario stream runs one
-                    // draw short of native per such death, and the death
-                    // weapon's own AnimList anim lands unscattered. Frequency:
-                    // common. Downstream: every later Scenario draw shifts.
-                    if rules
-                        .warhead(world.interner.resolve(wh_id))
-                        .is_some_and(|warhead| warhead.ivan_bomb)
-                    {
-                        world.bomb_attach(dead_id, Some(dead_id), rules);
-                    } else {
-                        death_aoe.push(DeathBlast {
-                            rx,
-                            ry,
-                            sub_x,
-                            sub_y,
-                            z,
-                            world_z_leptons,
-                            air_impact,
-                            damage: dmg,
-                            warhead: wh_id,
-                            weapon: Some(weapon_id),
-                            source: dead_id,
-                            source_house: Some(owner),
-                            bridge_hut: false,
-                        });
-                    }
+                    let commit =
+                        commit_projectiles(world, run, &[detonation], rules, overlay_registry);
+                    world.admit_projectile_spawns(commit.projectile_spawns, rules);
+                    under_attack_events.extend(commit.under_attack_events);
+                    blast_effects.append(commit.effects);
                 }
             }
-            // `0x00702672`: after its death weapon, the bomb it carries goes
-            // off (`BombClass::Detonate @ 0x00438720`), at its Location.
-            if let Some(blast) = world.take_bomb_blast(dead_id, rules)
-                && let Some(warhead) = rules.combat_damage.ivan_warhead.as_deref()
+            // `0x0070267F`: after its death weapon, the bomb it carries goes
+            // off (`BombClass::Detonate @ 0x00438720`).
+            if let Some((effects, pings)) =
+                world.bomb_detonate_in_run(run, dead_id, rules, overlay_registry)
             {
-                death_aoe.push(DeathBlast {
-                    rx,
-                    ry,
-                    sub_x,
-                    sub_y,
-                    z,
-                    world_z_leptons,
-                    air_impact,
-                    damage: rules.combat_damage.ivan_damage,
-                    warhead: world.interner.intern(warhead),
-                    weapon: None,
-                    source: blast.source,
-                    source_house: None,
-                    bridge_hut: blast.bridge_hut,
-                });
+                under_attack_events.extend(pings);
+                blast_effects.append(effects);
             }
 
             // The world fatal prelude already owns garrison ejection before
@@ -1376,141 +1351,15 @@ pub(crate) fn handle_death(
         }
     }
 
-    // Apply death explosion AoE damage.
-    for blast in &death_aoe {
-        let DeathBlast {
-            rx,
-            ry,
-            sub_x,
-            sub_y,
-            z,
-            world_z_leptons,
-            air_impact,
-            damage: dmg,
-            warhead: wh_id,
-            weapon,
-            source,
-            source_house,
-            bridge_hut,
-        } = blast;
-        if let Some(warhead) = rules.warhead(world.interner.resolve(*wh_id)) {
-            let routed_wall = area_routes_to_wall(world, overlay_registry, (*rx, *ry), warhead);
-            let aoe = {
-                let collected = collect_area(
-                    world,
-                    rules,
-                    overlay_registry,
-                    (*rx, *ry),
-                    *dmg,
-                    warhead,
-                    (*source, *source_house, *wh_id),
-                    *air_impact,
-                    i32::from(*z),
-                );
-                append_fixture_tiberium(world, &mut tiberium_reduction_requests);
-                collected
-            };
-            #[cfg(test)]
-            wall_mutations.extend(aoe.wall_mutations);
-
-            #[cfg(test)]
-            cell_target_detaches.extend(aoe.cell_target_detaches);
-            if let Some(weapon) =
-                weapon.and_then(|weapon| rules.weapon(world.interner.resolve(weapon)))
-                && weapon.rad_level > 0
-            {
-                rad_detonations.push(crate::sim::radiation::RadDetonation {
-                    rx: *rx,
-                    ry: *ry,
-                    rad_level: weapon.rad_level,
-                    spread: super::cell_spread::whole_cells(warhead.cell_spread_f64),
-                });
-            }
-            // One native Apply_area_damage owns the whole fixed record vector.
-            // The commit loop still enters ReceiveDamage/death effects inline
-            // per record, while retaining transaction-wide IC isolation.
-            let (mut nested, mut pings, area_result) =
-                commit_area_with_dispatch(world, run, &aoe.receivers, rules, overlay_registry);
-            despawned_ids.append(&mut nested.despawned_ids);
-            immediate_uninit_ids.append(&mut nested.immediate_uninit_ids);
-            structure_destroyed |= nested.structure_destroyed;
-            explosion_effects.append(&mut nested.explosion_effects);
-            voxel_debris.append(&mut nested.voxel_debris);
-            combat_light_requests.append(&mut nested.combat_light_requests);
-            bridge_state_changed |= nested.bridge_state_changed;
-            #[cfg(test)]
-            wall_mutations.append(&mut nested.wall_mutations);
-
-            #[cfg(test)]
-            cell_target_detaches.append(&mut nested.cell_target_detaches);
-            tiberium_reduction_requests.append(&mut nested.tiberium_reduction_requests);
-            death_sounds.append(&mut nested.death_sounds);
-            smudge_spawn_requests.append(&mut nested.smudge_spawn_requests);
-            rad_detonations.append(&mut nested.rad_detonations);
-            unit_lost_events.append(&mut nested.unit_lost_events);
-            #[cfg(test)]
-            receiver_stage_trace.append(&mut nested.receiver_stage_trace);
-            under_attack_events.append(&mut pings);
-            // Both a DeathWeapon and BombClass's direct Apply_area_damage
-            // reach 489E87 after their receivers. Nested areas have completed
-            // their own bridge continuations before this parent resumes.
-            bridge_state_changed |= continue_area_bridge_damage(
-                world,
-                rules,
-                overlay_registry,
-                (*rx, *ry),
-                *dmg,
-                *wh_id,
-                *world_z_leptons,
-                routed_wall,
-                area_result,
-            );
-            let coordinate = ProjectileCoord::new(
-                i32::from(*rx) * 256 + sub_x.to_num::<i32>(),
-                i32::from(*ry) * 256 + sub_y.to_num::<i32>(),
-                *world_z_leptons,
-            );
-            let land = detonation_anim::land_at(world, coordinate);
-            if let Some(effect) =
-                detonation_anim::effect(world, rules, warhead, *dmg, land, coordinate, coordinate)
-            {
-                crate::sim::world::damage_consequences::admit_explosion_effect(
-                    world, rules, effect,
-                );
-            }
-            // `0x0043896A`/`0x00438982`: a bombed bridge-repair hut drops
-            // its bridge after the blast.
-            if *bridge_hut {
-                bridge_state_changed |= crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
-                    world,
-                    rules,
-                    (*rx, *ry),
-                    overlay_registry,
-                );
-            }
-        }
-    }
     let mut effects = DeathEffects {
-        despawned_ids,
-        immediate_uninit_ids,
         structure_destroyed,
         explosion_effects,
         voxel_debris,
-        combat_light_requests,
-        bridge_state_changed,
-        #[cfg(test)]
-        wall_mutations,
-        #[cfg(test)]
-        cell_target_detaches,
-        tiberium_reduction_requests,
         death_sounds,
-        smudge_spawn_requests,
-        rad_detonations,
         under_attack_events,
-        unit_lost_events,
-        #[cfg(test)]
-        receiver_stage_trace,
+        ..DeathEffects::default()
     };
+    effects.append(blast_effects);
 
     // Concrete receivers resume after Techno's nested DeathWeapon. Read the
     // retained entity's current state at that boundary.
@@ -1547,25 +1396,6 @@ pub(crate) fn handle_death(
     }
 
     effects
-}
-
-/// One Apply_area_damage a death sets off, in order: its death weapon, then
-/// the bomb it carried.
-struct DeathBlast {
-    rx: u16,
-    ry: u16,
-    sub_x: SimFixed,
-    sub_y: SimFixed,
-    z: u8,
-    world_z_leptons: i32,
-    air_impact: Option<combat_aoe::AoEAirImpact>,
-    damage: i32,
-    warhead: InternedId,
-    /// The death weapon; `None` for a bomb.
-    weapon: Option<InternedId>,
-    source: u64,
-    source_house: Option<InternedId>,
-    bridge_hut: bool,
 }
 
 /// Concrete receiver work after shared Techno death effects return.
@@ -2082,14 +1912,7 @@ fn emit_detonation_receivers(
     warhead: &WarheadType,
     out: &mut CombatEmit,
 ) -> Option<bool> {
-    let (impact_rx, impact_ry, impact_sub_x, impact_sub_y, world_z_leptons) =
-        projectile_impact_cell(detonation.impact);
-    let impact_z = world_z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32);
-    let air_impact = Some(combat_aoe::AoEAirImpact {
-        sub_x: impact_sub_x,
-        sub_y: impact_sub_y,
-        z_leptons: world_z_leptons,
-    });
+    let (impact_rx, impact_ry, ..) = projectile_impact_cell(detonation.impact);
 
     // Named location: `BulletClass::Detonate @ 0x004690b0`. Radiation is
     // outside and before the exclusive special-effect chain.
@@ -2149,8 +1972,6 @@ fn emit_detonation_receivers(
                 out,
             );
 
-            let routed_wall =
-                area_routes_to_wall(world, overlay_registry, (impact_rx, impact_ry), warhead);
             // `0x00469A69..0x00469A75`: the bullet's live Owner's house, or
             // none once the owner is gone (`BulletClass+0xB0` is detached).
             let source_house = world
@@ -2158,35 +1979,30 @@ fn emit_detonation_receivers(
                 .entities
                 .get(detonation.source_id)
                 .map(|source| source.owner());
-            let aoe = {
-                let collected = collect_area(
-                    world,
-                    rules,
-                    overlay_registry,
-                    (impact_rx, impact_ry),
-                    detonation.payload.area_damage(),
-                    warhead,
-                    (
-                        detonation.source_id,
-                        source_house,
-                        detonation.payload.warhead,
-                    ),
-                    air_impact,
-                    impact_z,
-                );
-                append_fixture_tiberium(world, &mut out.effects.tiberium_reduction_requests);
-                collected
-            };
+            let area = collect_area_at(
+                world,
+                rules,
+                overlay_registry,
+                detonation.impact,
+                detonation.payload.area_damage(),
+                warhead,
+                (
+                    detonation.source_id,
+                    source_house,
+                    detonation.payload.warhead,
+                ),
+            );
+            append_fixture_tiberium(world, &mut out.effects.tiberium_reduction_requests);
             #[cfg(test)]
-            out.effects.wall_mutations.extend(aoe.wall_mutations);
+            out.effects.wall_mutations.extend(area.aoe.wall_mutations);
 
             #[cfg(test)]
             out.effects
                 .cell_target_detaches
-                .extend(aoe.cell_target_detaches);
-            out.damage_events.extend(aoe.receivers);
+                .extend(area.aoe.cell_target_detaches);
+            out.damage_events.extend(area.aoe.receivers);
 
-            Some(routed_wall)
+            Some(area.routed_wall)
         }
         claimed => {
             run_special_detonation_arm(world, rules, claimed, detonation, overlay_registry);
@@ -2226,11 +2042,20 @@ fn emit_detonation_anim(
     // 469AF0..469BCF reads the still-live Bullet, not the damage/animation
     // coordinate copied at469AA4. The terrain here includes the synchronous
     // bridge continuation, so a collapsed deck can now select SplashList.
-    let (selection_coordinate, on_bridge) = world
-        .projectiles
-        .get(detonation.projectile_id)
-        .map(|bullet| (bullet.position, bullet.on_bridge))
-        .unwrap_or((detonation.impact, false));
+    // A death weapon's bullet is never placed: Fire_Death_Weapon creates it,
+    // Limbos it and detonates it at its firer's GetCoords
+    // (`0x0070D756..0x0070D782`), so its Location is still the constructor's
+    // zero coordinate (`0x005F3993` copies `0x00AC1380`, which `0x005F38A0`
+    // zeroes), off any bridge.
+    let (selection_coordinate, on_bridge) = match world.projectiles.get(detonation.projectile_id) {
+        Some(bullet) => (bullet.position, bullet.on_bridge),
+        None if detonation.reason
+            == crate::sim::projectile::ProjectileDetonationReason::DeathWeapon =>
+        {
+            (ProjectileCoord::new(0, 0, 0), false)
+        }
+        None => (detonation.impact, false),
+    };
     let land = detonation_anim::bullet_land(
         world,
         rules,

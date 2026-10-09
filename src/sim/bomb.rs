@@ -73,10 +73,16 @@ use serde::{Deserialize, Serialize};
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
+use crate::rules::warhead_type::WarheadType;
 use crate::sim::anim_class::AnimWorldCoord;
+use crate::sim::combat::world_receiver::{
+    ReceiverRun, apply_area_damage, apply_area_damage_in_run,
+};
+use crate::sim::combat::{DeathEffects, UnderAttackEvent};
 use crate::sim::components::DriveCoord;
 use crate::sim::intern::InternedId;
-use crate::sim::movement::ground_pose::object_get_coords;
+use crate::sim::movement::ground_pose::{object_get_coords, object_location};
+use crate::sim::projectile::ProjectileCoord;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// `BombListClass` (`0x0087F5D8`): the carriers of the live bombs and the
@@ -205,10 +211,12 @@ impl Bomb {
 
 /// A detonation's inputs, read before the record goes (`0x00438741..0x0043879F`).
 pub(crate) struct BombBlast {
-    pub(crate) carrier: u64,
     /// The planter, or `RAD_NO_ATTACKER` once its pointer expired.
-    pub(crate) source: u64,
-    pub(crate) bridge_hut: bool,
+    source: u64,
+    /// The carrier's Location, which the blast, its anim and the hut's
+    /// bridge all use (`0x00438775..0x0043879F`).
+    location: ProjectileCoord,
+    bridge_hut: bool,
 }
 
 impl Simulation {
@@ -418,7 +426,7 @@ impl Simulation {
     /// `BombClass::Detonate @ 0x00438720` up to its blast: the record goes
     /// first; `None` when the carrier carries none, or silently when it is in
     /// limbo.
-    pub(crate) fn take_bomb_blast(&mut self, carrier: u64, rules: &RuleSet) -> Option<BombBlast> {
+    fn take_bomb_blast(&mut self, carrier: u64, rules: &RuleSet) -> Option<BombBlast> {
         let entity = self.substrate.entities.get_mut(carrier)?;
         let bomb = entity.bomb.take()?;
         self.bombs.carriers.remove(&carrier);
@@ -436,98 +444,135 @@ impl Simulation {
             && rules
                 .object(self.interner.resolve(entity.type_ref()))
                 .is_some_and(|object| object.bridge_repair_hut);
+        let location = object_location(entity, self.resolved_terrain.as_ref());
         Some(BombBlast {
-            carrier,
             source: bomb.planter.unwrap_or(crate::sim::combat::RAD_NO_ATTACKER),
+            location: ProjectileCoord::new(location.x, location.y, location.z),
             bridge_hut,
         })
     }
 
     /// The fuse check in `TechnoClass::AI_Update` (`0x006FA6F5..0x006FA717`),
-    /// in the carrier's own object visit.
+    /// in the carrier's own object visit. The blast runs outside any damage
+    /// transaction ([`apply_area_damage`]). Returns whether a bridge changed.
     pub(crate) fn bomb_fuse_step(
         &mut self,
         carrier: u64,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
-    ) {
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get(carrier) else {
-            return;
+            return false;
         };
         let expired = entity
             .bomb
             .is_some_and(|bomb| bomb.expired(self.session.binary_frame as i32));
         if !expired || entity.lifecycle.in_limbo {
-            return;
+            return false;
         }
-        if let Some(blast) = self.take_bomb_blast(carrier, rules) {
-            self.bomb_blast(blast, rules, overlay_registry);
-        }
-    }
-
-    /// The blast of `BombClass::Detonate` outside a damage transaction:
-    /// Apply_area_damage (`0x004387A3`, its receivers committed in order), the
-    /// explosion anim (`0x00438852`), then the hut's bridge (`0x0043896A`).
-    pub(crate) fn bomb_blast(
-        &mut self,
-        blast: BombBlast,
-        rules: &RuleSet,
-        overlay_registry: Option<&OverlayTypeRegistry>,
-    ) {
-        let Some(warhead_name) = rules.combat_damage.ivan_warhead.clone() else {
-            return;
+        let Some(blast) = self.take_bomb_blast(carrier, rules) else {
+            return false;
         };
-        let Some(warhead) = rules.warhead(&warhead_name) else {
-            return;
+        let Some(warhead) = ivan_warhead(rules) else {
+            return false;
         };
-        let Some(entity) = self.substrate.entities.get(blast.carrier) else {
-            return;
-        };
-        let position = entity.position;
-        let air_impact = crate::sim::combat::combat_aoe::air_impact_from_entity(
-            entity,
-            self.resolved_terrain.as_ref(),
-        );
-        let world_z_leptons = crate::sim::movement::ground_pose::object_world_z_leptons(
-            entity,
-            self.resolved_terrain.as_ref(),
-        );
-        let damage = rules.combat_damage.ivan_damage;
-        let warhead_ref = self.interner.intern(&warhead_name);
-        let aoe = crate::sim::combat::world_receiver::collect_area(
+        let origin = blast.origin(&mut self.interner, warhead);
+        let changed = apply_area_damage(
             self,
             rules,
             overlay_registry,
-            (position.rx, position.ry),
-            damage,
+            blast.location,
+            rules.combat_damage.ivan_damage,
             warhead,
-            (blast.source, None, warhead_ref),
-            air_impact,
-            i32::from(position.z),
+            origin,
         );
-        self.commit_noncombat_aoe_receivers(rules, overlay_registry, &aoe.receivers);
+        changed | self.bomb_blast_tail(&blast, warhead, rules, overlay_registry)
+    }
 
-        // Bomb43884A selects after AreaDamage, using the attached object's
-        // saved coordinate and that coordinate's current Cell land.
-        let coordinate = crate::sim::projectile::ProjectileCoord::new(
-            i32::from(position.rx) * 256 + position.sub_x.to_num::<i32>(),
-            i32::from(position.ry) * 256 + position.sub_y.to_num::<i32>(),
-            world_z_leptons,
+    /// A dying carrier's bomb (`TechnoClass::ReceiveDamage` `0x0070267F`,
+    /// after its death weapon): the blast's receivers nest in the death's
+    /// transaction ([`apply_area_damage_in_run`]), and their effects and pings
+    /// go back to it. `None` when the carrier sets off nothing.
+    pub(crate) fn bomb_detonate_in_run(
+        &mut self,
+        run: &mut ReceiverRun,
+        carrier: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&OverlayTypeRegistry>,
+    ) -> Option<(DeathEffects, Vec<UnderAttackEvent>)> {
+        let blast = self.take_bomb_blast(carrier, rules)?;
+        let warhead = ivan_warhead(rules)?;
+        let origin = blast.origin(&mut self.interner, warhead);
+        let (mut effects, pings) = apply_area_damage_in_run(
+            self,
+            run,
+            rules,
+            overlay_registry,
+            blast.location,
+            rules.combat_damage.ivan_damage,
+            warhead,
+            origin,
         );
-        let land = crate::sim::combat::detonation_anim::land_at(self, coordinate);
+        effects.bridge_state_changed |=
+            self.bomb_blast_tail(&blast, warhead, rules, overlay_registry);
+        Some((effects, pings))
+    }
+
+    /// `BombClass::Detonate` after its Apply_area_damage (`0x004387A3`): the
+    /// IvanWarhead's explosion anim at the carrier's Location, chosen by that
+    /// cell's current land (`0x0043880A..0x00438852`), then a
+    /// `BridgeRepairHut=` carrier's bridge (`0x0043896A`/`0x00438982`).
+    /// Returns whether a bridge changed.
+    fn bomb_blast_tail(
+        &mut self,
+        blast: &BombBlast,
+        warhead: &WarheadType,
+        rules: &RuleSet,
+        overlay_registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        let land = crate::sim::combat::detonation_anim::land_at(self, blast.location);
         if let Some(effect) = crate::sim::combat::detonation_anim::effect(
-            self, rules, warhead, damage, land, coordinate, coordinate,
+            self,
+            rules,
+            warhead,
+            rules.combat_damage.ivan_damage,
+            land,
+            blast.location,
+            blast.location,
         ) {
             crate::sim::world::damage_consequences::admit_explosion_effect(self, rules, effect);
         }
-        if blast.bridge_hut {
-            crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
-                self,
-                rules,
-                (position.rx, position.ry),
-                overlay_registry,
-            );
+        if !blast.bridge_hut {
+            return false;
         }
+        let (rx, ry, ..) = crate::sim::combat::projectile_impact_cell(blast.location);
+        crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
+            self,
+            rules,
+            (rx, ry),
+            overlay_registry,
+        )
+    }
+}
+
+/// `[CombatDamage] IvanWarhead=` (`Rules+0xFC8`); without one a bomb's record
+/// still goes but nothing blasts.
+fn ivan_warhead(rules: &RuleSet) -> Option<&WarheadType> {
+    rules
+        .combat_damage
+        .ivan_warhead
+        .as_deref()
+        .and_then(|name| rules.warhead(name))
+}
+
+impl BombBlast {
+    /// Apply_area_damage's source: the planter and no house.
+    fn origin(
+        &self,
+        interner: &mut crate::sim::intern::StringInterner,
+        warhead: &WarheadType,
+    ) -> (u64, Option<InternedId>, InternedId) {
+        (self.source, None, interner.intern(&warhead.id))
     }
 }
 

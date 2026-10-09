@@ -331,9 +331,13 @@ impl Simulation {
         // (`AircraftClass::AI 0x00414DAA`).
         match rules {
             Some(rules) if jumpjet => {
-                self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
+                process.bridge_state_changed |=
+                    self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
             }
-            Some(rules) => self.fly_crash_impact(stable_id, rules, overlay_registry),
+            Some(rules) => {
+                process.bridge_state_changed |=
+                    self.fly_crash_impact(stable_id, rules, overlay_registry);
+            }
             None => self.uninit(stable_id),
         }
         process.ended = true;

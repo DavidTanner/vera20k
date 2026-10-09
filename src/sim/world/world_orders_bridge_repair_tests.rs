@@ -36,7 +36,7 @@ const BRIDGE_REPAIR_TEST_INI: &str = "[InfantryTypes]\n0=ENGI\n1=GHOST\n\n\
          [GHOST]\nStrength=125\nArmor=flak\nSpeed=4\nPrimary=none\nC4=yes\n\n\
          [CABHUT]\nStrength=200\nArmor=concrete\nFoundation=1x1\nBridgeRepairHut=yes\n\n\
          [AudioVisual]\nRepairBridgeSound=BridgeRepaired\n\n\
-         [CombatDamage]\nC4Warhead=SA\n\n\
+         [CombatDamage]\nC4Warhead=SA\nIvanWarhead=SA\nIvanDamage=1\nIvanTimedDelay=2\n\n\
          [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n";
 
 fn bridge_repair_test_rules() -> RuleSet {
@@ -740,6 +740,46 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
     assert!(
         bridge_state_changed_seen,
         "TickResult.bridge_state_changed must fire at least once so the app rebuilds PathGrid"
+    );
+}
+
+/// A bomb fused on a CABHUT drops its bridge after the blast
+/// (`BombClass::Detonate` `0x0043896A`, from the hut's own AI at
+/// `0x006FA712`), and the frame reports the change as the C4 path does.
+#[test]
+fn a_fused_bomb_on_a_cabhut_collapses_the_bridge_and_reports_it() {
+    let (mut sim, rules, registry) = build_ordinary_c4_sim(0xD4);
+    let cabhut = sim
+        .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
+        .expect("hut must be constructed and placed beside the concrete strip");
+    let planter = sim
+        .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
+        .expect("an Infantry planter");
+    sim.bomb_attach(planter, Some(cabhut), &rules);
+    assert!(sim.bomb_carriers().contains(&cabhut));
+
+    let mut bridge_state_changed_seen = false;
+    for _ in 0..rules.combat_damage.ivan_timed_delay + 2 {
+        let result = step_with_overlay_registry(&mut sim, &rules, &registry);
+        bridge_state_changed_seen |= result.bridge_state_changed;
+    }
+    assert!(sim.bomb_carriers().is_empty(), "the bomb went off");
+    for y in [14, 15, 16] {
+        assert_eq!(
+            sim.resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(17, y)
+                .unwrap()
+                .bridge_facts
+                .overlay_id,
+            Some(0xE7),
+            "the bombed hut collapses concrete cell (17, {y})"
+        );
+    }
+    assert!(
+        bridge_state_changed_seen,
+        "TickResult.bridge_state_changed must report the bomb's collapse"
     );
 }
 
