@@ -707,16 +707,34 @@ struct ResolvedPlayback {
     shifts: PlayShifts,
 }
 
-/// User-controlled master channel for one secondary output.
+/// Which native volume groups one secondary output is chained to.
 ///
 /// gamemd-derived: `OptionsClass::SetDefaults @ 0x005FA350` and
 /// `OptionsClass__ReadFromINI @ 0x005FA620` retain independent SoundVolume and
 /// VoiceVolume settings; ordinary/animation effects use Sound while unit and
 /// EVA speech use Voice.
+///
+/// A Voc channel (`Sound`, `Voice`) is also chained to the many-sounds scaler
+/// (`ch+0x98`, `0x0087E1B8`) and the audio master (`ch+0x9C`, the group
+/// `[0x0087E758]` stored at `SoundEvent::UpdateState 0x0040571E` and
+/// `0x00405B9C`). The EVA `StreamPlayer` is not: `VoxClass::Init @
+/// 0x00752300` binds it to the Voice group (`[0x0087E740]`, `0x00752316`)
+/// and the group `[0x0087E750]` (`0x00752327`) only, and the master's readers
+/// (`0x0040571E`, `0x00405B9C`, the all-group pump loops at `0x00409770`,
+/// `0x0040A9C0`, `0x0040AA20`, the score dialog and the scenario exits) never
+/// hand it to the stream. The scenario exits fade that master to zero
+/// (`0x00686605`), so an announcement they queue (`0x00686616`) sounds at
+/// full volume while every Voc channel fades.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SfxChannel {
     Sound,
     Voice,
+    /// The EVA stream: Voice master only. `[0x0087E750]` is taken as unity —
+    /// RESIDUAL: its only writers are the score dialog's fades
+    /// (`0x005BEE27..0x005BF5A8`), which VERA's score screen does not run.
+    /// Trigger: an EVA line during the score dialog. Player effect: none
+    /// reachable today. Frequency: never. Downstream risk: none.
+    EvaStream,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -759,11 +777,17 @@ impl SfxOutputGain {
     fn effective(self, scales: SfxOutputScales) -> f32 {
         let master = match self.channel {
             SfxChannel::Sound => scales.sound_volume,
-            SfxChannel::Voice => scales.voice_volume,
+            SfxChannel::Voice | SfxChannel::EvaStream => scales.voice_volume,
         };
         let master_linear = X87Chop53::ftol_f64_low_masked(
             f64::from(master.clamp(0.0, 1.0)) * f64::from(VOLUME_SCALE),
         );
+        if self.channel == SfxChannel::EvaStream {
+            // The stream has no many-sounds scaler and no audio master, so
+            // the scenario-exit fade (`lifecycle_scale`) leaves it alone.
+            return native_volume_amplitude(combine_linear(self.base_linear, master_linear))
+                * scales.focus_output_scale;
+        }
         // The channel multiplies the event group (`ch+0x90`), the many-sounds
         // scaler (`ch+0x98`) and the user volume group (`ch+0x9C`) together
         // before `FUN_0040A6D0` converts to decibels.
@@ -805,6 +829,7 @@ fn prepare_normal_sfx_output(
     )
 }
 
+#[cfg(test)]
 fn prepare_direct_voice_output(
     decoded: DecodedAudio,
     base_linear: i32,
@@ -813,6 +838,19 @@ fn prepare_direct_voice_output(
     PreparedSfxOutput::new(
         decoded,
         SfxOutputGain::new(base_linear, SfxChannel::Voice),
+        scales,
+    )
+}
+
+#[cfg(test)]
+fn prepare_eva_stream_output(
+    decoded: DecodedAudio,
+    base_linear: i32,
+    scales: SfxOutputScales,
+) -> PreparedSfxOutput {
+    PreparedSfxOutput::new(
+        decoded,
+        SfxOutputGain::new(base_linear, SfxChannel::EvaStream),
         scales,
     )
 }
@@ -863,11 +901,13 @@ struct LoopQueue {
     finished: bool,
 }
 
-/// Manages sound effect playback with separate SFX pool and voice slot.
+/// Manages sound effect playback with separate SFX pool, voice slot and EVA
+/// stream.
 ///
 /// Matches the original engine's architecture:
 /// - a 16-channel SFX pool arbitrated by [`arbiter::SoundArbiter`]
 /// - 1 dedicated voice slot for unit responses (cuts off previous)
+/// - the EVA `StreamPlayer`, which no unit line or effect can displace
 pub struct SfxPlayer {
     /// rodio mixer device sink — must be kept alive or all audio stops.
     _device: MixerDeviceSink,
@@ -892,16 +932,22 @@ pub struct SfxPlayer {
     /// event names a different entry), not a 17th channel. Trigger: any voice
     /// line while 16 SFX channels are busy. Player effect: VERA's voice is
     /// never denied a channel and never displaces an effect. Frequency:
-    /// common in a busy fight. Downstream risk: the EVA queue's own
-    /// semantics (`VoxClass`) are a separate parity surface that owns this
-    /// slot, so folding voices into the pool is deferred to it.
+    /// common in a busy fight. Downstream risk: none; the EVA stream is
+    /// [`Self::eva_player`], so folding voices into the pool only changes
+    /// which effects a voice line can displace.
     voice_player: Option<LiveSfxOutput>,
     /// The EVA announcement queue (`VoxClass`), including the pause depth
     /// `DAT_00b1d428` and the suspend depth `DAT_00b1d3d8`.
     vox: VoxQueue,
-    /// An EVA line was started on `voice_player` and its end has not been
-    /// reported to `vox` yet (`StreamPlayer::GetEndTime` stand-in).
-    eva_stream_open: bool,
+    /// The announcement stream — native's `StreamPlayer` (`PlayFile @
+    /// 0x0075295C`), a DirectSound streaming buffer outside the 16 Voc
+    /// channels that unit lines take through `VocClass::PlayAtPos @
+    /// 0x00750920`. Nothing but the queue itself (`StreamPlayer::Stop` from
+    /// `QueueVoice`, `ResetAll`) stops it, so an acknowledgement or effect
+    /// never cuts an announcement. `Some` from the line's start until
+    /// [`Self::advance_voice_queue`] observes it finished and reports the end
+    /// time to `vox` (`StreamPlayer::GetEndTime` stand-in).
+    eva_player: Option<LiveSfxOutput>,
     /// Sound id currently occupying the dedicated voice slot, when known.
     current_voice_id: Option<String>,
     /// Stable id of the object whose acknowledgement line owns the voice slot,
@@ -992,7 +1038,7 @@ impl SfxPlayer {
             now_ms: 0,
             voice_player: None,
             vox: VoxQueue::new(),
-            eva_stream_open: false,
+            eva_player: None,
             current_voice_id: None,
             current_voice_owner: None,
             voice_queue: VoiceQueue::new(),
@@ -1343,23 +1389,22 @@ impl SfxPlayer {
     /// once; VERA has one voice slot, so at most the slot's current owner can
     /// answer `true`.
     ///
-    /// Two consequences, both recorded:
-    /// 1. An EVA line taking the slot kills a unit's handle mid-word.
-    /// 2. [`Self::drain_unit_voices`] resolves this **once** before its loop,
-    ///    so if two objects both have a line latched in the same pass, both
-    ///    play and the second cuts the first — native would let them overlap,
-    ///    because each object probes its own handle. Re-resolving inside the
-    ///    loop would not fix it either; one slot cannot hold two lines.
+    /// One consequence, recorded: [`Self::drain_unit_voices`] resolves this
+    /// **once** before its loop, so if two objects both have a line latched
+    /// in the same pass, both play and the second cuts the first — native
+    /// would let them overlap, because each object probes its own handle.
+    /// Re-resolving inside the loop would not fix it either; one slot cannot
+    /// hold two lines.
     ///
     /// Trigger: two objects with a latched line in the same
-    /// `drain_sound_events` pass, or an EVA line landing on a unit line.
-    /// Player effect: the second line cuts the first. Frequency: not reachable
-    /// from ordinary player input while A1's one-voice-per-batch latch
-    /// (`g_SelectionVoice_Enable @ 0x00822CF2`) holds — it lets only one
-    /// object speak per dispatch — but a selection voice and an order voice
-    /// from *different* objects arriving in the same pass would hit it.
-    /// Downstream risk: none; folding voices into the 16-channel pool is the
-    /// `voice_player` residual's job, and that is what closes both cases.
+    /// `drain_sound_events` pass. Player effect: the second line cuts the
+    /// first. Frequency: not reachable from ordinary player input while A1's
+    /// one-voice-per-batch latch (`g_SelectionVoice_Enable @ 0x00822CF2`)
+    /// holds — it lets only one object speak per dispatch — but a selection
+    /// voice and an order voice from *different* objects arriving in the same
+    /// pass would hit it. Downstream risk: none; folding voices into the
+    /// 16-channel pool is the `voice_player` residual's job, and that is what
+    /// closes it.
     fn live_voice_owner(&self) -> Option<u64> {
         let owner = self.current_voice_owner?;
         self.voice_player
@@ -1418,16 +1463,18 @@ impl SfxPlayer {
         );
         if effect.stop_stream {
             // `StreamPlayer::Stop` (`0x00752480`, type 2 while current): only
-            // the dedicated voice channel; ordinary and animation SFX are
-            // untouched.
-            if let Some(output) = self.voice_player.take() {
-                output.player.stop();
-            }
-            self.current_voice_id = None;
-            self.eva_stream_open = false;
+            // the announcement stream; unit lines and SFX are untouched.
+            self.stop_eva_stream();
         }
         self.advance_voice_queue(registry, assets, audio_index);
         effect.inserted
+    }
+
+    /// `StreamPlayer::Stop` on the announcement stream, if one is open.
+    fn stop_eva_stream(&mut self) {
+        if let Some(output) = self.eva_player.take() {
+            output.player.stop();
+        }
     }
 
     /// The `[DialogList]` index by name (`0x00753250`, a miss is -1) and
@@ -1438,11 +1485,11 @@ impl SfxPlayer {
         }
     }
 
-    /// Whether the dedicated voice slot has audio left to play
-    /// (`StreamPlayer::IsPlaying @ 0x00408070` stand-in; VERA serves unit
-    /// acknowledgements from the same slot, so a unit line counts too).
-    fn voice_slot_busy(&self) -> bool {
-        self.voice_player
+    /// Whether the announcement stream has audio left to play
+    /// (`StreamPlayer::IsPlaying @ 0x00408070` stand-in). Unit lines play
+    /// elsewhere and do not count.
+    fn eva_stream_busy(&self) -> bool {
+        self.eva_player
             .as_ref()
             .is_some_and(|output| !output.player.empty())
     }
@@ -1452,7 +1499,7 @@ impl SfxPlayer {
     /// The native gate is `IsPlaying() == 0 && now > GetEndTime() + gap &&
     /// DAT_00b1d428 == 0` (`0x00752794..0x007527D5`); [`VoxQueue::take_next`]
     /// owns it. The stream's end time is reported here the first time the
-    /// slot is seen empty after an EVA line started, so the 500 ms gap runs
+    /// stream is seen empty after an EVA line started, so the 500 ms gap runs
     /// from the observed end (a paused line therefore still gets its gap
     /// after it resumes and finishes).
     ///
@@ -1466,16 +1513,9 @@ impl SfxPlayer {
         assets: &AssetManager,
         audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
     ) {
-        let busy = self.voice_slot_busy();
-        if !busy {
-            if self.eva_stream_open {
-                self.vox.stream_ended(self.now_ms);
-                self.eva_stream_open = false;
-            }
-            if self.voice_player.is_some() {
-                self.voice_player = None;
-                self.current_voice_id = None;
-            }
+        let busy = self.eva_stream_busy();
+        if !busy && self.eva_player.take().is_some() {
+            self.vox.stream_ended(self.now_ms);
         }
         let Some(node) = self.vox.take_next(self.now_ms, busy) else {
             return;
@@ -1494,11 +1534,18 @@ impl SfxPlayer {
             log::debug!("EVA {} has no sample {}", node.event, node.sample);
             return;
         };
-        let sample = node.sample.clone();
-        if self.play_voice(resolved.decoded, resolved.event_linear, Some(sample)) {
-            self.eva_stream_open = true;
-            self.vox.started(node);
-        }
+        // `take_next` only hands out a node once the stream is not playing,
+        // and `advance_voice_queue` has already retired it by then.
+        debug_assert!(self.eva_player.is_none());
+        let Some(output) = self.start_voice_output(
+            resolved.decoded,
+            resolved.event_linear,
+            SfxChannel::EvaStream,
+        ) else {
+            return;
+        };
+        self.eva_player = Some(output);
+        self.vox.started(node);
     }
 
     /// Play decoded audio on the dedicated voice slot, cutting off any current voice.
@@ -1508,49 +1555,47 @@ impl SfxPlayer {
         base_linear: i32,
         sound_id: Option<String>,
     ) -> bool {
-        let prepared = prepare_direct_voice_output(decoded, base_linear, self.output_scales());
-        self.play_prepared_voice(prepared, sound_id)
-    }
-
-    fn play_prepared_voice(
-        &mut self,
-        prepared: PreparedSfxOutput,
-        sound_id: Option<String>,
-    ) -> bool {
         // Cut off previous voice immediately.
         if let Some(old) = self.voice_player.take() {
             old.player.stop();
         }
         self.current_voice_id = None;
+        // The slot is ownerless until `drain_unit_voices` re-stamps the owner
+        // right after it starts an object's line.
+        self.current_voice_owner = None;
+        let Some(output) = self.start_voice_output(decoded, base_linear, SfxChannel::Voice) else {
+            return false;
+        };
+        self.voice_player = Some(output);
+        self.current_voice_id = sound_id;
+        true
+    }
 
+    /// Build one centred, full-volume output (`VocClass::PlayAtPos`'s volume
+    /// `1.0f`, pan `0x2000`, or the stream's `PlayFile`) on the given channel
+    /// and start it on the mixer.
+    fn start_voice_output(
+        &self,
+        decoded: DecodedAudio,
+        base_linear: i32,
+        channel: SfxChannel,
+    ) -> Option<LiveSfxOutput> {
         let PreparedSfxOutput {
             decoded,
             gain,
             initial_volume,
-        } = prepared;
-
-        let channels = match NonZero::new(decoded.channels) {
-            Some(c) => c,
-            None => return false,
-        };
-        let sample_rate = match NonZero::new(decoded.sample_rate) {
-            Some(r) => r,
-            None => return false,
-        };
-
+        } = PreparedSfxOutput::new(
+            decoded,
+            SfxOutputGain::new(base_linear, channel),
+            self.output_scales(),
+        );
+        let channels = NonZero::new(decoded.channels)?;
+        let sample_rate = NonZero::new(decoded.sample_rate)?;
         let source = SamplesBuffer::new(channels, sample_rate, decoded.samples);
         let player: Player = Player::connect_new(self._device.mixer());
         let output = LiveSfxOutput::new(player, gain, initial_volume);
         output.player.append(source);
-        self.voice_player = Some(output);
-        self.current_voice_id = sound_id;
-        // Every other route into the slot (EVA queue, STANDARD cue, interrupt)
-        // is ownerless; `drain_unit_voices` re-stamps the owner right after it
-        // starts an object's line. An EVA cue taking the slot therefore kills
-        // the live techno handle — VERA-internal, and the same single-slot
-        // limitation the `voice_player` field records.
-        self.current_voice_owner = None;
-        true
+        Some(output)
     }
 
     /// Hand a decoded cue to the arbiter. Nothing is audible yet: native's
@@ -1801,6 +1846,17 @@ impl SfxPlayer {
             self.arbiter.notify_playout_ended(event);
             self.release_output(event);
         }
+        // The unit voice slot's handle goes free the same way
+        // (`VocHandle::ValidateOrClear @ 0x00406130` on a finished event).
+        if self
+            .voice_player
+            .as_ref()
+            .is_some_and(|output| output.player.empty())
+        {
+            self.voice_player = None;
+            self.current_voice_id = None;
+            self.current_voice_owner = None;
+        }
     }
 
     fn release_output(&mut self, event: EventId) {
@@ -1823,8 +1879,9 @@ impl SfxPlayer {
     /// 0x00753500` (`StreamPlayer::Pause` again for the speech stream);
     /// `Exit` calls `SpeechSystem::Resume @ 0x00753510` then
     /// `VoxClass::UnpauseEVA @ 0x00753620`. Neither call sits behind the
-    /// `FUN_0053bad0` gate that the SFX half does. VERA serves EVA and unit
-    /// voices from one slot, so both halves land on `voice_player`.
+    /// `FUN_0053bad0` gate that the SFX half does. The SFX half covers the
+    /// unit voice slot (a Voc channel natively); the stream half is
+    /// `eva_player`.
     ///
     /// Idempotent — call it with the current pause state every frame.
     pub fn set_paused(&mut self, paused: bool, now_ms: u64) {
@@ -1836,18 +1893,18 @@ impl SfxPlayer {
         self.vox.set_paused(paused);
         if paused {
             self.arbiter.suspend_all(now_ms);
-            for output in self.live.values() {
-                output.player.pause();
-            }
-            if let Some(output) = self.voice_player.as_ref() {
-                output.player.pause();
-            }
         } else {
             self.arbiter.resume_all(now_ms);
-            for output in self.live.values() {
-                output.player.play();
-            }
-            if let Some(output) = self.voice_player.as_ref() {
+        }
+        let outputs = self
+            .live
+            .values()
+            .chain(self.voice_player.iter())
+            .chain(self.eva_player.iter());
+        for output in outputs {
+            if paused {
+                output.player.pause();
+            } else {
                 output.player.play();
             }
         }
@@ -1873,8 +1930,11 @@ impl SfxPlayer {
         self.apply_live_output_scales();
     }
 
-    /// Apply a temporary multiplier to all live outputs without changing the
-    /// saved SFX setting or foreground gate.
+    /// The audio master `[0x0087E758]`: a multiplier over every live Voc
+    /// channel output (SFX and unit voices) without changing the saved
+    /// settings or foreground gate. The EVA stream is not chained to it (see
+    /// [`SfxChannel`]), so the scenario exits' fade to zero leaves an
+    /// announcement they queue audible to its end.
     pub fn set_output_scale(&mut self, scale: f64) {
         self.output_scale = scale.clamp(0.0, 1.0) as f32;
         self.apply_live_output_scales();
@@ -1894,10 +1954,12 @@ impl SfxPlayer {
 
     fn apply_live_output_scales(&self) {
         let scales = self.output_scales();
-        for output in self.live.values() {
-            output.apply_scales(scales);
-        }
-        if let Some(output) = self.voice_player.as_ref() {
+        for output in self
+            .live
+            .values()
+            .chain(self.voice_player.iter())
+            .chain(self.eva_player.iter())
+        {
             output.apply_scales(scales);
         }
     }
@@ -1931,12 +1993,13 @@ impl SfxPlayer {
             output.player.stop();
         }
         self.current_voice_id = None;
+        self.current_voice_owner = None;
         // `VoxClass::ResetAll @ 0x007535D0`: current entry done, stop the
         // stream, `ClearAllQueues`, then `DAT_00b1d428 = 0` and
         // `DAT_00b1d3d8 = 0`. Both depths are reset here, not left to unwind
         // on the next pause edge.
+        self.stop_eva_stream();
         self.vox.reset_all();
-        self.eva_stream_open = false;
     }
 
     /// Get the current SFX master volume.
@@ -1983,7 +2046,7 @@ impl SfxPlayer {
     /// `Player::empty()` is a poll). Used by the quit cascade and the
     /// victory/defeat savour wait.
     pub fn voices_active(&self) -> bool {
-        self.vox.is_active(self.voice_slot_busy())
+        self.vox.is_active(self.eva_stream_busy())
     }
 }
 
@@ -2863,7 +2926,7 @@ mod tests {
     /// starts it, so the scales at dequeue alone decide the startup volume.
     #[test]
     fn options_profile_queued_eva_uses_current_voice_master_at_dequeue() {
-        let started_with_voice_enabled = prepare_direct_voice_output(
+        let started_with_voice_enabled = prepare_eva_stream_output(
             test_decoded_audio(),
             13107,
             test_output_scales(0.0, 1.0, 1.0, 1.0),
@@ -2872,12 +2935,58 @@ mod tests {
             (started_with_voice_enabled.initial_volume - native_volume_amplitude(13107)).abs()
                 < f32::EPSILON
         );
-        let started_with_voice_muted = prepare_direct_voice_output(
+        let started_with_voice_muted = prepare_eva_stream_output(
             test_decoded_audio(),
             13107,
             test_output_scales(1.0, 0.0, 1.0, 1.0),
         );
         assert_eq!(started_with_voice_muted.initial_volume, 0.0);
+    }
+
+    /// The scenario exits fade the audio master `[0x0087E758]` to zero before
+    /// queueing their announcement (`0x00686605` then `0x00686616`). That
+    /// master is chained into Voc channels only, so a unit voice follows it
+    /// and the EVA stream does not; the many-sounds scaler is Voc-only too.
+    #[test]
+    fn scenario_exit_master_fade_leaves_the_eva_stream_alone() {
+        let full = native_volume_amplitude(13107);
+        let faded = test_output_scales(1.0, 1.0, 0.25, 1.0);
+        let voice = prepare_direct_voice_output(test_decoded_audio(), 13107, faded);
+        assert!((voice.initial_volume - full * 0.25).abs() < f32::EPSILON);
+        let eva = prepare_eva_stream_output(test_decoded_audio(), 13107, faded);
+        assert!((eva.initial_volume - full).abs() < f32::EPSILON);
+
+        let silenced = test_output_scales(1.0, 1.0, 0.0, 1.0);
+        assert_eq!(
+            prepare_direct_voice_output(test_decoded_audio(), 13107, silenced).initial_volume,
+            0.0
+        );
+        assert!(
+            (prepare_eva_stream_output(test_decoded_audio(), 13107, silenced).initial_volume
+                - full)
+                .abs()
+                < f32::EPSILON
+        );
+
+        let limited = SfxOutputScales {
+            many_sounds_linear: VOLUME_SCALE / 2,
+            ..test_output_scales(1.0, 1.0, 1.0, 1.0)
+        };
+        assert!(
+            prepare_direct_voice_output(test_decoded_audio(), 13107, limited).initial_volume < full
+        );
+        assert!(
+            (prepare_eva_stream_output(test_decoded_audio(), 13107, limited).initial_volume - full)
+                .abs()
+                < f32::EPSILON
+        );
+
+        // The foreground gate is the primary buffer: it still silences both.
+        let background = test_output_scales(1.0, 1.0, 1.0, 0.0);
+        assert_eq!(
+            prepare_eva_stream_output(test_decoded_audio(), 13107, background).initial_volume,
+            0.0
+        );
     }
 
     /// An idle voice slot with an empty queue reports no active voices. Skips
@@ -2888,6 +2997,55 @@ mod tests {
             return;
         };
         assert!(!player.voices_active());
+    }
+
+    /// A unit acknowledgement starting while an announcement sounds leaves
+    /// the announcement playing: native's `StreamPlayer` is not one of the Voc
+    /// channels `VocClass::PlayAtPos @ 0x00750920` takes, and only
+    /// `VoxClass` itself (`QueueVoice` type 2, `ResetAll`) stops it. Needs
+    /// retail assets and an audio device; skips without either.
+    #[test]
+    fn unit_voice_does_not_cut_eva_stream() {
+        let Some((_root, assets)) = crate::rules::retail_ini_fixture::retail_assets() else {
+            return;
+        };
+        let Some(mut player) = SfxPlayer::new() else {
+            return;
+        };
+        player.set_voice_volume(0.0);
+        let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
+        let loaded_index = assets.load_audio_index().expect("selected audio index");
+        let audio_index = loaded_index.as_ref().map(|loaded| &loaded.index);
+        // `PlayNextQueued` needs `now > end_time + gap`, so the clock must
+        // have moved off zero before the first line can start.
+        player.pump(1_000, definitions.sounds(), &assets, audio_index);
+        assert!(player.play_eva(
+            "EVA_UnitReady",
+            None,
+            definitions.eva(),
+            EvaSide::Allied,
+            definitions.sounds(),
+            &assets,
+            audio_index,
+        ));
+        assert!(player.eva_stream_busy());
+        let eva_current = player.vox.current().cloned();
+        assert!(eva_current.is_some());
+
+        player.queue_unit_voice(7, "GISelect");
+        player.drain_unit_voices(definitions.sounds(), &assets, audio_index);
+        assert_eq!(player.live_voice_owner(), Some(7));
+        assert_eq!(player.current_voice_id.as_deref(), Some("GISelect"));
+        assert!(player.eva_stream_busy(), "unit voice cut the EVA stream");
+        assert_eq!(player.vox.current().cloned(), eva_current);
+        assert!(player.voices_active());
+
+        // The queue's own stop path is the only one that cuts the stream, and
+        // it leaves the unit line alone.
+        player.stop_eva_stream();
+        assert!(!player.eva_stream_busy());
+        assert_eq!(player.live_voice_owner(), Some(7));
+        player.stop_all();
     }
 
     /// Whole stock UnitReady waveform from original40AA70 callback returns,
@@ -2997,7 +3155,8 @@ mod tests {
             );
             let stream_open = after["stream"]["flags"].as_u64().unwrap() != 0;
             assert_eq!(
-                player.eva_stream_open, stream_open,
+                player.eva_player.is_some(),
+                stream_open,
                 "{label}: native stream"
             );
             let selected = &after["selected"][0];
@@ -3008,10 +3167,10 @@ mod tests {
                 );
                 assert_eq!(current.sample, selected["allied"].as_str().unwrap());
             }
-            assert_eq!(
-                player.current_voice_id.as_deref(),
-                stream_open.then(|| selected["allied"].as_str().unwrap()),
-                "{label}: active sample"
+            // The stream is not a Voc channel: the unit voice slot stays free.
+            assert!(
+                player.current_voice_id.is_none(),
+                "{label}: EVA line on the unit voice slot"
             );
         };
         let selected = &fixture["controls"]["cadence"]["registered_prior"]["clock_steps"][0]["after"]
@@ -3072,13 +3231,8 @@ mod tests {
         // Let the actual stock decoder/mixer queue finish. The controlled
         // wall-clock input2089 matches the native completed-stream witness;
         // no simulated playback-completion answer is supplied to this owner.
-        player
-            .voice_player
-            .as_ref()
-            .unwrap()
-            .player
-            .sleep_until_end();
-        assert!(!player.voice_slot_busy());
+        player.eva_player.as_ref().unwrap().player.sleep_until_end();
+        assert!(!player.eva_stream_busy());
         for label in [
             "original_payload_worker_2089ms",
             "original_payload_end_exact_gap_queue_visit",
