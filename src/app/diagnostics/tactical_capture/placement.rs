@@ -235,7 +235,7 @@ Buildable=yes
         RuleSet::from_ini(&ini).expect("placement rules")
     }
 
-    fn ready_fixture(
+    fn yard_fixture(
         width: u16,
         height: u16,
         yard_cell: (u16, u16),
@@ -247,13 +247,22 @@ Buildable=yes
         let yard_id = sim
             .spawn_object("GACNST", "Russians", yard_cell.0, yard_cell.1, 0, &rules)
             .expect("yard");
+        (sim, rules, grid, yard_id)
+    }
+
+    /// The yard fixture with a completed NAPOWR waiting in its owner's
+    /// building factory.
+    fn ready_fixture(
+        width: u16,
+        height: u16,
+        yard_cell: (u16, u16),
+    ) -> (Simulation, RuleSet, PathGrid, u64) {
+        let (mut sim, rules, grid, yard_id) = yard_fixture(width, height, yard_cell);
         let owner_id = sim.interner.intern("Russians");
         let target_id = sim.interner.intern("NAPOWR");
-        sim.production
-            .ready_by_owner
-            .entry(owner_id)
-            .or_default()
-            .push_back(target_id);
+        crate::sim::production::complete_held_building_for_test(
+            &mut sim, &rules, owner_id, target_id,
+        );
         (sim, rules, grid, yard_id)
     }
 
@@ -352,8 +361,7 @@ Buildable=yes
 
     #[test]
     fn target_must_be_ready_before_search() {
-        let (mut sim, rules, grid, yard_id) = ready_fixture(24, 24, (10, 10));
-        sim.production.ready_by_owner.clear();
+        let (sim, rules, grid, yard_id) = yard_fixture(24, 24, (10, 10));
         assert!(matches!(
             first_valid_placement(
                 &sim,

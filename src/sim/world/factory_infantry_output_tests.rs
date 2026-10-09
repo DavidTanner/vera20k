@@ -1924,7 +1924,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 });
             }
             let progress = products.iter_mut().find(|p| p.id == held).unwrap();
-            if view.ready && progress.completed_frame.is_none() {
+            if view.complete_object().is_some() && progress.completed_frame.is_none() {
                 progress.completed_frame = Some(frame);
                 let entity = sim.substrate.entities.get(held).unwrap();
                 assert!(entity.lifecycle.in_limbo && !entity.in_logic_vector);

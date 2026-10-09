@@ -337,7 +337,10 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
+    assert_eq!(
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
     let mut expected = sim.scenario_rng.clone();
     let credits = sim.houses[&owner].economy.credits();
     // A PRODUCE of the type waiting finished takes Begin_Production's resume
@@ -367,10 +370,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 1000);
     assert_eq!(counts(&sim, owner), (before.0 + 1, before.1));
     assert!(
-        sim.production
-            .ready_by_owner
-            .get(&owner)
-            .is_none_or(|ready| ready.is_empty())
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").is_empty()
     );
     let successor = held_id(&sim, owner, ProductionCategory::Building);
     assert!(successor > parent);
@@ -503,7 +503,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
         .factories
         .view(owner, ProductionCategory::Infantry)
         .unwrap();
-    assert!(factory.ready);
+    assert!(factory.complete_object().is_some());
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     let object = sim.substrate.entities.get(held).unwrap();
@@ -622,7 +622,7 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
         .factories
         .view(owner, ProductionCategory::Aircraft)
         .unwrap();
-    assert!(factory.ready);
+    assert!(factory.complete_object().is_some());
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     assert!(sim.substrate.entities.get(held).unwrap().lifecycle.in_limbo);
@@ -642,8 +642,8 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
 /// kill `BuildingClass::Detach_All(1) @ 0x0044EBF0` abandons its own factory
 /// and, for a Construction Yard, every production no other factory can build,
 /// finished or not (AbandonProduction `0x004C9FF0` refunds what was paid and
-/// deletes the object). With the only Construction Yard gone, the ready
-/// building is refunded, deleted and untracked, and leaves the ready list.
+/// deletes the object). With the only Construction Yard gone, the completed
+/// building is refunded, deleted and untracked.
 #[test]
 fn a_ready_building_goes_with_the_last_construction_yard() {
     let (mut sim, rules, owner) = world(0xfac7_0019);
@@ -655,7 +655,10 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
             .test_arm_ready(owner, ProductionCategory::Building)
     );
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.production.ready_by_owner[&owner].len(), 1);
+    assert_eq!(
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
     let tracked = sim.houses[&owner].tracking.buildings();
     let credits = sim.houses[&owner].economy.credits();
 
@@ -669,10 +672,7 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 800);
     assert!(
-        sim.production
-            .ready_by_owner
-            .get(&owner)
-            .is_none_or(|ready| ready.is_empty())
+        crate::sim::production::ready_buildings_for_owner(&sim, &rules, "Americans").is_empty()
     );
     assert!(
         sim.production
@@ -884,7 +884,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
             .in_limbo
     );
     let completed = sim.production.factories.view(owner, category).unwrap();
-    assert!(completed.ready);
+    assert!(completed.complete_object().is_some());
     assert_eq!(completed.queue.len(), 1);
     let credits = sim.houses[&owner].economy.credits();
     let spent = sim.houses[&owner].economy.spent_credits();
@@ -914,7 +914,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let successor = factory.object.unwrap().entity_id.unwrap();
     assert!(successor > refused);
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let new_ids: Vec<_> = sim
         .substrate
         .entities
