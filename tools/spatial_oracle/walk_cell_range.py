@@ -220,6 +220,7 @@ def generate():
     for edge, case in [
         (834, arc(0)),
         (912, arc(2)),
+        (1004, arc(3)),
         (1126, arc(4)),
         (903, arc(2, floater=True)),
         (834, arc(2, gravity=-6)),
@@ -227,6 +228,8 @@ def generate():
         (322, {**elevated(4), 'arcing': True, 'gravity': 6}),
         # No 2-D distance: Can_Reach measures 0.001 leptons.
         (701, arc(4, source=[3456, 2688, 0])),
+        # An Infantry target two levels up, snapped to its cell's ground.
+        (912, arc(2, target_object={'location': [3456, 2688, 208]})),
     ]:
         rows += [{**case, 'range': edge}, {**case, 'range': edge - 1}]
     # The bridge ceiling: a target point whose cell carries the bridge bit
@@ -251,5 +254,5 @@ if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
         scope='Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm), the arcing arm\'s 2-D distance, its arc test (48AB90, 48ACF0, 48ABC0) under supplied Gravity/Floater and its bridge ceiling (6F74D7); explicit supplied object/weapon/map fields.',
         entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'elevation_direct': 0x6F6F60, 'elevation_arcing': 0x6F70E0, 'cell_height': 0x487D50, 'map_cell_packed': 0x5657A0, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310, 'launch_speed': 0x48AB90, 'floater_gravity': 0x48ACF0, 'can_reach': 0x48ABC0},
-        assumptions=['Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows\' SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor\'s 0/1.0/0.0 otherwise.', 'Rules+0x16B8 Gravity and BulletType+0x295 Floater are supplied per row, Gravity 0 unless given: a zero gravity gives launch speed 0 and Can_Reach48ABC0 admits the row. Rows exercise gravity 6, 6 halved by Floater, -6 and 0, a zero 2-D distance, and the bridge ceiling on a real cell, without and with retail gravity, and through a Dummy target centre that truncates into a real cell.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
+        assumptions=['Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows\' Floater +0x295, SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor\'s 0/1.0/0.0 otherwise.', 'Rules+0x16B8 Gravity and BulletType+0x295 Floater are supplied per row, Gravity 0 unless given: a zero gravity gives launch speed 0 and Can_Reach48ABC0 admits the row. Rows exercise gravity 6, 6 halved by Floater, -6 and 0, a zero 2-D distance, and the bridge ceiling on a real cell, without and with retail gravity, and through a Dummy target centre that truncates into a real cell.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
         substitutions=['GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. No other callable substitution.']))

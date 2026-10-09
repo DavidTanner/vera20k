@@ -9,7 +9,7 @@
   ],
   "scope": "Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm), the arcing arm's 2-D distance, its arc test (48AB90, 48ACF0, 48ABC0) under supplied Gravity/Floater and its bridge ceiling (6F74D7); explicit supplied object/weapon/map fields.",
   "assumptions": [
-    "Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows' SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.",
+    "Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows' Floater +0x295, SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.",
     "Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor's 0/1.0/0.0 otherwise.",
     "Rules+0x16B8 Gravity and BulletType+0x295 Floater are supplied per row, Gravity 0 unless given: a zero gravity gives launch speed 0 and Can_Reach48ABC0 admits the row. Rows exercise gravity 6, 6 halved by Floater, -6 and 0, a zero 2-D distance, and the bridge ceiling on a real cell, without and with retail gravity, and through a Dummy target centre that truncates into a real cell.",
     "No constructors or complete PerCell/weapon selection/flight behavior claimed."
@@ -35,5 +35,5 @@
     "floater_gravity": "0x0048ACF0",
     "can_reach": "0x0048ABC0"
   },
-  "payload_sha256": "6f11559b7a538d3552b08552a5a6c5e87ea2e366822e701e68f3e77d06f82d35"
+  "payload_sha256": "d4249dde95fc94b71b140cd99a074b4cd6f109c0671e06586e24f773f30eba2d"
 }

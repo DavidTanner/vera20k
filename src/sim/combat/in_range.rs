@@ -26,7 +26,10 @@
 //! `util::native_ballistics`) and the bridge ceiling (`0x006F74D7`).
 //!
 //! Still missing from the range value: the garrison (`IsOccupied`,
-//! `0x006F727E`) and bunker (`0x006F72A2`) arms.
+//! `0x006F727E`) and bunker (`0x006F72A2`) arms. The arcing arm's launch speed
+//! comes from that range, so a bunkered cannon tank, short of its
+//! `BunkerWeaponRangeBonus=` (512 leptons in retail), is also refused uphill
+//! shots native allows.
 //!
 //! Depends on: rules (ObjectType, Weapon, ProjectileType, ElevationModel), map
 //! (terrain height + bridge), sim/combat/line_of_fire, sim/map/bridge_topology
@@ -455,8 +458,10 @@ fn compute_range_target(
         }
         // The bridge ceiling, `0x006F74D7..0x006F7504`: a target whose cell
         // (`0x00565730` at the target point) carries the structural bridge
-        // bit and sits three or more levels above the source is refused, so
-        // a cannon cannot shell a bridge deck from below.
+        // bit and sits three or more levels above the source is refused. A
+        // target on the deck stands at deck height, and the target snap
+        // (`0x006F7336`) lifts a marked target under the deck there too, so a
+        // cannon at the bridge's ground level can shell neither.
         let cell = cells.lookup_world(tx as i32, ty as i32);
         if cells.flags(cell) & 0x100 != 0 && i64::from(rise) >= 3 * LEPTONS_PER_LEVEL {
             return false;
