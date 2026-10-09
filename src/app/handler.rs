@@ -564,17 +564,28 @@ impl ApplicationHandler for App {
                 // not; see the `Resized` arm above.
                 Self::set_window_hidden(state, occluded);
             }
-            WindowEvent::ModifiersChanged(modifiers) => {
-                // Native's paused input capture admits Escape only and does not
-                // mutate the recorded keyboard state for other input.
-                let paused = state.match_state.paused();
-                crate::app::input::hotkeys::record_modifier_event(
-                    &mut state.platform.live_modifiers,
-                    &mut state.match_state.input.hotkey_modifiers,
-                    modifiers.state(), paused,
-                );
+            WindowEvent::ModifiersChanged(_) => {
+                // Deliberately not a modifier source: winit re-derives this
+                // event from each mouse event's flags, which drop a held
+                // Control on macOS (see `HeldModifierKeys`). The key edges in
+                // the arm below own the modifier state.
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                // Modifier keys update the held set before any screen-specific
+                // early return below: every screen reads the same two views.
+                // Native's paused input capture admits Escape only and does not
+                // mutate the recorded keyboard state for other input.
+                if let PhysicalKey::Code(code) = event.physical_key {
+                    let paused = state.match_state.paused();
+                    crate::app::input::hotkeys::record_modifier_key(
+                        &mut state.platform.held_modifier_keys,
+                        &mut state.platform.live_modifiers,
+                        &mut state.match_state.input.hotkey_modifiers,
+                        code,
+                        event.state.is_pressed(),
+                        paused,
+                    );
+                }
                 if state.frontend.keyboard_dialog.is_some() {
                     crate::app::input::keyboard::key(state, &event);
                     return;

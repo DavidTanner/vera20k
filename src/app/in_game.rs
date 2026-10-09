@@ -85,6 +85,7 @@ impl App {
         state.match_state.input.keys_held.clear();
         state.match_state.input.hotkey_modifiers = ModifiersState::empty();
         state.platform.live_modifiers = ModifiersState::empty();
+        state.platform.held_modifier_keys.clear();
         state.match_state.input.type_select.clear_held();
         // gamemd-derived: the `WM_ACTIVATEAPP` changed edge at 0x007778AC
         // stops/restores the primary DirectSound output through 0x00407020 /
