@@ -1,4 +1,5 @@
-//! Comparisons with original gamemd Force_Track4B0C40 and bunker459190..4591C4.
+//! Comparisons with original gamemd Force_Track4B0C40, its Ship twin 6A0310
+//! and bunker459190..4591C4.
 //! See locomotor_force_track.meta.json for binary identity and supplied state.
 //! Full Force calls use allocated flat, no-overlay cells; the separate crate
 //! continuations supply callback effects, not an implementation of crate AI.
@@ -10,7 +11,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState, tick_bunker_install};
 use crate::sim::game_entity::BunkerLink;
-use crate::sim::movement::DriveLocomotionRuntime;
+use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -59,22 +60,44 @@ fn coord_array(value: Option<DriveCoord>) -> [i32; 3] {
     value.map_or([0, 0, 0], |c| [c.x, c.y, c.z])
 }
 
+fn is_ship(case: &Value) -> bool {
+    case["input"]["family"] == "ship"
+}
+
 fn mirrored_state(entity: &GameEntity) -> Value {
-    let drive = entity
-        .locomotor
-        .as_ref()
-        .and_then(|l| l.selected_drive_runtime())
-        .and_then(|r| r.retained())
-        .unwrap();
+    let locomotor = entity.locomotor.as_ref().unwrap();
+    let (track, head, destination, valid, target) =
+        match locomotor.selected_ship_runtime().and_then(|r| r.retained()) {
+            Some(ship) => (
+                ship.track(),
+                ship.head_to(),
+                ship.destination(),
+                ship.track_valid(),
+                ship.target_speed_fraction(),
+            ),
+            None => {
+                let drive = locomotor
+                    .selected_drive_runtime()
+                    .and_then(|r| r.retained())
+                    .unwrap();
+                (
+                    drive.track(),
+                    drive.head_to(),
+                    drive.destination(),
+                    drive.track_valid(),
+                    drive.target_speed_fraction(),
+                )
+            }
+        };
     json!({
-        "turn": drive.track().turn_index,
-        "cursor": drive.track().cursor,
-        "reversed": u8::from(drive.track().reversed),
-        "residual": drive.track().residual,
-        "head": coord_array(drive.head_to()),
-        "destination": coord_array(drive.destination()),
-        "track_valid": u8::from(drive.track_valid()),
-        "target_fraction_bits": format!("{:016x}", drive.target_speed_fraction().to_num::<f64>().to_bits()),
+        "turn": track.turn_index,
+        "cursor": track.cursor,
+        "reversed": u8::from(track.reversed),
+        "residual": track.residual,
+        "head": coord_array(head),
+        "destination": coord_array(destination),
+        "track_valid": u8::from(valid),
+        "target_fraction_bits": format!("{:016x}", target.to_num::<f64>().to_bits()),
         "applied_fraction_bits": format!("{:016x}", entity.foot_speed.applied_fraction().to_num::<f64>().to_bits()),
         "owner_limbo": u8::from(entity.lifecycle.in_limbo),
         "owner_alive": u8::from(entity.lifecycle.object_alive),
@@ -83,10 +106,13 @@ fn mirrored_state(entity: &GameEntity) -> Value {
 
 fn owner_state(entity: &GameEntity, exclude_bunker_speed_write: bool) -> Value {
     let mut value = serde_json::to_value(entity).unwrap();
-    value["locomotor"]["runtime_payload"]["Drive"]
-        .as_object_mut()
-        .unwrap()
-        .remove("retained");
+    let payload = &mut value["locomotor"]["runtime_payload"];
+    let family = if payload.get("Ship").is_some() {
+        "Ship"
+    } else {
+        "Drive"
+    };
+    payload[family].as_object_mut().unwrap().remove("retained");
     if exclude_bunker_speed_write {
         value["foot_speed"]
             .as_object_mut()
@@ -117,7 +143,11 @@ fn fixture(case: &Value) -> Simulation {
     entity.type_ref = sim.intern("MTNK");
     entity.category = EntityCategory::Unit;
     entity.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
-        LocomotorKind::Drive,
+        if is_ship(case) {
+            LocomotorKind::Ship
+        } else {
+            LocomotorKind::Drive
+        },
     ));
     // These are separate native bytes. In particular, dead-but-present owners
     // must not acquire a new success-path gate from health or LogicVector.
@@ -136,25 +166,32 @@ fn fixture(case: &Value) -> Simulation {
             z: 312,
         },
     );
-    assert!(
-        entity
-            .locomotor
-            .as_mut()
-            .unwrap()
-            .install_drive_state_for_test(Some(
-                DriveLocomotionRuntime::default()
-                    .with_destination_for_test(nullable_coord(&before["destination"]))
-                    .with_head_to_for_test(nullable_coord(&before["head"]))
-                    .with_track_for_test(TrackProgress {
-                        turn_index: integer(&before["turn"]),
-                        cursor: integer(&before["cursor"]),
-                        reversed: integer(&before["reversed"]) != 0,
-                        residual: integer(&before["residual"]),
-                    })
-                    .with_track_valid_for_test(integer(&before["track_valid"]) != 0)
-                    .with_target_speed_fraction_for_test(fraction(&before["target_fraction_bits"]))
-            ))
-    );
+    let track = TrackProgress {
+        turn_index: integer(&before["turn"]),
+        cursor: integer(&before["cursor"]),
+        reversed: integer(&before["reversed"]) != 0,
+        residual: integer(&before["residual"]),
+    };
+    let locomotor = entity.locomotor.as_mut().unwrap();
+    assert!(if is_ship(case) {
+        locomotor.install_ship_state_for_test(Some(
+            ShipLocomotionRuntime::default()
+                .with_destination_for_test(nullable_coord(&before["destination"]))
+                .with_head_to_for_test(nullable_coord(&before["head"]))
+                .with_track_for_test(track)
+                .with_track_valid_for_test(integer(&before["track_valid"]) != 0)
+                .with_target_speed_fraction_for_test(fraction(&before["target_fraction_bits"])),
+        ))
+    } else {
+        locomotor.install_drive_state_for_test(Some(
+            DriveLocomotionRuntime::default()
+                .with_destination_for_test(nullable_coord(&before["destination"]))
+                .with_head_to_for_test(nullable_coord(&before["head"]))
+                .with_track_for_test(track)
+                .with_track_valid_for_test(integer(&before["track_valid"]) != 0)
+                .with_target_speed_fraction_for_test(fraction(&before["target_fraction_bits"])),
+        ))
+    });
     assert_eq!(mirrored_state(&entity), *before, "fixture: {input}");
     sim.substrate.entities.insert(entity);
     let bridge = input["bridge"].as_bool().unwrap_or(false);
@@ -208,15 +245,16 @@ fn assert_raw_cells(sim: &Simulation, case: &Value) {
     }
 }
 
-#[test]
-fn full_force_track_no_overlay_matches_native_publication_and_owner_preservation() {
-    let cases = corpus()["force_track"].as_array().unwrap();
-    assert_eq!(cases.len(), 192);
+/// Full no-overlay Force calls: publication, admission, owner preservation
+/// and both raw planes.
+fn assert_full_force_rows(section: &str, rows: usize) {
+    let cases = corpus()[section].as_array().unwrap();
+    assert_eq!(cases.len(), rows);
     for case in cases {
         let mut sim = fixture(case);
         let before_owner = owner_state(sim.substrate.entities.get(UNIT).unwrap(), false);
         let mut callbacks = 0;
-        let admitted = sim.force_drive_track_observed(
+        let admitted = sim.force_track_observed(
             UNIT,
             integer(&case["input"]["turn"]),
             supplied(case),
@@ -263,6 +301,18 @@ fn full_force_track_no_overlay_matches_native_publication_and_owner_preservation
 }
 
 #[test]
+fn full_force_track_no_overlay_matches_native_publication_and_owner_preservation() {
+    assert_full_force_rows("force_track", 192);
+}
+
+/// Ship's own body (0x6A0310 with Apply 0x6A01A0), including the warp's
+/// selector -1, on a Ship-locomotor owner.
+#[test]
+fn ship_force_track_matches_native_ship_rows() {
+    assert_full_force_rows("ship_force_track", 18);
+}
+
+#[test]
 fn supplied_post_crate_continuations_reload_life_head_and_valid_like_native() {
     let cases = corpus()["supplied_post_crate_continuations"]
         .as_array()
@@ -272,7 +322,7 @@ fn supplied_post_crate_continuations_reload_life_head_and_valid_like_native() {
         let mut sim = fixture(case);
         let effect = &case["input"]["supplied_callback"];
         let mut supplied_owner = None;
-        let admitted = sim.force_drive_track_observed(
+        let admitted = sim.force_track_observed(
             UNIT,
             integer(&case["input"]["turn"]),
             supplied(case),
@@ -341,7 +391,7 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
         // First compare the production generic call against the captured
         // return boundary. No test-side setter stands in for the caller.
         let mut direct = fixture(case);
-        assert!(direct.force_drive_track(UNIT, selector, supplied(case)));
+        assert!(direct.force_track(UNIT, selector, supplied(case)));
         assert_eq!(
             mirrored_state(direct.substrate.entities.get(UNIT).unwrap()),
             stage(case, "bunker_after_force_before_owner_speed").unwrap()["state"]
