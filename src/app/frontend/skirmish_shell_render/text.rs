@@ -76,7 +76,7 @@ pub(super) fn combo_item_label(state: &AppState, item: SkirmishComboItem) -> Str
             localized_label(state, "GUI:RandomAsSymbols", "Random")
         }
         SkirmishComboItem::Country(SkirmishCountryChoice::Country(country)) => {
-            country.label().to_string()
+            country_label(state, country)
         }
         SkirmishComboItem::ColorSentinel(_) => {
             // The source-line immediate `0x20A` is not a string id; the
@@ -100,8 +100,22 @@ pub(super) fn country_choice_label(
     if random {
         localized_label(state, "GUI:RandomAsSymbols", "Random")
     } else {
-        country.label().to_string()
+        country_label(state, country)
     }
+}
+
+/// Country display name, resolved through the retail `rules.ini Name=` ->
+/// CSF `NAME:<house id>` chain (e.g. `NAME:Germans`); falls back to the
+/// hardcoded English label when the CSF lacks the key.
+pub(super) fn country_label(state: &AppState, country: LaunchCountry) -> String {
+    let key = format!("NAME:{}", country.country_name());
+    state
+        .process_assets
+        .csf
+        .as_ref()
+        .and_then(|csf| csf.get(&key))
+        .map(str::to_string)
+        .unwrap_or_else(|| country.label().to_string())
 }
 
 pub(super) fn trackbar_display_value(shell: &SkirmishShellState, id: SkirmishTrackbarId) -> String {
