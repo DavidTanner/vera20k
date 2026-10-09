@@ -44,11 +44,10 @@
 //!
 //! All flight arms retain one binary64 velocity authority.
 //! `launch` owns the native scalar FireAt math; combat resolves its receivers.
-//! RESIDUAL (GSI-08.06/07): FLH/pivot slope translation, directed Building
-//! heading, the flight of `Inviso=` shrapnel children
-//! (native places them at their target, `BulletClass::Fire @ 0x00468670`)
-//! remain open. Those producers can still change the inputs delivered to this
-//! exact motion/collision consumer; the complete projectile row remains open.
+//! RESIDUAL (GSI-08.06/07): FLH/pivot slope translation and directed Building
+//! heading remain open. Those producers can still change the inputs delivered
+//! to this exact motion/collision consumer; the complete projectile row
+//! remains open.
 
 mod homing;
 pub(crate) mod launch;
@@ -636,21 +635,26 @@ pub fn projectile_random_shrapnel_cell(
     (center_rx + dx, center_ry + dy)
 }
 
+/// `0x0046A322..0x0046A3D2`: the fragments SpawnShrapnel throws, or `None`
+/// when it returns at once. A `ShrapnelCount=` of zero or more is the count
+/// (`JGE` at `0x0046A330`); a negative one is 3 without a firer, else its
+/// magnitude less the whole cells to the firer, and returns at zero or below
+/// (`0x0046A3CA`).
 pub fn projectile_shrapnel_count(
     configured_count: i32,
     has_firer: bool,
-    distance_to_target_cells: i32,
-) -> u32 {
+    distance_to_firer_cells: i32,
+) -> Option<u32> {
     if configured_count >= 0 {
-        return configured_count as u32;
+        return Some(configured_count as u32);
     }
     if !has_firer {
-        return 3;
+        return Some(3);
     }
-    configured_count
+    let count = configured_count
         .saturating_neg()
-        .saturating_sub(distance_to_target_cells)
-        .max(0) as u32
+        .saturating_sub(distance_to_firer_cells);
+    (count > 0).then_some(count as u32)
 }
 
 /// Which arm of the native special-detonation chain claims one impact.
@@ -1380,6 +1384,17 @@ impl ProjectileStore {
     pub(crate) fn set_owner(&mut self, id: u64, owner: u64) {
         if let Some(projectile) = self.projectiles.get_mut(&id) {
             projectile.source_id = owner;
+        }
+    }
+
+    /// `AircraftClass::Fire_At @ 0x00415EE0`'s course for the bullet
+    /// TechnoClass::FireAt answered: its velocity (`+0xE8`)
+    /// ([`launch::aircraft_bullet_velocity`]), and the speed it implies.
+    pub(crate) fn redirect(&mut self, id: u64, velocity: ProjectileVelocity) {
+        if let Some(projectile) = self.projectiles.get_mut(&id) {
+            projectile.velocity = velocity;
+            projectile.speed_leptons_per_frame =
+                projectile_velocity_magnitude(velocity).clamp(0.0, f64::from(u16::MAX)) as u16;
         }
     }
 
@@ -2992,8 +3007,10 @@ mod tests {
 
     #[test]
     fn shrapnel_and_special_priority_match_closed_vectors() {
-        assert_eq!(projectile_shrapnel_count(-8, true, 3), 5);
-        assert_eq!(projectile_shrapnel_count(-8, false, 99), 3);
+        assert_eq!(projectile_shrapnel_count(-8, true, 3), Some(5));
+        assert_eq!(projectile_shrapnel_count(-8, true, 8), None);
+        assert_eq!(projectile_shrapnel_count(-8, false, 99), Some(3));
+        assert_eq!(projectile_shrapnel_count(0, true, 99), Some(0));
         assert_eq!(
             projectile_special_detonation_action(
                 SpecialDetonationFlags {

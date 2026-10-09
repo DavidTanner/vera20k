@@ -882,7 +882,7 @@ impl Simulation {
                     });
                     if !still_moving && entity.attack_target.is_none() {
                         self.team_member_set_destination(member, None, rules, registry);
-                        self.team_member_enter_idle_mode(member, rules);
+                        crate::sim::world::enter_idle_mode(self, member, rules, None);
                     }
                 }
             } else {
@@ -951,7 +951,7 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
     ) -> Option<u64> {
         let mission = self.team_quarry_mission(team_id, quarry);
-        crate::sim::world::team_leader_greatest_threat(self, rules, registry, leader, mission)
+        crate::sim::world::direct_greatest_threat(self, rules, registry, leader, mission)
     }
 
     /// What [`Self::team_quarry_threat`] asks for: `Quarry_To_Threat`'s mask
@@ -965,7 +965,7 @@ impl Simulation {
             .and_then(|team| team.team_type_id)
             .and_then(|id| vm.team_type_ini.get(&id))
             .is_some_and(|metadata| metadata.only_target_house_enemy);
-        ScanMission::TeamQuarry {
+        ScanMission::Quarry {
             mask: quarry_mask(quarry),
             only_target_house_enemy,
         }

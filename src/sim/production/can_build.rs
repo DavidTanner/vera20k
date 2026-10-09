@@ -1,15 +1,17 @@
-//! `HouseClass::CanBuild @ 0x004F7870` as the computer asks it, and
+//! What a house may build: `HouseClass::CanBuild @ 0x004F7870`,
 //! `ObjectTypeClass::FindFactory @ 0x005F7900` (vtable `+0x94` of every
-//! TechnoType class).
+//! TechnoType class) and `HouseClass::CheckBuildLimit @ 0x0050B370`.
 //!
 //! The computer's unit choosers (`sim::ai_unit_choice`) ask CanBuild with
 //! neither flag; FindFactory asks it with both, which skips to the build
 //! limit. The chooser dispatch (`sim::ai_base_building`) and the AI trigger
 //! factory check (`sim::ai_team_creation`) ask FindFactory. The player's
-//! sidebar keeps its own options (`production_tech::build_option_for_owner`),
-//! so the prerequisite arm a human house runs is not ported here.
+//! sidebar, its PRODUCE event and the per-frame production check ask all
+//! three (`production_tech`).
 //!
-//! Evidence: instruction reading of both bodies; the oracle
+//! Evidence: instruction reading of all three bodies;
+//! `tools/can_build_oracle.py` runs the original CanBuild and
+//! CheckBuildLimit (replayed by `can_build_tests`), and
 //! `tools/ai_team_oracle.py` runs the choosers with CanBuild's answers
 //! hooked.
 //!
@@ -26,21 +28,23 @@
 //!   admits the house's own country only.
 //! - A build limit below 1 counts what the house has produced of the type
 //!   (`+0x55A0`, `+0x55B4`, `+0x55C8`, `+0x55DC`), which is not kept: VERA
-//!   counts none. Dormant: retail sets no such limit.
-//! - A human house's prerequisite arm is not ported; the player's sidebar
-//!   decides with its own checks (`production_tech::build_option_for_owner`,
-//!   which also reads `BuildLimit=` differently: 0 as no limit, a negative
-//!   limit as its magnitude over the owned and queued objects). Trigger: a
-//!   future caller asking CanBuild for a human house, which gets No; a map
-//!   setting `BuildLimit=` to 0 or below, where the sidebar and the computer
-//!   disagree. Frequency: no caller; retail sets no such limit.
+//!   counts none. Dormant: retail `rulesmd.ini` sets `BuildLimit=1` on twelve
+//!   types and nothing lower, and the nine mode INIs set none.
 //! - An infantry type with `VehicleThief=` also counts the house's units
 //!   that hold one of it (`UnitClass+0x338`); VERA has no hijacking, so the
 //!   count adds none.
+//! - Dormant in retail data: a prerequisite BuildingType with
+//!   `PowersUpBuilding=` (`+0xE88`) is met only when the house's last
+//!   building that is out of limbo, powered and not selling holds it as an
+//!   upgrade (`0x004F7DF8..0x004F7E4E`). VERA reads no upgrades and treats it
+//!   as any other BuildingType; no retail type sets the key.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup};
 use crate::rules::ruleset::RuleSet;
+use crate::sim::house_state::HouseState;
+use crate::sim::house_tracking::HouseTracking;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::Simulation;
@@ -75,10 +79,14 @@ pub(crate) enum CanBuild {
 ///   BuildTech=` lists it;
 /// - a TechLevel above the house's (`+0x1D4`, signed) refuses;
 /// - a house no human controls is answered Yes: neither its prerequisites
-///   nor its build limit are asked.
+///   nor its build limit are asked;
+/// - a human house needs every `Prerequisite=` entry on the map
+///   ([`prerequisite_on_map`], `0x004F7BF1..0x004F7F52`), then the build
+///   limit.
 ///
-/// A human house reaches the prerequisite arm (`0x004F7BF1..0x004F7F9E`),
-/// which is not ported: callers ask for computer houses only.
+/// Nothing here reads `Owner=`: [`find_factory`] matches it against the
+/// factory building's, so a captured factory of another side builds that
+/// side's types.
 pub(crate) fn can_build(
     sim: &Simulation,
     rules: &RuleSet,
@@ -93,13 +101,12 @@ pub(crate) fn can_build(
     let Some(house) = sim.houses.get(&owner) else {
         return CanBuild::No;
     };
-    let override_on_map = obj.prerequisite_override.iter().any(|type_id| {
-        sim.interner.get(type_id).is_some_and(|type_id| {
-            house
-                .tracking
-                .active_count(EntityCategory::Structure, type_id)
-                > 0
-        })
+    // `CounterClass::GetItemCount @ 0x0049FAE0` at a group's negative code
+    // reads before the counter array: the residual in
+    // `crate::rules::prerequisite`.
+    let override_on_map = obj.prerequisite_override.iter().any(|entry| match *entry {
+        Prerequisite::Building(index) => buildings_on_map(sim, rules, house, index) > 0,
+        Prerequisite::Group(_) => false,
     });
     if override_on_map {
         return build_limit(sim, owner, obj, count_in_production);
@@ -141,9 +148,62 @@ pub(crate) fn can_build(
     if !house.is_controlled_by_human(sim.session.game_mode_nonzero) {
         return CanBuild::Yes;
     }
-    // A human house's prerequisite arm (`0x004F7BF1..`, taken at
-    // `0x004F7B94`) is not ported (module residual): no caller asks for one.
-    CanBuild::No
+    if !obj
+        .prerequisite
+        .iter()
+        .all(|&entry| prerequisite_on_map(sim, rules, house, entry))
+    {
+        return CanBuild::No;
+    }
+    build_limit(sim, owner, obj, count_in_production)
+}
+
+/// One `Prerequisite=` entry of CanBuild's human arm
+/// (`0x004F7C01..0x004F7E5E`). A group is met by any member of its
+/// `[General] Prerequisite*` list on the map (`HouseClass+0x5550` above
+/// zero), never by an empty list; `PROC` also by an on-map
+/// `PrerequisiteProcAlternate=` unit (`+0x5564`, `0x004F7DB0..0x004F7DCE`), a
+/// Slave Miner in retail. A BuildingType is met while its on-map count is not
+/// zero (`0x004F7E50..0x004F7E5E`).
+fn prerequisite_on_map(
+    sim: &Simulation,
+    rules: &RuleSet,
+    house: &HouseState,
+    entry: Prerequisite,
+) -> bool {
+    let group = match entry {
+        Prerequisite::Building(index) => return buildings_on_map(sim, rules, house, index) != 0,
+        Prerequisite::Group(group) => group,
+    };
+    rules
+        .prerequisite_list(group)
+        .iter()
+        .any(|member| match *member {
+            Prerequisite::Building(index) => buildings_on_map(sim, rules, house, index) > 0,
+            // A group's code reads before the counter array: the residual in
+            // `crate::rules::prerequisite`.
+            Prerequisite::Group(_) => false,
+        })
+        || (group == PrerequisiteGroup::Proc
+            && rules
+                .general
+                .prerequisite_proc_alternate
+                .as_deref()
+                .and_then(|unit| rules.object_in_category(ObjectCategory::Vehicle, unit))
+                .and_then(|unit| sim.interner.get(&unit.id))
+                .is_some_and(|unit| house.tracking.active_count(EntityCategory::Unit, unit) > 0))
+}
+
+/// The house's on-map count of BuildingType `index` (`HouseClass+0x5550`).
+fn buildings_on_map(sim: &Simulation, rules: &RuleSet, house: &HouseState, index: i32) -> i32 {
+    rules
+        .building_type_at(index)
+        .and_then(|building| sim.interner.get(&building.id))
+        .map_or(0, |type_id| {
+            house
+                .tracking
+                .active_count(EntityCategory::Structure, type_id)
+        })
 }
 
 /// CanBuild's build limit (`0x004F7F9E..0x004F8357`): a type at or over
@@ -160,10 +220,11 @@ fn build_limit(
 ) -> CanBuild {
     let limit = obj.build_limit;
     // `limit < 1` compares `|limit|` with the produced count, which VERA
-    // does not keep (module residual): zero refuses, a negative limit
-    // passes. Only aircraft, buildings and units answer Yes at once.
+    // does not keep (module residual): a count of zero refuses a zero limit
+    // (and `i32::MIN`, whose magnitude stays negative), and passes any other.
+    // Only aircraft, buildings and units answer Yes at once.
     if limit < 1 {
-        if limit == 0 {
+        if limit.wrapping_abs() <= 0 {
             return CanBuild::No;
         }
         if obj.category != ObjectCategory::Infantry {
@@ -202,6 +263,64 @@ fn build_limit(
     }
 }
 
+/// `HouseClass::CheckBuildLimit @ 0x0050B370`: whether `owner` is at its
+/// limit for one more `obj`, counting what its factory for the type's strip
+/// holds (`FactoryRegistry::count_total`; both structure strips count the
+/// Buildings factory, `0x0050B3B9`).
+///
+/// An `AirportBound=` aircraft is limited by the house's AirportDocks
+/// ([`HouseTracking::airport_docks`]) alone: the `[General] PadAircraft=`
+/// aircraft on the map (`+0x558C`) and in that factory must stay below it
+/// (`0x0050B570..0x0050B5EB`); its `BuildLimit=` is not read. Any other
+/// type with a `BuildLimit=` below 1 is at its limit once the limit's
+/// magnitude is reached by what the house produced (module residual: VERA
+/// counts none) and what the factory holds; with a positive one, once the
+/// tracked count (`owned_count`) and the factory's reach it. An infantry
+/// `VehicleThief=` would add the units that hold one (module residual).
+pub(crate) fn check_build_limit(
+    sim: &Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    obj: &ObjectType,
+) -> bool {
+    let strip = match obj.category {
+        ObjectCategory::Building => super::ProductionCategory::Building,
+        _ => super::production_tech::production_category_for_object(obj),
+    };
+    let tracking = sim.houses.get(&owner).map(|house| &house.tracking);
+    let in_factory = |type_id: Option<InternedId>| {
+        type_id.map_or(0, |type_id| {
+            sim.production.factories.count_total(owner, strip, type_id)
+        })
+    };
+    if obj.category == ObjectCategory::Aircraft && obj.airport_bound {
+        let pads = rules
+            .general
+            .pad_aircraft_types
+            .iter()
+            .filter_map(|name| rules.object_in_category(ObjectCategory::Aircraft, name))
+            .map(|pad| {
+                let type_id = sim.interner.get(&pad.id);
+                let on_map = type_id.zip(tracking).map_or(0, |(type_id, tracking)| {
+                    tracking.active_count(EntityCategory::Aircraft, type_id)
+                });
+                on_map.wrapping_add(in_factory(type_id))
+            })
+            .fold(0, i32::wrapping_add);
+        return pads >= tracking.map_or(0, HouseTracking::airport_docks);
+    }
+    let limit = obj.build_limit;
+    let type_id = sim.interner.get(&obj.id);
+    let queued = in_factory(type_id);
+    if limit < 1 {
+        return limit.wrapping_abs() <= queued;
+    }
+    let owned = type_id.zip(tracking).map_or(0, |(type_id, tracking)| {
+        tracking.owned_count(EntityCategory::from(obj.category), type_id)
+    });
+    owned.wrapping_add(queued) >= limit
+}
+
 /// Original ObjectType5F7900, scanned in House+6C insertion order. A first
 /// eligible primary wins; without one, return the last eligible building.
 /// Human PLACE4FB1DA retains this transient identity through its radio/release
@@ -211,17 +330,12 @@ pub(crate) fn find_factory(
     rules: &RuleSet,
     owner: InternedId,
     obj: &ObjectType,
-    skip_busy_unit_radio: bool,
+    skip_busy_airfield: bool,
     require_online: bool,
     require_can_build: bool,
 ) -> Option<u64> {
     let house = sim.houses.get(&owner)?;
-    let factory_type = match obj.category {
-        ObjectCategory::Infantry => FactoryType::InfantryType,
-        ObjectCategory::Vehicle => FactoryType::UnitType,
-        ObjectCategory::Aircraft => FactoryType::AircraftType,
-        ObjectCategory::Building => FactoryType::BuildingType,
-    };
+    let factory_type = FactoryType::for_category(obj.category);
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     let ownable = get_ownable(obj, rules, game_mode_nonzero);
     let selling = MissionId::from_known(MissionType::Selling);
@@ -244,13 +358,19 @@ pub(crate) fn find_factory(
             && (!require_can_build
                 || can_build(sim, rules, building.owner(), obj, true, true) == CanBuild::Yes)
             && ownable & get_ownable(building_type, rules, game_mode_nonzero) != 0
-            && building_type.naval == naval_unit
-            // ObjectType5F79F4: arg1 only skips the UnitType radio gate.
-            // Wrapper5F5C20 supplies (arg1,arg2,false,actualHouse); House
-            // PLACE first tries (0,1), then Unit alone retries (1,1).
-            && (skip_busy_unit_radio || obj.category != ObjectCategory::Vehicle
-                || building.radio_contacts.is_empty()
-                || building.radio_contacts.first_free().is_some())
+            && if !skip_busy_airfield
+                && obj.category == ObjectCategory::Aircraft
+                && !building.radio_contacts.is_empty()
+            {
+                // 0x005F79C7..0x005F79FB: unless arg1 skips it, an
+                // AircraftType (`What_Am_I` 3) needs a free contact slot in a
+                // factory In_Radio_Contact (0x0065AE30, 0x0065ADC0).
+                building.radio_contacts.first_free().is_some()
+            } else {
+                // 0x005F7A09..0x005F7A49: a naval UnitType needs a naval
+                // factory, anything else a non-naval one.
+                building_type.naval == naval_unit
+            }
         {
             candidate = Some(id);
             if primary == Some(id) {
@@ -312,3 +432,7 @@ fn get_ownable(obj: &ObjectType, rules: &RuleSet, game_mode_nonzero: bool) -> u3
     }
     crate::sim::ai_buildable::house_token_mask(&obj.owner, rules)
 }
+
+#[cfg(test)]
+#[path = "can_build_tests.rs"]
+mod tests;

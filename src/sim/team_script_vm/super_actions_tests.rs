@@ -348,7 +348,7 @@ fn the_chronoshift_scan_arguments_match_native() {
         let mission = sim.team_quarry_mission(team, int(&row["argument"]));
         for event in events {
             calls += 1;
-            let native = ScanMission::TeamQuarry {
+            let native = ScanMission::Quarry {
                 mask: u32::try_from(event[2].as_i64().unwrap()).unwrap(),
                 only_target_house_enemy: event[4].as_u64().unwrap() == 1,
             };

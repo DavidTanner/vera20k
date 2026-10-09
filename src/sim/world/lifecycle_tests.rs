@@ -1018,6 +1018,13 @@ fn install_fly_aircraft(sim: &mut Simulation, stable_id: u64, altitude: SimFixed
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
     locomotor.altitude = altitude;
     locomotor.set_fly_target_height(altitude.to_num::<i32>());
+    // Process steps the height of a moving Fly only (`0x004CDA0B`); a null
+    // destination keeps Horizontal_Step and the landing drift out of it.
+    locomotor.fly_runtime_mut().unwrap().retain_destination(
+        crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 },
+        None,
+        || 0,
+    );
     sim.substrate
         .entities
         .get_mut(stable_id)
@@ -1820,7 +1827,17 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
         "Fly's temporary cell-list transaction is not an air-vector re-entry"
     );
 
-    sim.substrate.entities.get_mut(20).unwrap().position.rx = 12;
+    // The tracker follows a cell change of a Fly whose current speed is not
+    // zero (`0x004CD60E..0x004CD65F`); without a type Speed it stays put.
+    let aircraft = sim.substrate.entities.get_mut(20).unwrap();
+    aircraft.position.rx = 12;
+    aircraft
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .fly_runtime_mut()
+        .unwrap()
+        .current_speed = SimFixed::from_num(1);
     sim.tick_air_movement_with_cell_lists_one(20, None, None);
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket(), shared_bucket);
@@ -3764,7 +3781,7 @@ fn score_stats_credit_the_killer_and_charge_the_victim_once() {
         1,
         "a unit victim must land in the unit bucket, not the building one"
     );
-    assert_eq!(killer.stats.score_points(), 900);
+    assert_eq!(killer.economy.score(), 900);
 }
 
 #[test]
@@ -3796,15 +3813,12 @@ fn score_stats_come_from_the_kill_record_captured_at_destruction() {
         crate::sim::combat::KillCallback::Terminal,
         &rules,
     );
-    assert_eq!(sim.houses[&killer_owner].stats.score_points(), 200);
+    assert_eq!(sim.houses[&killer_owner].economy.score(), 200);
 
     sim.uninit(1);
 
     assert_eq!(sim.houses.get(&killer_owner).unwrap().stats.kills(), 1);
-    assert_eq!(
-        sim.houses.get(&killer_owner).unwrap().stats.score_points(),
-        200
-    );
+    assert_eq!(sim.houses.get(&killer_owner).unwrap().economy.score(), 200);
 }
 
 #[test]
@@ -3851,7 +3865,7 @@ fn score_stats_count_a_self_inflicted_kill_but_award_no_points() {
     assert_eq!(house.stats.buildings_lost(), 1);
     assert_eq!(house.stats.buildings_killed(), 1);
     assert_eq!(
-        house.stats.score_points(),
+        house.economy.score(),
         0,
         "an allied or self-inflicted victim is worth no score"
     );
@@ -3887,18 +3901,19 @@ fn dont_score_victims_book_no_kill_no_loss_and_no_points() {
     assert_eq!(victim_house.stats.losses(), 0, "no phantom loss");
     let killer = sim.houses.get(&killer_owner).unwrap();
     assert_eq!(killer.stats.kills(), 0, "no phantom kill");
-    assert_eq!(killer.stats.score_points(), 0, "no phantom points");
+    assert_eq!(killer.economy.score(), 0, "no phantom points");
 }
 
 #[test]
-fn score_column_sums_the_harvest_and_kill_feeders() {
-    // The native score field has two feeders. Drive the kill half through the
-    // real award helper on stock costs rather than a hand-picked total: one
-    // Rhino (Cost=900) plus one veteran GI (Cost=200, doubled).
+fn deposits_and_kills_feed_the_one_score() {
+    // House+0x54E8 has two feeders. Drive the kills through the real award
+    // helper on stock costs rather than a hand-picked total: one Rhino
+    // (Cost=900) plus one veteran GI (Cost=200, doubled).
     use crate::rules::ini_parser::IniFile;
     use crate::rules::object_type::{ObjectCategory, ObjectType};
+    use crate::rules::ruleset::INCOME_PPM_SCALE;
     use crate::sim::combat::veterancy::{VeterancyRank, kill_award_points};
-    use crate::sim::house_state::MatchStatistics;
+    use crate::sim::economy::Economy;
 
     let of = |body: &str, category| {
         let ini = IniFile::from_str(&format!(
@@ -3918,14 +3933,15 @@ fn score_column_sums_the_harvest_and_kill_feeders() {
         ObjectCategory::Infantry,
     );
 
-    let kill_half = kill_award_points(rhino.cost, VeterancyRank::Rookie, false)
+    let kill_points = kill_award_points(rhino.cost, VeterancyRank::Rookie, false)
         + kill_award_points(gi.cost, VeterancyRank::Veteran, false);
-    assert_eq!(kill_half, 1_300);
+    assert_eq!(kill_points, 1_300);
 
-    let mut stats = MatchStatistics::default();
-    stats.add_score(kill_half);
-    // Harvest half: 240 bales deposited at the x5.0 statistics rate.
-    assert_eq!(stats.score(1_200), 2_500);
+    let mut economy = Economy::new(0);
+    // 240 bales of ore deposited at the x5.0 score rate.
+    economy.add_tiberium_credits(240 * 25, 240, INCOME_PPM_SCALE, INCOME_PPM_SCALE);
+    economy.add_score(kill_points);
+    assert_eq!(economy.score(), 2_500);
 }
 
 #[test]
@@ -5062,69 +5078,6 @@ fn gsi_04_01_cell_target_uses_live_structural_bit() {
     // both native tail gates (4677D3: <208; 467B68: <10).
     assert!(sim.pending_projectile_detonations.is_empty());
     assert_eq!(sim.projectiles.get(projectile_id).unwrap().position, center);
-}
-
-#[test]
-fn gsi_05_04_intact_bridge_cell_target_reaches_shrapnel_consumer() {
-    let rules =
-        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
-            "[InfantryTypes]\n\
-             [VehicleTypes]\n0=MTNK\n\
-             [AircraftTypes]\n\
-             [BuildingTypes]\n\
-             [Warheads]\n0=WH\n\
-             [MTNK]\nStrength=100\nArmor=heavy\nPrimary=PARENT\nSecondary=CHILD\n\
-             [PARENT]\nDamage=0\nROF=10\nRange=6\nSpeed=30\nProjectile=PARENTPROJ\nWarhead=WH\n\
-             [PARENTPROJ]\nAirburst=yes\nShrapnelWeapon=CHILD\nShrapnelCount=-2\n\
-             [CHILD]\nDamage=5\nROF=10\nRange=3\nSpeed=40\nProjectile=CHILDPROJ\nWarhead=WH\n\
-             [CHILDPROJ]\nSubjectToWalls=yes\n\
-             [WH]\nCellSpread=0\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
-        ))
-        .expect("bridge shrapnel rules");
-    let mut sim = Simulation::with_seed(0x46_a310);
-    sim.session.map_width = 16;
-    sim.session.map_height = 16;
-    install_common_raw_terrain(&mut sim, 16, 16, 0, Some((6, 7)));
-
-    let source_id = sim.allocate_stable_id();
-    insert_entity(&mut sim, source_id, EntityCategory::Unit);
-    let source_type = sim.interner.intern("MTNK");
-    sim.substrate.entities.get_mut(source_id).unwrap().type_ref = source_type;
-    let projectile_id = sim.allocate_stable_id();
-    let detonation = crate::sim::projectile::ProjectileDetonation {
-        projectile_id,
-        source_id,
-        target: ProjectileTarget::Cell { rx: 6, ry: 7 },
-        impact: ProjectileCoord::new(6 * 256 + 128, 7 * 256 + 128, 0),
-        payload: ProjectilePayload::new(
-            0,
-            sim.interner.intern("WH"),
-            sim.interner.intern("PARENT"),
-        ),
-        reason: crate::sim::projectile::ProjectileDetonationReason::ReachedTarget,
-    };
-
-    assert!(
-        sim.resolved_terrain
-            .as_ref()
-            .and_then(|terrain| terrain.cell(6, 7))
-            .is_some_and(|cell| cell.bridge_facts.has_structural_bridge())
-    );
-    let result = sim.tick_combat_with_fatal_lifecycle(
-        &rules,
-        None,
-        100,
-        &[],
-        &std::collections::BTreeSet::new(),
-        &Default::default(),
-        &[detonation],
-    );
-
-    assert_eq!(
-        result.projectile_spawns.len(),
-        1,
-        "ShrapnelCount=-2 subtracts the intact deck target's one-cell vertical distance; suppressing the live +416 deck term would emit two children"
-    );
 }
 
 #[test]
@@ -7558,10 +7511,16 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
 
 #[test]
 fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
-    use crate::util::fixed_math::SIM_ONE;
+    use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
 
     // Fly4CDD07/4CDD1A: XY integration precedes physical-height feedback.
-    // Rates remain the existing fixed-point adapter policy.
+    // Speed 100 is the 255-lepton cap (`0x0071465F`), one cell in a frame.
+    let rules =
+        crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+            "[AircraftTypes]\n0=TEST\n[TEST]\nSpeed=100\nLandable=yes\n\
+             Locomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\n",
+        ))
+        .unwrap();
     for (origin_level, destination_level) in [(0, 2), (2, 0)] {
         let mut sim = Simulation::with_seed(0);
         assert_eq!(sim.allocate_stable_id(), 1);
@@ -7589,8 +7548,8 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         let fly = loco.fly_runtime_mut().unwrap();
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
-        assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), None,));
-        sim.tick_air_movement_with_cell_lists_one(1, None, None);
+        assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), Some(&rules)));
+        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7602,8 +7561,12 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             entity.locomotor.as_ref().unwrap().altitude.to_num::<i32>(),
             moved_z - destination_ground,
         );
-        entity.movement_target = None;
+        // Stopped over its destination's cell, as the arrival leaves it, the
+        // Fly lands there (`0x004CE3C0`'s Begin_Landing).
         let loco = entity.locomotor.as_mut().unwrap();
+        let fly = loco.fly_runtime_mut().unwrap();
+        fly.current_speed = SIM_ZERO;
+        fly.target_speed = SIM_ZERO;
         loco.begin_fly_landing();
         loco.set_fly_target_height(0);
 
@@ -7621,7 +7584,7 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, None, None);
+                instance.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();

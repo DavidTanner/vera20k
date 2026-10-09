@@ -242,7 +242,6 @@ pub(super) fn send_planes(
         .get_mut(plane)
         .expect("constructed plane");
     entity.mark_mission_only();
-    entity.aircraft_mission = None;
     let edge = Edge::own_edge(
         sim.houses
             .get(&owner)

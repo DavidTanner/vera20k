@@ -18,7 +18,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::command::{Command, CommandEnvelope};
-use crate::sim::components::DriveCoord;
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::superweapon::cell_receiver_tests::test_terrain_cell;
@@ -63,6 +63,23 @@ pub(crate) fn world_with(
     size: u16,
     levels: &[((u16, u16), u8)],
 ) -> (RuleSet, Simulation, InternedId) {
+    world_with_cells(rules, size, |x, y| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            level: levels
+                .iter()
+                .find(|(at, _)| *at == (x, y))
+                .map_or(0, |&(_, level)| level),
+            ..test_terrain_cell(x, y)
+        }
+    })
+}
+
+/// [`world_with`] over the cells `cell` builds.
+fn world_with_cells(
+    rules: RuleSet,
+    size: u16,
+    cell: impl FnMut(u16, u16) -> crate::map::resolved_terrain::ResolvedTerrainCell,
+) -> (RuleSet, Simulation, InternedId) {
     let mut sim = Simulation::with_seed(17);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
@@ -76,17 +93,37 @@ pub(crate) fn world_with(
     sim.session.game_options.super_weapons = true;
     sim.session.map_width = size;
     sim.session.map_height = size;
-    sim.resolved_terrain = Some(test_grid(size, size, |x, y| {
-        crate::map::resolved_terrain::ResolvedTerrainCell {
-            level: levels
-                .iter()
-                .find(|(at, _)| *at == (x, y))
-                .map_or(0, |&(_, level)| level),
-            ..test_terrain_cell(x, y)
-        }
-    }));
+    sim.resolved_terrain = Some(test_grid(size, size, cell));
     crate::sim::arena_fixture::supply_native_map(&mut sim);
     (rules, sim, americans)
+}
+
+/// Retail rules and a flat 64x64 map of open water.
+fn retail_water_world() -> Option<(RuleSet, Simulation, InternedId)> {
+    use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
+    let float = SpeedCostProfile {
+        float: Some(100),
+        ..SpeedCostProfile::default()
+    };
+    let water = LandType::Water.as_index();
+    Some(world_with_cells(retail_rules()?, 64, |x, y| {
+        crate::map::resolved_terrain::ResolvedTerrainCell {
+            land_type: water,
+            yr_cell_land_type: water,
+            base_land_type: water,
+            base_yr_cell_land_type: water,
+            terrain_class: TerrainClass::Water,
+            base_terrain_class: TerrainClass::Water,
+            speed_costs: float,
+            base_speed_costs: float,
+            is_water: true,
+            zone_type: 4,
+            ground_walk_blocked: true,
+            base_ground_walk_blocked: true,
+            base_build_blocked: true,
+            ..crate::map::resolved_terrain::test_flat_cell(x, y)
+        }
+    }))
 }
 
 fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, at: (u16, u16)) -> u64 {
@@ -354,6 +391,273 @@ fn retail_chrono_warp_moves_the_source_block() {
     assert!(!entity.is_warping_in() && !entity.is_warped_out());
     assert!(entity.navigation.nav_com.is_none());
     assert!(!dead(&sim, tank) && !dead(&sim, legionnaire));
+}
+
+/// The locomotor chain from the active object down.
+fn chain(sim: &Simulation, id: u64) -> Vec<LocomotorKind> {
+    let mut kinds = Vec::new();
+    let mut at = sim
+        .substrate
+        .entities
+        .get(id)
+        .and_then(|entity| entity.locomotor.as_ref());
+    while let Some(locomotor) = at {
+        kinds.push(locomotor.active_kind());
+        at = locomotor.piggyback.as_deref();
+    }
+    kinds
+}
+
+/// A Chrono Miner driving on the Drive its setter installed warps with the
+/// block: the warp's fresh Teleport suspends the Drive with the miner's
+/// Teleport inside it (`0x006CCB4A`; Begin_Piggyback tests only its own
+/// slot, `0x00719EA9`), and the warp's END hands the Drive back. That
+/// Drive's refused own-cell search clears its destination, so the Foot AI
+/// tail ends it at the landing. Its next order drives it, and it ends back
+/// on its Teleport at the stop.
+#[test]
+fn retail_chrono_warp_carries_a_driving_chrono_miner() {
+    use LocomotorKind::{Drive, Teleport};
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", (20, 20));
+    let order = |sim: &mut Simulation, (rx, ry): (u16, u16)| {
+        let command = Command::Move {
+            entity_id: miner,
+            target_rx: rx,
+            target_ry: ry,
+            queue: false,
+        };
+        assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+    };
+    order(&mut sim, (30, 20));
+    step(&mut sim, &rules);
+    assert_eq!(chain(&sim, miner), [Drive, Teleport]);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    step(&mut sim, &rules);
+    let from = cell(&sim, miner);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    assert_eq!(chain(&sim, miner), [Teleport, Drive, Teleport]);
+
+    let landing = (TARGET.0 + from.0 - SOURCE.0, TARGET.1 + from.1 - SOURCE.1);
+    let mut chains = vec![(chain(&sim, miner), from)];
+    let warping = |sim: &Simulation| {
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        entity.chrono_warp().is_some()
+    };
+    for _ in 0..80 {
+        step(&mut sim, &rules);
+        let now = (chain(&sim, miner), cell(&sim, miner));
+        let done = !warping(&sim) && now.0 == [Teleport];
+        if chains.last() != Some(&now) {
+            chains.push(now);
+        }
+        if done {
+            break;
+        }
+    }
+    assert_eq!(
+        chains,
+        [
+            (vec![Teleport, Drive, Teleport], from),
+            (vec![Teleport, Drive, Teleport], landing),
+            (vec![Drive, Teleport], landing),
+            (vec![Teleport], landing),
+        ]
+    );
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert!(!warping(&sim) && entity.navigation.nav_com.is_none());
+
+    let next = (landing.0 + 4, landing.1);
+    order(&mut sim, next);
+    let mut drove = false;
+    for _ in 0..200 {
+        step(&mut sim, &rules);
+        drove |= chain(&sim, miner)[0] == Drive && cell(&sim, miner) != landing;
+    }
+    assert!(drove);
+    assert_eq!(
+        (chain(&sim, miner), cell(&sim, miner)),
+        (vec![Teleport], next)
+    );
+}
+
+/// A destroyer under way when the warp arms has its Ship forced onto its
+/// landing (`ShipLocomotionClass::Force_Track @ 0x006A0310`, Drive's twin):
+/// no track (-1), its head and destination at the landing cell's deck
+/// coordinate. The warp's END hands that Ship back. Its next Process runs
+/// Process_Movement (`0x006A0142`), whose Find_Path for the landing cell
+/// refuses (AStar returns no route for a goal in its start cell,
+/// `0x00429BF3..0x00429C0A`): the destination clears, the head stays, and
+/// the ship stays where it landed.
+#[test]
+fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
+    use LocomotorKind::{Ship, Teleport};
+    let Some((rules, mut sim, americans)) = retail_water_world() else {
+        return;
+    };
+    let ship = spawn(&mut sim, &rules, "DEST", "Americans", (20, 20));
+    let command = Command::Move {
+        entity_id: ship,
+        target_rx: 30,
+        target_ry: 20,
+        queue: false,
+    };
+    assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    step(&mut sim, &rules);
+    let track = |sim: &Simulation| {
+        let locomotor = sim.substrate.entities.get(ship)?.locomotor.as_ref()?;
+        let ship = locomotor.selected_ship_runtime()?.retained()?;
+        Some((ship.track().turn_index, ship.head_to(), ship.destination()))
+    };
+    // The destroyer turns in place before its first track.
+    for _ in 0..30 {
+        if track(&sim).is_some_and(|(turn, _, _)| turn != -1) {
+            break;
+        }
+        step(&mut sim, &rules);
+    }
+    let (turn, old_head, _) = track(&sim).expect("a sailing destroyer's Ship");
+    assert!(
+        turn != -1 && old_head.is_some(),
+        "on a track when the warp arms"
+    );
+    let from = cell(&sim, ship);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    assert_eq!(chain(&sim, ship), [Teleport, Ship]);
+
+    let landing = (TARGET.0 + from.0 - SOURCE.0, TARGET.1 + from.1 - SOURCE.1);
+    let [x, y, z] = super::deck_coords(&sim, landing);
+    let at_landing = Some(DriveCoord { x, y, z });
+    let mut ended = false;
+    for frame in 0..200 {
+        step(&mut sim, &rules);
+        let warping = sim
+            .substrate
+            .entities
+            .get(ship)
+            .unwrap()
+            .chrono_warp()
+            .is_some();
+        if !ended && !warping {
+            ended = true;
+            assert_eq!(chain(&sim, ship), [Ship]);
+            assert_eq!(track(&sim), Some((-1, at_landing, at_landing)));
+            continue;
+        }
+        if ended {
+            assert_eq!(track(&sim), Some((-1, at_landing, None)), "frame {frame}");
+            let entity = sim.substrate.entities.get(ship).unwrap();
+            assert!(entity.movement_target.is_none(), "frame {frame}");
+            assert_eq!(cell(&sim, ship), landing, "frame {frame}");
+        }
+    }
+    assert!(ended);
+}
+
+/// A Chrono Miner on its own Teleport warps on a tank's frames. Arming
+/// drops its NavCom (the warp's Teleport has no Marked coordinate), so the
+/// NULL destinations of states 5 and 7 return before the Unit setter's
+/// Teleporter arm (`0x00741A80..0x00741A9C`), and no Drive comes between.
+/// The tank's frames are the native `chrono_process` rows'
+/// (`retail_chrono_warp_frames_match_native_process`).
+#[test]
+fn retail_chrono_warp_runs_an_idle_chrono_miner_on_a_tanks_frames() {
+    use LocomotorKind::Teleport;
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", SOURCE);
+    let beside = (SOURCE.0 + 1, SOURCE.1);
+    let tank = spawn(&mut sim, &rules, "MTNK", "Americans", beside);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    let state = |sim: &Simulation, id| {
+        let entity = sim.substrate.entities.get(id).unwrap();
+        entity.chrono_warp().map(|warp| warp.state())
+    };
+    let mut ended = false;
+    for frame in 1..=80 {
+        step(&mut sim, &rules);
+        let tank_state = state(&sim, tank);
+        assert_eq!(state(&sim, miner), tank_state, "frame {frame}");
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        assert!(entity.navigation.nav_com.is_none(), "frame {frame}");
+        let expected = if tank_state.is_some() {
+            vec![Teleport, Teleport]
+        } else {
+            vec![Teleport]
+        };
+        assert_eq!(chain(&sim, miner), expected, "frame {frame}");
+        ended |= tank_state.is_none();
+    }
+    assert!(ended);
+}
+
+/// A destination given once the warp has landed (WarpingIn up, the latch
+/// down) runs the Unit setter's Teleporter arm. The warp's Teleport may not
+/// end mid-warp (`0x00719F30`), so a fresh Drive suspends it (`0x0074276F`),
+/// but the Drive refuses the destination while its owner warps
+/// (`0x004AFD40` reads `+0x1D4`/`+0x1D8`) and ends at the Foot AI tail. The
+/// warp then finishes on the landing cell, and state 5's NULL destination
+/// drops the NavCom.
+#[test]
+fn retail_destination_while_warping_in_is_refused_by_the_drive() {
+    use LocomotorKind::{Drive, Teleport};
+    let Some((rules, mut sim, americans)) = retail_world() else {
+        return;
+    };
+    let miner = spawn(&mut sim, &rules, "CMIN", "Americans", SOURCE);
+    charge_chronosphere(&mut sim, americans);
+    click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
+    click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
+    let warping_in = |sim: &Simulation| {
+        let entity = sim.substrate.entities.get(miner).unwrap();
+        entity.is_warping_in() && !entity.chrono_warp_latch()
+    };
+    for _ in 0..80 {
+        if warping_in(&sim) {
+            break;
+        }
+        step(&mut sim, &rules);
+    }
+    assert!(warping_in(&sim));
+    let next = NavTargetRef::cell(TARGET.0 + 4, TARGET.1);
+    sim.set_unit_destination(miner, next, &rules, true);
+    assert_eq!(chain(&sim, miner), [Drive, Teleport, Teleport]);
+    assert!(warping_in(&sim));
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert_eq!(entity.navigation.nav_com, Some(next));
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(entity),
+        Some(false)
+    );
+
+    let mut chains = vec![chain(&sim, miner)];
+    for _ in 0..80 {
+        step(&mut sim, &rules);
+        assert_eq!(cell(&sim, miner), TARGET);
+        let now = chain(&sim, miner);
+        if chains.last() != Some(&now) {
+            chains.push(now);
+        }
+    }
+    assert_eq!(
+        chains,
+        [
+            vec![Drive, Teleport, Teleport],
+            vec![Teleport, Teleport],
+            vec![Teleport],
+        ]
+    );
+    let entity = sim.substrate.entities.get(miner).unwrap();
+    assert!(entity.chrono_warp().is_none() && !entity.is_warping_in());
+    assert!(entity.navigation.nav_com.is_none() && entity.movement_target.is_none());
 }
 
 /// A Foot standing on the destination is killed when the warp tests the

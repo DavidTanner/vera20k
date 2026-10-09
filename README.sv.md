@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Senaste körningen av bibliotekstesterna för Linux (startas manuellt)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Bibliotekstester för Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Senaste körningen av bibliotekstesterna för Windows (startas manuellt)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Bibliotekstester för Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Gå med i Discord-servern" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_grupp-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ-grupp" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -22,7 +23,7 @@ ska gå.
 ## Projektets mål
 
 1. Bevara spelmekaniken, utseendet och stämningen i originalversionen av Red Alert 2: Yuri's Revenge.
-2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på större kartor.
+2. Stödja större slag: upp till **30 spelare** och **20 000 enheter** på 500×500-kartor.
 3. Integrera kända RTS-funktioner, gamla som nya, och några som aldrig setts förut.
 4. Integrerad flerspelarklient
 
@@ -73,14 +74,10 @@ portar sedan dess beteende till Rust och kontrollerar det med
 
 All hjälp är välkommen. Du kan skriva kod, refaktorera motorn, testa spelet, dela idéer eller
 spela det sida vid sida med originalet och berätta vad som känns fel. Öppna en PR så tar vi det
-därifrån; gäller det något stort, fråga först i ett issue eller på
-[Discord](https://discord.gg/kmjRUn5m5F).
+därifrån. Diskussionen sker på [Discord](https://discord.gg/kmjRUn5m5F) och i QQ-gruppen (1097193563).
 
 Spelmekaniken finns i `src/sim/`, renderingen i `src/render/` och menyer och inmatning i
 `src/app/` och `src/ui/`; Python-verktygen i `tools/` behöver du inte.
-[Arkitekturöversikten](https://yuriplanet.github.io/vera20k/sv/) förklarar hur motorn hänger ihop.
-Kör testerna med `cargo test -p vera20k --lib`. Tester som behöver spelets INI-filer hoppar över
-sig själva, och räknas ändå som godkända, tills du kör `cargo run --bin extract-ini [spelmapp]`.
 
 Bidrag licensieras under GPLv3, precis som resten av projektet; det finns inget CLA.
 

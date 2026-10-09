@@ -96,7 +96,7 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
     if entity.navigation.nav_com.is_some() || entity.navigation.nav_queue.is_empty() {
         return false;
     }
-    let _ = crate::sim::movement::locomotor_owner::try_restore_primary(entity);
+    let _ = crate::sim::movement::locomotor_owner::try_end_piggyback(entity);
     let queue = entity.navigation.nav_queue.clone();
     if let NavTargetRef::Cell { rx, ry } = queue[0] {
         sim.set_unit_destination(

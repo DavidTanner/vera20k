@@ -46,9 +46,11 @@ pub(crate) fn set_walk_destination_coord(
             let cell =
                 terrain.native_cell_identity(((coord.x / 256) as i16, (coord.y / 256) as i16));
             if terrain.native_cell_flags(cell) & 0x100 != 0 {
-                coord.z = coord.z.wrapping_add(
-                    crate::util::lepton::native_pixel_height_leptons(WALK_BRIDGE_LIFT_PIXELS),
-                );
+                coord.z = coord
+                    .z
+                    .wrapping_add(crate::util::lepton::native_pixel_height_leptons(
+                        WALK_BRIDGE_LIFT_PIXELS,
+                    ));
             }
         }
     }
@@ -536,18 +538,8 @@ impl crate::sim::world::Simulation {
         };
         publish_null_nav_com(entity);
         let attack = MissionId::from_known(MissionType::Attack);
-        // AircraftMission owns the current aircraft dispatch. Its represented
-        // Guard -> Attack transition does not update MissionState's current
-        // slot yet; use that dispatch owner when present, and the raw slot for
-        // receivers without it. Queued missions remain owned by MissionState.
-        // Original current/queued Attack gate: track_destination_null_boundary;
-        // the real Aircraft/Fly Attack call: aircraft_reengagement.
-        let current_attack = entity.aircraft_mission.as_ref().map_or_else(
-            || entity.mission.current() == attack,
-            crate::sim::aircraft::AircraftMission::is_attacking,
-        );
         let attacking_aircraft = entity.category == crate::map::entities::EntityCategory::Aircraft
-            && (current_attack || entity.mission.queued() == attack)
+            && (entity.mission.current() == attack || entity.mission.queued() == attack)
             && entity.attack_target.is_some();
         if !attacking_aircraft {
             self.locomotor_stop_moving(id, rules, registry)
@@ -573,26 +565,13 @@ impl crate::sim::world::Simulation {
     ///   re-targets a moving owner to the passable cell nearest it;
     /// - Teleport `0x00718230`
     ///   ([`teleport_stop_moving`](super::teleport_movement::teleport_stop_moving));
+    /// - Fly `0x004CCFD0` (`Simulation::fly_stop_moving`), which re-targets a
+    ///   moving aircraft through its own class setter;
     /// - Rocket `0x006633C0`, an empty body (`RET 4`).
     ///
-    /// RESIDUAL: Fly's (`0x004CCFD0`) is not ported. While Is_Moving
-    /// (`0x004CCA90`), it re-targets an Aircraft through its own setter
-    /// (vt+0x480): while its mission (vt+0x184) is Attack, to the airfield
-    /// `0x0041A160` answers; otherwise to the cell `0x00418E20` picks from
-    /// the cell under it, which draws the Scenario RNG (`0x00418F4F`) when
-    /// that cell will not do. An empty cell takes `ReceiveDamage` (Rules
-    /// `+0xFA8`) instead. VERA drops the Fly's order adapter, the state its
-    /// flight reads (`tick_air_movement`). Trigger: a null destination that
-    /// Foot's attack gate lets through, or a Stop_Driver, on a moving
-    /// aircraft: Stop outside an attack, the death Stun, a team script's or a
-    /// Restore's null destination. Effect: the aircraft holds where it is
-    /// until its mission orders it on, where native turns toward that
-    /// airfield or cell, and no Scenario draw is made. Frequency: every Stop
-    /// and kill of an aircraft in flight. Risk: the aircraft's path after
-    /// Stop, and the Scenario stream.
-    ///
-    /// The Jumpjet's needs the map and, for a failed search, the rules; a
-    /// world without them leaves the Jumpjet as it was.
+    /// The Jumpjet's needs the map and, for a failed search, the rules; the
+    /// Fly's needs the rules. A world without them leaves the owner as it
+    /// was.
     pub(crate) fn locomotor_stop_moving(
         &mut self,
         id: u64,
@@ -617,7 +596,9 @@ impl crate::sim::world::Simulation {
             }
             LocomotorKind::Teleport => super::teleport_movement::teleport_stop_moving(entity),
             LocomotorKind::Fly => {
-                entity.movement_target = None;
+                if !self.fly_stop_moving(id, rules, registry) {
+                    log::debug!("Fly {id} Stop_Moving lacks the rules");
+                }
             }
             LocomotorKind::Rocket => {}
         }

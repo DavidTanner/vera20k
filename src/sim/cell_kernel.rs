@@ -112,6 +112,19 @@ pub(crate) fn native_cell_own_coords(
     cell: NativeCellIdentity,
     cells: &NativeCellQuery<'_>,
 ) -> Option<(i64, i64, i64)> {
+    let [x, y] = native_cell_own_xy(cell, cells);
+    let (level, slope) = cells.ground_fields(cell);
+    let z = ground_height_leptons(level, slope, x, y).ok()?;
+    Some((i64::from(x), i64::from(y), i64::from(z)))
+}
+
+/// The XY of [`native_cell_own_coords`]: the centre of the cell's current
+/// packed coordinate, which a Dummy holds from its last stamp. It needs no
+/// supported slope.
+pub(crate) fn native_cell_own_xy(
+    cell: NativeCellIdentity,
+    cells: &NativeCellQuery<'_>,
+) -> [i32; 2] {
     let (x, y) = cells.coord(cell);
     let point = cell_center(
         CellCoordinate {
@@ -120,9 +133,7 @@ pub(crate) fn native_cell_own_coords(
         },
         0,
     );
-    let (level, slope) = cells.ground_fields(cell);
-    let z = ground_height_leptons(level, slope, point.x, point.y).ok()?;
-    Some((i64::from(point.x), i64::from(point.y), i64::from(z)))
+    [point.x, point.y]
 }
 
 /// Native invalid-cell coordinates are process-global sentinels. At the Rust map
@@ -167,32 +178,14 @@ pub fn selects_infantry_bridge_layer(has_high_bridge: bool, level: u8, input_z: 
 /// square and sum them in x87, then Sqrt_Approx 0x4CAC40 and the truncating
 /// Math_ftol 0x7C5F00. Low-byte extraction and list admission belong to callers.
 pub(crate) fn native_xy_distance(dx: i32, dy: i32) -> i32 {
-    native_distance([dx, dy])
+    crate::util::native_x87::sqrt_approx_length([dx, dy])
 }
 
 /// `FootClass::Find_Path` head 0x4D39F3..0x4D3A2B: the actor's `+0x48`
 /// coordinate minus the target cell centre (x, y and z), each `FILD`ed, then
 /// `(dz*dz + dy*dy) + dx*dx`, `Sqrt_Approx` and the truncating `Math_ftol`.
 pub(crate) fn native_xyz_distance(dx: i32, dy: i32, dz: i32) -> i32 {
-    native_distance([dz, dy, dx])
-}
-
-/// Shared x87 shape: squares are accumulated in the given order, each square
-/// added to the running sum before the next component.
-fn native_distance(components: impl IntoIterator<Item = i32>) -> i32 {
-    use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
-    let mut components = components.into_iter().map(X87Chop53::load_i32);
-    let first = components.next().expect("at least one distance component");
-    let squared = components.fold(X87Chop53::mul(first, first), |sum, component| {
-        X87Chop53::add(sum, X87Chop53::mul(component, component))
-    });
-    let Ok(root_bits) = sqrt_approx_f32(squared) else {
-        return i32::MAX;
-    };
-    let Ok(root) = X87Chop53::load_f32(root_bits) else {
-        return i32::MAX;
-    };
-    X87Chop53::ftol_i64(root).map_or(i32::MAX, |distance| distance as i32)
+    crate::util::native_x87::sqrt_approx_length([dz, dy, dx])
 }
 
 /// Cell47C3D0 scoring after the caller supplies linked-list order, Techno

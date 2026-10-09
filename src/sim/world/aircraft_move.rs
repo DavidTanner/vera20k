@@ -6,7 +6,7 @@
 use super::Simulation;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::aircraft::{AircraftMission, IdleEntry, enter_idle_mode_for, move_mission};
+use crate::sim::aircraft::{enter_idle_mode_for, move_mission};
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::{ground_pose, motion_query, nav_target_coordinate};
@@ -21,32 +21,24 @@ mod tests;
 const ATTACK_CELL_SEARCH_LEPTONS: i32 = 0x2000;
 
 impl Simulation {
-    /// One Mission_Move visit of aircraft `id` from `state`. Writes the
-    /// visit's mission delay and returns the mission holding its state, and
-    /// the `Enter_Idle_Mode(0, 1)` (`vt+0x484`) it made.
+    /// One Mission_Move visit of aircraft `id` from `state`: Mission+0xBC and
+    /// the frames it returns.
     pub(crate) fn aircraft_move(
         &mut self,
         id: u64,
         state: u8,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
-    ) -> (AircraftMission, IdleEntry) {
-        let mut host = WorldMove {
-            sim: self,
-            id,
-            rules,
-            registry,
-            idle: IdleEntry::NotCalled,
-        };
-        let (state, delay) = move_mission::move_visit(state, &mut host);
-        let idle = host.idle;
-        self.substrate
-            .entities
-            .get_mut(id)
-            .expect("aircraft dispatch")
-            .mission
-            .write_dispatch_epilogue(self.session.binary_frame as i32, delay);
-        (AircraftMission::Move { sub_state: state }, idle)
+    ) -> (u8, i32) {
+        move_mission::move_visit(
+            state,
+            &mut WorldMove {
+                sim: self,
+                id,
+                rules,
+                registry,
+            },
+        )
     }
 
     /// `AircraftClass::Find_Attack_Cell @ 0x00418E20`: `target` itself when
@@ -174,7 +166,6 @@ struct WorldMove<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
-    idle: IdleEntry,
 }
 
 impl WorldMove<'_> {
@@ -195,7 +186,7 @@ impl move_mission::MoveHost for WorldMove<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        self.idle = enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
+        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
     }
 
     fn assign_attack_cell(&mut self) {

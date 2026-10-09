@@ -358,8 +358,9 @@ impl Fixture {
             .iter()
             .zip(&houses)
         {
-            sim.houses.get_mut(id).unwrap().stats =
-                MatchStatistics::from_totals_for_test(0, 0, 0, 0, 0, 0);
+            let house = sim.houses.get_mut(id).unwrap();
+            house.stats = MatchStatistics::from_totals_for_test(0, 0, 0, 0, 0);
+            house.economy.set_score_for_test(0);
             // Restore only the supplied pre-arrival House1F4 through the
             // existing persistence representation; arrival writes stay with
             // the shared discovery owner and are compared below.
@@ -504,7 +505,7 @@ impl Fixture {
                 "{boundary}: capture loss"
             );
             assert_eq!(
-                house.stats.score_points(),
+                house.economy.score(),
                 int(&expected["score"]),
                 "{boundary}: shared score"
             );

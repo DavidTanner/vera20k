@@ -30,6 +30,7 @@ const RULES: &str = "\
 3=B1X1
 4=BGAT
 5=BOTHER
+6=PAD
 [GI]
 Strength=100
 [GID]
@@ -75,11 +76,15 @@ UndeploysInto=HARV
 [BOTHER]
 Strength=500
 UndeploysInto=TANK
+[PAD]
+Strength=500
+Helipad=yes
+NumberOfDocks=4
 ";
 
 const ART: &str = "[BLDG]\nFoundation=2x2\n[BLDGI]\nFoundation=2x2\n\
     [BLDGD]\nFoundation=2x2\n[B1X1]\nFoundation=1x1\n\
-    [BGAT]\nFoundation=2x2\n[BOTHER]\nFoundation=2x2\n";
+    [BGAT]\nFoundation=2x2\n[BOTHER]\nFoundation=2x2\n[PAD]\nFoundation=2x2\n";
 
 #[derive(serde::Deserialize)]
 struct NativeTrackingCase {
@@ -254,6 +259,41 @@ fn change_owner_moves_the_counts() {
         (counts(&sim, first), counts(&sim, second)),
         ((0, 0), (2, 1))
     );
+}
+
+/// A Helipad's `NumberOfDocks=` join its house's AirportDocks (`+0x2D4`) at
+/// its first Grand_Opening (`0x004463C0`), not at a capture's; a capture
+/// moves them, the old house unclamped (`0x00448B4C`, `0x00449229`); its
+/// Limbo takes them back, clamped at zero (`0x00445946..0x00445988`).
+#[test]
+fn a_helipads_docks_follow_its_opening_capture_and_limbo() {
+    let (mut sim, rules, first) = one_house();
+    let second = sim.interner.intern("Russians");
+    sim.houses
+        .insert(second, HouseState::new(second, 1, None, false, 0, 10));
+    let docks = |sim: &Simulation| {
+        (
+            sim.houses[&first].tracking.airport_docks(),
+            sim.houses[&second].tracking.airport_docks(),
+        )
+    };
+    let pad = sim
+        .spawn_object_at_height("PAD", "Americans", 10, 10, 0, 0, &rules)
+        .unwrap();
+    assert_eq!(docks(&sim), (4, 0));
+    let add_docks = |sim: &mut Simulation, house, docks| {
+        sim.houses
+            .get_mut(&house)
+            .unwrap()
+            .tracking
+            .add_airport_docks(docks);
+    };
+    add_docks(&mut sim, first, -3);
+    sim.change_owner_with_rules(pad, second, &rules, None);
+    assert_eq!(docks(&sim), (-3, 4));
+    add_docks(&mut sim, second, -2);
+    sim.uninit_with_rules(pad, &rules);
+    assert_eq!(docks(&sim), (-3, 0));
 }
 
 /// A constructed object that never leaves limbo (a cancelled build) is

@@ -31,18 +31,18 @@ impl SoundEventRandom for SfxPlayer {
 /// Keep this call at the frame's original sound-publication point: feedback
 /// rolls precede listener gating and must not move to playback or simulation.
 ///
-/// `admit_radar` is the local client's `CreateRadarEvent @ 0x0065FA70`. Each
-/// arm below ports a native caller that tests the local player before that
-/// call, so it applies the same test first and then calls `admit_radar` at
-/// most once, in producer order; the result is the rate limit on the arm's EVA
-/// line. That ordering belongs to those callers, not to radar events: a caller
-/// with no such test must admit unconditionally.
+/// `admit_radar` is the local client's `CreateRadarEvent @ 0x0065FA70`. Caller
+/// admission can already belong to the producer: `StructureAbandoned` carries
+/// the simulation's `House50B6F0` admission. Legacy arms still compare the local
+/// owner's name before calling `admit_radar`. Each reached request calls it at
+/// most once, in producer order; its result gates the caller's EVA line. That
+/// ordering belongs to the caller, not to radar events.
 ///
-/// RESIDUAL: the owner tests here compare against the local owner's name.
-/// Native `0x0050B6F0` passes any `PlayerControl` house in campaign
-/// (`GameMode == 0`), which can differ from the local owner. Trigger: a
-/// campaign with a second player-controlled house; effect: its radar events
-/// and EVA lines are dropped. Campaign play is not supported yet.
+/// RESIDUAL: the remaining legacy owner tests compare the local owner's name.
+/// Native `0x0050B6F0` accepts either the human or `PlayerControl` flag in
+/// campaign (`GameMode == 0`). Trigger: a campaign human/player-controlled
+/// house whose name differs from the local owner; effect: those legacy arms
+/// drop its radar events and EVA lines. Campaign play is not supported yet.
 pub(super) fn dispatch_sim_sound_events(
     events: impl IntoIterator<Item = SimSoundEvent>,
     sim: &Simulation,
@@ -320,7 +320,7 @@ pub(super) fn dispatch_sim_sound_events(
                 // (`[Rules+0x730]`) through `VocClass::PlayAtPos @
                 // 0x00750920` (`0x0053A044`) with pan `0x2000` and volume
                 // 1.0, centred rather than at the storm cell. Its line
-                // follows through `lightning_storm_messages`; the EVA line
+                // follows through `super_weapon_messages`; the EVA line
                 // was spoken at launch, the whole countdown earlier.
                 let Some(sound_id) = rules.general.storm_sound.clone() else {
                     continue;
@@ -336,7 +336,7 @@ pub(super) fn dispatch_sim_sound_events(
                 // @ 0x00752700` of `EVA_LightningStormCreated` on every
                 // client; as for the launch's EVA, an app with no local
                 // player plays none (the line follows through
-                // `lightning_storm_messages`).
+                // `super_weapon_messages`).
                 if local_owner_name.is_none() {
                     continue;
                 }
@@ -421,8 +421,10 @@ pub(super) fn dispatch_sim_sound_events(
                     type_override: None,
                 }
             }
-            SimSoundEvent::StructureAbandoned { owner } => {
-                if !owner_is_local(&sim.interner, owner, local_owner_name) {
+            SimSoundEvent::StructureAbandoned { radar, .. } => {
+                //458200's producer already ran House50B6F0. Native gates
+                //EVA on successful radar admission, before refreshing art.
+                if !admit_radar(radar) {
                     continue;
                 }
                 GameSoundEvent::Eva {
@@ -766,6 +768,10 @@ pub(super) fn dispatch_sim_sound_events(
             // The selection clear is `super_selection`'s; the pass plays
             // nothing.
             SimSoundEvent::SuperWeaponStatusChanged { .. } => continue,
+            // The refusal's line follows through `super_weapon_messages`;
+            // its AddMessage plays the only sound.
+            SimSoundEvent::LightningStormRefused { .. }
+            | SimSoundEvent::PsychicDominatorRefused { .. } => continue,
             SimSoundEvent::SuperWeaponDetected { owner, sw_type } => {
                 // `BuildingClass::OnConstructionComplete
                 // 0x004468AD..0x00446995`; the gates are the
@@ -1060,16 +1066,30 @@ pub(crate) fn superweapon_launch_cue(
     }
 }
 
-/// The lines a frame's storm events post on every client, as CSF labels:
+/// The lines a frame's Super events post, as CSF labels. Every client posts
 /// `TXT_LIGHTNING_STORM` when a storm starts (`LightningStorm::Start @
 /// 0x0053A067`) and `TXT_LIGHTNING_STORM_APPROACHING` at the countdown's
-/// warnings (`LightningStorm::Process @ 0x0053AB31`).
-pub(super) fn lightning_storm_messages(events: &[SimSoundEvent]) -> Vec<&'static str> {
+/// warnings (`LightningStorm::Process @ 0x0053AB31`). Only the client whose
+/// player owns a refused Super posts ClickFire's line for it:
+/// `Msg:LightningStormActive` (`LightningStorm::PrintMessage @ 0x0053AE00`)
+/// or `Msg:DominatorActive` (`PsyDom::PrintMessage @ 0x0053B410`).
+pub(super) fn super_weapon_messages(
+    events: &[SimSoundEvent],
+    interner: &crate::sim::intern::StringInterner,
+    local_owner_name: Option<&str>,
+) -> Vec<&'static str> {
     events
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|event| match *event {
             SimSoundEvent::LightningStormBegan => Some("TXT_LIGHTNING_STORM"),
             SimSoundEvent::LightningStormApproaching => Some("TXT_LIGHTNING_STORM_APPROACHING"),
+            SimSoundEvent::LightningStormRefused { owner } => {
+                owner_is_local(interner, owner, local_owner_name)
+                    .then_some("Msg:LightningStormActive")
+            }
+            SimSoundEvent::PsychicDominatorRefused { owner } => {
+                owner_is_local(interner, owner, local_owner_name).then_some("Msg:DominatorActive")
+            }
             _ => None,
         })
         .collect()
@@ -1124,6 +1144,125 @@ mod tests {
         fn roll_percent(&mut self) -> i32 {
             self.calls.push("percent");
             self.rolls.pop_front().expect("scripted percentage draw")
+        }
+    }
+
+    /// Original458200 calls global Voc before radar15 and speaks only when
+    /// that radar request accepts. Simulation already admitted House50B6F0;
+    /// a campaign human need not be the local-owner name used by other arms.
+    #[test]
+    fn building_abandoned_dispatch_matches_native_sound_radar_and_eva_order() {
+        use crate::sim::radar::{RadarEventRequest, RadarEventType};
+        use std::cell::RefCell;
+
+        let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/garrison_oracle/allegiance.json",
+        ))
+        .unwrap();
+        assert_eq!(fixture["schema_version"], 1);
+        let rules = dispatch_rules();
+        for name in [
+            "empty_player_abandons",
+            "radar_refusal_suppresses_eva",
+            "campaign_human_abandons",
+            "campaign_player_control_abandons",
+        ] {
+            let row = fixture["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["input"]["name"] == name)
+                .unwrap();
+            let input = &row["input"];
+            let calls = row["output"]["calls"].as_array().unwrap();
+            let native_sound = calls
+                .iter()
+                .find(|call| call["op"] == "abandoned_sound")
+                .unwrap();
+            assert_eq!(native_sound["pan"], 0x2000);
+            assert_eq!(native_sound["volume_bits"], "3f800000");
+            assert_eq!(native_sound["handle"], 0);
+            let native_radar = calls
+                .iter()
+                .find(|call| call["op"] == "radar_event")
+                .unwrap();
+            let request = RadarEventRequest::new(
+                RadarEventType::StructureAbandoned,
+                native_radar["cell"][0].as_u64().unwrap() as u16,
+                native_radar["cell"][1].as_u64().unwrap() as u16,
+            );
+            assert_eq!(
+                request.event_type as u8,
+                native_radar["event"].as_u64().unwrap() as u8
+            );
+            let mut sim = Simulation::new();
+            sim.session.game_mode_nonzero = input["game_mode"].as_u64().unwrap() != 0;
+            let houses = input["houses"].as_array().unwrap();
+            let owner_name = houses[input["current_owner"].as_u64().unwrap() as usize]["name"]
+                .as_str()
+                .unwrap();
+            let local_name = houses[input["local_house"].as_u64().unwrap() as usize]["name"]
+                .as_str()
+                .unwrap();
+            let owner = sim.interner.intern(owner_name);
+            let sound_name = format!("NativeSound{}", native_sound["sound"].as_i64().unwrap());
+            let events = [
+                SimSoundEvent::VocCentered {
+                    sound_id: sound_name.clone(),
+                },
+                SimSoundEvent::StructureAbandoned {
+                    owner,
+                    radar: request,
+                },
+            ];
+            let observed = RefCell::new(Vec::new());
+            let mut gate = |actual| {
+                assert_eq!(actual, request, "{name}");
+                observed.borrow_mut().push("radar_event");
+                native_radar["accepted"].as_bool().unwrap()
+            };
+            let mut random = ScriptedRandom::default();
+            let mut output = SoundEventQueue::new();
+            // Observe each prepared producer event at the existing dispatcher
+            // boundary, preserving one ledger across the sound and radar calls.
+            // The producer's choice/order is replayed separately in sim tests.
+            for event in events {
+                dispatch_sim_sound_events(
+                    [event],
+                    &sim,
+                    &rules,
+                    Some(local_name),
+                    Some(&mut random),
+                    &mut gate,
+                    &mut output,
+                );
+                for emitted in output.drain() {
+                    match emitted {
+                        GameSoundEvent::VocAt {
+                            sound_id,
+                            source: None,
+                        } => {
+                            assert_eq!(sound_id, sound_name, "{name}");
+                            observed.borrow_mut().push("abandoned_sound");
+                        }
+                        GameSoundEvent::Eva {
+                            event,
+                            type_override: None,
+                        } => {
+                            assert_eq!(event, "EVA_StructureAbandoned", "{name}");
+                            observed.borrow_mut().push("abandoned_eva");
+                        }
+                        unexpected => panic!("{name}: unexpected event {unexpected:?}"),
+                    }
+                }
+            }
+            let expected = calls
+                .iter()
+                .map(|call| call["op"].as_str().unwrap())
+                .filter(|op| matches!(*op, "abandoned_sound" | "radar_event" | "abandoned_eva"))
+                .collect::<Vec<_>>();
+            assert_eq!(*observed.borrow(), expected, "{name}");
+            assert!(random.calls.is_empty(), "{name}: no notification RNG");
         }
     }
 
@@ -1970,6 +2109,40 @@ mod tests {
         assert_eq!(empty.sound_id, None);
     }
 
+    /// ClickFire's refusal lines (`LightningStorm::PrintMessage @
+    /// 0x0053AE00`, `PsyDom::PrintMessage @ 0x0053B410`) post only on the
+    /// client whose player owns the refused Super (Fire_SW passes `this ==
+    /// PlayerPtr`, `0x004FAE8E`); the dispatch plays nothing for them, as
+    /// the line's AddMessage plays IncomingMessage.
+    #[test]
+    fn a_refused_super_tells_only_its_own_player() {
+        let mut sim = Simulation::new();
+        let local = sim.interner.intern("Local");
+        let other = sim.interner.intern("Other");
+        let events = [
+            SimSoundEvent::LightningStormRefused { owner: local },
+            SimSoundEvent::PsychicDominatorRefused { owner: other },
+            SimSoundEvent::PsychicDominatorRefused { owner: local },
+            SimSoundEvent::LightningStormRefused { owner: other },
+        ];
+        assert_eq!(
+            super_weapon_messages(&events, &sim.interner, Some("Local")),
+            ["Msg:LightningStormActive", "Msg:DominatorActive"]
+        );
+        assert!(super_weapon_messages(&events, &sim.interner, None).is_empty());
+        let mut output = SoundEventQueue::new();
+        dispatch_sim_sound_events(
+            events.clone(),
+            &sim,
+            &dispatch_rules(),
+            Some("Local"),
+            None,
+            &mut |_| panic!("a refusal is not a radar event"),
+            &mut output,
+        );
+        assert!(output.drain().is_empty());
+    }
+
     /// `StormSound` belongs to the storm *beginning*, not to the launch.
     /// `SuperClass::Launch` case 2 hands `[Rules+0x1794]`
     /// (`LightningDeferment`, stock 250) to `LightningStorm::Start @
@@ -1999,7 +2172,7 @@ mod tests {
             SimSoundEvent::LightningStormApproaching,
         ];
         assert_eq!(
-            lightning_storm_messages(&events),
+            super_weapon_messages(&events, &sim.interner, None),
             ["TXT_LIGHTNING_STORM", "TXT_LIGHTNING_STORM_APPROACHING"]
         );
         let mut output = SoundEventQueue::new();

@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Son Linux kütüphane testi çalıştırması (elle başlatılır)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux kütüphane testleri" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Son Windows kütüphane testi çalıştırması (elle başlatılır)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows kütüphane testleri" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Discord'a katılın" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_grubu-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ grubu" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -22,7 +23,7 @@ oyuncular söylüyor.
 ## Projenin hedefleri
 
 1. Orijinal Red Alert 2: Yuri's Revenge'in oynanışını, görsellerini ve atmosferini korumak.
-2. Daha büyük haritalarda **30 oyuncuya** ve **20.000 birime** kadar daha büyük savaşları desteklemek.
+2. 500×500 haritalarda **30 oyuncuya** ve **20.000 birime** kadar daha büyük savaşları desteklemek.
 3. Eski ve yeni bilinen RTS özelliklerini ve daha önce hiç görülmemiş bazı özellikleri eklemek.
 4. Entegre çok oyunculu istemci
 
@@ -71,15 +72,11 @@ ile oyun testleri kullanarak kontrol ediyor. Ajanlar [AGENTS.md](AGENTS.md) dosy
 
 Yardımlarınızı bekliyoruz. Kod yazabilir, motoru yeniden düzenleyebilir, oyunu test edebilir,
 fikirlerinizi paylaşabilir veya orijinal oyunla yan yana oynayıp neyin yanlış hissettirdiğini
-bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz; büyük bir değişiklik için önce bir
-issue'da ya da [Discord](https://discord.gg/kmjRUn5m5F) üzerinden sorun.
+bize anlatabilirsiniz. Bir PR açın, gerisini biz hallederiz.
+Tartışmalar [Discord](https://discord.gg/kmjRUn5m5F) üzerinden ve QQ grubunda (1097193563) yürür.
 
 Oyun mantığı `src/sim/`, çizim `src/render/`, menüler ve girdi ise `src/app/` ve `src/ui/`
 içinde; `tools/` altındaki Python araçlarına ihtiyacınız yok.
-[Mimariye genel bakış](https://yuriplanet.github.io/vera20k/tr/), motorun parçalarının nasıl bir
-araya geldiğini açıklıyor. Testleri `cargo test -p vera20k --lib` ile çalıştırın. Oyunun INI
-dosyalarına ihtiyaç duyan testler, siz `cargo run --bin extract-ini [oyun klasörü]` komutunu
-çalıştırana kadar atlanır ve yine de başarılı sayılır.
 
 Katkılar da projenin geri kalanı gibi GPLv3 ile lisanslanır; CLA yoktur.
 

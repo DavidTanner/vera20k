@@ -106,6 +106,13 @@ fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         loco.begin_fly_landing();
     }
     loco.set_fly_target_height(integer("target", 0));
+    // Process steps the height of a moving Fly only (`0x004CDA0B`); a null
+    // destination keeps Horizontal_Step and the landing drift out of it.
+    loco.fly_runtime_mut().unwrap().retain_destination(
+        crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 },
+        None,
+        || 0,
+    );
     sim.add_entity_occupancy(1);
     (sim, rules)
 }
@@ -268,15 +275,24 @@ fn fly_hash_distinguishes_targets_and_native_flags() {
 
 #[test]
 fn repeated_aircraft_attack_visits_do_not_divide_the_fly_target() {
-    use crate::sim::aircraft::{AircraftMission, tick_aircraft_missions};
+    use crate::sim::aircraft::tick_aircraft_missions;
     let row = vectors()
         .into_iter()
         .find(|r| r["input"]["name"] == "ordinary_False_1500")
         .unwrap();
     let (mut sim, rules) = fixture(&row);
     for sub_state in [3, 4, 3, 4] {
-        sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-            Some(AircraftMission::Attack { sub_state });
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .mission
+            .set_current_for_test(
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Attack,
+                ),
+                sub_state,
+            );
         tick_aircraft_missions(&mut sim, &rules);
         assert_eq!(
             sim.substrate
@@ -524,7 +540,6 @@ fn issue_coordinate(sim: &mut Simulation, rules: &RuleSet, xyz: [i32; 3]) -> boo
             y: xyz[1],
             z: xyz[2],
         },
-        SimFixed::from_num(10),
         Some(crate::sim::movement::DestinationTiming::from_rules(
             sim.session.binary_frame,
             Some(rules),
@@ -571,16 +586,9 @@ fn fly_destination_orders_match_original_retained_xyz_and_refusals() {
             "{input}"
         );
         assert_eq!(sim.scenario_rng.logical_state(), before_rng);
-        if accepted {
-            assert_eq!(
-                entity.movement_target.as_ref().unwrap().final_goal,
-                Some((
-                    (request[0] / 256) as i16 as u16,
-                    (request[1] / 256) as i16 as u16
-                ))
-            );
-        } else {
-            assert!(entity.movement_target.is_none());
+        // MoveTo writes the Fly alone; no order adapter follows it.
+        assert!(entity.movement_target.is_none());
+        if !accepted {
             assert_eq!(sim.shared_cell_dummy.snapshot().coord, (-7, -8), "{input}");
         }
         assert_eq!(
@@ -631,8 +639,6 @@ fn fly_retained_destination_drives_subcell_arrival_after_save_and_restore() {
     entity.position.ry = 64;
     entity.position.sub_x = SimFixed::from_num(135);
     entity.position.sub_y = SimFixed::from_num(139);
-    // Poison the derived cell projection: it must not steer or snap Fly.
-    entity.movement_target.as_mut().unwrap().final_goal = Some((10, 10));
     sim.add_entity_occupancy(1);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let bytes = GameSnapshot::save(&sim, 0, 0, "Fly retained destination", 0);
@@ -644,12 +650,8 @@ fn fly_retained_destination_drives_subcell_arrival_after_save_and_restore() {
     for instance in [&mut sim, &mut restored] {
         instance.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
         let entity = instance.substrate.entities.get(1).unwrap();
-        assert_eq!(
-            crate::sim::movement::ground_pose::position_world_xy(&entity.position),
-            [16519, 16523]
-        );
         assert!(entity.movement_target.is_none());
-        // Arrival's legacy adapter must not invent a native destination clear.
+        // Arrival must not invent a native destination clear.
         assert_eq!(
             entity
                 .locomotor
@@ -746,6 +748,7 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         "landing": input["landing"].as_bool().unwrap_or(false),
         "destination": input.get("destination").cloned().unwrap_or(serde_json::json!([3456,2688,0])),
         "cruise_mode": input["mode"].as_bool().unwrap_or(false),
+        "moving": input["moving"].as_bool().unwrap_or(false),
     })).unwrap();
     loco.fly_runtime_mut().unwrap().target_speed = SimFixed::lit("0.25");
     sim.session.binary_frame = 100;
@@ -943,9 +946,10 @@ fn fly_nonlandable_phase_matches_native_without_display_resubmission() {
 
 #[test]
 fn fly_nonlandable_production_tick_replaces_landing_target_and_restores() {
+    // A landing Fly still holds its move (`+0x34`): Process steps its height.
     let row = serde_json::json!({"input": {
         "z":900, "target":0, "taking_off":false, "landing":true,
-        "landable":false, "flight_level":40000,
+        "landable":false, "flight_level":40000, "moving":true,
     }});
     let (mut sim, rules) = takeoff_fixture(&row);
     sim.submit_entity_display(1, Some(&rules), None);
@@ -1119,6 +1123,9 @@ fn fly_production_process_resets_enter_mode_using_native_mission_precedence() {
         mission["current"] = row["current"].clone();
         mission["queued"] = row["queued"].clone();
         entity.mission = serde_json::from_value(mission).unwrap();
+        // Not ready (`+0x6D4`): Process's Commence (`0x004CCB84`) would
+        // promote the queued mission before the Enter test.
+        entity.mission_leaf.set_aircraft_transition_ready(0);
         entity
             .locomotor
             .as_mut()
@@ -1146,7 +1153,9 @@ fn fly_production_process_resets_enter_mode_using_native_mission_precedence() {
 
 #[test]
 fn fly_production_tick_uses_primary_current_and_continues_after_restore() {
-    let row = serde_json::json!({"input":{"z":900}});
+    // No destination: Horizontal_Step would turn Primary toward one once the
+    // callback clears the takeoff (`0x004CCBE9`).
+    let row = serde_json::json!({"input":{"z":900, "destination":[0, 0, 0]}});
     let (mut sim, rules) = takeoff_fixture(&row);
     // Tick remains stationary so the native phase evidence applies at z900.
     sim.substrate
@@ -1267,7 +1276,6 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
             [current[0] + 5000, current[1] + 5000, 0]
         ));
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.movement_target.as_mut().unwrap().speed = SimFixed::from_num(3000);
         entity
             .locomotor
             .as_mut()

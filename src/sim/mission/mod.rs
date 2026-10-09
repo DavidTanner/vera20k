@@ -23,6 +23,5 @@ pub mod verb;
 pub use crate::rules::mission_data::{MISSION_COUNT, MissionType};
 pub use control::{MissionControl, MissionControlEntry};
 pub(crate) use leaf::MissionLeafState;
-pub use retask::DockTeardown;
 pub use state::{MissionCom, MissionId};
 pub use timer::{MissionDispatchTimer, MissionTimer};

@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="آخر تشغيل لاختبارات المكتبة على Linux (تُشغّل يدويًا)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="اختبارات المكتبة على Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="آخر تشغيل لاختبارات المكتبة على Windows (تُشغّل يدويًا)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="اختبارات المكتبة على Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="انضم إلى Discord" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_group-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="مجموعة QQ" height="20" align="middle">
 </p>
 
 <div dir="rtl">
@@ -23,7 +24,7 @@ VERA20k من صنع اللاعبين ومن أجلهم، وللاعبين الك
 ## أهداف المشروع
 
 1. الحفاظ على أسلوب اللعب والمظهر والأجواء في لعبة Red Alert 2: Yuri's Revenge الأصلية.
-2. دعم معارك أكبر: حتى **30 لاعبًا** و**20,000 وحدة** على خرائط أكبر.
+2. دعم معارك أكبر: حتى **30 لاعبًا** و**20,000 وحدة** على خرائط بحجم 500×500.
 3. إضافة ميزات معروفة من ألعاب الاستراتيجية في الوقت الحقيقي (RTS)، قديمة وحديثة، وأخرى لم يسبق لها مثيل.
 4. عميل مدمج للعب متعدد اللاعبين
 
@@ -72,13 +73,11 @@ cargo run --release --bin vera20k
 ## المساهمة
 
 نرحب بالمساعدة. يمكنك كتابة الكود، أو إعادة هيكلة المحرك، أو اختبار اللعبة، أو مشاركة الأفكار، أو لعبها
-جنبًا إلى جنب مع الأصل وإخبارنا بما يبدو غير صحيح. افتح PR وسنتولى الأمر من هناك؛ وإذا كان التغيير كبيرًا،
-فاسأل أولًا في issue أو على [Discord](https://discord.gg/kmjRUn5m5F).
+جنبًا إلى جنب مع الأصل وإخبارنا بما يبدو غير صحيح. افتح PR وسنتولى الأمر من هناك.
+النقاش يجري على [Discord](https://discord.gg/kmjRUn5m5F) وفي مجموعة QQ (1097193563).
 
 منطق اللعب في `src/sim/`، والرسم في `src/render/`، والقوائم والإدخال في `src/app/` و`src/ui/`؛
-ولا تحتاج إلى أدوات Python الموجودة في `tools/`. تشرح [نظرة عامة على البنية](https://yuriplanet.github.io/vera20k/ar/)
-كيف تتكامل أجزاء المحرك. شغّل الاختبارات باستخدام `cargo test -p vera20k --lib`. الاختبارات التي تحتاج إلى
-ملفات INI الخاصة باللعبة تتخطى نفسها وتُحتسب ناجحة مع ذلك، إلى أن تشغّل `cargo run --bin extract-ini [مجلد اللعبة]`.
+ولا تحتاج إلى أدوات Python الموجودة في `tools/`.
 
 تُرخَّص المساهمات بموجب GPLv3 مثل بقية المشروع؛ ولا توجد اتفاقية CLA.
 

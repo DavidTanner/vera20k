@@ -24,14 +24,15 @@ fn empty_rules() -> RuleSet {
 /// same-tick two-Begin ordering test.
 fn vehicle_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        // TechLevel=1 (not the unspecified -1 default) so the type passes Strict eligibility
-        // and P6 prereq-revalidation does NOT abandon it as UnbuildableTechLevel; GAWEAP
-        // (Factory=UnitType) is the producing factory the revalidation requires.
-        "[VehicleTypes]\n0=GRIZZLY\n[AircraftTypes]\n0=BEAG\n\
+        // TechLevel=1 (not the unspecified 255 default) so the strip keeps the type;
+        // GAWEAP (Factory=UnitType) is the factory FindFactory finds for it, matching
+        // its Owner=.
+        "[Countries]\n0=Americans\n\
+         [VehicleTypes]\n0=GRIZZLY\n[AircraftTypes]\n0=BEAG\n\
          [BuildingTypes]\n0=GAWEAP\n\
-         [GRIZZLY]\nCost=700\nStrength=300\nTechLevel=1\n\
-         [BEAG]\nCost=600\nStrength=200\nTechLevel=1\n\
-         [GAWEAP]\nStrength=1000\nFactory=UnitType\n",
+         [GRIZZLY]\nCost=700\nStrength=300\nTechLevel=1\nOwner=Americans\n\
+         [BEAG]\nCost=600\nStrength=200\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nStrength=1000\nFactory=UnitType\nOwner=Americans\n",
     ))
     .expect("vehicle rules parse")
 }
@@ -178,7 +179,10 @@ fn production_authoritative_hash_includes_factory_fields() {
     }
 
     type EMut = fn(&mut crate::sim::economy::Economy);
-    let econ_muts: [EMut; 2] = [|e| e.spent_credits += 1, |e| e.harvested_credits += 1];
+    let econ_muts: [EMut; 2] = [
+        |e| e.set_spent_for_test(e.spent_credits() + 1),
+        |e| e.set_score_for_test(e.score() + 1),
+    ];
     for m in econ_muts {
         let mut sim = mid_build();
         let owner = sim.interner.intern("Americans");
@@ -223,7 +227,7 @@ fn snapshot_roundtrip_factory_registry() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .harvested_credits = 12_345;
+        .set_score_for_test(12_345);
     // Native in-scenario load resets Scenario RNG; isolate factory persistence
     // by comparing against that same post-load baseline.
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -311,7 +315,7 @@ fn queue_advances_only_after_delivery() {
     // The credits mirror is retired, so a cloned economy starts at 0 — fund the oracle
     // explicitly so the per-step charge can actually complete the build.
     let mut oracle = sim.houses[&owner].economy.clone();
-    oracle.credits = 700;
+    oracle.set_credits_for_test(700);
     loop {
         if matches!(f.advance_one_step(&mut oracle), StepOutcome::Completed) {
             break;
@@ -494,24 +498,25 @@ fn single_wallet_charged_once_no_double_debit() {
         full_cost > 0,
         "GRIZZLY needs a positive cost for this guard"
     );
-    let start = sim.houses[&owner].economy.credits;
+    let start = sim.houses[&owner].economy.credits();
     // A war factory exists but no path_grid is supplied, so the completed vehicle has no exit
     // cell and is held (delivery never fires) — the build charges to completion exactly once
     // and never re-seeds. Upper-bound the cadence (<= 255 frames/step * 54 steps) and break
     // once the cost is fully drained.
     for _ in 0..(PRODUCTION_STEPS as usize * 256) {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
-        if sim.houses[&owner].economy.spent_credits >= full_cost {
+        if sim.houses[&owner].economy.spent_credits() >= full_cost {
             break;
         }
     }
-    let debited = start - sim.houses[&owner].economy.credits;
+    let debited = start - sim.houses[&owner].economy.credits();
     assert_eq!(
         debited, full_cost,
         "exactly one full-cost debit to house.economy.credits over the build"
     );
     assert_eq!(
-        sim.houses[&owner].economy.spent_credits, full_cost,
+        sim.houses[&owner].economy.spent_credits(),
+        full_cost,
         "spent_credits accumulates the cost exactly once"
     );
 }
@@ -536,11 +541,13 @@ fn stall_on_no_funds_holds() {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
     assert_eq!(
-        sim.houses[&owner].economy.credits, 0,
+        sim.houses[&owner].economy.credits(),
+        0,
         "a stalled build spends nothing"
     );
     assert_eq!(
-        sim.houses[&owner].economy.spent_credits, 0,
+        sim.houses[&owner].economy.spent_credits(),
+        0,
         "nothing is accumulated while stalled"
     );
 }
@@ -571,12 +578,12 @@ fn cancel_one_partial_refund_to_house_credits() {
     for _ in 0..200 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
-    let spent = sim.houses[&owner].economy.spent_credits;
+    let spent = sim.houses[&owner].economy.spent_credits();
     assert!(
         spent > 0 && spent < full_cost,
         "mid-build: some but not all of the cost is spent"
     );
-    let credits_before = sim.houses[&owner].economy.credits;
+    let credits_before = sim.houses[&owner].economy.credits();
     let ok = crate::sim::production::cancel_by_type_for_owner(
         &mut sim,
         &rules,
@@ -585,7 +592,7 @@ fn cancel_one_partial_refund_to_house_credits() {
         false,
     );
     assert!(ok, "the active build is cancellable");
-    let refunded = sim.houses[&owner].economy.credits - credits_before;
+    let refunded = sim.houses[&owner].economy.credits() - credits_before;
     assert_eq!(
         refunded, spent,
         "C8: Cost_Of - Balance refunds exactly the spent portion"

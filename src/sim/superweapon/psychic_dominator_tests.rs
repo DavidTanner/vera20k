@@ -628,6 +628,10 @@ fn retail_dominator_strike_captures_the_block() {
         assert!(frames < 200, "no strike");
     }
     assert_eq!(anim_kind(&sim), Some("PDFXLOC"));
+    // MindControlArea's IonBlast at the cell, at frame 1 after this frame's
+    // UpdateAll.
+    assert_eq!(sim.ion_blasts().collect::<Vec<_>>(), [(ground, 1)]);
+    let struck_at = frames;
     for id in [tank, conscript, squad[0], squad[1], own] {
         assert_eq!(owner_name(&sim, id), "Americans");
         let link = &sim.substrate.entities.get(id).unwrap().mind_control;
@@ -665,6 +669,8 @@ fn retail_dominator_strike_captures_the_block() {
         .restore_after_snapshot_load()
         .expect("mind-control links resolve");
     assert_eq!(loaded.psychic_dominator, sim.psychic_dominator);
+    // Native saves no IonBlast.
+    assert_eq!(loaded.ion_blasts().count(), 0);
     for id in [tank, conscript] {
         let entity = loaded.substrate.entities.get(id).unwrap();
         assert_eq!(
@@ -679,17 +685,33 @@ fn retail_dominator_strike_captures_the_block() {
     // ClickFire refuses another Dominator while this one runs.
     charge_super(&mut sim, americans, DOMINATOR);
     click(&mut sim, &rules, americans, DOMINATOR, (20, 20));
+    frames += 1;
     assert!(sim.super_weapons[&americans][&sw_type].is_ready);
     assert_eq!(
         sim.psychic_dominator.cell(),
         (TARGET.0 as i16, TARGET.1 as i16)
     );
 
-    // The end of the strike and the fade back.
+    // The end of the strike and the fade back. The ripple draws frames 1 to
+    // 79 and goes at its 80th update.
+    let ripple = |sim: &Simulation, frames: i32| {
+        let age = frames - struck_at;
+        let expected = if age < 79 {
+            vec![(ground, age + 1)]
+        } else {
+            vec![]
+        };
+        assert_eq!(
+            sim.ion_blasts().collect::<Vec<_>>(),
+            expected,
+            "frame {frames}"
+        );
+    };
     let mut faded = false;
     while sim.psychic_dominator.status_number() != 0 {
         step(&mut sim, &rules);
         frames += 1;
+        ripple(&sim, frames);
         assert!(frames < 400, "the Dominator never ends");
         if sim.psychic_dominator.status_number() == 5 && !faded {
             faded = true;
@@ -703,6 +725,11 @@ fn retail_dominator_strike_captures_the_block() {
         }
     }
     assert!(faded);
+    while frames - struck_at < 80 {
+        step(&mut sim, &rules);
+        frames += 1;
+        ripple(&sim, frames);
+    }
     assert_eq!(sim.session.lighting.current_ambient, normal_ambient);
     assert_eq!(relight_profiles(&sim), [ScenarioLightingProfile::Normal]);
     // Nothing lets the captives go.

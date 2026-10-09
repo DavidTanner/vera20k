@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Последний запуск тестов библиотеки на Linux (запускаются вручную)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Тесты библиотеки на Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Последний запуск тестов библиотеки на Windows (запускаются вручную)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Тесты библиотеки на Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Присоединиться к Discord" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_группа-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ-группа" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -22,7 +23,7 @@ VERA20k делают игроки для игроков, и последнее �
 ## Цели проекта
 
 1. Сохранить игровой процесс, графику и атмосферу оригинальной Red Alert 2: Yuri's Revenge.
-2. Поддерживать более крупные сражения: до **30 игроков** и **20 000 юнитов** на больших картах.
+2. Поддерживать более крупные сражения: до **30 игроков** и **20 000 юнитов** на картах 500×500.
 3. Добавлять известные возможности RTS, старые и новые, а также такие, каких ещё не было.
 4. Встроенный клиент для мультиплеера
 
@@ -72,15 +73,10 @@ Ghidra, затем переносят его поведение на Rust и п�
 
 Мы рады помощи. Можно писать код, рефакторить движок, тестировать игру, предлагать идеи или
 играть параллельно с оригиналом и рассказывать, что кажется неправильным. Открой PR, а дальше
-мы разберёмся сами; если задумал что-то крупное, сначала спроси в issue или в
-[Discord](https://discord.gg/kmjRUn5m5F).
+мы разберёмся сами. Обсуждение идёт в [Discord](https://discord.gg/kmjRUn5m5F) и в QQ-группе (1097193563).
 
 Игровая логика находится в `src/sim/`, отрисовка — в `src/render/`, меню и ввод — в `src/app/` и
 `src/ui/`; Python-инструменты из `tools/` тебе не понадобятся.
-[Обзор архитектуры](https://yuriplanet.github.io/vera20k/ru/) объясняет, как устроен движок.
-Запускай тесты командой `cargo test -p vera20k --lib`. Тесты, которым нужны INI-файлы игры,
-пропускаются и всё равно считаются пройденными, пока ты не выполнишь
-`cargo run --bin extract-ini [папка игры]`.
 
 Вклады распространяются под лицензией GPLv3, как и весь проект; подписывать CLA не нужно.
 

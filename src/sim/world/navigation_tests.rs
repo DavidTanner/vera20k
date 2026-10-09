@@ -126,9 +126,9 @@ fn native_bridge_record_geometry_changes_rebuild_and_restore_navigation() {
 
 fn rules_and_overlays() -> (RuleSet, OverlayTypeRegistry) {
     let ini = IniFile::from_str(
-        "[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
+        "[Countries]\n0=Americans\n[InfantryTypes]\n[VehicleTypes]\n[AircraftTypes]\n\
          [BuildingTypes]\n0=YARD\n1=HELD\n2=UPGRADE\n\
-         [YARD]\nStrength=500\nBib=yes\nFactory=BuildingType\n\
+         [YARD]\nStrength=500\nBib=yes\nFactory=BuildingType\nOwner=Americans\n\
          [HELD]\nStrength=300\nCost=100\nTechLevel=1\nOwner=Americans\n\
          [UPGRADE]\nStrength=100\n\
          [OverlayTypes]\n0=ROAD\n[ROAD]\nLand=Road\n\

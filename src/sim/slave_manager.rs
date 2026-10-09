@@ -382,15 +382,8 @@ impl DeployCellSearch {
 /// `0x006B1A70`: `ftol(Sqrt_Approx(dx*dx + dy*dy))` over a cell difference,
 /// read back as a signed short (`MOVSX EAX,AX` at `0x006AFB10`).
 fn cell_distance(dx: i16, dy: i16) -> i32 {
-    use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
-    let x = X87Chop53::load_i32(i32::from(dx));
-    let y = X87Chop53::load_i32(i32::from(dy));
-    let squared = X87Chop53::add(X87Chop53::mul(x, x), X87Chop53::mul(y, y));
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    i32::from(X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i16)
+    let length = crate::util::native_x87::sqrt_approx_length([dx, dy].map(i32::from));
+    i32::from(length as i16)
 }
 
 impl Simulation {

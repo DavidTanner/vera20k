@@ -8,36 +8,81 @@ use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::world::Simulation;
 
-/// Ordinary Techno drawers select a ColorScheme Convert independently of
-/// the cell scalar: 00705D70 -> 0070720E; Init_Theater 00534D77 gives schemes
-/// neutral RGB. Ion propagation 0053C280 -> 0053AD00 substitutes global RGB.
-/// Aircraft altitude brightness and trigger-driven palette rebuild history
-/// remain unresolved; the former retains its existing compatibility path.
+/// An ordinary Techno draw's light: the intensity of the cell under it (its
+/// `+0x10A` word, the top scalar) plus `extra`, the class's
+/// [`body_extra_light`], through a ColorScheme Convert selected
+/// independently of the cell scalar: 00705D70 -> 0070720E; Init_Theater
+/// 00534D77 gives schemes neutral RGB. Ion propagation 0053C280 -> 0053AD00
+/// substitutes global RGB. Trigger-driven palette rebuild history remains
+/// unresolved.
 pub(crate) fn body_palette_light(
     grid: &CellLightGrid,
     scenario: &crate::sim::scenario_session::ScenarioLightingState,
     cell: (u16, u16),
-    category: crate::map::entities::EntityCategory,
-    extra_unit: i32,
-    extra_infantry: i32,
+    extra: i32,
 ) -> crate::render::palette_light::PaletteLight {
+    let top = grid.cell_light_at(cell).map_or(1000, |l| l.top_scalar);
+    crate::render::palette_light::PaletteLight::color_scheme(
+        color_scheme_rgb(Some(scenario)),
+        top.wrapping_add(extra),
+    )
+}
+
+/// The light a Techno's body draw adds to its cell's intensity:
+/// ExtraUnitLight= for a unit (UnitClass::DrawIt `0x0073D0C3`),
+/// ExtraInfantryLight= for infantry (`0x00518F90`), [`aircraft_extra_light`]
+/// for an aircraft, and none for a building's voxel turret.
+///
+/// RESIDUAL (YuriPlanet/vera20k#1215): UnitClass::DrawIt's arms ahead of
+/// its extra. On a bridge it adds four of the lighting profile's Level
+/// (`0x0073CFA7..0x0073D073`), and on a cell whose `+0x140` holds 0x10000 a
+/// unit that is not high-flying takes 500 off (`0x0073D078..0x0073D0BB`).
+/// Trigger: a vehicle on a bridge deck or on such a cell, at every crossing.
+/// Effect: VERA draws it four Levels darker (128 at Level=.032) or 500
+/// brighter. Downstream: presentation only.
+pub(crate) fn body_extra_light(
+    entity: &crate::sim::game_entity::GameEntity,
+    rules: &RuleSet,
+    sim: &Simulation,
+    terrain: Option<&ResolvedTerrainGrid>,
+) -> i32 {
     use crate::map::entities::EntityCategory;
-    use crate::render::palette_light::PaletteLight;
-    if category == EntityCategory::Aircraft {
-        return PaletteLight::default();
+    match entity.category {
+        EntityCategory::Unit => rules.general.extra_unit_light,
+        EntityCategory::Infantry => rules.general.extra_infantry_light,
+        EntityCategory::Aircraft => aircraft_extra_light(
+            rules.general.extra_aircraft_light,
+            crate::sim::movement::air_movement::current_fly_height(entity, terrain),
+            crate::sim::superweapon::lightning_storm::raging(sim),
+            &sim.session.lighting,
+        ),
+        _ => 0,
     }
-    let light = grid.cell_light_at(cell);
-    let brightness = match category {
-        EntityCategory::Unit => light
-            .map_or(1000, |l| l.top_scalar)
-            .wrapping_add(extra_unit),
-        EntityCategory::Infantry => light
-            .map_or(1000, |l| l.top_scalar)
-            .wrapping_add(extra_infantry),
-        _ => light.map_or(1000, |l| l.top_scalar),
+}
+
+/// What AircraftClass::Draw_It (`0x004148D1..0x0041493C`) adds to the
+/// intensity of the cell under the aircraft's Location before its voxel
+/// draw (FootClass::Draw_A_VXL `0x004DAF10` -> TechnoClass::Draw
+/// `0x00706640`): ExtraAircraftLight= (Rules `+0x17DC`) and a Level for each
+/// two levels of `height` (GetHeight `0x005F5F40`), the quotient truncated
+/// toward zero. The Level is IonLevel= (Scenario `+0x355C`) while a
+/// lightning storm rages (`LightningStorm::IsActive @ 0x0053A100`), else
+/// Level= (`+0x3544`). The level step (`[0x00889EC8]`) is the 104 its static
+/// initializer `0x00413B90` leaves. The sums and the product wrap at 32
+/// bits. Executed: `tools/superweapon_oracle.py` `aircraft_light`.
+pub(crate) fn aircraft_extra_light(
+    extra_aircraft_light: i32,
+    height: i32,
+    storm: bool,
+    scenario: &crate::sim::scenario_session::ScenarioLightingState,
+) -> i32 {
+    let level = if storm {
+        scenario.ion.level_units
+    } else {
+        scenario.normal.level_units
     };
-    let rgb = color_scheme_rgb(Some(scenario));
-    PaletteLight::color_scheme(rgb, brightness)
+    let levels = height / (2 * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS);
+    extra_aircraft_light.wrapping_add(levels.wrapping_mul(level))
 }
 
 /// Ordinary building DrawBody 0043D812..0043D85F; buildup 0043D644;
@@ -98,9 +143,9 @@ pub(crate) fn anim_palette_light(
 /// (`0x0070E360`) scales it before the blit picks its LightConvert row.
 /// UnitClass::DrawVoxelBody (`0x0073BF9C..0x0073BFB8`), TechnoClass::DrawSHP
 /// (`0x0070631F..0x00706389`: building bodies, bibs and buildup, SHP
-/// vehicles) and TechnoClass::Draw (`0x0070678D..0x007067E2`: a building's
-/// voxel turret and barrel; DrawSHP's sequence, read rather than executed)
-/// apply it. A draw reads the frame Main_Tick
+/// vehicles) and TechnoClass::Draw (`0x0070678D..0x007067E2`: voxel
+/// aircraft, and a building's voxel turret and barrel) apply it. A draw
+/// reads the frame Main_Tick
 /// renders under; its render (`0x0055DBBE`) precedes the logic
 /// (`0x0055DC9E`) and the increment (`0x0055DE81`), so that is `sim`'s
 /// committed `binary_frame`. VERA's compatibility tint, for translucent and
@@ -587,7 +632,6 @@ mod curtain_tint_tests;
 #[cfg(test)]
 mod palette_producer_tests {
     use super::*;
-    use crate::map::entities::EntityCategory;
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::scenario_session::ScenarioLightingState;
@@ -618,9 +662,8 @@ mod palette_producer_tests {
     fn techno_selected_scheme_does_not_inherit_cell_hue_or_row_count() {
         let grid = split_cell();
         let scenario = ScenarioLightingState::default();
-        let unit = body_palette_light(&grid, &scenario, (4, 7), EntityCategory::Unit, 100, 200);
-        let infantry =
-            body_palette_light(&grid, &scenario, (4, 7), EntityCategory::Infantry, 100, 200);
+        let unit = body_palette_light(&grid, &scenario, (4, 7), 100);
+        let infantry = body_palette_light(&grid, &scenario, (4, 7), 200);
         let cell = crate::render::palette_light::PaletteLight::cell(&grid, (4, 7), false);
         assert_eq!((unit.rows(), unit.brightness()), (53, 1300));
         assert_eq!((infantry.rows(), infantry.brightness()), (53, 1400));
@@ -641,14 +684,7 @@ mod palette_producer_tests {
         assert_eq!(light.rgb_key, [288, 576, 992]);
         assert_eq!((light.top_scalar, light.common_scalar), (1000, 799));
         let cell = crate::render::palette_light::PaletteLight::cell(&grid, (4, 7), false);
-        let unit = body_palette_light(
-            &grid,
-            &ScenarioLightingState::default(),
-            (4, 7),
-            EntityCategory::Unit,
-            200,
-            200,
-        );
+        let unit = body_palette_light(&grid, &ScenarioLightingState::default(), (4, 7), 200);
         assert_eq!((cell.rows(), cell.brightness()), (27, 799));
         assert_eq!((unit.rows(), unit.brightness()), (53, 1200));
         assert_eq!(unit.0[0] & 0x3ffff, 65535);
@@ -680,14 +716,7 @@ mod palette_producer_tests {
         assert_eq!((iso.rows(), iso.brightness()), (27, 900));
         // Building VXL uses the independent selected scheme/top producer even
         // when the SHP body above uses TerrainPalette or ExtraLight.
-        let voxel = body_palette_light(
-            &grid,
-            &scenario,
-            (4, 7),
-            EntityCategory::Structure,
-            100,
-            200,
-        );
+        let voxel = body_palette_light(&grid, &scenario, (4, 7), 0);
         assert_eq!((voxel.rows(), voxel.brightness()), (53, 1200));
         assert_eq!(voxel.0[0] & 0x3ffff, 65535);
         assert_eq!(
@@ -724,5 +753,86 @@ mod palette_producer_tests {
                 .brightness(),
             1000
         );
+    }
+
+    /// Each class's draw adds its own extra light, so no class's key reaches
+    /// another's draw: ExtraUnitLight= for a unit, ExtraInfantryLight= for
+    /// infantry, ExtraAircraftLight= and the height's Levels for an aircraft
+    /// (IonLevel= while a storm rages), and none for a building.
+    #[test]
+    fn each_class_adds_its_own_extra_light() {
+        use crate::map::entities::EntityCategory;
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nFixtureOnly=1\n[AudioVisual]\nExtraUnitLight=.1\nExtraInfantryLight=.2\n\
+             ExtraAircraftLight=.3\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        sim.session.lighting.normal.level_units = 32;
+        sim.session.lighting.ion.level_units = 20;
+        let extra = |sim: &Simulation, category| {
+            let mut entity = crate::sim::game_entity::GameEntity::test_default_of_category(
+                1,
+                "HTNK",
+                "Americans",
+                10,
+                10,
+                category,
+            );
+            entity.position.exact_z_leptons = Some(1500);
+            body_extra_light(&entity, &rules, sim, None)
+        };
+        assert_eq!(extra(&sim, EntityCategory::Unit), 100);
+        assert_eq!(extra(&sim, EntityCategory::Infantry), 200);
+        assert_eq!(extra(&sim, EntityCategory::Aircraft), 300 + 7 * 32);
+        assert_eq!(extra(&sim, EntityCategory::Structure), 0);
+        let owner = sim.interner.intern("Americans");
+        sim.lightning_storm =
+            crate::sim::superweapon::lightning_storm::LightningStorm::raging_for_test(
+                owner,
+                (0, 0),
+            );
+        assert_eq!(extra(&sim, EntityCategory::Aircraft), 300 + 7 * 20);
+    }
+
+    /// Each `aircraft_light` row (AircraftClass::Draw_It `0x004148D1..
+    /// 0x0041493E` run natively): the cell's word plus [`aircraft_extra_light`]
+    /// of the row's ExtraAircraftLight=, height, storm, Level= and IonLevel=
+    /// is the intensity the draw hands its voxel draw. The aircraft unit's
+    /// initializers leave the level step at 104 under the startup and the
+    /// process control words.
+    #[test]
+    fn the_aircraft_light_matches_native() {
+        let oracle: serde_json::Value =
+            serde_json::from_str(crate::test_fixture::text("tools/superweapon_oracle.json"))
+                .unwrap();
+        let section = &oracle["aircraft_light"];
+        let steps = section["level_height"].as_object().unwrap();
+        assert_eq!(steps.len(), 2);
+        for step in steps.values() {
+            assert_eq!(
+                step.as_i64(),
+                Some(i64::from(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS))
+            );
+        }
+        let rows = section["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 36);
+        let int = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+        let mut scenario = ScenarioLightingState::default();
+        for row in rows {
+            scenario.normal.level_units = int(&row["level"]);
+            scenario.ion.level_units = int(&row["ion_level"]);
+            let extra = aircraft_extra_light(
+                int(&row["extra"]),
+                int(&row["height"]),
+                row["storm"].as_bool().unwrap(),
+                &scenario,
+            );
+            assert_eq!(
+                int(&row["word"]).wrapping_add(extra),
+                int(&row["light"]),
+                "{row}"
+            );
+        }
     }
 }

@@ -161,7 +161,7 @@ mod locomotor_field_hash_tests {
         entity.category = EntityCategory::Unit;
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Teleport);
         if stashed {
-            assert!(locomotor.begin_drive_piggyback_for_teleporter(0));
+            assert!(locomotor.begin_piggyback(LocomotorKind::Drive, 0));
         }
         if let Some(mutate) = mutate {
             match locomotor.piggyback.as_mut() {
@@ -487,7 +487,6 @@ impl Simulation {
         self.hash_houses(&mut hasher);
         self.hash_terminal_score_snapshot(&mut hasher);
         self.hash_production(&mut hasher);
-        self.production.airfield_docks.hash_state(&mut hasher);
         self.hash_power_states(&mut hasher);
         self.hash_fog_and_alliances(&mut hasher);
         self.hash_bridge_state(&mut hasher);
@@ -826,14 +825,14 @@ impl Simulation {
                 b"house-spatial-threat-v1".hash(hasher);
                 threat.hash(hasher);
             }
-            house.economy.credits.hash(hasher);
+            house.economy.credits().hash(hasher);
             // The sole cash balance retains its original position in the hash stream.
-            house.economy.spent_credits.hash(hasher);
-            house.economy.harvested_credits.hash(hasher);
-            // Live score totals affect the later terminal Scenario draw, and
-            // House504080/503040 preserves them through native load. The
-            // retained-ship chain needs both its initial and terminal loss.
-            // Preserve zero and historical streams before this schema.
+            house.economy.spent_credits().hash(hasher);
+            // The score feeds the terminal Scenario draw.
+            house.economy.score().hash(hasher);
+            // House504080/503040 preserves the kill, loss and built totals
+            // through native load. The retained-ship chain needs both its
+            // initial and terminal loss. Preserve zero streams.
             if house.stats != crate::sim::house_state::MatchStatistics::default() {
                 b"house-match-statistics-v1".hash(hasher);
                 house.stats.hash(hasher);
@@ -928,6 +927,16 @@ impl Simulation {
                 b"house-force-values-v1".hash(hasher);
                 forces.hash(hasher);
             }
+            let docks = house.tracking.airport_docks();
+            if docks != 0 {
+                b"house-airport-docks-v1".hash(hasher);
+                docks.hash(hasher);
+            }
+            let factories = house.tracking.factories();
+            if factories != [0; 5] {
+                b"house-factory-counters-v1".hash(hasher);
+                factories.hash(hasher);
+            }
             if house.strategy_timer != crate::sim::house_state::strategy_timer_at_construction() {
                 b"house-strategy-timer-v1".hash(hasher);
                 house.strategy_timer.hash(hasher);
@@ -941,22 +950,15 @@ impl Simulation {
         }
     }
 
-    /// Hash all production-related state: queues, ready items, resources.
+    /// Hash all production-related state: queues, held objects, resources.
     fn hash_production(&self, hasher: &mut impl Hasher) {
         let retired_tiberium_fold = false;
-        // P5d: the per-`BuildQueueItem` `queues_by_owner` fold is RETIRED — the
-        // queue-of-record now lives in the factory registry (active build = `Factory`
-        // head fields; tail = `Factory.queue` of `QueueEntry`) and folds in
-        // `hash_factory_registry`. `remaining_base_frames` no longer exists (it was a
-        // `BuildQueueItem` field); the sidebar ETA derives it from `progress` at view time
-        // and it is intentionally NOT hashed (the 18->19 shape change). `ready_by_owner`,
-        // `active_producer_by_owner`, and `next_enqueue_order` are UNCHANGED below.
-        for (owner, ready) in &self.production.ready_by_owner {
-            owner.hash(hasher);
-            for type_id in ready {
-                type_id.hash(hasher);
-            }
-        }
+        // The queue-of-record lives in the factory registry (active build = `Factory`
+        // head fields; tail = `Factory.queue` of `QueueEntry`), and so does a completed
+        // building waiting for placement; both fold in `hash_factory_registry`.
+        // `remaining_base_frames` no longer exists (it was a `BuildQueueItem` field);
+        // the sidebar ETA derives it from `progress` at view time and it is
+        // intentionally NOT hashed (the 18->19 shape change).
         for (owner, categories) in self.production.primary_factory_entries() {
             owner.hash(hasher);
             for (category, sid) in categories {
@@ -1254,15 +1256,9 @@ impl Simulation {
     fn hash_entities(&self, hasher: &mut impl Hasher) {
         for entity in self.substrate.entities.values() {
             entity.stable_id().hash(hasher);
-            // Both mission and legacy ammo FSMs still execute. Hash their
-            // actual saved state until their ownership migration retires one.
             if let Some(ammo) = entity.aircraft_ammo.as_ref() {
                 b"aircraft-ammo-v170".hash(hasher);
                 ammo.hash(hasher);
-            }
-            if let Some(mission) = entity.aircraft_mission.as_ref() {
-                b"aircraft-mission-v170".hash(hasher);
-                mission.hash(hasher);
             }
             // GSI-09.01: the `BuildingClass+0x6D0/+0x6D8` ProduceCash
             // timer and the `TechnoClass+0x1CC/+0x1D0` drain link pair.
@@ -4406,37 +4402,6 @@ mod bridge161_hash_projection_tests {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod aircraft_dock_hash_tests {
-    use super::Simulation;
-    use crate::sim::aircraft::AircraftMission;
-    use crate::sim::docking::aircraft_dock::AircraftAmmo;
-    use crate::sim::game_entity::GameEntity;
-
-    #[test]
-    fn aircraft_dock_reservations_affect_simulation_hash() {
-        let mut sim = Simulation::new();
-        let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 0, 0);
-        entity.aircraft_ammo = Some(AircraftAmmo::new(3));
-        entity.aircraft_mission = Some(AircraftMission::DockedIdle { airfield_id: 2 });
-        sim.substrate.entities.insert(entity);
-        let before_reservation = sim.state_hash();
-        sim.production.airfield_docks.try_reserve(2, 1, 300);
-        assert_ne!(
-            sim.state_hash(),
-            before_reservation,
-            "reservation admission changes future state"
-        );
-        let occupied = sim.state_hash();
-        sim.production.airfield_docks.release(1);
-        assert_ne!(
-            sim.state_hash(),
-            occupied,
-            "release changes future admission"
-        );
     }
 }
 

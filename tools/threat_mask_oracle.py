@@ -11,6 +11,9 @@ Sections, each executed in a fresh emulator per case:
   then its final acceptance 0x6F8928..0x6F8948.
 - enemy_bonus: Calculate_Threat_Score 0x70CD10's SpecialThreatValue term and
   EnemyHouseThreatBonus, 0x70CEDC..0x70CF1D.
+- cutoff: Evaluate_Candidate's distance cutoff 0x6F8049..0x6F8178, from the
+  candidate's vt+0x54 through both GetCoords, Sqrt_Approx and ftol to the
+  range-argument test.
 
 Control flow the rows do not vary (the ThreatAvoidance factor between the two
 quarry slices, dormant without a Supress= weapon) rests on instruction
@@ -198,21 +201,85 @@ def enemy_bonus():
     return rows
 
 
+# ---------------------------------------------------------------- cutoff
+
+CUTOFF = 0x6F8049
+CUTOFF_ADMIT = (0x6F8176, 0x6F8178)
+CUTOFF_REJECT = (0x6F80E8, 0x6F894F)
+SCANNER_VTABLE = FAKE + 0x403000
+STUB_HIGH_FLYING = STUBS + 0x230
+STUB_SCANNER_COORDS = STUBS + 0x240
+STUB_CANDIDATE_COORDS = STUBS + 0x250
+
+
+def cutoff_row(*, high_flying, scanner, candidate, range_):
+    emu = MaskEmu()
+    uc = emu.uc
+    emu.write32(SCANNER, SCANNER_VTABLE)
+    emu.write32(SCANNER_VTABLE + 0x48, STUB_SCANNER_COORDS)
+    emu.write32(CANDIDATE, CANDIDATE_VTABLE)
+    emu.write32(CANDIDATE_VTABLE + 0x48, STUB_CANDIDATE_COORDS)
+    emu.write32(CANDIDATE_VTABLE + 0x54, STUB_HIGH_FLYING)
+
+    def coords(values):
+        def answer(e):
+            out = e.arg(0)
+            e.uc.mem_write(out, struct.pack('<iii', *values))
+            return out
+        return answer
+
+    emu.hook(STUB_SCANNER_COORDS, coords(scanner), 4)
+    emu.hook(STUB_CANDIDATE_COORDS, coords(candidate), 4)
+    emu.hook(STUB_HIGH_FLYING, lambda _e: int(high_flying), 0)
+    emu.write32(SP + 0x48, range_)
+    uc.reg_write(UC_X86_REG_EDI, SCANNER)
+    uc.reg_write(UC_X86_REG_ESI, CANDIDATE)
+    stop = run_checked(uc, CUTOFF, CUTOFF_ADMIT + CUTOFF_REJECT, count=400,
+                       required_addresses=[0x4CAC40, 0x7C5F00])
+    return dict(high_flying=high_flying, scanner=list(scanner), candidate=list(candidate),
+                range=range_, distance=i32(uc.reg_read(UC_X86_REG_EBP)),
+                admitted=stop in CUTOFF_ADMIT)
+
+
+def cutoff():
+    base = (20 * 256 + 128, 30 * 256 + 64, 208)
+    offsets = [(1000, 0, 0), (1000, 0, 416), (0, -1000, -416), (255, 0, 0), (0, 255, 0),
+               (724, 724, 0), (724, 724, 208), (-3, 4, 0), (3000, 2000, 832), (0, 0, 0),
+               (0, 0, 312), (46340, 0, 0), (-128, -127, 104)]
+    rows = []
+    for dx, dy, dz in offsets:
+        candidate = (base[0] + dx, base[1] + dy, base[2] + dz)
+        for high_flying in (False, True):
+            probe = cutoff_row(high_flying=high_flying, scanner=base, candidate=candidate,
+                               range_=1)
+            distance = probe['distance']
+            for range_ in sorted({distance, distance - 1, distance + 1, 0, -1, -256, 1}):
+                rows.append(cutoff_row(high_flying=high_flying, scanner=base,
+                                       candidate=candidate, range_=range_))
+    return rows
+
+
 def generate():
-    return dict(flags=flags(), quarry_terms=quarry_terms(), enemy_bonus=enemy_bonus())
+    return dict(flags=flags(), quarry_terms=quarry_terms(), enemy_bonus=enemy_bonus(),
+                cutoff=cutoff())
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
         scope=('Greatest_Threat\'s flags word over masks; Evaluate_Candidate\'s All-To-Hunt '
                'and quarry terms over synthetic candidates, then its final acceptance; '
-               'Calculate_Threat_Score\'s SpecialThreatValue term and EnemyHouseThreatBonus.'),
+               'Calculate_Threat_Score\'s SpecialThreatValue term and EnemyHouseThreatBonus; '
+               'Evaluate_Candidate\'s distance cutoff over coordinate offsets, the candidate\'s '
+               'high-flying answer and positive, zero and negative ranges.'),
         assumptions=['x87 control word 0x0E7F (PC53, chop), the harness default.',
                      'Fixture objects carry only the fields the slices read.'],
         substitutions=['The candidate\'s WhatAmI (vt+0x2C), occupant count (vt+0x408) and '
                        'current weapon (vt+0x3F4) answer from the case.',
+                       'For the cutoff, the scanner\'s and the candidate\'s GetCoords (vt+0x48) '
+                       'write the case\'s coordinates and the candidate\'s vt+0x54 answers its '
+                       'high-flying flag; Sqrt_Approx and ftol run.',
                        'Between the quarry slices, the ThreatAvoidance factor '
                        '(0x6F88BF..0x6F8926) is skipped: 1.0, no score change.'],
         entry_points={'flags': FLAGS, 'quarry_terms': TERMS, 'finish': FINISH,
-                      'enemy_bonus': BONUS},
+                      'enemy_bonus': BONUS, 'cutoff': CUTOFF},
     ))

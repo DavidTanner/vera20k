@@ -35,6 +35,7 @@ mod ground_move;
 pub(crate) use ground_move::GroundMove;
 mod house_base;
 mod house_defeat;
+mod ion_blast;
 pub(crate) use house_base::HouseBaseState;
 mod infantry_terminal;
 mod jumpjet_cruise;
@@ -42,6 +43,7 @@ mod jumpjet_cruise;
 pub(crate) use infantry_terminal::InfantryDeathSequence;
 pub(crate) use infantry_terminal::{InfantryDeathPostlude, InfantryTerminal};
 mod aircraft_attack;
+mod aircraft_enter;
 mod aircraft_fire_location;
 mod aircraft_move;
 pub(crate) mod damage_consequences;
@@ -49,6 +51,7 @@ pub(crate) mod display_layers;
 mod display_registry;
 mod fly_landing;
 mod fly_orders;
+mod fly_process;
 mod frame_error;
 mod ground_keys;
 mod lifecycle;
@@ -71,13 +74,13 @@ mod projectile_collision;
 mod substrate;
 mod techno_ai;
 pub(crate) use techno_ai::ObjectAiCtx;
+pub(crate) use techno_ai::direct_greatest_threat;
 pub(crate) use techno_ai::dispatch_foot_mission;
+pub(crate) use techno_ai::enter_idle_mode;
 pub(crate) use techno_ai::foot_enter_idle_mode_selection;
 pub(crate) use techno_ai::foot_unlimbo_idle_mode;
 pub(crate) use techno_ai::passive_target_acquire;
 pub(crate) use techno_ai::queue_and_commence;
-pub(crate) use techno_ai::queue_foot_enter_idle_mode;
-pub(crate) use techno_ai::team_leader_greatest_threat;
 mod command_schedule;
 pub(crate) mod techno_ai_cloak;
 pub(crate) mod unit_post;
@@ -152,7 +155,6 @@ use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
 use crate::sim::command::CommandEnvelope;
 use crate::sim::components::{AnimClassSpawnDescriptor, Position};
-use crate::sim::docking::aircraft_dock;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::house_state::HouseState;
 use crate::sim::house_strategy;
@@ -674,17 +676,28 @@ pub enum SimSoundEvent {
     /// `EVA_LightningStormCreated` (`0x0053AB11`) and posts
     /// `TXT_LIGHTNING_STORM_APPROACHING` (`0x0053AB40`).
     LightningStormApproaching,
+    /// `owner`'s Lightning Storm was refused because a storm rages or counts
+    /// down (`SuperClass::ClickFire @ 0x006CBAA7..0x006CBAC7`). The client
+    /// whose player owns it (Fire_SW passes `this == PlayerPtr`,
+    /// `0x004FAE8E`) posts `Msg:LightningStormActive`
+    /// (`LightningStorm::PrintMessage @ 0x0053AE00`).
+    LightningStormRefused { owner: InternedId },
+    /// `owner`'s Psychic Dominator was refused because one is active
+    /// (`0x006CBAD6..0x006CBAF6`). The client whose player owns it posts
+    /// `Msg:DominatorActive` (`PsyDom::PrintMessage @ 0x0053B410`).
+    PsychicDominatorRefused { owner: InternedId },
     /// First occupant entered a CanBeOccupied building (cargo 0→1).
     /// Owner is the building owner at AddGarrisonOccupant time; civilian
     /// ownership transfer is reported separately from building reconciliation.
     /// App layer plays EVA_StructureGarrisoned if owner is local human.
     StructureGarrisoned { owner: InternedId },
-    /// Last occupant left a garrisoned building (cargo 1→0).
-    /// Owner is the **pre-revert** owner — the player whose garrison
-    /// just emptied. Matches gamemd's CheckAutoSellOrCivilian which
-    /// fires EVA before ChangeOwner. App layer plays EVA_StructureAbandoned
-    /// if owner is local human.
-    StructureAbandoned { owner: InternedId },
+    /// CheckAutoSellOrCivilian458200 abandoned an empty map garrison.
+    /// House50B6F0 already admitted the old owner. The sound precedes radar
+    /// admission; EVA plays only when CreateRadarEvent accepts the request.
+    StructureAbandoned {
+        owner: InternedId,
+        radar: crate::sim::radar::RadarEventRequest,
+    },
     /// First-occupant SFX from rulesmd [AudioVisual] BuildingGarrisonedSound.
     /// Positional cue gated on owner == local human.
     BuildingGarrisonedSfx { owner: InternedId, rx: u16, ry: u16 },
@@ -1280,6 +1293,10 @@ pub struct Simulation {
     pub(crate) lightning_storm: crate::sim::superweapon::lightning_storm::LightningStorm,
     /// The Psychic Dominator's globals (one at a time).
     pub(crate) psychic_dominator: crate::sim::superweapon::psychic_dominator::PsychicDominatorState,
+    /// IonBlastClass's vector (`0x00AA0118`), owned by `ion_blast`. Native
+    /// saves no blast.
+    #[serde(skip)]
+    ion_blasts: Vec<ion_blast::IonBlast>,
     /// Whether superweapon grants have been initialized from map-placed buildings.
     pub(crate) super_weapons_initialized: bool,
     /// Per-cell terrain speed modifier config (slope climb/descend).
@@ -1956,11 +1973,7 @@ impl Simulation {
             spawn_target_updates: _,
             drain_links: _,
         } = emit;
-        for projectile in projectile_spawns {
-            let stable_id = self.allocate_stable_id();
-            self.admit_projectile(stable_id, projectile);
-            self.construct_bullet_scheme(stable_id, rules);
-        }
+        self.admit_projectile_spawns(projectile_spawns, rules);
         let receipt = damage_consequences::DamageConsequences::live_fire(
             effects,
             pings,
@@ -1997,11 +2010,7 @@ impl Simulation {
         );
         let terrain_navigation_changed_cells = run.finish();
 
-        for projectile in commit.projectile_spawns {
-            let stable_id = self.allocate_stable_id();
-            self.admit_projectile(stable_id, projectile);
-            self.construct_bullet_scheme(stable_id, rules);
-        }
+        self.admit_projectile_spawns(commit.projectile_spawns, rules);
         #[cfg(test)]
         if let Some(fixture) = self.receiver_fixture.as_mut() {
             let changed = commit.effects.bridge_state_changed;
@@ -2592,6 +2601,41 @@ impl Simulation {
         );
     }
 
+    /// `ReceiveDamage(&Health, 0, C4Warhead=, NULL, 1, 1, NULL)` (vt+0x16C):
+    /// the self-destruct that ends a flying locomotor's owner when it has
+    /// nowhere to go, in Fly's Stop_Moving (`0x004CD0CD`) and landing retry
+    /// (`0x004CEBC7`) and Jumpjet's Stop_Moving (`0x0054B6B6`). Native passes
+    /// the Health field itself; this uses the shared bridge_ground stock
+    /// C4Warhead=Super fatal-path quotient, not general aliased packet
+    /// support: override-only early damage-pointer writes remain outside it.
+    pub(crate) fn receive_own_health_c4(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
+            return;
+        };
+        let warhead = self.interner.intern(&rules.bridge_warheads.c4_name);
+        self.commit_direct_damage_receiver(
+            rules,
+            overlay_registry,
+            crate::sim::combat::EntityDamageEvent::direct_receiver(
+                id,
+                health,
+                0,
+                crate::sim::combat::RAD_NO_ATTACKER,
+                None,
+                warhead,
+                crate::sim::combat::ReceiverCallFlags {
+                    ignore_defenses: true,
+                    arg6: true,
+                },
+            ),
+        );
+    }
+
     /// Terrain counterpart of a direct object receiver. Native bridge fallout
     /// forces Object damage, while Terrain's Wood/Immune gate still applies.
     pub(crate) fn commit_direct_terrain_damage_receiver(
@@ -3148,6 +3192,7 @@ impl Simulation {
             super_weapons: BTreeMap::new(),
             lightning_storm: Default::default(),
             psychic_dominator: Default::default(),
+            ion_blasts: Vec::new(),
             super_weapons_initialized: false,
             terrain_speed_config: terrain_speed::TerrainSpeedConfig::default(),
             debug_event_logging: false,
@@ -4081,6 +4126,38 @@ impl Simulation {
         self.projectiles.set_firer_house(bullet, house);
     }
 
+    /// Admit the bullets a detonation spawned (`BulletClass::SpawnShrapnel
+    /// @ 0x0046A310`), each [`Self::construct_bullet_scheme`]d as every
+    /// constructed bullet is. SpawnShrapnel then Fires each one (vt+0x1F0,
+    /// `0x0046A875`, `0x0046AD24`), whose Inviso arm (`0x004688B7..0x00468986`)
+    /// stands an `Inviso=` child on its target's vt+0x58, the coordinate the
+    /// spawn captured ([`ProjectileStore::fire_inviso`]); its OnBridge stays
+    /// clear, as only FireAt copies one. A `FlakScatter=` child would first be
+    /// scattered, the unported second scatter site (GSI-08.07 in `combat`); no
+    /// retail shrapnel weapon's projectile sets it.
+    ///
+    /// [`ProjectileStore::fire_inviso`]: crate::sim::projectile::ProjectileStore::fire_inviso
+    pub(crate) fn admit_projectile_spawns(
+        &mut self,
+        spawns: impl IntoIterator<Item = crate::sim::projectile::ProjectileSpawn>,
+        rules: &RuleSet,
+    ) {
+        for projectile in spawns {
+            let stable_id = self.allocate_stable_id();
+            let inviso = rules
+                .weapon(self.interner.resolve(projectile.payload.weapon))
+                .and_then(|weapon| weapon.projectile.as_deref())
+                .and_then(|id| rules.projectile(id))
+                .is_some_and(|kind| kind.inviso);
+            let placement = projectile.initial_target_position;
+            self.admit_projectile(stable_id, projectile);
+            self.construct_bullet_scheme(stable_id, rules);
+            if inviso {
+                self.projectiles.fire_inviso(stable_id, placement, false);
+            }
+        }
+    }
+
     pub(crate) fn admit_wave(&mut self, stable_id: u64, wave: crate::sim::wave::Wave) -> u64 {
         self.waves.spawn(stable_id, wave);
         let registered = self.register_wave(stable_id);
@@ -4791,7 +4868,7 @@ impl Simulation {
                 .and_then(|entity| self.object_type(entity.type_ref(), rules))
                 .map_or(0, |object| self.cost_of(old_owner, object, rules));
             if let Some(house) = self.houses.get_mut(&new_owner) {
-                house.stats.add_score(cost);
+                house.economy.add_score(cost);
             }
         }
         self.update_house_tracking(
@@ -4846,6 +4923,36 @@ impl Simulation {
         {
             entity.has_been_captured = true;
             entity.repairing = false;
+        }
+        // A factory leaves the old house's counter (Recount, `0x0044870E`)
+        // and joins the new one's (IncrementFactoryCount, `0x00448CDD`),
+        // whether it is in limbo or not.
+        if let Some(entity) = self.substrate.entities.get(stable_id) {
+            if let Some(house) = self.houses.get_mut(&old_owner) {
+                house.tracking.recount(entity);
+            }
+            if let Some(house) = self.houses.get_mut(&new_owner) {
+                house.tracking.increment_factory_count(entity);
+            }
+        }
+        // A Helipad's docks leave the old house's AirportDocks
+        // (`0x00448B4C..0x00448B6A`) and join the new one's
+        // (`0x00449229..0x00449245`), whether it has opened or not.
+        if category == EntityCategory::Structure
+            && let Some(rules) = rules
+            && let Some(docks) = self
+                .substrate
+                .entities
+                .get(stable_id)
+                .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                .filter(|object| object.helipad)
+                .map(|object| object.number_of_docks)
+        {
+            for (owner, delta) in [(old_owner, docks.wrapping_neg()), (new_owner, docks)] {
+                if let Some(house) = self.houses.get_mut(&owner) {
+                    house.tracking.add_airport_docks(delta);
+                }
+            }
         }
         // Techno701735..701751 writes the owner then recomputes only +41A.
         // A former current-house object's +41B history survives the transfer.
@@ -4926,16 +5033,16 @@ impl Simulation {
     ///   `WeaponsFactory=` building (`BuildingType+0x16BD`, the war-factory
     ///   exit link): `Assign_Destination(0, 1)` (`0x0070182F`),
     ///   `Assign_Target(0)` and `Enter_Idle_Mode(0, 1)` (`+0x484`), which
-    ///   reads the NEW owner:
+    ///   reads the NEW owner ([`enter_idle_mode`]):
     ///   - a war or chrono miner takes the Unit leaf's harvester arm
     ///     (`Simulation::unit_enter_idle_mode`): Harvest for the new owner,
     ///     Guard when that owner is human and the miner stands off ore, and
     ///     nothing while in radio contact (a miner docked at its refinery) or
     ///     while the Guard above is still only queued (a miner caught
     ///     mid-track);
-    ///   - any other Unit or Infantry takes VERA's Foot selector
-    ///     (`queue_foot_enter_idle_mode`) in place of the Unit `0x00738970`
-    ///     and Infantry `0x0051CBA0` leaves (residual below);
+    ///   - any other Unit or Infantry takes VERA's Foot selector in place of
+    ///     the Unit `0x00738970` and Infantry `0x0051CBA0` leaves (residual
+    ///     below);
     ///   - a Building (`0x0044D6A0` with `initial = 0`) calls `0x00447780(1)`
     ///     and `Queue_Mission(Guard, 0)`.
     ///
@@ -4955,9 +5062,8 @@ impl Simulation {
     ///   released Foot of such a type. Effect: Guard instead of AreaGuard.
     ///   Frequency: nil in stock (every `DefaultToGuardArea=` type is
     ///   psionic-immune and no stock house sets GUARD_AREA).
-    /// - Aircraft Enter_Idle_Mode (`0x004176F0`,
-    ///   `aircraft::enter_idle_mode_now`) is not called here, and no stock
-    ///   aircraft can be captured; the trailing `+0x423`-gated
+    /// - No stock aircraft can be captured, so the Aircraft Enter_Idle_Mode
+    ///   (`0x004176F0`) here is dormant; the trailing `+0x423`-gated
     ///   `vt+0x498`/`vt+0x494` and `vt+0x488(0, 0, 0, 0, 0)` calls are
     ///   unidentified.
     ///
@@ -5022,18 +5128,7 @@ impl Simulation {
             entity.movement_target = None;
         }
         let _ = self.assign_target_represented(stable_id, None, Some(rules));
-        match category {
-            EntityCategory::Unit => {
-                self.unit_enter_idle_mode(stable_id, Some(rules), false);
-            }
-            EntityCategory::Infantry => {
-                queue_foot_enter_idle_mode(self, stable_id, rules);
-            }
-            EntityCategory::Structure => {
-                self.building_enter_idle_mode(stable_id, false, Some(rules));
-            }
-            EntityCategory::Aircraft => {}
-        }
+        enter_idle_mode(self, stable_id, rules, None);
     }
 
     /// Legacy non-lifecycle contact scrub retained only for separately classified
@@ -6259,7 +6354,6 @@ impl Simulation {
         // tick raw-store consumers (vision, power, production, movement, miner,
         // aircraft, …) are dying-gated, so a corpse is excluded until that drain.
         let mut bridge_state_changed = false;
-        let mut passenger_ownership_changed = false;
 
         if lane == TickLane::Ordinary {
             executed_commands += self.apply_due_frame_ingress_commands(commands, execute_tick);
@@ -6335,6 +6429,7 @@ impl Simulation {
         // Receipts are frame-local: an aborted earlier frame must not leak one.
         self.fire_requests = Default::default();
         let object_pass = self.advance_live_object_pass(rules, overlay_registry)?;
+        let ownership_changed = object_pass.ownership_changed();
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         let movement_stats = object_pass.movement;
         destroyed_structure |= object_pass.destroyed_structure;
@@ -6437,10 +6532,7 @@ impl Simulation {
                 &fire_requests,
                 &projectile_detonations,
             );
-            for projectile in combat_result.projectile_spawns.iter().copied() {
-                let stable_id = self.allocate_stable_id();
-                self.admit_projectile(stable_id, projectile);
-            }
+            self.admit_projectile_spawns(combat_result.projectile_spawns.iter().copied(), rules);
             bridge_state_changed |= self.visit_combat_tail(first_tail_id, rules, overlay_registry);
             turret::tick_turret_rotation(
                 &mut self.substrate.entities,
@@ -6467,13 +6559,15 @@ impl Simulation {
             // --- Phase 6: Passengers ---
             // Retaliation is not a phase: every receiver issues its Mission
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
-            passenger_ownership_changed =
-                passenger::tick_passenger_system(self, rules, overlay_registry);
+            passenger::tick_passenger_system(self, rules, overlay_registry);
             self.tick_order_intents_post_combat_except(
                 Some(rules),
                 &tube_turn_owned_ids,
                 overlay_registry,
             );
+            // `IonBlastClass::UpdateAll @ 0x0053D310` follows the object loop
+            // (`0x0055B64B`).
+            self.update_ion_blasts();
             // `LogicClass__PerTickUpdate @ 0x0055AFB0` calls
             // `MapClass__UpdateCrateRegenTimers @ 0x0056BBE0` at `0x0055B65A`,
             // between `AlphaShapeClass::PurgeDisabled` and the Tactical,
@@ -6528,7 +6622,6 @@ impl Simulation {
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
             crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
-            aircraft_dock::tick_aircraft_docks(self, rules);
             if spawned_entities {
                 self.refresh_fog(&vision_config, Some(rules));
             }
@@ -6606,7 +6699,7 @@ impl Simulation {
                 terminal_score_finalized,
                 spawned_entities,
                 destroyed_structure,
-                ownership_changed: passenger_ownership_changed,
+                ownership_changed,
                 bridge_state_changed,
                 movement: movement_stats,
             },

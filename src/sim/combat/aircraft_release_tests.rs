@@ -9,20 +9,34 @@ use serde_json::Value;
 
 fn fixture(input: &Value) -> (Simulation, RuleSet) {
     let elite = input["elite_weapon"].as_bool().unwrap_or(false);
+    let passenger = input["passenger"].as_bool().unwrap_or(false);
     let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
         "[AircraftTypes]\n0=ORCA\n[ORCA]\nStrength=150\nSpeed=8\nAmmo=2\nROT=5\n\
-         Primary=Gun\n{}Fighter={}\nLocomotor={{4A582746-9839-11d1-B709-00A024DDAFD1}}\n\
-         [Gun]\nDamage=10\nROF=20\nRange=20\nBurst={}\nOmniFire={}\nProjectile=Shell\nWarhead=WH\n\
+         Primary=Gun\n{}Fighter={}\nLocomotor={{4A582746-9839-11d1-B709-00A024DDAFD1}}\n{}\
+         [Gun]\nDamage=10\nROF=20\nRange=20\nBurst={}\nOmniFire={}\nProjectile=Shell\nWarhead=WH\n{}\
          [EliteGun]\nDamage=10\nROF=37\nRange=20\nBurst={}\nProjectile=Shell\nWarhead=WH\n\
          [Shell]\nROT={}\nInviso={}\nAG=yes\nAA=yes\n\
-         [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+         [WH]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n{}",
         if elite { "ElitePrimary=EliteGun\n" } else { "" },
         input["fighter"].as_bool().unwrap_or(false),
+        if input["missile_spawn"].as_bool().unwrap_or(false) {
+            "MissileSpawn=yes\n"
+        } else {
+            ""
+        },
         input["burst"].as_i64().unwrap_or(2),
         input["omni_fire"].as_bool().unwrap_or(false),
+        input["speed"]
+            .as_i64()
+            .map_or(String::new(), |speed| format!("Speed={speed}\n")),
         input["elite_burst"].as_i64().unwrap_or(3),
         input["rot"].as_i64().unwrap_or(3),
         input["inviso"].as_bool().unwrap_or(true),
+        if passenger {
+            "[InfantryTypes]\n0=E1\n[E1]\nStrength=100\n"
+        } else {
+            ""
+        },
     )))
     .unwrap();
     let mut sim = Simulation::with_seed(0);
@@ -36,12 +50,11 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             suspended: crate::sim::mission::MissionId::NONE,
             queued: crate::sim::mission::MissionId::NONE,
             movement_bypass_latch: 0,
-            handler_state: 0,
+            handler_state: 4,
             mission_start_frame: 0,
             ai_counter: 0,
             dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
         });
-    entity.aircraft_mission = Some(AircraftMission::Attack { sub_state: 4 });
     entity.aircraft_ammo = Some(AircraftAmmo::new(2));
     entity.aircraft_ammo.as_mut().unwrap().current = input["ammo"].as_i64().unwrap_or(2) as i32;
     entity.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
@@ -52,9 +65,36 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         rules.object("ORCA").unwrap(),
         0,
     ));
+    if passenger {
+        let mut cargo = crate::sim::passenger::PassengerCargo::new(8, 0);
+        cargo.board_forced(2, 1);
+        entity.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
+    }
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = 2;
     sim.interner = test_interner();
+    if passenger {
+        // A playfield holding the aircraft's cell (10, 10).
+        sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
+            base: 10,
+            off_fc: 0,
+            off_100: 0,
+            off_104: 60,
+            off_108: 60,
+        });
+        let mut infantry = GameEntity::test_default(2, "E1", "Americans", 10, 10);
+        infantry.owner = sim.interner.intern("Americans");
+        infantry.type_ref = sim.interner.intern("E1");
+        infantry.category = EntityCategory::Infantry;
+        infantry.is_voxel = false;
+        infantry.sub_cell = Some(2);
+        infantry.passenger_role = crate::sim::passenger::PassengerRole::Inside {
+            transport_id: 1,
+            open_topped: false,
+        };
+        sim.substrate.entities.insert(infantry);
+        sim.substrate.next_stable_object_id = 3;
+    }
     sim.set_logic_order_for_test(vec![1]);
     (sim, rules)
 }
@@ -103,7 +143,7 @@ fn aircraft_release_control_matches_316_original_mission_suffixes() {
             row["input"]["ammo"].as_i64().unwrap() as i32,
             "{row}"
         );
-        let Some(AircraftMission::Attack { sub_state }) = entity.aircraft_mission else {
+        let Some(sub_state) = crate::sim::aircraft::attack_state(entity) else {
             panic!("{row}")
         };
         assert_eq!(sub_state as u64, row["state"].as_u64().unwrap(), "{row}");
@@ -131,8 +171,15 @@ fn aircraft_release_control_matches_316_original_mission_suffixes() {
 #[test]
 fn aircraft_request_preserves_rearm_and_state3_does_not_fire_early() {
     let (mut sim, rules) = fixture(&serde_json::json!({"burst":2,"fighter":true}));
-    sim.substrate.entities.get_mut(1).unwrap().aircraft_mission =
-        Some(AircraftMission::Attack { sub_state: 3 });
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .mission
+        .set_current_for_test(
+            crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
+            3,
+        );
     assert!(
         dispatch(&mut sim, &rules)
             .consequences
@@ -246,10 +293,7 @@ fn aircraft_release_runs_through_advance_tick() {
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.aircraft_ammo.as_ref().unwrap().release_pending());
     assert_eq!(entity.aircraft_ammo.as_ref().unwrap().current, 2);
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 1 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(1));
 }
 
 #[test]
@@ -292,8 +336,8 @@ fn a_strafer_drops_five_bombs_on_one_pass() {
         if fired > 0 {
             bombs.push((frame, fired));
         }
-        let Some(AircraftMission::Attack { sub_state }) =
-            sim.substrate.entities.get(1).unwrap().aircraft_mission
+        let Some(sub_state) =
+            crate::sim::aircraft::attack_state(sim.substrate.entities.get(1).unwrap())
         else {
             break;
         };
@@ -337,10 +381,7 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
             .is_empty()
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 5 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(5));
     assert_eq!(entity.mission.dispatch_timer().delay(), 1);
 
     let before = sim.scenario_rng.clone();
@@ -352,10 +393,7 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
             .is_empty()
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(matches!(
-        entity.aircraft_mission,
-        Some(AircraftMission::Attack { sub_state: 1 })
-    ));
+    assert_eq!(crate::sim::aircraft::attack_state(entity), Some(1));
     let mut expected = before;
     let rate = rules
         .mission_control
@@ -365,4 +403,130 @@ fn a_fighter_out_of_range_cycles_back_to_its_search() {
         rate + expected.next_range_i32_inclusive(0, 2)
     );
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
+}
+
+/// The first bullet a strike releases.
+fn first_bullet(sim: &mut Simulation, rules: &RuleSet) -> crate::sim::projectile::Projectile {
+    for frame in 0..60u32 {
+        sim.session.binary_frame = frame;
+        dispatch(sim, rules);
+        if let Some((_, bullet)) = sim.projectiles.iter().next() {
+            return bullet.clone();
+        }
+    }
+    panic!("the strike releases no bullet");
+}
+
+/// `AircraftClass::Fire_At`'s ROT 1 course (`0x004160CF..0x00416318`): a
+/// strafer's bomb leaves at weapon 0's speed (`+0xA8`, `Speed=30` read as 76
+/// leptons a frame), aimed from the aircraft at its target, the cell north
+/// of it. TechnoClass::FireAt alone launches a ROT 1 bullet at speed 1.
+#[test]
+fn a_strafers_bomb_leaves_at_its_weapon_speed_toward_the_target() {
+    let (mut sim, rules) = fixture(&serde_json::json!({
+        "burst": 1, "rot": 1, "inviso": false, "ammo": 1, "speed": 30
+    }));
+    let weapon_speed = rules.weapon("Gun").unwrap().speed;
+    assert_eq!(weapon_speed, 76);
+    let bomb = first_bullet(&mut sim, &rules);
+    let [x, y, z] = bomb
+        .velocity
+        .native()
+        .map(|axis| f64::from_bits(axis.bits()));
+    let speed = (x * x + y * y + z * z).sqrt();
+    assert!((speed - 76.0).abs() < 0.5, "at 76: ({x}, {y}, {z})");
+    assert!(
+        y < -75.0 && x.abs() < 1.0,
+        "north, at the target: ({x}, {y}, {z})"
+    );
+}
+
+/// `0x00415EEE..0x00415F05`: an aircraft carrying a passenger drops it
+/// (`Drop_Payload`) where it would fire, and its strike carries on as after
+/// a shot. VERA used to hold such an aircraft in state 4 with no shot.
+#[test]
+fn an_aircraft_carrying_a_passenger_drops_it_instead_of_firing() {
+    let (mut sim, rules) = fixture(&serde_json::json!({"burst": 1, "passenger": true}));
+    let result = dispatch(&mut sim, &rules);
+    assert!(result.consequences.fire_events().is_empty(), "no shot");
+    assert!(sim.projectiles.is_empty(), "no bullet");
+    let aircraft = sim.substrate.entities.get(1).unwrap();
+    assert!(aircraft.passenger_role.cargo().unwrap().is_empty());
+    assert_eq!(crate::sim::aircraft::attack_state(aircraft), Some(5));
+    let dropped = sim.substrate.entities.get(2).unwrap();
+    assert!(!dropped.passenger_role.is_inside_transport(), "dropped");
+}
+
+/// `0x00418506`: state 4 reads Ammo again after the release, so a fighter
+/// whose last Ammo went with its passenger (Drop_Payload spends one) leaves
+/// for state 10 instead of coming round again.
+#[test]
+fn a_fighter_that_drops_its_last_ammo_with_a_passenger_leaves() {
+    let (mut sim, rules) = fixture(&serde_json::json!({
+        "burst": 1,
+        "passenger": true,
+        "fighter": true,
+        "ammo": 1,
+    }));
+    dispatch(&mut sim, &rules);
+    let aircraft = sim.substrate.entities.get(1).unwrap();
+    assert!(
+        aircraft.passenger_role.cargo().unwrap().is_empty(),
+        "dropped"
+    );
+    assert_eq!(aircraft.aircraft_ammo.as_ref().unwrap().current, 0);
+    assert_eq!(crate::sim::aircraft::attack_state(aircraft), Some(10));
+}
+
+/// `0x0041631F..0x00416595`: a shot by a human player's aircraft flying at
+/// 1500 leptons over shrouded flat ground. IsShrouded (`0x00586360`) asks
+/// the Cell its height raises the Location onto, 7 cells up the map, and
+/// RevealArea maps `AttackingAircraftSightRange=` cells around that raised
+/// centre on that player's map, not around the ground under the aircraft.
+/// A computer's shot maps nothing.
+#[test]
+fn a_human_aircraft_shooting_over_shroud_maps_the_cells_around_it() {
+    for human in [false, true] {
+        let (mut sim, mut rules) = fixture(&serde_json::json!({"burst": 1}));
+        rules.general.attacking_aircraft_sight_range = 2;
+        sim.resolved_terrain = Some(crate::map::resolved_terrain::test_grid(
+            64,
+            64,
+            crate::map::resolved_terrain::test_flat_cell,
+        ));
+        sim.fog.width = 64;
+        sim.fog.height = 64;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .position
+            .exact_z_leptons = Some(1500);
+        let americans = sim.interner.intern("Americans");
+        sim.houses.insert(
+            americans,
+            crate::sim::house_state::HouseState::new(americans, 0, None, human, 0, 10),
+        );
+        let result = dispatch(&mut sim, &rules);
+        assert_eq!(result.consequences.fire_events().len(), 1, "one shot");
+        let mapped = |rx, ry| sim.fog.is_ground_unshrouded(americans, rx, ry);
+        assert_eq!(mapped(3, 3), human, "the raised centre, human {human}");
+        assert_eq!(mapped(5, 3), human, "radius 2, human {human}");
+        assert!(!mapped(6, 3), "radius 2, human {human}");
+        assert!(!mapped(10, 10), "not the ground under it, human {human}");
+    }
+}
+
+/// `0x0041659E..0x004165AC`: a missile on the kamikaze tracker (`+0x6CA`,
+/// set by its Push) that fires is removed (UnInit) after the shot.
+#[test]
+fn a_kamikaze_missile_is_removed_after_its_shot() {
+    let (mut sim, rules) = fixture(&serde_json::json!({"burst": 1, "missile_spawn": true}));
+    sim.kamikaze_push(1, None, &rules, None);
+    assert!(sim.kamikaze.contains(1));
+    let result = dispatch(&mut sim, &rules);
+    assert_eq!(result.consequences.fire_events().len(), 1, "it fires");
+    let missile = sim.substrate.entities.get(1).unwrap();
+    assert!(!missile.lifecycle.object_alive, "UnInit");
+    assert!(sim.substrate.pending_delete.contains(&1));
 }

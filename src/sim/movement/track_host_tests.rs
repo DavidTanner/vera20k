@@ -1706,8 +1706,8 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             "unit_coordinate": [at.x,at.y,at.z],
             "health": unit.health.current,
             "estimate": unit.estimated_health.get(),
-            "balance": house.economy.credits,
-            "spent": house.economy.spent_credits,
+            "balance": house.economy.credits(),
+            "spent": house.economy.spent_credits(),
             "unit_mission": unit.mission.current().raw(),
             "unit_queued": unit.mission.queued().raw(),
             "unit_nav": nav(unit.navigation.nav_com),
@@ -1963,8 +1963,10 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
                 integer(&stage[5]),
             ));
         let house = sim.houses.get_mut(&owner).unwrap();
-        house.economy.credits = integer(&before["balance"]);
-        house.economy.spent_credits = integer(&before["spent"]);
+        house
+            .economy
+            .set_credits_for_test(integer(&before["balance"]));
+        house.economy.set_spent_for_test(integer(&before["spent"]));
         sim.substrate.occupancy =
             crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
         sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
@@ -2184,6 +2186,67 @@ fn foot_idle_set_latch_refuses_queue_and_speed_setters_without_effects() {
     );
     assert_eq!(sim.state_hash(), hash);
     assert_eq!(sim.rng_state(), rng);
+}
+
+/// Foot4D831A..4D8376 asks the active locomotor's IPiggyback, whatever its
+/// class, and the original rows supply its permission and the object END
+/// hands back. A Chrono Warp's Teleport whose warp is over may end here, as
+/// a Drive may; mid-warp it refuses. AL, the restore and the zero-speed
+/// setter follow the rows. Teleport's own gate (`0x00719F30`) is read, not
+/// executed by this corpus.
+#[test]
+fn foot_idle_ends_a_warp_teleport_like_original_end_rows() {
+    use crate::rules::locomotor_type::LocomotorKind;
+    let rows = idle_base_native_rows();
+    let mut compared = 0;
+    for row in rows.iter().filter(|row| {
+        let input = &row["input"];
+        input["group"] == "core"
+            && input["latch"] == 0
+            && input["scatter_pending"] == 0
+            && input["queue"].as_array().is_some_and(Vec::is_empty)
+            && input["args"] == serde_json::json!([0, 0])
+            && (input["end"] == "success" || input["end"] == "denied")
+    }) {
+        let mut sim = idle_base_fixture(EntityCategory::Unit);
+        let actor = sim.substrate.entities.get_mut(1).unwrap();
+        let mut locomotor =
+            super::super::locomotor::LocomotorState::for_test_kind(LocomotorKind::Drive);
+        assert!(locomotor.begin_piggyback(LocomotorKind::Teleport, 20));
+        if row["input"]["end"] == "denied" {
+            let warp = super::super::teleport_movement::ChronoWarp::new(
+                DriveCoord::cell(12, 8, 0),
+                actor.owner(),
+                20,
+            );
+            locomotor.teleport_runtime_mut().unwrap().arm_chrono(warp);
+        }
+        actor.locomotor = Some(locomotor);
+        actor.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
+        let returned = sim.foot_enter_idle_base(1, None, None);
+
+        let events: Vec<&str> = row["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|event| event["event"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            u8::from(returned),
+            row["returned_al"].as_u64().unwrap() as u8
+        );
+        let actor = sim.substrate.entities.get(1).unwrap();
+        let locomotor = actor.locomotor.as_ref().unwrap();
+        let restored = events.contains(&"restore");
+        assert_eq!(locomotor.active_kind() == LocomotorKind::Drive, restored);
+        assert_eq!(locomotor.piggyback.is_none(), restored);
+        assert_eq!(
+            actor.foot_speed.applied_fraction() == crate::util::fixed_math::SIM_ZERO,
+            events.contains(&"speed")
+        );
+        compared += 1;
+    }
+    assert_eq!(compared, 2, "the permitted and the refused END rows");
 }
 
 /// The inherited byte is saved by VERA snapshot286 and contributes to the

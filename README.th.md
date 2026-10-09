@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="การทดสอบไลบรารีบน Linux ครั้งล่าสุด (สั่งรันด้วยตนเอง)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="การทดสอบไลบรารีบน Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="การทดสอบไลบรารีบน Windows ครั้งล่าสุด (สั่งรันด้วยตนเอง)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="การทดสอบไลบรารีบน Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="เข้าร่วม Discord" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_group-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="กลุ่ม QQ" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -21,7 +22,7 @@ VERA20k สร้างโดยเกมเมอร์ เพื่อเก�
 ## เป้าหมายของโครงการ
 
 1. คงรูปแบบการเล่น ภาพ และบรรยากาศของ Red Alert 2: Yuri's Revenge ต้นฉบับไว้
-2. รองรับการต่อสู้ที่ใหญ่ขึ้น: สูงสุด **30 ผู้เล่น** และ **20,000 ยูนิต** บนแผนที่ขนาดใหญ่ขึ้น
+2. รองรับการต่อสู้ที่ใหญ่ขึ้น: สูงสุด **30 ผู้เล่น** และ **20,000 ยูนิต** บนแผนที่ขนาด 500×500
 3. เพิ่มฟีเจอร์ RTS ที่เป็นที่รู้จัก ทั้งเก่าและใหม่ รวมถึงฟีเจอร์ที่ไม่เคยมีมาก่อน
 4. ไคลเอนต์ผู้เล่นหลายคนในตัว
 
@@ -66,14 +67,11 @@ cargo run --release --bin vera20k
 ## ร่วมพัฒนา
 
 ยินดีรับความช่วยเหลือ คุณจะเขียนโค้ด รีแฟกเตอร์เอนจิน ทดสอบเกม เสนอไอเดีย หรือเล่นเทียบกับเกมต้นฉบับ
-แล้วบอกเราว่าตรงไหนรู้สึกผิดไปก็ได้ เปิด PR มาได้เลย ที่เหลือเราจัดการเอง ถ้าเป็นงานใหญ่ ให้ถามก่อนใน issue
-หรือใน [Discord](https://discord.gg/kmjRUn5m5F)
+แล้วบอกเราว่าตรงไหนรู้สึกผิดไปก็ได้ เปิด PR มาได้เลย ที่เหลือเราจัดการเอง
+การพูดคุยอยู่ใน [Discord](https://discord.gg/kmjRUn5m5F) และในกลุ่ม QQ (1097193563)
 
 โค้ดกลไกเกมอยู่ใน `src/sim/` การเรนเดอร์อยู่ใน `src/render/` ส่วนเมนูและการรับอินพุตอยู่ใน `src/app/` และ `src/ui/`
 คุณไม่จำเป็นต้องใช้เครื่องมือ Python ใน `tools/`
-[ภาพรวมสถาปัตยกรรม](https://yuriplanet.github.io/vera20k/th/) อธิบายว่าส่วนต่าง ๆ ของเอนจินทำงานร่วมกันอย่างไร
-รันการทดสอบด้วย `cargo test -p vera20k --lib` การทดสอบที่ต้องใช้ไฟล์ INI ของเกมจะถูกข้ามไปแต่ยังนับว่าผ่าน
-จนกว่าคุณจะรัน `cargo run --bin extract-ini [โฟลเดอร์เกม]`
 
 ผลงานที่ร่วมพัฒนาใช้สัญญาอนุญาต GPLv3 เช่นเดียวกับส่วนอื่นของโครงการ และไม่ต้องลงนาม CLA
 

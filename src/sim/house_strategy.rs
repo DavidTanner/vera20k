@@ -51,10 +51,6 @@
 //!   (`0x00457DE0(1, 0)`, whose occupants also leave their teams at
 //!   `0x0045812B`) is not ported: no VERA computer house garrisons a
 //!   building, as no garrison script action is ported.
-//! - All_To_Hunt queues Hunt on the house's aircraft as native does, but VERA
-//!   has no aircraft Hunt mission (`sim::aircraft::idle_mode`). Trigger: a
-//!   computer house that sells off and hunts while it owns aircraft. Effect:
-//!   its aircraft do not go looking for targets.
 //! - State four's writers (TriggerAction::Execute `0x006DEAFF`, a team
 //!   script at `0x006E99E5`) have no VERA producer, and the All-To-Hunt
 //!   latch's reader (`TechnoClass::Evaluate_Candidate @ 0x006F8765`, the

@@ -594,7 +594,7 @@ fn stop_does_not_touch_a_stashed_native_cleg_request() {
             .unwrap(),
         retained
     );
-    assert!(super::super::locomotor_owner::restore_admitted_primary(
+    assert!(super::super::locomotor_owner::end_admitted_piggyback(
         entity
     ));
     assert_eq!(
@@ -721,7 +721,7 @@ fn native_cleg_reservation_survives_snapshot_and_is_hashed() {
         assert_eq!(restored.state_hash(), hash, "exact resolver restoration");
         for world in [&mut sim, &mut restored] {
             if stashed {
-                assert!(super::super::locomotor_owner::restore_admitted_primary(
+                assert!(super::super::locomotor_owner::end_admitted_piggyback(
                     world.substrate.entities.get_mut(id).unwrap()
                 ));
             }

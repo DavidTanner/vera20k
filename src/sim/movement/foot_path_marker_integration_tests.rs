@@ -54,7 +54,7 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
         );
         assert!(matches!(
             sim.search_foot_path(&request, None, goal, &rules, Some(&registry)),
-            Ok(Ok(true))
+            Ok(Ok(()))
         ));
         assert_eq!(sim.rng_state(), rng);
         let actor = sim.substrate.entities.get(id).unwrap();
@@ -98,7 +98,7 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
             .unwrap();
             assert!(matches!(
                 sim.search_foot_path(&next, None, goal, &rules, Some(&registry)),
-                Ok(Ok(true))
+                Ok(Ok(()))
             ));
             let actor = sim.substrate.entities.get(id).unwrap();
             assert_eq!(

@@ -247,7 +247,7 @@ fn power_and_force_release(sim: &mut Simulation, building_id: u64, unit_id: u64)
     head.y = head.y.wrapping_add(128);
     // No entity borrow spans Force's synchronous world receiver. Its bool
     // describes retained-track admission, not whether the caller continues.
-    let _ = sim.force_drive_track(unit_id, 0x47, head);
+    let _ = sim.force_track(unit_id, 0x47, head);
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "force");
     //45944A/45976F write this even after Force's null/limbo early return.

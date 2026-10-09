@@ -164,15 +164,12 @@ pub fn place_production_with_overlays(
             let Some(owner_id) = sim.interner.get(owner) else {
                 return false;
             };
-            let Some(factory) = sim
+            let Some(object) = sim
                 .production
                 .factories
                 .view(owner_id, category)
-                .filter(|factory| factory.ready)
+                .and_then(|factory| factory.complete_object())
             else {
-                return false;
-            };
-            let Some(object) = factory.object else {
                 return false;
             };
             let Some(entity_id) = object.entity_id else {
@@ -186,12 +183,13 @@ pub fn place_production_with_overlays(
             {
                 return false;
             }
-            // Native wrapper5F5C20 -> TypeFindFactory5F7900. A null
-            // Infantry/Aircraft producer leaves the head and queue untouched.
-            // Unit alone retries with its radio-selection restriction skipped.
+            // Native wrapper5F5C20 -> TypeFindFactory5F7900 with (0,1); an
+            // aircraft (`What_Am_I` 2) alone retries with the busy-airfield
+            // gate skipped (1,1) (0x004FB524..0x004FB54C). A null producer
+            // leaves the head and queue untouched.
             let producer = super::find_factory(sim, rules, owner_id, obj, false, true, false)
                 .or_else(|| {
-                    (obj.category == ObjectCategory::Vehicle)
+                    (obj.category == ObjectCategory::Aircraft)
                         .then(|| super::find_factory(sim, rules, owner_id, obj, true, true, false))
                         .flatten()
                 });
@@ -255,24 +253,19 @@ pub fn place_production_with_overlays(
 
     let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
-    let Some(ready_queue) = sim.production.ready_by_owner.get(&owner_id) else {
+    // The type's factory (Defenses for `BuildCat=Combat`, else Buildings)
+    // must hold its completed object.
+    let category = production_category_for_object(obj);
+    let Some(held) = super::factory_lifecycle::ready_object(sim, owner_id, category, type_interned)
+    else {
         return false;
     };
-    if !ready_queue.iter().any(|&queued| queued == type_interned) {
-        return false;
-    }
     if obj.wall {
         if evaluate_building_placement(sim, rules, owner, type_id, rx, ry, overlay_registry)
             .is_err()
         {
             return false;
         }
-        let category = production_category_for_object(obj);
-        let Some(held) =
-            super::factory_lifecycle::ready_object(sim, owner_id, category, type_interned)
-        else {
-            return false;
-        };
         let Some(registry) = overlay_registry else {
             return false;
         };
@@ -285,7 +278,8 @@ pub fn place_production_with_overlays(
         // Wall placement consumes the factory-created BuildingClass into
         // overlay state; the constructor identity is destroyed, never
         // reconstructed at placement.
-        return held.consume_after_wall_stamp(sim, rules);
+        held.consume_after_wall_stamp(sim, rules);
+        return true;
     }
     let foundation_str: String = rules
         .object(type_id)
@@ -300,11 +294,6 @@ pub fn place_production_with_overlays(
         z,
         foundation_str,
     );
-    let category = production_category_for_object(obj);
-    let Some(held) = super::factory_lifecycle::ready_object(sim, owner_id, category, type_interned)
-    else {
-        return false;
-    };
     // Original PLACE4FB1DA keeps Object::FindFactory(0,0)'s yard through
     // HELLO, Unlimbo, the child's C message and the yard's FirstContact BREAK.
     // The completed object is owned by the house factory, not by this yard.
@@ -389,17 +378,15 @@ pub fn place_production_with_overlays(
     // Refresh superweapon grants — newly placed building may provide a SW.
     crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
 
-    let released = held.release_after_placement(sim, rules);
-    if released {
-        crate::sim::radio::transmit(
-            sim,
-            new_sid,
-            yard,
-            crate::sim::radio::RadioMessage::DockArrived,
-            crate::sim::radio::RadioPayload::default(),
-            Some(rules),
-        );
-    }
+    held.release_after_placement(sim, rules);
+    crate::sim::radio::transmit(
+        sim,
+        new_sid,
+        yard,
+        crate::sim::radio::RadioMessage::DockArrived,
+        crate::sim::radio::RadioPayload::default(),
+        Some(rules),
+    );
     // `0x004FB2CC..0x004FB314`: BuildingSlam follows every successful
     // Unlimbo, before the yard's FirstContact BREAK, whatever the release.
     sim.sound_events
@@ -410,12 +397,10 @@ pub fn place_production_with_overlays(
         crate::sim::radio::RadioMessage::Break,
         Some(rules),
     );
-    if released {
-        // Original4FB4B7 records the successful build after FirstContact BREAK,
-        // not during CompletedProduction4FB2A1 or its C message4FB2AD.
-        super::factory_lifecycle::record_last_built(sim, rules, owner_id, type_interned);
-    }
-    released
+    // Original4FB4B7 records the successful build after FirstContact BREAK,
+    // not during CompletedProduction4FB2A1 or its C message4FB2AD.
+    super::factory_lifecycle::record_last_built(sim, rules, owner_id, type_interned);
+    true
 }
 
 fn evaluate_building_placement(
@@ -435,15 +420,13 @@ fn evaluate_building_placement(
         return Err(BuildingPlacementError::NotBuilding);
     }
     let owner_id = sim.interner.get(owner);
-    let type_interned = sim.interner.get(type_id);
-    let ready_for_owner = owner_id.and_then(|id| sim.production.ready_by_owner.get(&id));
-    let Some(ready_for_owner) = ready_for_owner else {
-        return Err(BuildingPlacementError::NotReady);
-    };
-    let has_type = type_interned.map_or(false, |tid| {
-        ready_for_owner.iter().any(|&queued| queued == tid)
-    });
-    if !has_type {
+    let ready = owner_id
+        .zip(sim.interner.get(type_id))
+        .is_some_and(|(owner_id, type_id)| {
+            let category = production_category_for_object(obj);
+            super::factory_lifecycle::ready_object(sim, owner_id, category, type_id).is_some()
+        });
+    if !ready {
         return Err(BuildingPlacementError::NotReady);
     }
     if obj.wall

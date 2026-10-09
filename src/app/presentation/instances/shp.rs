@@ -42,18 +42,28 @@ use crate::sim::animation;
 /// Only ever read by key, never iterated, so the hash order is not observable.
 pub(crate) type ParachuteBodyDepths = std::collections::HashMap<u64, f32>;
 
+/// `extra_light` is the class's
+/// [`crate::app::presentation::lighting::body_extra_light`].
+///
+/// RESIDUAL: an aircraft type without a voxel draws no body in gamemd.
+/// AircraftClass::Draw_It branches (`0x00414673`, `0x00414681`) past its
+/// light block to `0x004149E5`, whose call `0x004DB250` is a bare `RET 8`;
+/// VERA draws its SHP body here, lit as a voxel aircraft. Trigger: an
+/// AircraftType whose art lacks `Voxel=yes`. Frequency: none in retail data;
+/// the one such type, APACHE, has no art section, and VERA sends a type
+/// without art to the voxel draw (`world_spawn.rs` `object_uses_voxel`).
+/// Effect: the aircraft is visible. Downstream: presentation only.
 fn shp_body_tint(
     grid: &crate::map::lighting::CellLightGrid,
     cell: (u16, u16),
     category: EntityCategory,
-    extra_unit_light: i32,
-    extra_infantry_light: i32,
+    extra_light: i32,
 ) -> [f32; 3] {
     match category {
-        EntityCategory::Unit => grid.unit_tint_at(cell, extra_unit_light),
-        EntityCategory::Infantry => grid.infantry_tint_at(cell, extra_infantry_light),
+        EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft => {
+            grid.body_tint_at(cell, extra_light)
+        }
         EntityCategory::Structure => grid.building_body_tint_at(cell),
-        _ => grid.techno_tint_at(cell),
     }
 }
 
@@ -98,6 +108,11 @@ pub(crate) fn build_shp_instances(
     let ignore_visibility = state.match_state.sandbox_full_visibility;
     let art_reg: Option<&crate::rules::art_data::ArtRegistry> =
         state.rules().map(|rules| rules.art());
+    let terrain = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .and_then(|rt| rt.view().resolved_terrain());
     let canopy_owners = super::overlays::parachute_canopy_owners(state, sim);
 
     // Drawing borrows live map fields but uses its own small Dummy identity,
@@ -379,24 +394,20 @@ pub(crate) fn build_shp_instances(
         if canopy_owners.contains(&entity.stable_id()) {
             parachute_body_depths.insert(entity.stable_id(), depth);
         }
+        let extra_light = state.rules().map_or(0, |rules| {
+            crate::app::presentation::lighting::body_extra_light(entity, rules, sim, terrain)
+        });
         let tint = shp_body_tint(
             state.match_state.match_presentation.lighting.grid(),
             (pos.rx, pos.ry),
             entity.category,
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_unit_light),
-            state
-                .rules()
-                .map_or(0, |rules| rules.general.extra_infantry_light),
+            extra_light,
         );
         let selected_palette_light = crate::app::presentation::lighting::body_palette_light(
             state.match_state.match_presentation.lighting.grid(),
             &sim.session.lighting,
             (pos.rx, pos.ry),
-            entity.category,
-            state.rules().map_or(0, |r| r.general.extra_unit_light),
-            state.rules().map_or(0, |r| r.general.extra_infantry_light),
+            extra_light,
         );
         let palette_light = if entity.category == EntityCategory::Structure {
             let obj = state.rules().and_then(|r| r.object(type_str));
@@ -1219,26 +1230,26 @@ mod tests {
     use crate::sim::building_art::occupied_body_frame;
 
     #[test]
-    fn gsi_13_10_shp_selector_keeps_unit_and_infantry_extras_distinct() {
+    fn gsi_13_10_shp_selector_adds_the_class_extra_except_for_buildings() {
         let mut grid = CellLightGrid::new();
         grid.insert_profiled_light((4, 5), [1.0, 0.88, 0.88], 1.0);
 
-        let unit = shp_body_tint(&grid, (4, 5), EntityCategory::Unit, 200, 300);
-        let infantry = shp_body_tint(&grid, (4, 5), EntityCategory::Infantry, 200, 300);
-        let structure = shp_body_tint(&grid, (4, 5), EntityCategory::Structure, 200, 300);
+        let unit = shp_body_tint(&grid, (4, 5), EntityCategory::Unit, 200);
+        let infantry = shp_body_tint(&grid, (4, 5), EntityCategory::Infantry, 300);
+        let aircraft = shp_body_tint(&grid, (4, 5), EntityCategory::Aircraft, 424);
+        let structure = shp_body_tint(&grid, (4, 5), EntityCategory::Structure, 300);
         for (actual, expected) in unit.into_iter().zip([1.2, 1.056, 1.056]) {
             assert!((actual - expected).abs() < 0.0001);
         }
         for (actual, expected) in infantry.into_iter().zip([1.3, 1.144, 1.144]) {
             assert!((actual - expected).abs() < 0.0001);
         }
+        for (actual, expected) in aircraft.into_iter().zip([1.424, 1.25312, 1.25312]) {
+            assert!((actual - expected).abs() < 0.0001);
+        }
         for (actual, expected) in structure.into_iter().zip([1.0, 0.88, 0.88]) {
             assert!((actual - expected).abs() < 0.0001);
         }
-        assert_ne!(
-            unit, infantry,
-            "Unit and Infantry extras must not cross-feed"
-        );
     }
 
     // Civilian (TechLevel == -1) — matches CABHUT, CALA01, CAGAS01, CABUNK01, etc.

@@ -31,6 +31,7 @@ use crate::rules::particle_system_type::{
     ParticleSystemType, ParticleSystemTypeId, PendingParticleSystemType,
 };
 use crate::rules::particle_type::{ParticleType, ParticleTypeId, PendingParticleType};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup};
 use crate::rules::projectile_type::ProjectileType;
 use crate::rules::radar_event_config::RadarEventConfig;
 use crate::rules::smudge_type::SmudgeTypeRegistry;
@@ -43,6 +44,10 @@ use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SIM_ONE, SimFixed, sim_from_f32};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
+
+#[cfg(test)]
+#[path = "building_abandoned_sound_tests.rs"]
+mod building_abandoned_sound_tests;
 
 /// Country-level fields needed by gameplay systems.
 #[derive(Debug, Clone)]
@@ -103,7 +108,8 @@ pub struct CountryRules {
     pub name: Option<String>,
 }
 
-/// PPM scale for `IncomeMult` (1_000_000 = 1.0×). Must equal `apply_income_mult`'s divisor.
+/// PPM scale for `IncomeMult` and `PurifierBonus` (1_000_000 = 1.0×), the
+/// divisor of `Economy::add_tiberium_credits`.
 pub const INCOME_PPM_SCALE: i64 = 1_000_000;
 
 /// The House factors [`RuleSet::cost_of`] multiplies in, each indexed by
@@ -330,6 +336,12 @@ impl AiIonCannonValues {
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
+    /// `[AudioVisual] PoseDir=`, Rules `+0x44`: the constructor's 0
+    /// (`0x006656B9`), then ReadInteger (`0x00669268`) stored raw, without
+    /// DeployDir's shift. An aircraft with no radio contact and no passengers
+    /// lands facing it (`AircraftClass::Landing_Direction @ 0x0041B760`,
+    /// which Fly shifts left by 13).
+    pub pose_dir: i32,
     /// Rules+48, constructor6656BD zero; AudioVisual669272..66929B reads
     /// DeployDir with ReadInteger5276D0 then wrapping SHL5, after PoseDir.
     /// Jumpjet54C765 takes the low byte; retain the raw signed stored dword.
@@ -530,6 +542,12 @@ pub struct GeneralRules {
     /// for a non-retail INI missing the key. A type's own `FlightLevel=`
     /// overrides it through `ObjectType::flight_level`.
     pub flight_level: i32,
+    /// `[General] AttackingAircraftSightRange=` (`Rules+0x18`, ReadInt at
+    /// `0x00670F2E` over the constructor's 5, `0x00665682`): the radius
+    /// `AircraftClass::Fire_At` reveals around the current player's shooting
+    /// aircraft when its Location, a probe near it or its target is shrouded
+    /// (`0x0041651D..0x00416595`). Retail 2.
+    pub attacking_aircraft_sight_range: i32,
     /// Rules+420, [JumpjetControls] CruiseHeight. Object5F4260 uses this
     /// global threshold; linked Jumpjets instead use their own +2C height.
     pub display_cruise_height: i32,
@@ -601,6 +619,10 @@ pub struct GeneralRules {
     /// Mission_Attack forwards its charge instead of firing
     /// (`sim::world::techno_ai::building_missions`).
     pub prism_type: Option<String>,
+    /// `[General] PrerequisiteProcAlternate=` (Rules `+0x400`): the UnitType
+    /// whose on-map units also meet a `PROC` prerequisite
+    /// (`sim::production::can_build`).
+    pub prerequisite_proc_alternate: Option<String>,
     /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
     pub prism_support: PrismSupportRules,
     /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=`,
@@ -774,6 +796,12 @@ pub struct GeneralRules {
     /// Parsed from [AudioVisual] BuildingGarrisonedSound (typically "BuildingGarrisoned").
     /// None = no sound configured. Resolved at app layer to a sound.ini entry.
     pub building_garrisoned_sound: Option<String>,
+    /// Rules+1C0, [AudioVisual] BuildingAbandonedSound. Constructor6658D4
+    /// stores -1. Reader669C23..669C62 follows BuildingGarrisonedSound and
+    /// precedes BuildingRepairedSound: ReadString128, Voc Find7514D0, retain
+    /// the previous ID for absent/empty/unknown names. Bound by the shared
+    /// sound-reference reader over the processed rules passes.
+    pub building_abandoned_sound: Option<String>,
     /// Global wall/building sale cue from `[AudioVisual] SellSound=`.
     pub sell_sound: Option<String>,
     /// Base-alert siren from `[AudioVisual] BaseUnderAttackSound=` (stock
@@ -1329,9 +1357,11 @@ pub struct GeneralRules {
     pub repair_percent: f64,
 
     // -- Aircraft ammo reload --
-    /// Ticks to reload one ammo point at an airfield (from ReloadRate= minutes in [General]).
-    /// Default: 270 ticks (0.3 min × 60 sec × 15 ticks/sec).
-    pub reload_rate_ticks: u32,
+    /// `[General] ReloadRate=` — `RulesClass+0x1508`, ReadDouble (call
+    /// `0x00670C8E`) over the constructor's .05 (`0x0066738F`), in minutes.
+    /// A dock's Mission_Repair returns `ftol(ReloadRate * 900)` after a visit
+    /// that serviced a contact (`0x0044C92F`).
+    pub reload_rate: f64,
 
     // -- Movement delay timers --
     /// Retained [AI] PathDelay double, in minutes (Rules+1760).
@@ -1595,17 +1625,8 @@ pub(crate) fn damage_spark_spawn_threshold(band: f64) -> u32 {
     threshold.min(DAMAGE_SPARK_ROLL_COUNT as u128) as u32
 }
 
-/// `[General] URepairRate=` and `ReloadRate=` defaults, in minutes.
+/// `[General] URepairRate=` default, in minutes.
 const U_REPAIR_RATE_MINUTES: f64 = 0.016;
-const RELOAD_RATE_MINUTES: f64 = 0.3;
-
-/// A `[General]` minutes value as whole logic ticks (at least one), rounded
-/// from `f32` minutes.
-fn minutes_to_ticks(minutes: f64) -> u32 {
-    ((minutes as f32) * 60.0 * (crate::util::fixed_math::RA2_LOGIC_FRAMES_PER_SECOND as f32))
-        .round()
-        .max(1.0) as u32
-}
 
 /// One side's paradrop lists as `RulesClass::ReadGeneral` keeps them
 /// (`0x0067062F..0x006707C1`), each emptied by the constructor
@@ -1697,7 +1718,8 @@ impl GeneralBuildingTypes {
 /// gates and WallTower `0x0066F450..0x0066F583`): ReadString128 into a local
 /// buffer; an empty value keeps the current pointer, anything else goes
 /// through BuildingType FindOrAllocate (`0x004653C0`), whose `<none>` and
-/// `none` answer null.
+/// `none` answer null. PrerequisiteProcAlternate reads a UnitType the same
+/// way (`0x007480D0`).
 fn read_building_identity(
     general: &IniSection,
     key: &str,
@@ -1763,6 +1785,7 @@ impl PrismSupportRules {
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
+            pose_dir: 0,
             deploy_dir: 0,
             scroll_multiplier: 0.07,
             // RulesClass__Constructor @ 0x00665650 writes the double
@@ -1811,6 +1834,7 @@ impl Default for GeneralRules {
             safety_altitude: 500,
             line_trail_color_override: [0; 3],
             flight_level: 500,
+            attacking_aircraft_sight_range: 5,
             display_cruise_height: 400, // Rules constructor665C3A
             // Rules constructor 0x00665E2B..0x00665E81.
             hover_height: 120,
@@ -1832,6 +1856,7 @@ impl Default for GeneralRules {
             pad_aircraft_types: Vec::new(),
             separate_aircraft: false,
             prism_type: None,
+            prerequisite_proc_alternate: None,
             prism_support: PrismSupportRules::default(),
             building_types: GeneralBuildingTypes::default(),
             tiberium_grows: true,
@@ -1904,6 +1929,7 @@ impl Default for GeneralRules {
             dead_bodies: Vec::new(),
             guard_area_targeting_delay: 36,
             building_garrisoned_sound: None,
+            building_abandoned_sound: None,
             sell_sound: None,
             base_under_attack_sound: None,
             building_die_sound: None,
@@ -2015,8 +2041,8 @@ impl Default for GeneralRules {
             unit_repair_rate: U_REPAIR_RATE_MINUTES,
             repair_step: 5,
             repair_percent: 0.25,
-            // ReloadRate=.3 min = 18 sec = 270 ticks at 15 Hz.
-            reload_rate_ticks: minutes_to_ticks(RELOAD_RATE_MINUTES),
+            // RulesClass constructor 0x0066738F.
+            reload_rate: 0.05,
             // PathDelay=.01 min = 0.6 sec = 9 ticks at 15 Hz.
             path_delay: 0.016,
             // BlockagePathDelay=60 frames (directly in frames, not minutes).
@@ -2125,6 +2151,55 @@ impl Default for GarrisonRules {
             bunker_weapon_range_bonus: 0,
             open_topped_damage_multiplier: 1.0,
             open_topped_range_bonus: 2,
+        }
+    }
+}
+
+/// `[ElevationModel]`: the range bonus `TechnoClass::InRange` gives a shot
+/// fired down at a lower target (`0x006F6F60` on the direct arm, `0x006F70E0`
+/// on the arcing arm). `RulesClass::ReadElevationModel @ 0x0066D150`, called
+/// by `RulesClass::Process` at `0x00668F46`, reads the three keys only when the
+/// pass has the section (`0x00526810`), each defaulting to its current value.
+#[derive(Debug, Clone, Copy)]
+pub struct ElevationModel {
+    /// `ElevationIncrement=` (`Rules+0x1838`, ReadInt `0x0066D183`): levels of
+    /// height per bonus step. InRange divides by it unchecked (`IDIV` at
+    /// `0x006F705A` and `0x006F71D6`).
+    ///
+    /// RESIDUAL: at 0, the constructor's value, that division faults natively
+    /// on the first `SubjectToElevation=` shot that passes both vt+0x50 checks
+    /// (a grounded firer at a grounded object or a dry cell), even with no
+    /// drop; VERA adds no bonus. Dormant: retail `rulesmd.ini` sets 4, so only
+    /// a map or mode that sets 0 reaches it.
+    pub increment: i32,
+    /// `ElevationIncrementBonus=` (`Rules+0x1840`, ReadDouble `0x0066D1AA`):
+    /// cells of range per step.
+    pub increment_bonus: NativeF64Bits,
+    /// `ElevationBonusCap=` (`Rules+0x1848`, ReadDouble `0x0066D1D1`): the most
+    /// cells the steps add.
+    pub bonus_cap: NativeF64Bits,
+}
+
+impl Default for ElevationModel {
+    /// The constructor's stores (`0x00667807..0x0066781F`): `EBX` is 0 and
+    /// `EBP` holds `0x3FF00000`, the high dword of 1.0.
+    fn default() -> Self {
+        Self {
+            increment: 0,
+            increment_bonus: NativeF64Bits::ONE,
+            bonus_cap: NativeF64Bits::POSITIVE_ZERO,
+        }
+    }
+}
+
+impl ElevationModel {
+    fn from_ini(ini: &IniFile) -> Self {
+        let section = ini.section_or_empty("ElevationModel");
+        let d = Self::default();
+        Self {
+            increment: section.read_int("ElevationIncrement", d.increment),
+            increment_bonus: section.read_double_bits("ElevationIncrementBonus", d.increment_bonus),
+            bonus_cap: section.read_double_bits("ElevationBonusCap", d.bonus_cap),
         }
     }
 }
@@ -2369,6 +2444,7 @@ impl GeneralRules {
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
         let audio_visual = ini.section_or_empty("AudioVisual");
+        let pose_dir = audio_visual.read_int("PoseDir", defaults.pose_dir);
         let deploy_dir = audio_visual
             .read_int("DeployDir", defaults.deploy_dir >> 5)
             .wrapping_shl(5);
@@ -2403,6 +2479,7 @@ impl GeneralRules {
             ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
         let Some(general) = ini.section("General") else {
             return Self {
+                pose_dir,
                 deploy_dir,
                 iq_production,
                 iq_harvester,
@@ -2469,6 +2546,7 @@ impl GeneralRules {
                 general.read_double("AmbientChangeStep", 0.2),
             );
         Self {
+            pose_dir,
             deploy_dir,
             scroll_multiplier: audio_visual
                 .read_double("ScrollMultiplier", defaults.scroll_multiplier),
@@ -2629,6 +2707,10 @@ impl GeneralRules {
             line_trail_color_override: audio_visual
                 .read_color_rgb("LineTrailColorOverride", defaults.line_trail_color_override),
             flight_level: general.read_int("FlightLevel", 500),
+            attacking_aircraft_sight_range: general.read_int(
+                "AttackingAircraftSightRange",
+                defaults.attacking_aircraft_sight_range,
+            ),
             display_cruise_height,
             // ReadGeneral 0x0066EDC5..0x0066EE83 reads these into their
             // fields with the current value as default (%-aware ReadDouble).
@@ -2663,6 +2745,12 @@ impl GeneralRules {
             // `0x00671144` -> `0x0067BCE0`. The layered reader
             // (`native_processing`) replaces this projection.
             prism_type: read_building_identity(general, "PrismType", defaults.prism_type),
+            // `0x0066F787..0x0066F7C9`, replaced by the layered reader too.
+            prerequisite_proc_alternate: read_building_identity(
+                general,
+                "PrerequisiteProcAlternate",
+                defaults.prerequisite_proc_alternate,
+            ),
             prism_support: defaults.prism_support.read_pass(general),
             building_types: GeneralBuildingTypes {
                 gdi_gate_one: read_building_identity(general, "GDIGateOne", None),
@@ -2715,6 +2803,7 @@ impl GeneralRules {
             building_garrisoned_sound: audio_visual
                 .read_name("BuildingGarrisonedSound", 0x80)
                 .map(str::to_owned),
+            building_abandoned_sound: None,
             sell_sound: audio_visual.read_name("SellSound", 0x80).map(str::to_owned),
             base_under_attack_sound: audio_visual
                 .read_name("BaseUnderAttackSound", 0x80)
@@ -2980,9 +3069,7 @@ impl GeneralRules {
             repair_percent: general.read_double("RepairPercent", defaults.repair_percent),
             repair_step: general.read_int("RepairStep", defaults.repair_step),
             unit_repair_rate: general.read_double("URepairRate", defaults.unit_repair_rate),
-            reload_rate_ticks: minutes_to_ticks(
-                general.read_double("ReloadRate", RELOAD_RATE_MINUTES),
-            ),
+            reload_rate: general.read_double("ReloadRate", defaults.reload_rate),
             path_delay,
             blockage_path_delay_ticks,
             // ReadGeneral670235..670267 uses the same475D70 signed vector
@@ -3213,11 +3300,10 @@ pub struct RuleSet {
     /// Used by production_tech to determine what a building produces without
     /// hardcoding building names.
     pub factory_map: HashMap<String, FactoryType>,
-    /// Maps prerequisite alias (uppercase, e.g. "POWER") → list of building IDs
-    /// (uppercase) that satisfy it. Built from [General] PrerequisiteXxx keys.
-    /// RA2 uses these so that Prerequisite=POWER means "any power plant" rather
-    /// than a specific building ID.
-    pub prerequisite_groups: HashMap<String, Vec<String>>,
+    /// The `[General] Prerequisite*` lists (Rules `+0x358..+0x3E4`), in
+    /// [`PrerequisiteGroup::ALL`] order: an on-map building of any of them
+    /// meets that group in CanBuild.
+    prerequisite_lists: [Vec<Prerequisite>; 6],
     /// Rules-driven terrain land-type semantics keyed by TMP land byte.
     pub terrain_rules: TerrainRules,
     /// Native `[Tiberiums]` definitions in GameMD type order.
@@ -3249,6 +3335,8 @@ pub struct RuleSet {
     /// "fire through walls anyway" decision, a different mechanism with no
     /// consumer in this tree.
     pub allied_wall_transparency: bool,
+    /// `[ElevationModel]`, InRange's range bonus for a shot fired downhill.
+    pub elevation_model: ElevationModel,
     /// Per-cell radiation-field constants from [Radiation].
     pub radiation: RadiationRules,
     /// Radar event visual parameters (ping rectangles on minimap).
@@ -3351,6 +3439,9 @@ impl RuleSet {
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
+        rules.general.prerequisite_proc_alternate =
+            processed.prerequisite_proc_alternate().map(str::to_owned);
+        rules.prerequisite_lists = processed.prerequisite_lists().clone();
         rules.general.building_types = processed.building_types().clone();
         let (lightning, weather_anim, nullify_anim, splash) = processed.select_anim_rules();
         rules.general.lightning_warhead = lightning.to_owned();
@@ -3390,6 +3481,17 @@ impl RuleSet {
                 .find(|object| object.category == category && object.id == name)
             {
                 object.recoil = recoil;
+            }
+        }
+        for (category, name, prerequisite, prerequisite_override) in processed.prerequisite_states()
+        {
+            if let Some(object) = rules
+                .object_list
+                .iter_mut()
+                .find(|object| object.category == category && object.id == name)
+            {
+                object.prerequisite = prerequisite.to_vec();
+                object.prerequisite_override = prerequisite_override.to_vec();
             }
         }
         for (category, name, gunner_turrets) in processed.gunner_turret_states() {
@@ -3453,6 +3555,9 @@ impl RuleSet {
         self.general.construction_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "Construction"));
+        self.general.building_abandoned_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "BuildingAbandonedSound"));
         self.general.building_repaired_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "BuildingRepairedSound"));
@@ -3581,6 +3686,7 @@ impl RuleSet {
         let allied_wall_transparency: bool = ini
             .section_or_empty("WallModel")
             .read_bool("AlliedWallTransparency", false);
+        let elevation_model = ElevationModel::from_ini(ini);
         let radiation: RadiationRules = RadiationRules::from_ini(ini);
         let radar_event_config: RadarEventConfig = RadarEventConfig::from_ini(ini);
         let country_side_registry = parse_country_side_registry(ini);
@@ -3885,11 +3991,7 @@ impl RuleSet {
             .collect();
         log::info!("Factory map: {} entries", factory_map.len());
 
-        // Step 7: Parse prerequisite alias groups from [General].
-        let prerequisite_groups: HashMap<String, Vec<String>> = parse_prerequisite_groups(ini);
-        log::info!("Prerequisite groups: {} aliases", prerequisite_groups.len());
-
-        // Step 8: Parse superweapon type registry.
+        // Step 7: Parse superweapon type registry.
         let mut super_weapons: HashMap<String, SuperWeaponType> = HashMap::new();
         let sw_ids: Vec<String> = parse_registry(ini, "SuperWeaponTypes");
         let super_weapon_order: Vec<String> = sw_ids.clone();
@@ -3964,7 +4066,7 @@ impl RuleSet {
                 .count(),
         );
 
-        // Step 9: Two-pass parse for [Particles] and [ParticleSystems].
+        // Step 8: Two-pass parse for [Particles] and [ParticleSystems].
         // Cross-references (NextParticle, HoldsWhat) are resolved in pass 2 so
         // that INI ordering does not matter.
         let (particle_types, particle_types_by_name) = parse_particle_types(ini);
@@ -4061,7 +4163,7 @@ impl RuleSet {
             aircraft_ids,
             building_ids,
             factory_map,
-            prerequisite_groups,
+            prerequisite_lists: Default::default(),
             terrain_rules,
             tiberium_types,
             terrain_object_types,
@@ -4070,6 +4172,7 @@ impl RuleSet {
             powerups,
             garrison_rules,
             allied_wall_transparency,
+            elevation_model,
             radiation,
             radar_event_config,
             super_weapons,
@@ -4854,12 +4957,9 @@ impl RuleSet {
             .copied()
     }
 
-    /// Look up which building IDs satisfy a prerequisite alias (case-insensitive).
-    /// Returns None if the alias is not a known prerequisite group.
-    pub fn prerequisite_group(&self, alias: &str) -> Option<&[String]> {
-        self.prerequisite_groups
-            .get(&alias.to_ascii_uppercase())
-            .map(|v| v.as_slice())
+    /// `group`'s `[General] Prerequisite*` list.
+    pub(crate) fn prerequisite_list(&self, group: PrerequisiteGroup) -> &[Prerequisite] {
+        &self.prerequisite_lists[group.index()]
     }
 
     /// Whether a structure type is marked as a refinery in rules.ini.
@@ -5453,53 +5553,6 @@ fn collect_weapon_refs(objects: &[ObjectType]) -> HashSet<String> {
     }
 
     weapon_ids
-}
-
-/// Parse prerequisite alias groups from [General] PrerequisiteXxx keys.
-///
-/// RA2's rules.ini defines abstract prerequisite names (POWER, RADAR, etc.)
-/// that map to lists of concrete building IDs. For example:
-///   PrerequisitePower=GAPOWR,NAPOWR,NANRCT
-/// means any unit with `Prerequisite=POWER` is satisfied by owning any of those.
-///
-/// Also registers secondary aliases used in RA2 prerequisites:
-/// - FACTORY / WARFACTORY → same as PrerequisiteFactory list
-/// - BARRACKS / TENT → same as PrerequisiteBarracks list
-fn parse_prerequisite_groups(ini: &IniFile) -> HashMap<String, Vec<String>> {
-    let mut groups: HashMap<String, Vec<String>> = HashMap::new();
-    let Some(general) = ini.section("General") else {
-        return groups;
-    };
-
-    /// Known [General] keys and the alias name they define.
-    const PREREQ_KEYS: &[(&str, &str)] = &[
-        ("PrerequisitePower", "POWER"),
-        ("PrerequisiteProc", "PROC"),
-        ("PrerequisiteRadar", "RADAR"),
-        ("PrerequisiteTech", "TECH"),
-        ("PrerequisiteBarracks", "BARRACKS"),
-        ("PrerequisiteFactory", "FACTORY"),
-    ];
-
-    for &(ini_key, alias) in PREREQ_KEYS {
-        // `0x004770E0`: ReadString into `char[128]`, then `strtok(",")`.
-        if let Some(list) = general.read_list(ini_key, 0x80) {
-            let ids: Vec<String> = list.into_iter().map(str::to_ascii_uppercase).collect();
-            if !ids.is_empty() {
-                groups.insert(alias.to_string(), ids);
-            }
-        }
-    }
-
-    // Register secondary aliases that RA2 prerequisites use interchangeably.
-    if let Some(factory_list) = groups.get("FACTORY").cloned() {
-        groups.insert("WARFACTORY".to_string(), factory_list);
-    }
-    if let Some(barracks_list) = groups.get("BARRACKS").cloned() {
-        groups.insert("TENT".to_string(), barracks_list);
-    }
-
-    groups
 }
 
 /// Two-pass parse of `[Particles]`: collect `Pending` entries from each
@@ -8996,5 +9049,28 @@ Projectile=Invisible
                 "{object}"
             );
         }
+    }
+
+    /// Retail `[ElevationModel]` through the production reader: four levels a
+    /// step, two cells a step, two cells at most. Without the section the
+    /// constructor's 0, 1.0 and 0.0 stay.
+    #[test]
+    fn retail_elevation_model() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let two = NativeF64Bits::from_bits(2.0f64.to_bits());
+        let model = RuleSet::from_ini(&ini)
+            .expect("retail rules parse")
+            .elevation_model;
+        assert_eq!(
+            (model.increment, model.increment_bonus, model.bonus_cap),
+            (4, two, two)
+        );
+        let model = ElevationModel::from_ini(&IniFile::from_str("[General]\n"));
+        assert_eq!(
+            (model.increment, model.increment_bonus, model.bonus_cap),
+            (0, NativeF64Bits::ONE, NativeF64Bits::POSITIVE_ZERO)
+        );
     }
 }

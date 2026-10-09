@@ -91,16 +91,19 @@
 //!   building options and sidebar strips (`0x004F926C`), presentation.
 //! - The online latch's readers VERA wires are Is_Operational, power drain,
 //!   radar, the refinery's and an absorber's CanEnter (`0x0043C422`), the
-//!   depot probe (`0x0043C7FB`) and the Super hold pass (`0x0050B020`,
-//!   `0x0050B04F`, in `superweapon`). Not wired:
-//!   - `ObjectTypeClass::FindFactory @ 0x005F7900` with its online argument
-//!     (`(1,1,1)`): `HouseClass::Update_Factory_Queue @ 0x00509140` holds a
-//!     build that only offline factories could build (`0x0050924D`), and a
-//!     build promoted then starts on hold (`0x004FA45B`). VERA has neither
-//!     (residual at `production_tech::revalidate_eligibility`). Trigger: a
-//!     building event or a promotion while every factory of the kind is
-//!     warped; a warp's start runs no update (`0x004521C0`). Effect: VERA
-//!     keeps producing during the warp.
+//!   depot probe (`0x0043C7FB`), the Super hold pass (`0x0050B020`,
+//!   `0x0050B04F`, in `superweapon`), and `ObjectTypeClass::FindFactory @
+//!   0x005F7900`'s online argument where the player's sidebar darkens a
+//!   cameo and a PRODUCE event looks for a factory (`production::can_build`).
+//!   Not wired:
+//!   - `HouseClass::Update_Factory_Queue @ 0x00509140` holds a build that
+//!     only offline factories could build (`FindFactory(1,1,1)`,
+//!     `0x0050924D`), and a build promoted then starts on hold
+//!     (`0x004FA45B`). VERA has neither (residual at
+//!     `FactoryRegistry::plan_revalidation`). Trigger: a building event or a
+//!     promotion while every factory of the kind is warped; a warp's start
+//!     runs no update (`0x004521C0`). Effect: VERA keeps producing during
+//!     the warp.
 //!   - `HouseClass::CanBuild`'s upgrade-prerequisite scan
 //!     (`0x004F7DE6..0x004F7E4E`: an upgrade prerequisite counts only on an
 //!     online, unsold host; plain prerequisites use the house counters),
@@ -845,7 +848,7 @@ impl Simulation {
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
-            crate::sim::world::queue_foot_enter_idle_mode(self, attacker, rules);
+            crate::sim::world::enter_idle_mode(self, attacker, rules, None);
         }
     }
 
@@ -1118,8 +1121,9 @@ impl Simulation {
     ///    runs its locomotor's Process an extra time (Unit
     ///    `0x007362A7..0x007362F5`, Infantry `0x0051BB7D..0x0051BBCB`,
     ///    Aircraft `0x00414C78..0x00414CC6`) and returns if that killed it.
-    ///    VERA runs that call only for the Chronosphere's warp
-    ///    (`movement::teleport_chrono`): the ordinary warp-in's twin is its
+    ///    VERA runs that call only for the Chronosphere's warp while its
+    ///    Teleport is active (`movement::teleport_chrono`, whose residuals
+    ///    cover a Drive over it): the ordinary warp-in's twin is its
     ///    TimerCheck (`0x00719322`), which the retained countdown stands in
     ///    for (module residual);
     /// 3. a warped-out object ([`GameEntity::ai_frozen`]) drops its target
@@ -1161,7 +1165,7 @@ impl Simulation {
         }
         if category != EntityCategory::Structure
             && self.substrate.entities.get(id).is_some_and(|entity| {
-                entity.chrono_warp().is_some()
+                entity.active_chrono_warp().is_some()
                     && (entity.is_warping_in()
                         || (entity.is_warped_out() && entity.chrono_warp_latch()))
             })

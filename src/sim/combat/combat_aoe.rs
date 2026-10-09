@@ -239,20 +239,6 @@ fn air_impact_from_layer_z(
     })
 }
 
-pub(crate) fn air_impact_from_entity(
-    entity: &crate::sim::game_entity::GameEntity,
-    terrain: Option<&ResolvedTerrainGrid>,
-) -> Option<AoEAirImpact> {
-    Some(AoEAirImpact {
-        sub_x: entity.position.sub_x,
-        sub_y: entity.position.sub_y,
-        z_leptons: crate::sim::movement::ground_pose::object_world_z_leptons(
-            entity,
-            Some(terrain?),
-        ),
-    })
-}
-
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CellTargetDetach {
@@ -426,12 +412,11 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
             .and_then(|source| rules.object(interner.resolve(source.type_ref())))
             .is_some_and(|source_type| source_type.damage_self);
 
-    let cell_spread: SimFixed = warhead.cell_spread;
+    let cell_spread = warhead.cell_spread_f64;
 
-    // gamemd receiver-list radius = ftol(CellSpread * 256). Each candidate's
-    // native Sqrt_Approx/ftol distance is compared to this signed threshold;
-    // there is no exact-squared prefilter.
-    let spread_leptons = (warhead.cell_spread_f64 * 256.0) as i64;
+    // Each candidate's native Sqrt_Approx/ftol distance is compared to this
+    // signed threshold; there is no exact-squared prefilter.
+    let spread_leptons = cell_spread::splash_threshold_leptons(cell_spread);
     let mut result = AoEDamageResult::default();
     let exact_impact = layer_context
         .air_impact
@@ -487,7 +472,7 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
                 entities,
                 impact_rx,
                 impact_ry,
-                cell_spread.to_num::<i32>(),
+                cell_spread::whole_cells(cell_spread),
                 terrain_width,
                 terrain_height,
             ) {
@@ -1308,7 +1293,7 @@ mod tests {
         let (rules, warhead, registry) = wall_aoe_fixture("1", "Wall=yes");
         let mut interner = test_interner();
         let warhead_ref = interner.intern("WH");
-        let offsets = cell_spread::splash_cells(warhead.cell_spread);
+        let offsets = cell_spread::splash_cells(warhead.cell_spread_f64);
         assert_eq!(offsets[0], (0, 0));
         let wall_offset = offsets[1];
         let wall_cell = (
@@ -2052,7 +2037,6 @@ mod tests {
         let rules = RuleSet::from_ini(&ini).expect("band-11 rules");
         let wide = rules.warhead("WIDEWH").unwrap().clone();
         let mut stock = wide.clone();
-        stock.cell_spread = SimFixed::from_num(10);
         stock.cell_spread_f64 = 10.0;
 
         let make_ground = |stable_id, rx, ry, sub_x, sub_y, hp| {
@@ -2089,7 +2073,7 @@ mod tests {
         let warhead_ref = interner.intern("WIDEWH");
 
         assert_eq!(
-            cell_spread::splash_cells(wide.cell_spread)
+            cell_spread::splash_cells(wide.cell_spread_f64)
                 .iter()
                 .enumerate()
                 .filter_map(|(index, &offset)| (offset == (-3, 11)).then_some(index))

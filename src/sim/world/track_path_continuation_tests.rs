@@ -12,6 +12,8 @@
 //!   needs a terrain rebuild of this fixture. The recheck's refusal arm they
 //!   reach (0x4B28CD -> NULL setter) is the one the near rows take on the
 //!   receiver-cleared destination.
+//! - The post-warp rows run Force_Track(-1, own coordinate) instead of the
+//!   setter, then the real Process corridor.
 //!
 //! The fixture mirrors the oracle's Unit type: MovementZone Normal and
 //! SpeedType Track for both locomotors.
@@ -92,6 +94,7 @@ fn unit(
         .as_i64()
         .map_or(MissionType::Guard, |m| match m {
             2 => MissionType::Move,
+            5 => MissionType::Guard,
             7 => MissionType::Enter,
             11 => MissionType::AreaGuard,
             _ => panic!("unmapped mission {m}"),
@@ -280,7 +283,10 @@ fn far_native_rows_through_the_process_corridor() {
     let mut checked = 0;
     for row in corpus() {
         let input = &row["input"];
-        if input["find_path"] != "native" || cell(&input["destination"]) != (13, 10) {
+        if input["find_path"] != "native"
+            || input["post_warp"] == true
+            || cell(&input["destination"]) != (13, 10)
+        {
             continue;
         }
         let (mut sim, rules, registry, id) = unit(input);
@@ -322,7 +328,10 @@ fn near_native_rows_stop_through_the_continuation_null_setter() {
     let mut checked = 0;
     for row in corpus() {
         let input = &row["input"];
-        if input["find_path"] != "native" || cell(&input["destination"]) != (11, 10) {
+        if input["find_path"] != "native"
+            || input["post_warp"] == true
+            || cell(&input["destination"]) != (11, 10)
+        {
             continue;
         }
         let (mut sim, rules, registry, id) = unit(input);
@@ -340,6 +349,42 @@ fn near_native_rows_stop_through_the_continuation_null_setter() {
             .continue_track_path_request(id, FindPathResult::Failed, &rules, Some(&registry))
             .unwrap();
         compare(&sim, id, &row, Some(outcome));
+        checked += 1;
+    }
+    assert_eq!(checked, 4);
+}
+
+/// The post-warp rows: a Chrono Warp's Force_Track(-1, own coordinate) on a
+/// Unit with no NavCom and a -1 live path word, then one Process. It runs
+/// Process_Movement (Drive 0x4B0A79 / Ship 0x6A0142), whose Find_Path asks
+/// for the Unit's own cell. AStar has no route for a goal in its start cell
+/// (0x00429BF3..0x00429C0A), so +34 clears and +40 stays on the Unit.
+#[test]
+fn post_warp_rows_refuse_the_own_cell_search() {
+    let mut checked = 0;
+    for row in corpus() {
+        let input = &row["input"];
+        if input["post_warp"] != true {
+            continue;
+        }
+        let (mut sim, rules, registry, id) = unit(input);
+        let e = sim.substrate.entities.get_mut(id).unwrap();
+        e.navigation.path_replay.clear_live_head();
+        e.navigation.path_runtime.retries_left = 10;
+        // The oracle fixture's Foot+668 prestate, which only a setter rewrites.
+        e.navigation.path_runtime.blocked_timer = crate::sim::timer::CdTimer::started(40, 6);
+        let own = crate::sim::movement::ground_pose::position_world_coord(&e.position);
+        assert!(sim.force_track(id, -1, own));
+        sim.session.binary_frame = 101;
+        let rng = sim.rng_state();
+        let grid = sim.path_grid.clone();
+        sim.process_ground_locomotor_for_test(id, Some(&rules), grid.as_deref(), Some(&registry))
+            .unwrap();
+        compare(&sim, id, &row, None);
+        // The rows observe Random 0x65C780 and RandomRanged 0x65C7E0: no draw.
+        let events = row["events"].as_array().unwrap();
+        assert!(!events.iter().any(|e| e == "random" || e == "random_ranged"));
+        assert_eq!(sim.rng_state(), rng, "{row}");
         checked += 1;
     }
     assert_eq!(checked, 4);
@@ -903,9 +948,11 @@ fn reorder_requests_the_new_route_in_the_process_that_ends_the_head() {
 /// Force_Track (0x4B0C40) writes +34 = head. At the track end no NavCom skips
 /// the arrival arm (0x4B2121), so +34 stays and Is_Moving holds: the same
 /// Process continues into Process_Movement, whose no-queue arm asks Find_Path
-/// for the unit's own cell in that frame and keeps +34. Later Processes stop
-/// at the outer Guard exact-destination arm (0x4B06D5..0x4B0772, whose NULL
-/// setter returns early without a NavCom) and do not search again.
+/// for the unit's own cell in that frame. AStar has no route for a goal in its
+/// start cell (0x00429BF3..0x00429C0A), and the refusal clears +34 in the same
+/// call (the AStar-NULL rows of tools/spatial_oracle/track_path_continuation).
+/// No longer moving, later Processes take the outer tail and do not search
+/// again.
 #[test]
 fn forced_track_end_requests_its_own_cell_in_the_same_process() {
     use crate::sim::movement::track_head::committed_track_head;
@@ -921,7 +968,7 @@ fn forced_track_end_requests_its_own_cell_in_the_same_process() {
         y: 11 * 256,
         z: 0,
     };
-    assert!(sim.force_drive_track(id, 0x47, head));
+    assert!(sim.force_track(id, 0x47, head));
     for frame in 101..300 {
         visit(&mut sim, &rules, &registry, id, frame);
         let e = sim.substrate.entities.get(id).unwrap();
@@ -936,16 +983,16 @@ fn forced_track_end_requests_its_own_cell_in_the_same_process() {
                 .and_then(|r| r.retained())
                 .unwrap()
                 .destination(),
-            Some(head)
+            None
         );
-        // The Find_Path wrapper's +640 = (Frame, 0) (0x4D3EB2) dates this
-        // Process's request.
+        // The refusal arms +640 = (Frame, PathDelay) (0x4D4016..0x4D4041),
+        // dating this Process's request.
         let timer = e.navigation.path_runtime.movement_timer;
-        assert_eq!((timer.start_frame(), timer.duration()), (frame as i32, 0));
-        assert!(
-            e.movement_target.is_some(),
-            "the retained +34 keeps scheduling"
+        assert_eq!(
+            (timer.start_frame(), timer.duration()),
+            (frame as i32, rules.general.path_delay_ticks())
         );
+        assert!(e.movement_target.is_none(), "nothing schedules it again");
         let cell = (e.position.rx, e.position.ry);
         for later in frame + 1..frame + 10 {
             visit(&mut sim, &rules, &registry, id, later);

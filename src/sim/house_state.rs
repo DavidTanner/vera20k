@@ -14,7 +14,7 @@ use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, sqrt_approx_f32};
+use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 /// Native per-house AI difficulty index stored by `HouseClass`.
 ///
@@ -928,10 +928,7 @@ impl HouseState {
             stats: MatchStatistics::default(),
             building_capture_notified: false,
             discovered_by_current_house: false,
-            economy: Economy {
-                credits,
-                ..Economy::default()
-            },
+            economy: Economy::new(credits),
             strategy_emergency: HouseStrategyEmergencyState::default(),
             strategy_timer: strategy_timer_at_construction(),
             team_creation: Default::default(),
@@ -955,7 +952,8 @@ impl HouseState {
 /// gamemd sums per-victim-house kill tables into one number for the Kills
 /// column, adds its two loss counters for the Losses column, and sums its four
 /// per-category built counters for the Built column. Totals are all the screen
-/// ever reads, so these are kept as totals.
+/// ever reads, so these are kept as totals. Its Score column reads
+/// [`Economy::score`](crate::sim::economy::Economy::score).
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -972,16 +970,6 @@ pub struct MatchStatistics {
     /// excepted: placed buildings and delivered units
     /// (`production::factory_lifecycle::record_last_built`).
     built: u32,
-    /// The kill and ChangeOwner feeders of House+54E8: RecordKill70300F adds
-    /// its award, and ChangeOwner7015D2 adds CostOf for the old House.
-    ///
-    /// gamemd keeps ONE score accumulator per house with two large feeders — the
-    /// ore-deposit statistic and this kill-points stream — and the score screen
-    /// shows their sum. The ore half is the existing hashed
-    /// `Economy::harvested_credits`; this is the kill half, split out only so the
-    /// hashed accumulator is not disturbed. Always read the two together through
-    /// [`MatchStatistics::score`].
-    score_points: i32,
 }
 
 #[cfg(test)]
@@ -1009,10 +997,6 @@ impl MatchStatistics {
         self.built
     }
 
-    pub const fn score_points(&self) -> i32 {
-        self.score_points
-    }
-
     /// RecordKill70305C/7031A9 increment one native loss counter. Callers own
     /// DontScore, Insignificant and sale admission; this owner only mutates it.
     pub(crate) fn record_loss(&mut self, category: crate::map::entities::EntityCategory) {
@@ -1036,11 +1020,6 @@ impl MatchStatistics {
         *counter = counter.wrapping_add(1);
     }
 
-    /// Original ADD70300F/7015D0 keeps its signed 32-bit wrapped result.
-    pub(crate) fn add_score(&mut self, points: i32) {
-        self.score_points = self.score_points.wrapping_add(points);
-    }
-
     /// The existing Record_Last_Built caller owns its DontScore admission.
     pub(crate) fn record_built(&mut self) {
         self.built = self.built.wrapping_add(1);
@@ -1053,7 +1032,6 @@ impl MatchStatistics {
         units_lost: u32,
         buildings_lost: u32,
         built: u32,
-        score_points: i32,
     ) -> Self {
         Self {
             units_killed,
@@ -1061,7 +1039,6 @@ impl MatchStatistics {
             units_lost,
             buildings_lost,
             built,
-            score_points,
         }
     }
 
@@ -1073,12 +1050,6 @@ impl MatchStatistics {
     /// Score-screen Losses column: units + buildings lost.
     pub const fn losses(&self) -> u32 {
         self.units_lost + self.buildings_lost
-    }
-
-    /// Score-screen Score column: the house's single native score accumulator,
-    /// reassembled from its harvest and kill feeders.
-    pub const fn score(&self, harvested_credits: i32) -> i32 {
-        harvested_credits.saturating_add(self.score_points)
     }
 }
 
@@ -1126,7 +1097,7 @@ pub fn income_ppm_for_owner(
     house_state_for_owner(houses, owner, interner)
         .and_then(|h| h.country)
         .map(|c| rules.country_income_ppm(interner.resolve(c)))
-        .unwrap_or(crate::sim::economy::INCOME_PPM_SCALE)
+        .unwrap_or(crate::rules::ruleset::INCOME_PPM_SCALE)
 }
 
 /// Map side name string to numeric index.
@@ -1209,14 +1180,10 @@ pub fn resolve_wall_owner(
 
 /// Cell-space distance through the native Sqrt_Approx/Math::ftol pipeline.
 fn native_edge_distance(anchor: (u16, u16), reference: (i32, i32)) -> i32 {
-    let dx = X87Chop53::load_i32(i32::from(anchor.0 as i16).wrapping_sub(reference.0));
-    let dy = X87Chop53::load_i32(i32::from(anchor.1 as i16).wrapping_sub(reference.1));
-    let squared = X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy));
-    let root_bits =
-        sqrt_approx_f32(squared).expect("playfield edge distance stays in finite f32 range");
-    let root =
-        X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("playfield edge distance fits a signed integer") as i32
+    crate::util::native_x87::sqrt_approx_length([
+        i32::from(anchor.0 as i16).wrapping_sub(reference.0),
+        i32::from(anchor.1 as i16).wrapping_sub(reference.1),
+    ])
 }
 
 /// HouseClass-style playfield edge selection for a committed anchor cell.
@@ -1395,7 +1362,7 @@ mod ai_activation_latch_tests {
             house.is_defeated = true;
             house.multiplay_passive = true;
             house.difficulty = difficulty;
-            house.economy.credits = 4321;
+            house.economy.add_credits(4321);
 
             house.update_ai_activation(true, 5);
             let once = house.ai_activation;
@@ -1412,7 +1379,7 @@ mod ai_activation_latch_tests {
                 }
             );
             assert_eq!(house.current_iq, 5);
-            assert_eq!(house.economy.credits, 4321);
+            assert_eq!(house.economy.credits(), 4321);
             assert!(house.is_defeated);
             assert!(house.multiplay_passive);
             assert_eq!(house.difficulty, difficulty);

@@ -794,27 +794,7 @@ impl Simulation {
         let Some(rules) = rules else {
             return false;
         };
-        use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
-        let warhead = self.interner.intern(&rules.bridge_warheads.c4_name);
-        // Native passes &Health. This uses the shared bridge_ground stock
-        // C4Warhead=Super fatal-path quotient, not general aliased packet
-        // support: override-only early damage-pointer writes remain outside it.
-        self.commit_direct_damage_receiver(
-            rules,
-            registry,
-            EntityDamageEvent::direct_receiver(
-                id,
-                i32::from(health),
-                0,
-                RAD_NO_ATTACKER,
-                None,
-                warhead,
-                ReceiverCallFlags {
-                    ignore_defenses: true,
-                    arg6: true,
-                },
-            ),
-        );
+        self.receive_own_health_c4(id, rules, registry);
         // Read the retained live owner only AFTER synchronous damage/lifecycle.
         if let Some(state) = self
             .substrate
@@ -906,7 +886,6 @@ impl Simulation {
         self.move_air_coordinate(
             id,
             coordinate,
-            speed,
             Some(super::DestinationTiming::from_rules(
                 self.session.binary_frame,
                 rules,

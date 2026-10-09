@@ -5,6 +5,7 @@
 //! landing-effect and Display transactions are separate callers, still being
 //! migrated. Native comparisons: tools/spatial_oracle/fly_height.{py,json}.
 
+#[cfg(test)]
 use super::locomotor::AirMovePhase;
 use crate::sim::components::DriveCoord;
 use crate::util::fixed_math::SimFixed;
@@ -167,7 +168,9 @@ impl FlyRuntime {
         self.moving = false;
     }
 
-    pub(crate) fn clear_destination_after_failed_landing(&mut self) {
+    /// Destination = the empty coordinate after a C4 self-destruct: the
+    /// landing retry's (`0x004CEBCD`) and Stop_Moving's (`0x004CD273`).
+    pub(crate) fn clear_destination(&mut self) {
         self.destination = [0; 3];
     }
 
@@ -213,6 +216,25 @@ impl FlyRuntime {
 
     pub(crate) fn cruise_mode(&self) -> bool {
         self.cruise_mode
+    }
+
+    /// Process `0x004CCB47..0x004CCB81`, first in every visit: a Fly neither
+    /// landing nor taking off, with a target speed of at least 1 and no
+    /// height target, takes its type's FlightLevel (type vt+0xBC) again.
+    pub(crate) fn restore_flight_level(&mut self, flight_level: i32) {
+        if !self.landing
+            && !self.taking_off
+            && self.target_speed >= crate::util::fixed_math::SIM_ONE
+            && self.target_height == 0
+        {
+            self.target_height = flight_level;
+        }
+    }
+
+    /// Horizontal_Step's height target (`0x004CF3F6`, `0x004CF4B6`,
+    /// `0x004CF4CF`), rewritten on each step.
+    pub(crate) fn set_flight_level(&mut self, flight_level: i32) {
+        self.target_height = flight_level;
     }
 
     /// Process4CD664..4CD67F, before its power/health branches. The effective
@@ -315,13 +337,9 @@ impl FlyRuntime {
         self.target_height = 0;
     }
 
+    /// A test projection of the flight phase. This is deliberately not the
+    /// native+50/+51 flags or an independently saved FSM.
     #[cfg(test)]
-    pub(crate) fn set_target_height(&mut self, height: i32) {
-        self.target_height = height;
-    }
-
-    /// Read projection for the remaining legacy mission adapters. This is
-    /// deliberately not the native+50/+51 flags or an independently saved FSM.
     pub(crate) fn mission_phase(&self, height: i32) -> AirMovePhase {
         if height == 0 && self.target_height == 0 {
             AirMovePhase::Landed
@@ -376,7 +394,8 @@ impl FlyRuntime {
         }
         // Native compares the original normalized height again. Health==0
         // forces descent, while a negative health is not interchangeable.
-        if height > self.target_height || health == 0 {
+        let descended = height > self.target_height || health == 0;
+        if descended {
             let delta = height.wrapping_sub(self.target_height);
             let step = if is_dropship {
                 if self.landing {
@@ -411,6 +430,7 @@ impl FlyRuntime {
             world_z: output_z,
             on_bridge,
             height: super::ground_pose::height_at_z(output_z, ground_z, on_bridge),
+            descended,
         }
     }
 }
@@ -431,6 +451,16 @@ pub(crate) struct HeightOutput {
     pub world_z: i32,
     pub on_bridge: bool,
     pub height: i32,
+    /// The descent block ran (`0x004CDED8..0x004CDFB6`): Process's landing
+    /// drift follows its SetHeight.
+    descended: bool,
+}
+
+impl HeightOutput {
+    /// The descent block ran: Process's landing drift follows.
+    pub(crate) fn descended(&self) -> bool {
+        self.descended
+    }
 }
 
 #[cfg(test)]
@@ -493,7 +523,7 @@ mod tests {
             if flag("landing") {
                 state.begin_landing();
             }
-            state.set_target_height(target);
+            state.set_flight_level(target);
             let ground_z = crate::util::lepton::ground_height_leptons(
                 integer("level", 0) as u8,
                 integer("slope", 0) as u8,
@@ -517,12 +547,12 @@ mod tests {
                 },
             });
             assert_eq!(
-                actual,
-                HeightOutput {
-                    world_z: row["z"].as_i64().unwrap() as i32,
-                    on_bridge: row["on_bridge"].as_bool().unwrap(),
-                    height: row["height"].as_i64().unwrap() as i32,
-                },
+                (actual.world_z, actual.on_bridge, actual.height),
+                (
+                    row["z"].as_i64().unwrap() as i32,
+                    row["on_bridge"].as_bool().unwrap(),
+                    row["height"].as_i64().unwrap() as i32,
+                ),
                 "{}",
                 c["name"]
             );

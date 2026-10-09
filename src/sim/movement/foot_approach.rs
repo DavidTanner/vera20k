@@ -26,9 +26,101 @@ const OFFSETS: [i16; 25] = [
 mod tests;
 
 impl Simulation {
+    /// Unit 0x7414E0's BalloonHover arm (0x741599..0x741600), as the Foot
+    /// missions call Approach (vt+0x53C) with no-move 0
+    /// ([`Self::approach_balloon_target`]). A `BalloonHover=` type (+0xD6A) whose GetWeapon(SelectWeapon(Target))
+    /// (vt+0x2E4, vt+0x3F8) has a `Vertical=` (+0x2C0) `Projectile=` (+0xA0)
+    /// takes its Target as its destination (vt+0x480 with 1) and returns.
+    /// Any other weapon, or none, goes on to the next arm (0x741603). This
+    /// answers that destination, or None for the next arm.
+    ///
+    /// Residuals:
+    /// - The head's computer crush arm (0x7414E4..0x741593) runs first. A
+    ///   computer's Unit with `Crusher=` (+0xD28) or the CRUSHER ability, no
+    ///   NavCom and a crushable Techno Target within reach steers onto it
+    ///   whatever its weapon. No retail `BalloonHover=` type (ZEP, DISK) has
+    ///   either, so in retail it never pre-empts this arm.
+    /// - With the no-move flag set, native returns the Target without the
+    ///   destination. Every mission passes 0, and no VERA caller passes 1.
+    /// - Mission_Patrol calls Approach too (`0x004D473A`), and VERA has no
+    ///   Foot Patrol body; the pursuit pass (`tick_attack_pursuit`) stands in.
+    ///   Trigger: a Kirov or a Floating Disc on Patrol holding a target.
+    ///   Effect: the pass sends it to the target's cell, and its in-range halt
+    ///   admits no Patrol (`range_stop_admits`), so it flies on to that cell
+    ///   and stays on Patrol, roughly where the arm sends a vertical weapon;
+    ///   a Disc on its laser does not stop at range. Frequency: nothing in
+    ///   VERA puts a Unit on Patrol today; native producers were not surveyed.
+    ///
+    /// Native comparison: tools/spatial_oracle/balloon_hover.json `approach`
+    /// rows.
+    pub(crate) fn balloon_hover_approach(&self, id: u64, rules: &RuleSet) -> Option<NavTargetRef> {
+        let actor = self.substrate.entities.get(id)?;
+        let target = actor.attack_target.as_ref()?.target;
+        if actor.category != EntityCategory::Unit
+            || !self.object_type(actor.type_ref(), rules)?.balloon_hover
+        {
+            return None;
+        }
+        let selected = combat::pursuit_selection(
+            actor,
+            &target,
+            &self.substrate.entities,
+            rules,
+            &self.interner,
+            self.resolved_terrain.as_ref(),
+            Some(&self.house_alliances),
+        );
+        balloon_hover_destination(selected.map(|selected| selected.weapon), target, rules)
+    }
+
+    /// Approach (vt+0x53C) with no-move 0, as Mission_Attack (`0x004D4E6A`),
+    /// Mission_Hunt (`0x004D54DD`), Mission_AreaGuard (`0x004D6F2D`) and
+    /// Mission_Rescue (`0x004DDFEB`) call it, for the BalloonHover arm
+    /// ([`Self::balloon_hover_approach`]): its Target becomes the destination
+    /// (vt+0x480 with 1). Answers whether the arm took the call; otherwise
+    /// Mission_Attack's Cell approach or the pursuit pass stands in for the
+    /// rest of Approach.
+    pub(crate) fn approach_balloon_target(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        let Some(destination) = self.balloon_hover_approach(id, rules) else {
+            return false;
+        };
+        let _ = self.assign_destination_represented(id, Some(destination), Some(rules), registry);
+        true
+    }
+
+    /// Whether the current mission's own Approach takes `id`'s approach, so the
+    /// pursuit pass (`tick_attack_pursuit`) leaves it alone: Mission_Attack's
+    /// Cell approach ([`Self::owns_unit_cell_approach`]), or the BalloonHover
+    /// arm on each mission that calls [`Self::approach_balloon_target`]
+    /// (Attack, Hunt, AreaGuard and Rescue). Keep it in step with those calls.
+    pub(crate) fn mission_owns_approach(&self, id: u64, rules: &RuleSet) -> bool {
+        let Some(mission) = self
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|actor| actor.mission.current().known())
+        else {
+            return false;
+        };
+        (mission == MissionType::Attack && self.owns_unit_cell_approach(id, rules))
+            || (matches!(
+                mission,
+                MissionType::Attack
+                    | MissionType::Hunt
+                    | MissionType::AreaGuard
+                    | MissionType::Rescue
+            ) && self.balloon_hover_approach(id, rules).is_some())
+    }
+
     /// Ownership boundary for the absorbed common Unit override. CloseRange,
-    /// BalloonHover, non-Cell queued receivers and DestroyableCliffs redirect
-    /// have separate native branches; their old adapter remains explicit.
+    /// the BalloonHover arm ([`Self::balloon_hover_approach`]), non-Cell
+    /// queued receivers and DestroyableCliffs redirect have separate native
+    /// branches; their old adapter remains explicit.
     /// A mapless fixture cannot execute native cell/zone queries.
     pub(crate) fn owns_unit_cell_approach(&self, id: u64, rules: &RuleSet) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
@@ -47,7 +139,8 @@ impl Simulation {
             && self.zone_grid.is_some()
             && self
                 .object_type(actor.type_ref(), rules)
-                .is_some_and(|t| !t.close_range && !t.balloon_hover)
+                .is_some_and(|t| !t.close_range)
+            && self.balloon_hover_approach(id, rules).is_none()
             && actor
                 .navigation
                 .nav_queue
@@ -498,4 +591,24 @@ impl Simulation {
         .filter(|cell| *cell != (0, 0))
         .map(|(x, y)| (x as u16, y as u16)))
     }
+}
+
+/// The BalloonHover arm once SelectWeapon has answered
+/// (`0x007415BA..0x007415F8`): a selected weapon whose `Projectile=` (+0xA0)
+/// is `Vertical=` (+0x2C0) makes the Target the destination; no weapon, no
+/// projectile or a level one goes on to the next arm.
+fn balloon_hover_destination(
+    weapon: Option<&crate::rules::weapon_type::WeaponType>,
+    target: TargetKind,
+    rules: &RuleSet,
+) -> Option<NavTargetRef> {
+    weapon?
+        .projectile
+        .as_deref()
+        .and_then(|name| rules.projectile(name))
+        .is_some_and(|projectile| projectile.vertical)
+        .then_some(match target {
+            TargetKind::Entity(id) => NavTargetRef::object(id),
+            TargetKind::Cell(rx, ry) => NavTargetRef::cell(rx, ry),
+        })
 }

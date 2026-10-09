@@ -51,13 +51,6 @@
 //!   `House500200` order-selection arm and specialized Archive behavior remain
 //!   residuals. Trigger: those computer/specialized products. Effect: their
 //!   later mission selection can differ despite sharing admission and placement.
-//! - An aircraft docks at this airfield's free pad as the player's does;
-//!   Exit_Object's docking (`0x00443F54..`: `0x005F6060`, the dock
-//!   coordinate `vt+0xA8`, Unlimbo and the radio messages 2 and 0x18) is
-//!   not ported. With no free link an `AirportBound=` aircraft fails
-//!   (`0x00443D04..0x00443D12`), and any other flies in from the map edge
-//!   with a Scenario `RandomRanged` draw (`0x00443D18..`), which VERA fails
-//!   too. Trigger: a computer aircraft whose airfield's pads are full.
 
 use crate::rules::object_type::{FactoryType, ObjectCategory};
 use crate::rules::overlay_types::OverlayTypeRegistry;

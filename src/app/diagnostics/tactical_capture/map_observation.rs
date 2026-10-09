@@ -17,6 +17,8 @@ const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v4";
 const MAX_COMMANDS: usize = 1024;
 const MAX_GESTURES: usize = 1024;
 const GESTURE_POLICY: &str = "map-tactical-left-gesture-v1";
+const SIDEBAR_GESTURE_POLICY: &str = "map-local-left-gesture-v2";
+const SIDEBAR_POLICY: &str = "map-retained-sidebar-observation-v1";
 const MAX_OBSERVED_OWNERS: usize = 30;
 const MAX_OBSERVED_TYPES: usize = 256;
 const MAX_TERRAIN_CELLS: usize = 256;
@@ -44,16 +46,51 @@ struct MapScheduledGesture {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum MapGesture {
-    Click { position: [u32; 2] },
-    Drag { from: [u32; 2], to: [u32; 2] },
+    Click {
+        position: [u32; 2],
+    },
+    Drag {
+        from: [u32; 2],
+        to: [u32; 2],
+    },
+    /// Resolve the named control from the current immutable sidebar view.
+    /// This still sends ordinary mouse edges, never a SidebarAction.
+    Sidebar {
+        target: MapSidebarTarget,
+    },
 }
 
 impl MapGesture {
-    fn points(&self) -> ([u32; 2], [u32; 2]) {
-        match *self {
-            Self::Click { position } => (position, position),
-            Self::Drag { from, to } => (from, to),
+    fn points(&self) -> Option<([u32; 2], [u32; 2])> {
+        match self {
+            Self::Click { position } => Some((*position, *position)),
+            Self::Drag { from, to } => Some((*from, *to)),
+            Self::Sidebar { .. } => None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum MapSidebarTarget {
+    Tab {
+        tab: String,
+    },
+    /// The INI type name, or the SuperWeapon section rather than its image.
+    Cameo {
+        type_id: String,
+    },
+    ScrollUp {},
+    ScrollDown {},
+}
+
+fn sidebar_tab_name(tab: crate::ui::sidebar::SidebarTab) -> &'static str {
+    use crate::ui::sidebar::SidebarTab;
+    match tab {
+        SidebarTab::Building => "building",
+        SidebarTab::Defense => "defense",
+        SidebarTab::Infantry => "infantry",
+        SidebarTab::Vehicle => "vehicle",
     }
 }
 
@@ -175,6 +212,14 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_super_weapons: Option<bool>,
+    /// Exact committed steps whose retained projection is observed. A draw
+    /// marks its matching row rendered only after comparing the actual output.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_sidebar_steps: Option<Vec<u32>>,
 }
 
 impl MapCaptureProfile {
@@ -206,7 +251,8 @@ impl MapCaptureProfile {
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none()
-                    && self.observe_super_weapons.is_none(),
+                    && self.observe_super_weapons.is_none()
+                    && self.observe_sidebar_steps.is_none(),
                 "map observation profile v1 cannot declare v2 extension fields"
             );
         }
@@ -280,18 +326,41 @@ impl MapCaptureProfile {
                 gesture.issue_after_step >= previous && gesture.issue_after_step < self.ticks,
                 "gestures must be ordered by issue_after_step before the final step"
             );
-            let (from, to) = gesture.gesture.points();
-            for [x, y] in [from, to] {
+            if let Some((from, to)) = gesture.gesture.points() {
+                for [x, y] in [from, to] {
+                    ensure!(
+                        x > 0 && x < tactical_width - 1 && y > 0 && y < tactical_height - 1,
+                        "gesture points must be inside the tactical viewport's outermost pixels"
+                    );
+                }
                 ensure!(
-                    x > 0 && x < tactical_width - 1 && y > 0 && y < tactical_height - 1,
-                    "gesture points must be inside the tactical viewport's outermost pixels"
+                    !matches!(gesture.gesture, MapGesture::Drag { .. }) || from != to,
+                    "drag endpoints must differ"
                 );
             }
-            ensure!(
-                !matches!(gesture.gesture, MapGesture::Drag { .. }) || from != to,
-                "drag endpoints must differ"
-            );
+            if let MapGesture::Sidebar { target } = &gesture.gesture {
+                match target {
+                    MapSidebarTarget::Tab { tab } => ensure!(
+                        crate::ui::sidebar::SidebarTab::all()
+                            .into_iter()
+                            .any(|candidate| sidebar_tab_name(candidate) == tab.as_str()),
+                        "unknown sidebar tab"
+                    ),
+                    MapSidebarTarget::Cameo { type_id } => {
+                        ensure!(!type_id.is_empty(), "empty sidebar cameo identity")
+                    }
+                    MapSidebarTarget::ScrollUp {} | MapSidebarTarget::ScrollDown {} => {}
+                }
+            }
             previous = gesture.issue_after_step;
+        }
+        if let Some(steps) = &self.observe_sidebar_steps {
+            ensure!(steps.len() <= MAX_GESTURES, "too many sidebar observations");
+            ensure!(
+                steps.iter().all(|step| *step <= self.ticks)
+                    && steps.windows(2).all(|pair| pair[0] < pair[1]),
+                "sidebar observation steps must be unique, increasing and within the capture"
+            );
         }
         let owners = self.observe_owners();
         ensure!(
@@ -374,6 +443,24 @@ impl MapCaptureProfile {
         self.gestures.as_deref().unwrap_or_default()
     }
 
+    fn gesture_policy(&self) -> &'static str {
+        if self
+            .gestures()
+            .iter()
+            .any(|entry| matches!(entry.gesture, MapGesture::Sidebar { .. }))
+        {
+            SIDEBAR_GESTURE_POLICY
+        } else {
+            GESTURE_POLICY
+        }
+    }
+
+    fn observes_sidebar_step(&self, step: u64) -> bool {
+        self.observe_sidebar_steps.as_ref().is_some_and(|steps| {
+            u32::try_from(step).is_ok_and(|step| steps.binary_search(&step).is_ok())
+        })
+    }
+
     fn observe_owners(&self) -> &[String] {
         self.observe_owners.as_deref().unwrap_or_default()
     }
@@ -406,6 +493,7 @@ pub(super) struct MapObservation {
     draws: Vec<MapDrawTime>,
     commands: Vec<MapCommandReceipt>,
     gestures: Vec<MapGestureReceipt>,
+    sidebar_frames: Vec<MapSidebarFrame>,
     frames: Vec<MapFrameObservation>,
     observed_ids: BTreeSet<u64>,
     sample_count: usize,
@@ -461,6 +549,195 @@ impl MapInputObservation {
     }
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+struct MapSidebarControl {
+    rect: [f32; 4],
+    disabled: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+struct MapSidebarTab {
+    tab: &'static str,
+    rect: [f32; 4],
+    active: bool,
+    disabled: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+struct MapSidebarItem {
+    slot: usize,
+    type_id: String,
+    super_weapon_section: Option<String>,
+    display_name: String,
+    rect: [f32; 4],
+    cost: Option<i32>,
+    queue_category: String,
+    enabled: bool,
+    progress: f32,
+    queued_count: usize,
+    is_building_this_type: bool,
+    is_ready: bool,
+    is_on_hold: bool,
+    is_armed: bool,
+    is_superweapon: bool,
+}
+
+impl MapSidebarItem {
+    fn identity(&self) -> &str {
+        self.super_weapon_section
+            .as_deref()
+            .unwrap_or(&self.type_id)
+    }
+}
+
+/// Only copies the retained projection consumed by rendering and hit-testing.
+/// It never rebuilds options, clamps scrolling or advances any UI state.
+#[derive(Debug, Serialize, PartialEq)]
+struct MapSidebarObservation {
+    active_tab: &'static str,
+    scroll_rows: usize,
+    max_scroll_rows: usize,
+    tabs: Vec<MapSidebarTab>,
+    items: Vec<MapSidebarItem>,
+    scroll_up: MapSidebarControl,
+    scroll_down: MapSidebarControl,
+}
+
+impl MapSidebarObservation {
+    fn capture(state: &AppState) -> Result<Self> {
+        Self::from_view(
+            crate::app::presentation::sidebar_render::current_sidebar_view(state)
+                .context("sidebar observation requires the retained view")?,
+        )
+    }
+
+    fn from_view(view: &crate::ui::sidebar::SidebarView) -> Result<Self> {
+        let rect = |rect: crate::ui::sidebar::Rect| [rect.x, rect.y, rect.w, rect.h];
+        let active: Vec<_> = view.tabs.iter().filter(|tab| tab.active).collect();
+        ensure!(
+            active.len() == 1,
+            "sidebar projection must have one active tab"
+        );
+        ensure!(
+            view.items.iter().all(|item| item.progress.is_finite()),
+            "sidebar progress is not finite"
+        );
+        Ok(Self {
+            active_tab: sidebar_tab_name(active[0].tab),
+            scroll_rows: view.scroll_rows,
+            max_scroll_rows: view.max_scroll_rows,
+            tabs: view
+                .tabs
+                .iter()
+                .map(|tab| MapSidebarTab {
+                    tab: sidebar_tab_name(tab.tab),
+                    rect: rect(tab.rect),
+                    active: tab.active,
+                    disabled: tab.disabled,
+                })
+                .collect(),
+            items: view
+                .items
+                .iter()
+                .enumerate()
+                .map(|(slot, item)| MapSidebarItem {
+                    slot,
+                    type_id: item.type_id.clone(),
+                    super_weapon_section: item.super_weapon_section.clone(),
+                    display_name: item.display_name.clone(),
+                    rect: rect(item.rect),
+                    cost: item.cost,
+                    queue_category: format!("{:?}", item.queue_category),
+                    enabled: item.enabled,
+                    progress: item.progress,
+                    queued_count: item.queued_count,
+                    is_building_this_type: item.is_building_this_type,
+                    is_ready: item.is_ready,
+                    is_on_hold: item.is_on_hold,
+                    is_armed: item.is_armed,
+                    is_superweapon: item.is_superweapon,
+                })
+                .collect(),
+            scroll_up: MapSidebarControl {
+                rect: rect(view.scroll_up_button.rect),
+                disabled: view.scroll_up_button.disabled,
+            },
+            scroll_down: MapSidebarControl {
+                rect: rect(view.scroll_down_button.rect),
+                disabled: view.scroll_down_button.disabled,
+            },
+        })
+    }
+
+    fn sample_count(&self) -> usize {
+        self.items.len() + self.tabs.len() + 2
+    }
+
+    fn resolve(&self, target: &MapSidebarTarget, extent: [u32; 2]) -> Result<([u32; 2], usize)> {
+        let (rect, disabled, slot) = match target {
+            MapSidebarTarget::Tab { tab } => {
+                let (slot, found) = self
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.tab == tab.as_str())
+                    .context("requested sidebar tab is absent")?;
+                (found.rect, found.disabled, slot)
+            }
+            MapSidebarTarget::Cameo { type_id } => {
+                let matches: Vec<_> = self
+                    .items
+                    .iter()
+                    .filter(|item| item.identity() == type_id.as_str())
+                    .collect();
+                ensure!(
+                    matches.len() == 1,
+                    "requested cameo {type_id:?} must occur once in the visible strip"
+                );
+                let item = matches[0];
+                // A grey build-limit cameo remains a live native gadget.
+                (item.rect, false, item.slot)
+            }
+            MapSidebarTarget::ScrollUp {} => (self.scroll_up.rect, self.scroll_up.disabled, 0),
+            MapSidebarTarget::ScrollDown {} => {
+                (self.scroll_down.rect, self.scroll_down.disabled, 0)
+            }
+        };
+        ensure!(!disabled, "requested sidebar control is disabled");
+        ensure!(
+            rect.iter().all(|part| part.is_finite()) && rect[2] > 0.0 && rect[3] > 0.0,
+            "requested sidebar control has no finite hit area"
+        );
+        let center = [
+            (rect[0] + rect[2] / 2.0).floor(),
+            (rect[1] + rect[3] / 2.0).floor(),
+        ];
+        ensure!(
+            center
+                .into_iter()
+                .zip(extent)
+                .all(|(point, limit)| point > 0.0 && point < (limit - 1) as f32),
+            "requested sidebar control center is outside the capture"
+        );
+        Ok((center.map(|point| point as u32), slot))
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MapSidebarGestureReceipt {
+    resolved_position: [u32; 2],
+    before: MapSidebarObservation,
+    after: MapSidebarObservation,
+}
+
+#[derive(Debug, Serialize)]
+struct MapSidebarFrame {
+    completed_steps: u64,
+    /// L0 is retained-only when a nonzero capture starts at its first step.
+    rendered: bool,
+    sidebar: MapSidebarObservation,
+}
+
 #[derive(Debug, Serialize)]
 struct MapGestureReceipt {
     ordinal: usize,
@@ -474,6 +751,8 @@ struct MapGestureReceipt {
     band_box_before_release: bool,
     neutral_input_restored: bool,
     queued_commands: Vec<MapGestureCommandReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sidebar: Option<MapSidebarGestureReceipt>,
 }
 
 #[derive(Debug, Serialize)]
@@ -529,11 +808,15 @@ impl MapObservation {
             let (width, height) =
                 crate::app::input::camera::tactical_viewport_size_px(profile.width, profile.height);
             observations["gesture_input"] = json!({
-                "policy": GESTURE_POLICY,
+                "policy": profile.gesture_policy(),
                 "equal_step_order": "commands_then_gestures",
                 "tactical_extent": [width, height],
                 "receipts": self.gestures,
             });
+        }
+        if profile.observe_sidebar_steps.is_some() {
+            observations["sidebar"] =
+                json!({"policy": SIDEBAR_POLICY, "frames": self.sidebar_frames});
         }
         observations
     }
@@ -1007,6 +1290,23 @@ impl TacticalCaptureSession {
             );
             let pending_before = sim.pending_command_snapshot();
             let before = MapInputObservation::capture(state)?;
+            let sidebar_before = match &scheduled.gesture {
+                MapGesture::Sidebar { .. } => Some(MapSidebarObservation::capture(state)?),
+                _ => None,
+            };
+            let (from, to, sidebar_slot) = match &scheduled.gesture {
+                MapGesture::Sidebar { target } => {
+                    let (position, slot) = sidebar_before
+                        .as_ref()
+                        .expect("sidebar captured")
+                        .resolve(target, [state.render_width(), state.render_height()])?;
+                    (position, position, Some(slot))
+                }
+                _ => {
+                    let (from, to) = scheduled.gesture.points().expect("tactical gesture points");
+                    (from, to, None)
+                }
+            };
             let move_cursor = |state: &mut AppState, [x, y]: [u32; 2]| {
                 // Profile coordinates are render-target pixels already. The
                 // OS window/upscale conversion is not a second input source.
@@ -1019,16 +1319,39 @@ impl TacticalCaptureSession {
                 crate::app::input::tooltips::on_button_event(state);
                 crate::app::input::dispatch::handle_mouse_input(state, MouseButton::Left, edge);
             };
-            let (from, to) = scheduled.gesture.points();
             move_cursor(state, from);
             button(state, ElementState::Pressed);
             let mouse = &state.match_state.input.tactical_mouse;
             let gadgets = &state.match_state.match_presentation.in_game_gadgets;
-            let left_press_captured = mouse.left_held
-                && mouse.captured
-                && !mouse.right_held
-                && gadgets.left_held
-                && !gadgets.right_held;
+            let left_press_captured = if let MapGesture::Sidebar { target } = &scheduled.gesture {
+                let slot = sidebar_slot.expect("resolved sidebar slot");
+                let expected = match target {
+                    MapSidebarTarget::Tab { .. } => {
+                        gadgets.handles.as_ref().map(|handles| handles.tabs[slot])
+                    }
+                    MapSidebarTarget::Cameo { .. } => gadgets.cameos.get(slot).copied(),
+                    MapSidebarTarget::ScrollUp {} => {
+                        gadgets.handles.as_ref().map(|handles| handles.scroll_up)
+                    }
+                    MapSidebarTarget::ScrollDown {} => {
+                        gadgets.handles.as_ref().map(|handles| handles.scroll_down)
+                    }
+                };
+                let routed = gadgets.out.consumed_by.or(gadgets.focus.sticky);
+                expected.is_some()
+                    && routed == expected
+                    && gadgets.left_held
+                    && !gadgets.right_held
+                    && !mouse.left_held
+                    && !mouse.captured
+                    && !mouse.right_held
+            } else {
+                mouse.left_held
+                    && mouse.captured
+                    && !mouse.right_held
+                    && gadgets.left_held
+                    && !gadgets.right_held
+            };
             if matches!(scheduled.gesture, MapGesture::Drag { .. }) {
                 move_cursor(state, to);
             }
@@ -1054,7 +1377,7 @@ impl TacticalCaptureSession {
                 ] == neutral.map(|value| value as f32);
             ensure!(
                 left_press_captured,
-                "gesture left press did not reach the retained tactical capture"
+                "gesture left press did not reach its retained input target"
             );
             ensure!(
                 band_box_before_release == matches!(scheduled.gesture, MapGesture::Drag { .. }),
@@ -1065,6 +1388,15 @@ impl TacticalCaptureSession {
                 "gesture left retained input active after release"
             );
             let after = MapInputObservation::capture(state)?;
+            let sidebar = sidebar_before
+                .map(|before| -> Result<_> {
+                    Ok(MapSidebarGestureReceipt {
+                        resolved_position: from,
+                        before,
+                        after: MapSidebarObservation::capture(state)?,
+                    })
+                })
+                .transpose()?;
             let sim = &state
                 .match_state
                 .sim_runtime
@@ -1096,6 +1428,11 @@ impl TacticalCaptureSession {
                 .checked_add(before.selected_ids.len())
                 .and_then(|count| count.checked_add(after.selected_ids.len()))
                 .and_then(|count| count.checked_add(queued_commands.len()))
+                .and_then(|count| {
+                    count.checked_add(sidebar.as_ref().map_or(0, |receipt| {
+                        receipt.before.sample_count() + receipt.after.sample_count()
+                    }))
+                })
                 .context("gesture observation sample count overflow")?;
             ensure!(
                 sample_count <= MAX_OBSERVATION_SAMPLES,
@@ -1114,6 +1451,7 @@ impl TacticalCaptureSession {
                 band_box_before_release,
                 neutral_input_restored,
                 queued_commands,
+                sidebar,
             });
         }
     }
@@ -1372,7 +1710,9 @@ impl TacticalCaptureSession {
                             "current_speed": crate::sim::movement::owner_current_speed(
                                 entity, Some(object), rules.general.veteran_speed, &sim.houses),
                             "veterancy": entity.veterancy(),
-                            "current_weapon": crate::sim::combat::combat_weapon::current_weapon(entity, object),
+                            "current_weapon": crate::sim::combat::combat_weapon::current_weapon(
+                                entity, object, sim.entities(), rules, &sim.interner)
+                                .map(|weapon| weapon.id.as_str()),
                             "turret_offset": crate::sim::combat::fire_coord::firer_art(rules, object)
                                 .map_or(0, |art| art.turret_offset),
                             "rocking_angles_fixed_bits": entity.rocking.as_ref().map(|rocking| [
@@ -1458,7 +1798,29 @@ impl TacticalCaptureSession {
                 .map(|_| MapInputObservation::capture(state))
                 .transpose()?,
         };
-        self.map_state_mut()?.observe_frame(frame, ids)
+        let sidebar = profile
+            .observes_sidebar_step(sim.session.tick)
+            .then(|| MapSidebarObservation::capture(state))
+            .transpose()?;
+        let completed_steps = frame.completed_steps;
+        let map = self.map_state_mut()?;
+        map.observe_frame(frame, ids)?;
+        if let Some(sidebar) = sidebar {
+            map.sample_count = map
+                .sample_count
+                .checked_add(sidebar.sample_count())
+                .context("sidebar observation sample count overflow")?;
+            ensure!(
+                map.sample_count <= MAX_OBSERVATION_SAMPLES,
+                "sidebar observation exceeds sample budget"
+            );
+            map.sidebar_frames.push(MapSidebarFrame {
+                completed_steps,
+                rendered: false,
+                sidebar,
+            });
+        }
+        Ok(())
     }
 
     pub(super) fn observe_map_draw(
@@ -1487,8 +1849,27 @@ impl TacticalCaptureSession {
             state.diagnostic_presentation_ms() == Some(output.times.radar_ms),
             "map diagnostic presentation policy is not active"
         );
-        self.map_state_mut()?
-            .observe_draw(requested, sim.session.tick, output.times)
+        let step = sim.session.tick;
+        let map = self.map_state_mut()?;
+        map.observe_draw(requested, step, output.times)?;
+        if let Some(frame) = map
+            .sidebar_frames
+            .last_mut()
+            .filter(|frame| frame.completed_steps == step)
+        {
+            let rendered = MapSidebarObservation::from_view(
+                output
+                    .sidebar_view
+                    .as_ref()
+                    .context("requested sidebar draw is absent")?,
+            )?;
+            ensure!(
+                frame.sidebar == rendered,
+                "rendered sidebar differs from its retained frame observation"
+            );
+            frame.rendered = true;
+        }
+        Ok(())
     }
 
     pub(super) fn map_fingerprint(&self, state: &AppState) -> Result<Value> {
@@ -1816,6 +2197,9 @@ mod tests {
         let mut legacy = example();
         legacy.observe_super_weapons = Some(false);
         assert!(legacy.validate().is_err());
+        let mut legacy = example();
+        legacy.observe_sidebar_steps = Some(Vec::new());
+        assert!(legacy.validate().is_err());
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
@@ -1828,6 +2212,7 @@ mod tests {
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         modern["observe_super_weapons"] = json!(true);
+        modern["observe_sidebar_steps"] = json!([0]);
         let profile: MapCaptureProfile = serde_json::from_value(modern.clone()).unwrap();
         profile.validate().unwrap();
         assert_eq!(serde_json::to_value(profile).unwrap(), modern);
@@ -1841,6 +2226,7 @@ mod tests {
             "cursor_position",
             "terrain_cells",
             "observe_super_weapons",
+            "observe_sidebar_steps",
         ] {
             let mut invalid = modern.clone();
             invalid[key] = Value::Null;
@@ -1952,6 +2338,127 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_gestures_and_requested_frames_are_strict_opt_in_extensions() {
+        let mut value = serde_json::to_value(example()).unwrap();
+        value["schema_version"] = json!(PROFILE_V2);
+        value["cursor_position"] = json!([720, 556]);
+        value["ticks"] = json!(3);
+        value["observe_sidebar_steps"] = json!([0, 1, 3]);
+        value["gestures"] = json!([
+            {"issue_after_step": 0, "gesture": {"kind": "sidebar", "target": {"kind": "tab", "tab": "vehicle"}}},
+            {"issue_after_step": 0, "gesture": {"kind": "sidebar", "target": {"kind": "cameo", "type_id": "MTNK"}}},
+            {"issue_after_step": 2, "gesture": {"kind": "sidebar", "target": {"kind": "scroll_down"}}},
+            {"issue_after_step": 2, "gesture": {"kind": "sidebar", "target": {"kind": "scroll_up"}}}
+        ]);
+        let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+        profile.validate().unwrap();
+        assert_eq!(profile.gesture_policy(), SIDEBAR_GESTURE_POLICY);
+        assert!(profile.observes_sidebar_step(0));
+        assert!(profile.observes_sidebar_step(3));
+        assert!(!profile.observes_sidebar_step(2));
+        assert_eq!(serde_json::to_value(&profile).unwrap(), value);
+        let transcript = initialized_map().transcript(&profile);
+        assert_eq!(
+            transcript["sidebar"],
+            json!({"policy": SIDEBAR_POLICY, "frames": []})
+        );
+        assert!(
+            initialized_map()
+                .transcript(&example())
+                .get("sidebar")
+                .is_none()
+        );
+        for target in [
+            json!({"kind": "tab", "tab": "weapons"}),
+            json!({"kind": "cameo", "type_id": ""}),
+            json!({"kind": "scroll_down", "count": 2}),
+            Value::Null,
+        ] {
+            let mut invalid = value.clone();
+            invalid["gestures"][0]["gesture"]["target"] = target;
+            let profile = serde_json::from_value::<MapCaptureProfile>(invalid);
+            assert!(profile.is_err() || profile.unwrap().validate().is_err());
+        }
+        for steps in [
+            json!([1, 0]),
+            json!([1, 1]),
+            json!([4]),
+            json!([true]),
+            Value::Null,
+        ] {
+            let mut invalid = value.clone();
+            invalid["observe_sidebar_steps"] = steps;
+            let profile = serde_json::from_value::<MapCaptureProfile>(invalid);
+            assert!(profile.is_err() || profile.unwrap().validate().is_err());
+        }
+    }
+
+    #[test]
+    fn sidebar_target_resolution_reads_current_visible_slots_and_rejects_absent_controls() {
+        let mut view = MapSidebarObservation {
+            active_tab: "building",
+            scroll_rows: 0,
+            max_scroll_rows: 0,
+            tabs: vec![MapSidebarTab {
+                tab: "building",
+                rect: [660.0, 170.0, 30.0, 20.0],
+                active: true,
+                disabled: false,
+            }],
+            items: vec![MapSidebarItem {
+                slot: 3,
+                type_id: "GAPOWR".to_owned(),
+                super_weapon_section: None,
+                display_name: "Grizzly Battle Tank".into(),
+                rect: [720.0, 220.0, 60.0, 48.0],
+                cost: Some(800),
+                queue_category: "Building".to_owned(),
+                enabled: false,
+                progress: 0.0,
+                queued_count: 0,
+                is_building_this_type: false,
+                is_ready: false,
+                is_on_hold: false,
+                is_armed: false,
+                is_superweapon: false,
+            }],
+            scroll_up: MapSidebarControl {
+                rect: [660.0, 570.0, 20.0, 20.0],
+                disabled: true,
+            },
+            scroll_down: MapSidebarControl {
+                rect: [690.0, 570.0, 20.0, 20.0],
+                disabled: true,
+            },
+        };
+        let target = MapSidebarTarget::Cameo {
+            type_id: "GAPOWR".to_owned(),
+        };
+        // Build-limit grey is still a live cameo; its current visible slot is authoritative.
+        assert_eq!(view.resolve(&target, [800, 600]).unwrap(), ([750, 244], 3));
+        view.items[0].slot = 1;
+        view.items[0].rect[1] = 180.0;
+        assert_eq!(view.resolve(&target, [800, 600]).unwrap(), ([750, 204], 1));
+        view.items[0].type_id = "GAPILE".to_owned();
+        assert!(view.resolve(&target, [800, 600]).is_err());
+        assert!(
+            view.resolve(&MapSidebarTarget::ScrollDown {}, [800, 600])
+                .is_err()
+        );
+        view.scroll_down.disabled = false;
+        assert_eq!(
+            view.resolve(&MapSidebarTarget::ScrollDown {}, [800, 600])
+                .unwrap()
+                .0,
+            [700, 580]
+        );
+        assert!(
+            view.resolve(&MapSidebarTarget::ScrollDown {}, [640, 480])
+                .is_err()
+        );
+    }
+
+    #[test]
     fn gesture_schedule_retains_equal_step_order_and_conditional_receipt_presence() {
         let mut profile = example();
         let mut map = initialized_map();
@@ -2002,6 +2509,7 @@ mod tests {
                 left_press_captured: true,
                 neutral_input_restored: true,
                 queued_commands: Vec::new(),
+                sidebar: None,
             });
         }
         assert!(map.pending_gesture(&profile, 1).unwrap().is_none());

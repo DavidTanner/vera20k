@@ -1850,14 +1850,6 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
         .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
         .unwrap();
     assert!(sim.issue_air_cell_destination(id, (20, 15), SimFixed::from_num(9), Some(&rules)));
-    crate::sim::movement::air_movement::tick_air_movement(
-        &mut sim.substrate.entities,
-        id,
-        sim.session.tick,
-        sim.session.binary_frame,
-        sim.resolved_terrain.as_ref(),
-        Some((&rules, &sim.interner)),
-    );
     let before = sim
         .substrate
         .entities

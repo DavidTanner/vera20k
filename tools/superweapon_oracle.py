@@ -15,8 +15,9 @@ send_spy_planes, spyplane_missions), src/sim/aircraft/leave_map_tests.rs
 (team_super_actions) and src/sim/superweapon/invulnerability_tests.rs
 (iron_tint, effect_tint_intensity), src/app/presentation/instances/units.rs
 (curtain_draw_arm), src/app/presentation/curtain_tint_tests.rs
-(drawshp_curtain_arm, building_colour_word, anim_colour_word,
-building_anim_light, blit_pickers, blitters) and
+(drawshp_curtain_arm, draw_curtain_arm, building_colour_word,
+anim_colour_word, building_anim_light, blit_pickers, blitters),
+src/app/presentation/lighting.rs (aircraft_light) and
 src/sim/superweapon/nuke_tests.rs (nuke_impact, nuke_wait, nuke_flash,
 nuke_lighting_read, nuke_launch) and src/sim/superweapon/force_shield_tests.rs
 (force_shield_launch, super_fade) and src/sim/superweapon/lightning_storm_tests.rs
@@ -27,7 +28,11 @@ radar_outage) and src/sim/superweapon/iron_curtain_tests.rs
 spawn_parachuted) and src/sim/superweapon/genetic_converter_tests.rs
 (genetic_launch, infantry_mutate_death, make_infantry) and
 src/sim/superweapon/psychic_reveal_tests.rs (psychic_launch) and
-src/app/presentation/super_timers.rs (tactical_timers, timer_lines).
+src/app/presentation/super_timers.rs (tactical_timers, timer_lines) and
+src/render/ion_blast_ripple_tests.rs (ion_blast_ripple),
+src/sim/world/ion_blast_tests.rs (ion_blast_update) and
+src/app/presentation/ion_blasts_tests.rs and ion_blasts_gpu_tests.rs
+(ion_blast_draw).
 
 Sections, each case in a fresh emulator (tools.ai_base_building_oracle's
 fixture machinery):
@@ -138,6 +143,14 @@ fixture machinery):
   flash arm, IsIronCurtained 0x41BF40, the airstrike gate and
   ScaleByIronTintPhase 0x70E380 and the airstrike phase 0x70E4B0 run
   natively.
+- draw_curtain_arm: the same rows through TechnoClass::Draw's arm
+  0x706776..0x7067E4 (the voxel draw) for an aircraft and a building.
+- aircraft_light: AircraftClass::Draw_It's intensity 0x4148D1..0x41493E as a
+  slice after the aircraft unit's static initializers (the level step
+  0x889EC8 under both control words): IsActive 0x53A100, the IDIV by two
+  level steps, Level=/IonLevel=, GetCellAt 0x565730 and the cell's signed
+  word, and ExtraAircraftLight= run natively; GetHeight vt+0x1C8 answers
+  the row.
 - building_colour_word: the colour word BuildingClass_DrawBody
   (0x43D386..0x43D544) and BuildingClass::Draw (0x43DC1C..0x43DDF1) compute
   for their blits: the LaserTargetColor= and ForceShieldColor= [ColorAdd]
@@ -272,6 +285,15 @@ fixture machinery):
 - timer_lines: 0x6D4B50 for one line through Fancy_Text_Print_Wide
   0x4A61C0 and its print 0x4A5EB0: the texts, measures, right alignment,
   black boxes, packed colours and the blink.
+- ion_blast_ripple: the ring step's static initializers 0x53CA30/0x53CA50
+  under the startup and the process control words, the ripple generator
+  0x53D330 (each frame's digest, written count and byte values) and the
+  spiral functions 0x53D8E0 and 0x53D960.
+- ion_blast_update: IonBlastClass::UpdateAll 0x53D310 over forceless blasts:
+  the frames left and the removals.
+- ion_blast_draw: IonBlastClass::DrawAll 0x53D850 and the per-blast draw
+  0x53D580 on fixture surfaces: CoordsToClient2's points, the clipped
+  ripple, the Z threshold, the two-row step and the draw order.
 """
 from pathlib import Path
 import math
@@ -338,6 +360,26 @@ STUB_OCCUPANTS = STUBS + 0x1B0
 STUB_ANIM_DELETE = STUBS + 0x1C0
 
 LEVEL_LEPTONS = 104
+# The C++ initializers run from _cinit 0x7CBDAF after _setdefaultprecision
+# (53-bit), before WinMain sets truncation at 0x6BBFC1: the startup word.
+STARTUP_FPCW = 0x027F
+
+
+def invoke_under(emu, entry, *, fpcw=NATIVE_FPCW, ecx=None, edx=None, count=5_000_000,
+                 timeout_us=10_000_000):
+    """`entry` with no stack arguments under `fpcw`."""
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp, u32(RET_MAGIC))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_FPCW, fpcw)
+    for register, value in ((UC_X86_REG_ECX, ecx), (UC_X86_REG_EDX, edx)):
+        if value is not None:
+            uc.reg_write(register, value & 0xFFFFFFFF)
+    run_checked(uc, entry, RET_MAGIC, count=count, timeout_us=timeout_us)
+    if uc.reg_read(UC_X86_REG_ESP) != sp + 4:
+        raise OracleError(f'0x{entry:08X} returned with an unexpected stack')
+    return uc.reg_read(UC_X86_REG_EAX)
 
 
 def i32(value):
@@ -3526,18 +3568,19 @@ ZBUFFER_PTR, ABUFFER_PTR = 0x887644, 0x87E8A4
 def tint_building(emu, *, curtain=(4990, 750), stage=0, tint=(-1, 0), shielded=1,
                   airstrike=None, kind='building', flash=0,
                   coords=(10 * 256 + 128, 12 * 256 + 128, 0)):
-    """curtain_techno's Techno as a building ('building') or a unit: vt+0x160
-    the native IsIronCurtained 0x41BF40, vt+0x464 its class's flash arm
-    (BuildingClass 0x456F80, TechnoClass 0x70D190), vt+0x2C WhatAmI answering
-    6 or 1 and vt+0x48 GetCoords answering `coords`; the flash count, the
-    Force Shield byte IronCurtain writes (+0x1C4), and an AirstrikeClass at
-    +0x294 aimed at it ('self') or at another object ('other')."""
+    """curtain_techno's Techno as a building, a unit or an aircraft (`kind`):
+    vt+0x160 the native IsIronCurtained 0x41BF40, vt+0x464 its class's flash
+    arm (BuildingClass 0x456F80, TechnoClass 0x70D190), vt+0x2C WhatAmI
+    answering the class's id and vt+0x48 GetCoords answering `coords`; the
+    flash count, the Force Shield byte IronCurtain writes (+0x1C4), and an
+    AirstrikeClass at +0x294 aimed at it ('self') or at another object
+    ('other')."""
     this = curtain_techno(emu, stage=stage, tint=tint, curtain=curtain)
     emu.write32(this, CURTAIN_VT)
     emu.write32(CURTAIN_VT + 0x160, 0x41BF40)
     emu.write32(CURTAIN_VT + 0x464, 0x456F80 if kind == 'building' else 0x70D190)
     emu.write32(CURTAIN_VT + 0x2C, STUB_TINT_WHAT)
-    emu.hook(STUB_TINT_WHAT, lambda _e: 6 if kind == 'building' else 1, 0)
+    emu.hook(STUB_TINT_WHAT, lambda _e: WHAT[kind], 0)
     emu.write32(CURTAIN_VT + 0x48, STUB_TINT_COORDS)
     emu.hook(STUB_TINT_COORDS, coords_stub(coords), 4)
     emu.write32(this + TECHNO_FLASH, flash)
@@ -3593,15 +3636,14 @@ def drawshp_curtain_arm_row(*, kind='building', intensity=1000, curtain=(4990, 7
                 out_intensity=i32(uc.reg_read(UC_X86_REG_EBP)))
 
 
-def drawshp_curtain_arm():
-    """For a building and a unit: the curtain's edges, each stage's scale at
+def curtain_arm_rows(row, kinds):
+    """For each class in `kinds`: the curtain's edges, each stage's scale at
     the intensities of a lit, a bright and a dark cell, the flash count's bit
     1 (each class's own arm), and an airstrike aimed at the object or
     elsewhere while the curtain is off and the stage still reads 2 (only a
     building's draw takes it)."""
-    row = drawshp_curtain_arm_row
     rows = []
-    for kind in ('building', 'unit'):
+    for kind in kinds:
         rows += [row(kind=kind, curtain=curtain) for curtain in CURTAIN_EDGES]
         for stage, tint in CURTAIN_STAGE_TINTS:
             rows += [row(kind=kind, stage=stage, tint=tint, intensity=intensity)
@@ -3612,6 +3654,135 @@ def drawshp_curtain_arm():
         rows += [row(kind=kind, curtain=(-1, 0), airstrike=airstrike)
                  for airstrike in ('self', 'other')]
     return rows
+
+
+def drawshp_curtain_arm():
+    """curtain_arm_rows for a building and a unit."""
+    return curtain_arm_rows(drawshp_curtain_arm_row, ('building', 'unit'))
+
+
+def draw_curtain_arm_row(*, kind='aircraft', intensity=1000, curtain=(4990, 750), stage=2,
+                         tint=(4998, 4), flash=0, airstrike=None, frame=5000):
+    """TechnoClass::Draw's intensity arm 0x706776..0x7067E4 as a slice: EBP
+    tint_building's Techno, ECX the draw intensity (arg8, which 0x70676F
+    loads; FootClass::Draw_A_VXL 0x4DAF10 passes on the one AircraftClass::
+    Draw_It computes). The result is EDI, the intensity the voxel draw
+    takes."""
+    emu = Emu()
+    emu.write32(FRAME, frame)
+    this = tint_building(emu, curtain=curtain, stage=stage, tint=tint, kind=kind, flash=flash,
+                         airstrike=airstrike)
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_ECX, intensity & 0xFFFFFFFF)
+    uc.reg_write(UC_X86_REG_EBP, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x706776, 0x7067E4, count=10_000)
+    if uc.reg_read(UC_X86_REG_ESP) != sp:
+        raise OracleError('the arm left the stack unbalanced')
+    return dict(kind=kind, intensity=intensity, curtain=list(curtain), stage=stage,
+                tint=list(tint), flash=flash, airstrike=airstrike, frame=frame,
+                out_intensity=i32(uc.reg_read(UC_X86_REG_EDI)))
+
+
+def draw_curtain_arm():
+    """curtain_arm_rows for an aircraft (AircraftClass::Draw_It's voxel) and a
+    building (its voxel turret and barrel, BuildingClass::Draw 0x43E2FF)."""
+    return curtain_arm_rows(draw_curtain_arm_row, ('aircraft', 'building'))
+
+
+# ------------------------------------------------- the aircraft's light
+
+# The aircraft translation unit's CRT initializers in their table's order
+# (0x812404..0x81241C), up to the level step 0x889EC8 its draw divides by:
+# the cell diagonal 0x889E70 and its ratios, the angles, then the step.
+AIRCRAFT_TU_INITIALIZERS = (0x413AC0, 0x413AF0, 0x413B10, 0x413B30, 0x413B50, 0x413B70,
+                            0x413B90)
+AIRCRAFT_LEVEL_HEIGHT = 0x889EC8
+AIRCRAFT_LIGHT = BASE + 0x100000
+AIRCRAFT_LIGHT_VT = AIRCRAFT_LIGHT + 0x1000
+AIRCRAFT_LIGHT_CELL = AIRCRAFT_LIGHT + 0x2000
+AIRCRAFT_LIGHT_CELLS = AIRCRAFT_LIGHT + 0x10000
+AIRCRAFT_LIGHT_CAPACITY = 0x10000
+STUB_AIRCRAFT_HEIGHT = STUBS + 0xFA0
+# MapClass's cell pointers (+0x13C) and their count (+0x140), which GetCellAt
+# 0x565730 indexes by (Y / 256) * 512 + X / 256.
+MAP_CELL_ITEMS, MAP_CELL_CAPACITY = 0x13C, 0x140
+# CellClass's intensity word, ScenarioClass's Level= and IonLevel= (Set_Defaults
+# 0x683901 and its Ion block) and RulesClass's ExtraAircraftLight=.
+CELL_INTENSITY = 0x10A
+SCENARIO_LEVEL, SCENARIO_ION_LEVEL = 0x3544, 0x355C
+RULES_EXTRA_AIRCRAFT_LIGHT = 0x17DC
+
+
+def aircraft_emu(fpcw):
+    """An emulator after the aircraft unit's initializers under `fpcw`."""
+    emu = Emu()
+    for entry in AIRCRAFT_TU_INITIALIZERS:
+        invoke_under(emu, entry, fpcw=fpcw)
+    return emu
+
+
+def aircraft_light_row(*, height=0, level=8, ion_level=0, storm=False, word=1000, extra=200,
+                       coord=(40 * 256 + 128, 50 * 256 + 128, 900)):
+    """AircraftClass::Draw_It's intensity 0x4148D1..0x41493E as a slice, after
+    the unit's initializers under the startup word: EBP a fixture aircraft
+    whose GetHeight vt+0x1C8 answers `height` and [ESP+0x28] the coordinate
+    the draw built from its Location at 0x41468F. The storm byte IsActive
+    0x53A100 reads, Scenario's Level= and IonLevel=, Rules'
+    ExtraAircraftLight= and the intensity word of the one cell in Map's
+    table are the row's; GetCellAt 0x565730 runs natively. The result is
+    EBX, the intensity the draw hands FootClass::Draw_A_VXL."""
+    emu = aircraft_emu(STARTUP_FPCW)
+    this = AIRCRAFT_LIGHT
+    emu.write32(this, AIRCRAFT_LIGHT_VT)
+    emu.write32(AIRCRAFT_LIGHT_VT + 0x1C8, STUB_AIRCRAFT_HEIGHT)
+    emu.hook(STUB_AIRCRAFT_HEIGHT, lambda _e: height, 0)
+    write8(emu, STORM_ACTIVE, int(storm))
+    emu.write32(SCENARIO + SCENARIO_LEVEL, level)
+    emu.write32(SCENARIO + SCENARIO_ION_LEVEL, ion_level)
+    emu.write32(RULES + RULES_EXTRA_AIRCRAFT_LIGHT, extra)
+    emu.write32(MAP + MAP_CELL_ITEMS, AIRCRAFT_LIGHT_CELLS)
+    emu.write32(MAP + MAP_CELL_CAPACITY, AIRCRAFT_LIGHT_CAPACITY)
+    x, y, _ = coord
+    emu.write32(AIRCRAFT_LIGHT_CELLS + 4 * ((y // 256) * 512 + x // 256), AIRCRAFT_LIGHT_CELL)
+    emu.uc.mem_write(AIRCRAFT_LIGHT_CELL + CELL_INTENSITY, struct.pack('<h', word))
+    uc = emu.uc
+    sp = STACK_BASE + STACK_SIZE - 0x1000
+    uc.mem_write(sp + 0x28, struct.pack('<iii', *coord))
+    uc.reg_write(UC_X86_REG_ESP, sp)
+    uc.reg_write(UC_X86_REG_EBP, this)
+    uc.reg_write(UC_X86_REG_FPCW, NATIVE_FPCW)
+    run_checked(uc, 0x4148D1, 0x41493E, count=10_000)
+    if uc.reg_read(UC_X86_REG_ESP) != sp:
+        raise OracleError('the light block left the stack unbalanced')
+    return dict(height=height, level=level, ion_level=ion_level, storm=storm, word=word,
+                extra=extra, coord=list(coord), light=i32(uc.reg_read(UC_X86_REG_EBX)))
+
+
+def aircraft_light():
+    """The level step under the startup and the process control words, then
+    the intensity over heights about each two-level step and below the
+    ground, Level= and IonLevel= with and without a raging storm (a negative
+    Level too), the cell's word at the signed 16-bit edges,
+    ExtraAircraftLight= values (retail .2 is 200) and sums and products that
+    wrap."""
+    row = aircraft_light_row
+    rows = [row(height=height, level=32)
+            for height in (0, 1, 207, 208, 209, 415, 416, 1500, 2000, -1, -207, -208, -209,
+                           -416)]
+    for storm in (False, True):
+        for height in (0, 416, 1500):
+            rows.append(row(height=height, level=32, ion_level=20, storm=storm))
+            rows.append(row(height=height, level=8, ion_level=-12, storm=storm))
+    rows += [row(height=1500, word=word) for word in (0, 2000, -1, 0x7FFF, -0x8000)]
+    rows += [row(height=1500, extra=extra) for extra in (0, -300, 0x7FFFFFFF)]
+    rows.append(row(height=0x40000000, level=1000))
+    rows.append(row(height=-0x80000000, level=3))
+    return dict(level_height={f'0x{fpcw:04X}': aircraft_emu(fpcw).read_i32(AIRCRAFT_LEVEL_HEIGHT)
+                              for fpcw in (STARTUP_FPCW, NATIVE_FPCW)},
+                rows=rows)
 
 
 def building_colour_word_row(*, curtain=(4990, 750), shielded=1, force_color=6, laser_color=4,
@@ -7056,6 +7227,279 @@ def timer_lines():
     return rows
 
 
+# ---------------------------------------------------------------- IonBlast
+
+ION_VECTOR_INIT = 0x53CA70       # the vector's static initializer (vtable, growth)
+ION_ITEMS = 0xAA011C             # DynamicVectorClass 0xAA0118: items, capacity, count
+ION_CAPACITY = 0xAA0120
+ION_ALLOCATED = 0xAA0125
+ION_COUNT = 0xAA0128
+ION_RIPPLE_SURFACES = 0xA9FFC8   # 80 BSurface pointers
+ION_RIPPLE_STEP = 0xA9FF80       # and its copy 0xA9FFA8
+ION_RIPPLE_BUILT = 0xAA014C
+ION_RIPPLE_FRAMES = 80
+ION_RIPPLE_SIZE = (512, 256)
+ION_STEP_INITIALIZERS = (0x53CA30, 0x53CA50)
+BSURFACE_VT = 0x7E2070
+DETAIL_LEVEL = 0xA8EB78
+TEMP_SURFACE = 0x887314
+TACTICAL_PTR = 0x887324
+ZBUFFER_PTR = 0x887644
+TACTICAL_VIEW = 0x886FA0          # offset X, offset Y, width, height
+TACTICAL_CACHED_RECT = 0xB0CE28   # CoordsToClient2's view (+8 width, +0xC height)
+ADJUST_FOR_Z_SCALE = 0xB0CD48
+STANDARD_Z_MULTIPLIER_BITS = 0x3FC25E5374344960  # startup store 0x6D1BDD
+ION_HEAP, ION_HEAP_SIZE = 0x70000000, 0x01000000
+# Every byte the generator writes (checked against its frames): the fill and
+# the spiral indexes of (0, v) for v 0..6.
+ION_RIPPLE_BYTES = (0xFF, 0x00, 4, 15, 34, 61, 96, 0x8B)
+# The draw fixture: a 192x128 tactical view at the surface's origin, with 16
+# rows below it that the draw reads (a byte moves up to ten rows).
+ION_VIEW = (192, 128)
+ION_SURFACE_ROWS = 144
+ION_BASE_COORD = (25600, 25600)
+
+
+class IonEmu(Emu):
+    """Emu whose operator new (and the draw fixture) take a heap with room
+    for the 80 ripple surfaces."""
+
+    def __init__(self):
+        self.ion_heap = ION_HEAP
+        super().__init__()
+        self.uc.mem_map(ION_HEAP, ION_HEAP_SIZE)
+
+    def operator_new(self, _emu):
+        return self.alloc(self.arg(0))
+
+    def alloc(self, size):
+        address = self.ion_heap
+        self.ion_heap += (size + 15) & ~15
+        if self.ion_heap > ION_HEAP + ION_HEAP_SIZE:
+            raise OracleError('IonBlast heap exhausted')
+        return address
+
+
+def fnv1a64_bytes(data):
+    digest = 0xCBF29CE484222325
+    for byte in data:
+        digest = ((digest ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return digest
+
+
+def ripple_step_bits(fpcw):
+    """The ring step 0xA9FF80 and its copy 0xA9FFA8 after both initializers."""
+    emu = Emu()
+    for entry in ION_STEP_INITIALIZERS:
+        invoke_under(emu, entry, fpcw=fpcw)
+    return [f'0x{struct.unpack("<Q", emu.uc.mem_read(address, 8))[0]:016x}'
+            for address in (ION_RIPPLE_STEP, ION_RIPPLE_STEP + 0x28)]
+
+
+def ion_blast_ripple():
+    """The ring step's initializers under the startup and the process control
+    words; the generator 0x53D330 (Show_Loading_Screen's call) under the
+    process word after the startup initializers: each frame's FNV-1a over its
+    512x256 bytes, its written (not -1) count and its byte values; and the
+    spiral functions 0x53D8E0 (index 1..288, DrawAll's table) and 0x53D960
+    (x, y in -9..9)."""
+    emu = IonEmu()
+    for entry in ION_STEP_INITIALIZERS:
+        invoke_under(emu, entry, fpcw=STARTUP_FPCW)
+    # 116 million instructions under the observing hook.
+    invoke_under(emu, 0x53D330, count=400_000_000, timeout_us=1_800_000_000)
+    if read8(emu, ION_RIPPLE_BUILT) != 1:
+        raise OracleError('the ripple latch is not set')
+    width, height = ION_RIPPLE_SIZE
+    frames, values = [], set()
+    for n in range(ION_RIPPLE_FRAMES):
+        surface = emu.read32(ION_RIPPLE_SURFACES + 4 * n)
+        if [emu.read32(surface + offset) for offset in (0, 4, 8, 0x10)] != [BSURFACE_VT, width,
+                                                                            height, 1]:
+            raise OracleError(f'ripple surface {n} is not a 512x256 byte BSurface')
+        data = bytes(emu.uc.mem_read(emu.read32(surface + 0x14), width * height))
+        frame_values = sorted(set(data))
+        values.update(frame_values)
+        frames.append(dict(fnv1a64=f'0x{fnv1a64_bytes(data):016x}',
+                           written=sum(1 for byte in data if byte != 0xFF),
+                           values=frame_values))
+    if values != set(ION_RIPPLE_BYTES):
+        raise OracleError(f'the generator wrote {sorted(values)}')
+    out = emu.alloc(8)
+    points = []
+    for index in range(1, 289):
+        invoke_under(emu, 0x53D8E0, ecx=out, edx=index)
+        points.append([index, *struct.unpack('<ii', emu.uc.mem_read(out, 8))])
+    indexes = []
+    for x in range(-9, 10):
+        for y in range(-9, 10):
+            emu.invoke(0x53D960, args=[x & 0xFFFFFFFF, y & 0xFFFFFFFF])
+            indexes.append([x, y, i32(emu.uc.reg_read(UC_X86_REG_EAX))])
+    return dict(step_bits={f'0x{fpcw:04X}': ripple_step_bits(fpcw)
+                           for fpcw in (STARTUP_FPCW, NATIVE_FPCW)},
+                generator_fpcw=f'0x{NATIVE_FPCW:04X}', frames=frames,
+                spiral_points=points, spiral_indexes=indexes)
+
+
+def ion_vector(emu, blasts):
+    """The IonBlast vector after its initializer, holding fixture blasts
+    (X, Y, Z, frame, flag); not allocated, so nothing frees its items."""
+    invoke_under(emu, ION_VECTOR_INIT)
+    items = emu.alloc(4 * max(1, len(blasts)))
+    pointers = []
+    for index, (x, y, z, frame, flag) in enumerate(blasts):
+        blast = emu.alloc(0x14)
+        emu.uc.mem_write(blast, struct.pack('<iiiii', x, y, z, frame, flag))
+        emu.write32(items + 4 * index, blast)
+        pointers.append(blast)
+    emu.write32(ION_ITEMS, items)
+    emu.write32(ION_CAPACITY, max(1, len(blasts)))
+    write8(emu, ION_ALLOCATED, 0)
+    emu.write32(ION_COUNT, len(blasts))
+    return pointers
+
+
+def ion_blast_update():
+    """IonBlastClass::UpdateAll 0x53D310 over forceless (+0x10 = 1) blasts:
+    each blast left in the vector, in order, as its index in `frames` and its
+    frame after the update (the vector's Find vt+0x10 and RemoveAt 0x53DDA0
+    run natively; operator delete 0x7C8B3D is a silent stub)."""
+    rows = []
+    for frames in ([0], [78], [79], [80], [0, 5, 78, 79, 80, 3], [79, 79, 1]):
+        emu = IonEmu()
+        pointers = ion_vector(emu, [(0, 0, 0, frame, 1) for frame in frames])
+        invoke_under(emu, 0x53D310)
+        items = emu.read32(ION_ITEMS)
+        left = [emu.read32(items + 4 * i) for i in range(emu.read_i32(ION_COUNT))]
+        rows.append(dict(frames=frames,
+                         left=[[pointers.index(p), emu.read_i32(p + 0xC)] for p in left]))
+    return rows
+
+
+def ion_ripple_pattern(n, sx, sy):
+    """The draw fixture's ripple byte at (sx, sy) of frame n: every value the
+    generator writes, in a pattern that varies by row, column and frame."""
+    return ION_RIPPLE_BYTES[(sx * 3 + sy * 5 + n * 7) % len(ION_RIPPLE_BYTES)]
+
+
+def ion_background_word(x, y):
+    return (x * 0x0123 + y * 0x0B57 + 0x1F) & 0xFFFF
+
+
+def ion_z_word(x, y, z_origin):
+    """The fixture Z around a threshold row: z_origin - y, offset -2..2."""
+    return (z_origin - y + (x * 7 + y * 3) % 5 - 2) & 0xFFFF
+
+
+def ion_byte_surface(emu, width, height, bytes_per_pixel, data):
+    """A BSurface (vtable 0x7E2070; +4 width, +8 height, +0xC lock count,
+    +0x10 bytes per pixel, +0x14 Buffer) over a fixture buffer."""
+    surface = emu.alloc(0x20)
+    buffer = emu.alloc(len(data))
+    emu.uc.mem_write(buffer, bytes(data))
+    emu.uc.mem_write(surface, struct.pack('<IIIIIIIB', BSURFACE_VT, width, height, 0,
+                                          bytes_per_pixel, buffer, len(data), 0))
+    return surface, buffer
+
+
+def ion_draw_row(*, name, blasts, view_origin, z_origin, detail=2):
+    """IonBlastClass::DrawAll 0x53D850 (the offset table it builds, and
+    0x53D580 per blast, with CoordsToClient2 0x6D2140, AdjustForZ 0x6D20E0,
+    Prep_For_Blit 0x7BC040 and the BSurface methods run natively) on fixture
+    surfaces: the destination and the Z buffer are byte BSurfaces of
+    ION_VIEW's width and ION_SURFACE_ROWS rows, the ripple frames carry
+    ion_ripple_pattern. Blasts are (X, Y, Z, frame)."""
+    emu = IonEmu()
+    width, view_height = ION_VIEW
+    rows = ION_SURFACE_ROWS
+    words = [ion_background_word(x, y) for y in range(rows) for x in range(width)]
+    dest, dest_buffer = ion_byte_surface(emu, width, rows, 2, struct.pack(f'<{len(words)}H', *words))
+    z_words = [ion_z_word(x, y, z_origin) for y in range(rows) for x in range(width)]
+    z_surface, z_buffer = ion_byte_surface(emu, width, rows, 2,
+                                           struct.pack(f'<{len(z_words)}H', *z_words))
+    zbuffer = emu.alloc(0x40)
+    emu.write32(zbuffer + 0x10, 0)
+    emu.write32(zbuffer + 0x14, z_surface)
+    emu.write32(zbuffer + 0x1C, z_buffer + 2 * len(z_words))
+    emu.write32(zbuffer + 0x20, 2 * len(z_words))
+    emu.write32(zbuffer + 0x24, 0x8000)
+    emu.write32(zbuffer + 0x28, width)
+    emu.write32(ZBUFFER_PTR, zbuffer)
+    emu.write32(TEMP_SURFACE, dest)
+    tactical = emu.alloc(0x1000)
+    emu.write32(tactical + 0xB0, view_origin[0] & 0xFFFFFFFF)
+    emu.write32(tactical + 0xB4, view_origin[1] & 0xFFFFFFFF)
+    emu.write32(TACTICAL_PTR, tactical)
+    emu.uc.mem_write(TACTICAL_VIEW, struct.pack('<iiii', 0, 0, width, view_height))
+    emu.uc.mem_write(TACTICAL_CACHED_RECT, struct.pack('<iiii', 0, 0, width, view_height))
+    emu.uc.mem_write(ADJUST_FOR_Z_SCALE, struct.pack('<Q', STANDARD_Z_MULTIPLIER_BITS))
+    emu.write32(DETAIL_LEVEL, detail)
+    ripple_width, ripple_height = ION_RIPPLE_SIZE
+    for n in sorted({frame for *_, frame in blasts}):
+        data = bytes(ion_ripple_pattern(n, sx, sy) for sy in range(ripple_height)
+                     for sx in range(ripple_width))
+        surface, _ = ion_byte_surface(emu, ripple_width, ripple_height, 1, data)
+        emu.write32(ION_RIPPLE_SURFACES + 4 * n, surface)
+    pointers = ion_vector(emu, [(x, y, z, frame, 1) for x, y, z, frame in blasts])
+    points = []
+    out = emu.alloc(8)
+    for blast in pointers:
+        emu.invoke(0x6D2140, ecx=tactical, args=[blast, out])
+        points.append([*struct.unpack('<ii', emu.uc.mem_read(out, 8)),
+                       emu.uc.reg_read(UC_X86_REG_EAX) & 0xFF])
+    invoke_under(emu, 0x53D850, count=50_000_000, timeout_us=300_000_000)
+    after = struct.unpack(f'<{len(words)}H', emu.uc.mem_read(dest_buffer, 2 * len(words)))
+    changed = [[i % width, i // width, old, new]
+               for i, (old, new) in enumerate(zip(words, after)) if old != new]
+    if bytes(emu.uc.mem_read(z_buffer, 2 * len(z_words))) != struct.pack(f'<{len(z_words)}H',
+                                                                         *z_words):
+        raise OracleError('the ripple wrote the Z buffer')
+    return dict(name=name, blasts=[list(blast) for blast in blasts],
+                view_origin=list(view_origin), z_origin=z_origin, detail=detail,
+                points=points, changed=len(changed),
+                fnv1a64=f'0x{fnv1a64_bytes(struct.pack(f"<{len(after)}H", *after)):016x}',
+                first_changed=changed[:16])
+
+
+def ion_blast_coord(point, z, view_origin=(-96, 2940)):
+    """A coordinate whose blast projects near `point` for `view_origin`
+    (CoordsToClient2 is run natively on it; this only picks inputs)."""
+    dx = point[0] - (-view_origin[0])
+    dy = point[1] + view_origin[1] - 3000
+    ax, ay = dx * 256 // 30, dy * 256 // 15
+    return (ION_BASE_COORD[0] + (ax + ay) // 2, ION_BASE_COORD[1] + (ay - ax) // 2, z)
+
+
+def ion_blast_draw():
+    """Rows of ion_draw_row: the blast rect clipped on each side, a raised
+    blast (its AdjustForZ in the threshold), two blasts drawn last first, a
+    detail level below 2 and a centre left of the view."""
+    origin = 0x8000 - 3
+    row = ion_draw_row
+    rows = [
+        row(name='centre', blasts=[(*ion_blast_coord((96, 60), 0), 5)], view_origin=(-96, 2940),
+            z_origin=origin),
+        row(name='top_left', blasts=[(*ion_blast_coord((-150, -90), 0), 1)],
+            view_origin=(-96, 2940), z_origin=origin),
+        row(name='bottom_right', blasts=[(*ion_blast_coord((250, 200), 0), 35)],
+            view_origin=(-96, 2940), z_origin=origin),
+        row(name='left_of_view', blasts=[(*ion_blast_coord((-200, 40), 0), 12)],
+            view_origin=(-96, 2940), z_origin=origin),
+        row(name='two_blasts', blasts=[(*ion_blast_coord((80, 50), 0), 3),
+                                       (*ion_blast_coord((110, 70), 0), 9)],
+            view_origin=(-96, 2940), z_origin=origin),
+        row(name='low_detail', blasts=[(*ion_blast_coord((96, 60), 0), 5)],
+            view_origin=(-96, 2940), z_origin=origin, detail=1),
+    ]
+    for z, frame in ((1500, 20), (300, 27)):
+        emu = Emu()
+        emu.uc.mem_write(ADJUST_FOR_Z_SCALE, struct.pack('<Q', STANDARD_Z_MULTIPLIER_BITS))
+        lift = i32(invoke_under(emu, 0x6D20E0, ecx=z))
+        rows.append(row(name=f'raised_{z}', blasts=[(*ion_blast_coord((96, 60 + lift), z), frame)],
+                        view_origin=(-96, 2940), z_origin=(origin - lift) & 0xFFFF))
+    return rows
+
+
 def generate():
     return {'source': 'unicorn/gamemd.exe', 'click_fire': click_fire(),
             'defense_alert': defense_alert(), 'mission_missile': mission_missile(),
@@ -7083,6 +7527,8 @@ def generate():
             'effect_tint_intensity': effect_tint_intensity(),
             'curtain_draw_arm': curtain_draw_arm(),
             'drawshp_curtain_arm': drawshp_curtain_arm(),
+            'draw_curtain_arm': draw_curtain_arm(),
+            'aircraft_light': aircraft_light(),
             'building_colour_word': building_colour_word(),
             'anim_colour_word': anim_colour_word(),
             'building_anim_light': building_anim_light(),
@@ -7114,6 +7560,9 @@ def generate():
             'nuke_launch': nuke_launch(),
             'tactical_timers': tactical_timers(),
             'timer_lines': timer_lines(),
+            'ion_blast_ripple': ion_blast_ripple(),
+            'ion_blast_update': ion_blast_update(),
+            'ion_blast_draw': ion_blast_draw(),
             'ai_catalog': {'types': [[name, what, keys] for name, what, keys in TYPE_CATALOG],
                            'build_const': BUILD_CONST_TYPES, 'build_tech': BUILD_TECH_TYPES,
                            'playfield': PLAYFIELD}}
@@ -7192,7 +7641,11 @@ if __name__ == '__main__':
                'the player\'s tail and the recheck flag; the tactical timers: '
                'TacticalClass::Draw\'s Scenario, Super and blackout lines (index, scheme, '
                'seconds, label, blink pointers and the GameMode 0 hold skip) and each '
-               'line\'s texts, measures, right alignment, black boxes, colours and blink'),
+               'line\'s texts, measures, right alignment, black boxes, colours and blink; '
+               'the IonBlast ripple: the ring step under both control words, the '
+               '80 generated frames\' digests, counts and bytes, both spiral functions, '
+               'UpdateAll\'s frames and removals, and DrawAll\'s pixels for clipped, '
+               'raised, paired and low-detail blasts'),
         assumptions=['fresh emulator per case; fixture Super/House/Building/Bullet layouts '
                      'from live disassembly',
                      'x87 control word 0x0E7F (53-bit chop) at each entry',
@@ -7315,8 +7768,9 @@ if __name__ == '__main__':
                        'format 0x8205D0 is the row\'s (retail RGB565 is 2); the high half '
                        'of the colour word holds stale ECX bits from the fixture Rules '
                        'address; nothing is stubbed',
-                       'drawshp_curtain_arm, building_colour_word, anim_colour_word, '
-                       'building_anim_light: the Techno is curtain_techno\'s, its vtable '
+                       'drawshp_curtain_arm, draw_curtain_arm, building_colour_word, '
+                       'anim_colour_word, building_anim_light: the Techno is '
+                       'curtain_techno\'s, its vtable '
                        'holding the native IsIronCurtained 0x41BF40 and flash arms '
                        '(0x456F80, 0x70D190); WhatAmI vt+0x2C, GetCoords vt+0x48 and GetCell '
                        'vt+0x1BC answer the row; MapClass::operator[] 0x5657A0 and by '
@@ -7324,6 +7778,13 @@ if __name__ == '__main__':
                        'centre shrouded) answers the row; the slices start with the '
                        'registers their blocks read (ESI, EBP or EAX as named); above the '
                        'low 16 bits the colour words hold stale register bits',
+                       'aircraft_light: the slice starts with EBP a fixture aircraft '
+                       'whose GetHeight vt+0x1C8 answers the row and [ESP+0x28] the '
+                       'coordinate; the storm byte 0xA9FAB4, Scenario Level= (+0x3544) '
+                       'and IonLevel= (+0x355C), Rules ExtraAircraftLight= (+0x17DC) and '
+                       'one cell in Map\'s table (+0x13C, +0x140) with the row\'s word '
+                       '(+0x10A) are fixtures; the level step 0x889EC8 is what the '
+                       'aircraft unit\'s initializers 0x413AC0..0x413B90 leave',
                        'blit_pickers: a fixture Convert whose fields hold their offsets',
                        'blitters: the blitter objects carry the real vtables the 16-bit '
                        'Convert constructor 0x48E740 stores in each field, with fixture '
@@ -7466,7 +7927,21 @@ if __name__ == '__main__':
                        'height; the clock 0x4093B0 answers the row\'s milliseconds; the '
                        'Composite surface\'s GetRect vt+0x78 answers the view and FillRect '
                        'vt+0x14 and the glyph print 0x434B90 are recorded stubs; the pixel '
-                       'format is RGB565'],
+                       'format is RGB565',
+                       'ion_blast_ripple: operator new 0x7C8E17 takes a 16 MiB fixture heap; '
+                       'the BSurface constructor, Fill and Lock run natively; the ring '
+                       'step\'s initializers run under 0x027F (the C++ initializers run '
+                       'before WinMain sets truncation at 0x6BBFC1) before the generator, '
+                       'which runs under 0x0E7F',
+                       'ion_blast_update: the vector\'s initializer 0x53CA70 runs first; '
+                       'the fixture items are not allocated (+0xD clear); operator delete '
+                       '0x7C8B3D is a silent stub',
+                       'ion_blast_draw: the destination (TempSurface) and the Z buffer '
+                       'surface are 192x144 two-byte BSurfaces (vtable 0x7E2070), the '
+                       'tactical view and CoordsToClient2\'s rect are 192x128 at the '
+                       'origin, the ZBuffer has offset 0, +0x24 0x8000 and +0x28 192, '
+                       'the AdjustForZ scale 0xB0CD48 holds its startup value, and the '
+                       'ripple frames are byte BSurfaces holding ion_ripple_pattern'],
         entry_points={'ClickFire': 0x6CB920, 'defense_alert': 0x4FAF00,
                       'Mission_Missile': 0x44C980, 'NukeMaker': 0x46B310,
                       'UpdateAnimation_super_anim': 0x450F9E,
@@ -7495,6 +7970,9 @@ if __name__ == '__main__':
                       'TechnoClass::GetEffectTintIntensity': 0x70E360,
                       'UnitClass::DrawVoxelBody_curtain_block': 0x73BF7B,
                       'TechnoClass::DrawSHP_curtain_arm': 0x70631F,
+                      'TechnoClass::Draw_curtain_arm': 0x706776,
+                      'AircraftClass::Draw_It_light': 0x4148D1,
+                      'AircraftClass level step initializer': 0x413B90,
                       'BuildingClass_DrawBody_colour_word': 0x43D386,
                       'BuildingClass::Draw_colour_word': 0x43DC1C,
                       'AnimClass::DrawIt_colour_word': 0x4233EE,
@@ -7530,4 +8008,10 @@ if __name__ == '__main__':
                       'SuperClass::Launch_case11': 0x6CC390,
                       'SuperClass::Launch_case0': 0x6CC390,
                       'TacticalClass::Draw_timers': 0x6D4941,
-                      'TacticalClass::DrawTimer': 0x6D4B50}))
+                      'TacticalClass::DrawTimer': 0x6D4B50,
+                      'IonBlast ring step initializers': 0x53CA30,
+                      'IonBlast ripple generator': 0x53D330,
+                      'IonBlast spiral point': 0x53D8E0,
+                      'IonBlast spiral index': 0x53D960,
+                      'IonBlastClass::UpdateAll': 0x53D310,
+                      'IonBlastClass::DrawAll': 0x53D850}))

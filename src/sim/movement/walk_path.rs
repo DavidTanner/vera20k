@@ -90,22 +90,6 @@ impl Simulation {
                 self.walk_short_path_receiver(id, rules)?;
                 Ok(true)
             }
-            FindPathResult::EmptyRoute => {
-                //A zero-cost route (the goal is the mover's own Cell) copies
-                //no word. 75B2DF..75B2F9 then runs the success arm: the retry
-                //reset, and Infantry vt+4F8 (521EB0) answers false without
-                //JumpJet=. 75B2FF..75B5A7 reads the untouched Foot+5E0
-                //terminator and steps toward (-1 & 7) = octant 7; the queue
-                //head stays -1. Evidence: instruction reading only.
-                //The core already recorded the reference Cell (4D4003).
-                let actor = self
-                    .substrate
-                    .entities
-                    .get_mut(id)
-                    .ok_or("retired Walk path requester")?;
-                actor.navigation.path_runtime.retries_left = super::PATH_STUCK_INIT;
-                Ok(true)
-            }
             FindPathResult::Failed => {
                 //75AFD5 clears +36 before anything else. The head is null on
                 //this path (75AECD), so every failed exit's Stop clears it

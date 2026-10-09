@@ -31,6 +31,8 @@ pub(crate) mod detonation_anim;
 pub(crate) mod fire_coord;
 pub(crate) mod fire_error;
 pub(crate) mod fire_error_world;
+#[cfg(test)]
+mod garrison_oracle_tests;
 pub(crate) mod gattling;
 pub(crate) mod greatest_threat;
 pub(crate) mod in_range;
@@ -303,15 +305,24 @@ fn missing_projectile_fallback() -> &'static crate::rules::projectile_type::Proj
 /// persistent shots the ordinary gravity/collision arm. Scalar FireAt math
 /// retains binary64 velocity; upstream FLH/pivot and homing producers remain
 /// explicitly bounded in their owners.
+/// The BulletType a shot of `weapon` carries: its `Projectile=`, or
+/// [`missing_projectile_fallback`] for one naming none.
+fn bullet_type<'r>(
+    weapon: &crate::rules::weapon_type::WeaponType,
+    rules: &'r RuleSet,
+) -> &'r crate::rules::projectile_type::ProjectileType {
+    weapon
+        .projectile
+        .as_deref()
+        .and_then(|projectile_id| rules.projectile(projectile_id))
+        .unwrap_or_else(|| missing_projectile_fallback())
+}
+
 fn classify_projectile_delivery(
     weapon: &crate::rules::weapon_type::WeaponType,
     rules: &RuleSet,
 ) -> ProjectileDelivery {
-    let projectile = weapon
-        .projectile
-        .as_deref()
-        .and_then(|projectile_id| rules.projectile(projectile_id))
-        .unwrap_or_else(|| missing_projectile_fallback());
+    let projectile = bullet_type(weapon, rules);
     // `BulletClass::AI @ 0x004666E0` selects an arm exactly twice: `ROT < 1` at
     // `0x004668D1`, then `Vertical` (`+0x2C0`) at `0x004671D0`. Nothing else
     // participates.
@@ -1098,9 +1109,9 @@ pub(crate) fn can_fire_at_target(
     };
     let Some((_, Some(selected))) = select_weapon_against(
         rules,
+        attacker,
         attacker_obj,
         &combat_weapon::attacker_facts(attacker, attacker_obj),
-        attacker.owner(),
         Some(target),
         entities,
         interner,
@@ -1172,9 +1183,9 @@ pub(crate) fn pursuit_selection<'a>(
     let attacker_obj = rules.object(interner.resolve(entity.type_ref()))?;
     select_weapon_against(
         rules,
+        entity,
         attacker_obj,
         &combat_weapon::attacker_facts(entity, attacker_obj),
-        entity.owner(),
         Some(target),
         entities,
         interner,
@@ -1763,20 +1774,18 @@ fn death_weapon_half_strength(strength: i32) -> Option<i32> {
 /// The death arm's gate (`TechnoClass::ReceiveDamage 0x00702572..0x00702601`):
 /// Explodes (`+0xD15`), the veteran or elite `EXPLODES` ability (IsVeteran
 /// `0x0074FF90` with `+0x2A6`; IsElite `0x00750010` with `+0x2A6` or
-/// `+0x2B8`), or the weapon at `CurrentWeaponNumber` (`GetWeapon(+0x138)`,
-/// vtable `+0x3F8`) is `Suicide=` (`+0x144`). `+0x138` is a Gunner
-/// transport's passenger IFVMode (SetGunnerWeapon `0x0070DC70`), else 0: it
-/// is not the last-fired slot. When it holds, KillPassengers
+/// `+0x2B8`), or `numbered_weapon` is `Suicide=` (`+0x144`): the weapon GetWeapon
+/// (vtable `+0x3F8`, [`combat_weapon::get_weapon`]) answers for
+/// `CurrentWeaponNumber` (`+0x138`, pushed at `0x0070257A`). `+0x138` is a
+/// Gunner transport's passenger IFVMode (SetGunnerWeapon `0x0070DC70`), else
+/// 0: it is not the last-fired slot. When it holds, KillPassengers
 /// (`0x00702603..0x00702667`) and then Fire_Death_Weapon (`0x00702669`) run;
 /// otherwise neither does.
 pub(crate) fn death_arm_explodes(
-    rules: &RuleSet,
     obj: &ObjectType,
     veterancy: u16,
-    current_weapon_number: i32,
+    numbered_weapon: Option<&WeaponType>,
 ) -> bool {
-    let numbered_weapon = combat_weapon::weapon_for_index(obj, veterancy, current_weapon_number)
-        .and_then(|(weapon_id, _)| rules.weapon(weapon_id));
     obj.explodes
         || self::veterancy::has_weapon_ability(
             self::veterancy::rank_from_u16(veterancy),
@@ -1797,14 +1806,14 @@ pub(crate) fn death_arm_explodes(
 pub(crate) fn fire_death_weapon_payload(
     rules: &RuleSet,
     obj: &ObjectType,
-    current_weapon: Option<&str>,
+    current_weapon: Option<&WeaponType>,
     interner: &mut StringInterner,
 ) -> Option<(i32, InternedId, InternedId)> {
     let chosen = obj
         .death_weapon
         .as_deref()
         .and_then(|weapon_id| rules.weapon(weapon_id))
-        .or_else(|| current_weapon.and_then(|weapon_id| rules.weapon(weapon_id)));
+        .or(current_weapon);
     if let Some(weapon) = chosen {
         let damage =
             death_weapon_ftol_product_i32_f32(weapon.damage, obj.death_weapon_damage_modifier)?;
@@ -1824,6 +1833,41 @@ pub(crate) fn fire_death_weapon_payload(
         warhead_ref,
         weapon_ref,
     ))
+}
+
+/// `TechnoClass::Fire_Death_Weapon @ 0x0070D690` with no extra damage: a real
+/// bullet of the [`fire_death_weapon_payload`] weapon (`CreateBullet @
+/// 0x0046B050`, owner and target the object itself) detonated at the object's
+/// GetCoords (vt+0x48, `0x0070D77C`; a building's foundation centre) through
+/// `DetonateAtCoord @ 0x004690B0`. `None` when no weapon fires.
+pub(crate) fn death_weapon_detonation(
+    world: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+) -> Option<ProjectileDetonation> {
+    let entity = world.substrate.entities.get(id)?;
+    let object = rules.object(world.interner.resolve(entity.type_ref()))?;
+    let current_weapon = combat_weapon::current_weapon(
+        entity,
+        object,
+        &world.substrate.entities,
+        rules,
+        &world.interner,
+    );
+    let impact = crate::sim::movement::ground_pose::object_get_coords(
+        entity,
+        world.resolved_terrain.as_ref(),
+    );
+    let (damage, warhead, weapon) =
+        fire_death_weapon_payload(rules, object, current_weapon, &mut world.interner)?;
+    Some(ProjectileDetonation {
+        projectile_id: id,
+        source_id: id,
+        target: ProjectileTarget::Entity(id),
+        impact: ProjectileCoord::new(impact.x, impact.y, impact.z),
+        payload: ProjectilePayload::new(damage, warhead, weapon),
+        reason: crate::sim::projectile::ProjectileDetonationReason::DeathWeapon,
+    })
 }
 
 /// One ordered accumulator for weapon emission and recursive receiver effects.
@@ -2479,13 +2523,7 @@ fn postmortem_delay_duration(warhead: &WarheadType, distance_leptons: i32) -> i3
     ))
     .expect("DelayKillAtMax parser retains a finite native f32");
     let slope = X87Chop53::sub(X87Chop53::mul(at_max, base), base);
-    let spread = X87Chop53::load_f32(NativeF32Bits::from_bits(
-        (warhead.cell_spread_f64 as f32).to_bits(),
-    ))
-    .expect("CellSpread parser retains a finite native f32");
-    let spread_i32 =
-        X87Chop53::ftol_i64(spread).expect("finite CellSpread converts through native ftol") as i32;
-    let denominator = spread_i32.wrapping_shl(8);
+    let denominator = cell_spread::whole_cells(warhead.cell_spread_f64).wrapping_shl(8);
     let Ok(slope_per_lepton) = X87Chop53::div(slope, X87Chop53::load_i32(denominator)) else {
         // Masked x87 divide-by-zero/non-finite conversion yields the integer
         // indefinite qword; Math__ftol returns its low dword, which is zero.
@@ -2608,10 +2646,32 @@ pub(crate) fn projectile_impact_cell(
     )
 }
 
+/// The cell whose object lists a Map lookup answered: a real cell, by its own
+/// coordinate. The shared dummy cell never holds an object: `MapClass::
+/// Place_Down @ 0x005683C0`, the one `CellClass::AddContent` caller, skips a
+/// missing cell.
+fn cell_list_position(
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    cell: crate::map::cell_index::NativeCellIdentity,
+) -> Option<(u16, u16)> {
+    match cell {
+        crate::map::cell_index::NativeCellIdentity::Real(_) => {
+            let (x, y) = cells.coord(cell);
+            Some((x as u16, y as u16))
+        }
+        crate::map::cell_index::NativeCellIdentity::Dummy => None,
+    }
+}
+
+/// `BulletClass::SpawnShrapnel @ 0x0046A310` for the bullet at `location`,
+/// its Location (`+0x9C`), which the count, the admission, the ring centre and
+/// every fragment's origin read; the impact coordinate never reaches it.
 fn emit_projectile_shrapnel(
     detonation: &ProjectileDetonation,
+    location: ProjectileCoord,
     entities: &EntityStore,
     occupancy: &OccupancyGrid,
+    terrain_object_cells: &BTreeMap<(u16, u16), u64>,
     rules: &RuleSet,
     interner: &mut StringInterner,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
@@ -2651,48 +2711,72 @@ fn emit_projectile_shrapnel(
         return;
     };
 
-    let target_position = match detonation.target {
-        // `0x0046A370`: the Target's GetCoords (vt+0x48).
-        ProjectileTarget::Entity(id) => entities.get(id).map(|entity| {
-            let coord = crate::sim::movement::ground_pose::object_get_coords(entity, terrain);
-            ProjectileCoord::new(coord.x, coord.y, coord.z)
-        }),
-        ProjectileTarget::Cell { rx, ry } => {
-            Some(crate::sim::projectile::cell_target_coord(terrain, rx, ry))
-        }
-        ProjectileTarget::None => Some(ProjectileCoord::new(0, 0, 0)),
-        ProjectileTarget::DummyCell => Some(
-            terrain
-                .map(crate::map::resolved_terrain::ResolvedTerrainGrid::shared_cell_dummy)
-                .as_ref()
-                .map(crate::sim::projectile::dummy_cell_target_coord)
-                .unwrap_or(ProjectileCoord::new(0, 0, 0)),
-        ),
-    };
-    let distance_cells = target_position.map_or(0, |target| {
-        let dx = i64::from(target.x - detonation.impact.x);
-        let dy = i64::from(target.y - detonation.impact.y);
-        let dz = i64::from(target.z - detonation.impact.z);
-        (dx.saturating_mul(dx)
-            .saturating_add(dy.saturating_mul(dy))
-            .saturating_add(dz.saturating_mul(dz)))
-        .isqrt()
-        .saturating_div(256) as i32
+    // `0x0046A336..0x0046A3C2`: a negative ShrapnelCount is lessened by the
+    // whole cells from the bullet's Location to its firer's GetCoords
+    // (`[bullet+0xB0]`, vt+0x48 at `0x0046A370`), through `0x0041C380` and a
+    // signed /256; a bullet without a firer gets 3.
+    let firer = entities.get(detonation.source_id);
+    let distance_cells = firer.map_or(0, |firer| {
+        let coord = crate::sim::movement::ground_pose::object_get_coords(firer, terrain);
+        crate::util::native_x87::distance_3d_leptons(
+            [coord.x, coord.y, coord.z],
+            [location.x, location.y, location.z],
+        ) / 256
     });
-    let count = projectile_shrapnel_count(
+    let Some(count) = projectile_shrapnel_count(
         parent_projectile.shrapnel_count,
-        entities.get(detonation.source_id).is_some(),
+        firer.is_some(),
         distance_cells,
-    );
-    if count == 0 {
+    ) else {
+        return;
+    };
+
+    // The bullet's cell (`vt+0x1B8`, `0x0041BEA0`) centres the rings.
+    let center_rx = crate::util::lepton::lepton_to_cell(location.x);
+    let center_ry = crate::util::lepton::lepton_to_cell(location.y);
+    // `0x0046A3D6..0x0046A406`: shrapnel is thrown only when the bullet's cell
+    // (GetCell, vt+0x1BC, `0x005F6960`) holds a first ground object (`+0xE4`)
+    // that is not a building (What_Am_I 6). The second GetCell (`0x0046A3F2`)
+    // answers the same cell. A missed lookup's dummy cell holds none.
+    let cells = terrain.map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+    let bullet_cell = match cells.as_ref() {
+        Some(cells) => cell_list_position(
+            cells,
+            crate::sim::movement::ground_pose::query_object_cell(
+                cells,
+                crate::sim::components::DriveCoord {
+                    x: location.x,
+                    y: location.y,
+                    z: location.z,
+                },
+            ),
+        ),
+        // Mapless fixtures read the coordinate's own cell.
+        None => u16::try_from(center_rx)
+            .ok()
+            .zip(u16::try_from(center_ry).ok()),
+    };
+    let ground_head = |cell: Option<(u16, u16)>| {
+        let (rx, ry) = cell?;
+        occupancy
+            .cell_objects(
+                rx,
+                ry,
+                crate::sim::movement::locomotor::MovementLayer::Ground,
+                terrain_object_cells.get(&(rx, ry)).copied(),
+            )
+            .next()
+    };
+    let admitted = match ground_head(bullet_cell) {
+        Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => entities
+            .get(id)
+            .is_some_and(|object| object.category != EntityCategory::Structure),
+        Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) => true,
+        None => false,
+    };
+    if !admitted {
         return;
     }
-
-    let center_rx = detonation.impact.x / 256;
-    let center_ry = detonation.impact.y / 256;
-    let source_owner = entities
-        .get(detonation.source_id)
-        .map(|source| source.owner());
     // Random CellClass selections must capture their target coordinate at the
     // lookup call point: every miss returns the same mutable process dummy, so
     // resolving a collected list afterward would give all missed children the
@@ -2700,28 +2784,36 @@ fn emit_projectile_shrapnel(
     // until child construction, preserving their existing behavior.
     let mut targets: Vec<(ProjectileTarget, Option<ProjectileCoord>)> =
         Vec::with_capacity(count as usize);
-    let scan_radius = child_weapon.range.to_num::<i32>().max(0);
-    for &(dx, dy) in self::cell_spread::splash_cells(SimFixed::from_num(scan_radius))
-        .iter()
-        .skip(1)
-    {
-        if targets.len() == count as usize {
-            break;
-        }
-        let rx = center_rx + i32::from(dx);
-        let ry = center_ry + i32::from(dy);
-        let (Ok(rx), Ok(ry)) = (u16::try_from(rx), u16::try_from(ry)) else {
-            continue;
+    // `0x0046A436..0x0046A48B`: the child weapon's Range (`+0xB4`) divided by
+    // 256 toward zero names the last ring; rings 1 through it are walked,
+    // never the bullet's cell. `0x0046A4E5..0x0046A4F5`: a ring cell's first
+    // object is a target only while the bullet has a firer, so with the firer
+    // gone every fragment takes a random cell.
+    let rings = (child_weapon.range_leptons / 256).max(0) as usize;
+    let ring_cells = if firer.is_some() {
+        self::cell_spread::sweep(rings)
+    } else {
+        &[]
+    };
+    let source_owner = firer.map(|source| source.owner());
+    for &(dx, dy) in ring_cells.iter().skip(1) {
+        // `0x0046A496..0x0046A4D2`: the ring cell, its packed words added to
+        // the centre's, through `MapClass::operator[] @ 0x005657A0`.
+        let rx = (center_rx as i16).wrapping_add(dx);
+        let ry = (center_ry as i16).wrapping_add(dy);
+        let cell = match cells.as_ref() {
+            Some(cells) => cell_list_position(cells, cells.lookup((rx, ry))),
+            None => u16::try_from(rx).ok().zip(u16::try_from(ry).ok()),
         };
-        let Some(target_id) = occupancy
-            .get(rx, ry)
-            .and_then(|cell| {
-                cell.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
-                    .next()
-            })
-            .map(|occupant| occupant.entity_id)
-        else {
-            continue;
+        // `0x0046A4D7..0x0046A509`: the head of its ground list, unless it is
+        // the firer or the firer's house is allied to it
+        // (`Is_Ally_ByObject @ 0x004F9A90`).
+        let target_id = match ground_head(cell) {
+            Some(crate::sim::occupancy::CellObjectMember::Entity(id)) => id,
+            // A tree heading the list is a native target (a houseless object
+            // is no ally), but a VERA bullet cannot target a TerrainClass:
+            // the cell yields no fragment, and nothing behind the tree is read.
+            Some(crate::sim::occupancy::CellObjectMember::Terrain(_)) | None => continue,
         };
         if target_id == detonation.source_id {
             continue;
@@ -2740,6 +2832,12 @@ fn emit_projectile_shrapnel(
             continue;
         }
         targets.push((ProjectileTarget::Entity(target_id), None));
+        // `0x0046A8D1..0x0046A8E0`: the walk ends once the count is reached,
+        // tested after each fragment, so a zero count walks every ring and
+        // takes no random cell (`0x0046A92C..0x0046A936`).
+        if targets.len() == count as usize {
+            break;
+        }
     }
     while targets.len() < count as usize {
         let (rx, ry) = projectile_random_shrapnel_cell(center_rx, center_ry, scenario_rng);
@@ -2816,7 +2914,7 @@ fn emit_projectile_shrapnel(
             ),
             flat: child_projectile.flat,
             source_id: detonation.source_id,
-            origin: detonation.impact,
+            origin: location,
             target,
             initial_target_position: target_coord,
             payload: ProjectilePayload::new(
@@ -2826,7 +2924,7 @@ fn emit_projectile_shrapnel(
             ),
             speed_leptons_per_frame: child_weapon.speed.clamp(1, i32::from(u16::MAX)) as u16,
             velocity: crate::sim::projectile::launch::shrapnel_launch_velocity(
-                detonation.impact,
+                location,
                 target_coord,
                 child_weapon.speed,
                 random_cell,
@@ -2872,7 +2970,7 @@ pub(crate) struct LogicProjectileCommit {
 
 /// Build the per-attacker fire snapshot from current entity state. PURE READ —
 /// the caller has already decremented cooldown/burst-delay for this tick and
-/// resolved any garrison occupant. Single source of the snapshot field-reads so
+/// read any garrison's fire state. Single source of the snapshot field-reads so
 /// non-Unit class hosts and the Unit live Fire→Facing host use the same
 /// field reads.
 pub(crate) fn build_attacker_snapshot(
@@ -2880,7 +2978,6 @@ pub(crate) fn build_attacker_snapshot(
     target: TargetKind,
     garrison: Option<GarrisonSnapshot>,
 ) -> AttackerSnapshot {
-    let infantry_pose = entity.infantry_sprite_pose();
     AttackerSnapshot {
         stable_id: entity.stable_id(),
         owner: entity.owner(),
@@ -2894,12 +2991,8 @@ pub(crate) fn build_attacker_snapshot(
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
         veterancy: entity.veterancy(),
-        infantry_doing: infantry_pose.map(|(doing, _)| doing),
-        is_fully_deployed: entity.is_fully_deployed(),
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
-        current_weapon_number: entity.current_weapon_number(),
-        in_open_transport: entity.passenger_role.in_open_transport(),
         garrison,
         scan_mission: threat_range::scan_mission_for(entity),
         building_shot: None,
@@ -2931,6 +3024,10 @@ pub(crate) fn build_attacker_snapshot(
 ///    shooter (`0x006FF031..0x006FF085`) when its bullet kills, so with
 ///    several occupants the NEXT one in line is paid. (VERA's line runs in
 ///    reverse entry order: see `passenger::PassengerCargo`.)
+///    RESIDUAL: native reads that slot unchecked; VERA pays nobody when the
+///    index is past the occupant count ([`combat_weapon::firing_occupant_id`]).
+///    Trigger: occupants leaving, but not all of them, between the shot and
+///    the kill. Effect: native reads a stale slot. Frequency: rare.
 /// 5. else nobody.
 ///
 /// Every cost on both sides is the type's Cost_Of for the VICTIM's house
@@ -2971,23 +3068,11 @@ fn award_kill_experience(
         killer.spawn_owner_id.and_then(trainable_cost)
     } else {
         // Branch 4: an occupied building pays the occupant at its fire index.
-        killer
-            .passenger_role
-            .cargo()
-            .filter(|cargo| {
-                killer.category == EntityCategory::Structure
-                    && killer_type.can_be_occupied
-                    && killer_type.can_occupy_fire
-                    && !cargo.is_empty()
-            })
-            .map(|cargo| {
-                cargo.passengers[usize::from(cargo.garrison_fire_index) % cargo.passengers.len()]
-            })
-            .and_then(|occupant| {
-                let occupant_type =
-                    rules.object(interner.resolve(entities.get(occupant)?.type_ref()))?;
-                Some((occupant, cost_of(occupant_type)))
-            })
+        combat_weapon::firing_occupant_id(killer, killer_type).and_then(|occupant| {
+            let occupant_type =
+                rules.object(interner.resolve(entities.get(occupant)?.type_ref()))?;
+            Some((occupant, cost_of(occupant_type)))
+        })
     };
     let Some((recipient_id, recipient_cost)) = recipient else {
         return;
@@ -3167,7 +3252,7 @@ fn record_kill_credit(
     if let Some(killer) = killer_owner
         && let Some(house) = houses.get_mut(&killer)
     {
-        house.stats.add_score(points);
+        house.economy.add_score(points);
     }
     if !insignificant_building {
         if let Some(house) = houses.get_mut(&victim.owner()) {
@@ -3225,50 +3310,24 @@ pub(crate) fn lepton_distance_sq_raw(
 ///   (`[SPY]` primary), and the unreferenced `TankMakeupKit`/`CRMakeupKit`.
 /// - Player effect: a Destroyer's anti-submarine weapon reads as in range only
 ///   within two cells, where gamemd is always in range.
-/// - Frequency: every Destroyer ASW acquisition that reaches this predicate —
-///   pursuit (`world_orders.rs`), the greatest-threat scan, the attack cursor —
-///   so ordinary naval play, not an edge case.
-/// - Downstream risk: pursuit walks the Destroyer to two cells before it will
-///   fire, and target selection agrees with it, so the drift is consistent
-///   rather than self-correcting.
+/// - Frequency: only the no-resolved-terrain fallbacks listed under RESIDUAL 2
+///   reach this predicate.
+/// - Downstream risk: those fallbacks agree with each other, so the drift is
+///   consistent rather than self-correcting.
 ///
-/// Pre-existing, not introduced here; recorded because the lepton scaling on
-/// the line above rewrote this function while leaving the sentinel unhandled.
-/// The fix belongs with the remaining `is_within_range_leptons` call sites'
-/// migration onto `compute_in_range`, not with a second sentinel test bolted
-/// on here.
+/// RESIDUAL 2 — this twin also has no line-of-fire walk, no elevation bonus
+/// and no occupied arm. `TechnoClass::InRange` ends in `CALL 0x004CC310` at
+/// 0x006F7642 and refuses the shot when a wall or a cliff sits on the line, it
+/// adds `0x006F6F60`'s bonus for a `SubjectToElevation=` projectile fired down
+/// at a lower target, and it measures an occupied building with its reach
+/// (`0x006F727E`); `compute_in_range` does all three (see
+/// `sim::combat::line_of_fire`, `in_range::elevation_bonus_leptons` and
+/// `combat_weapon::occupied_reach_cells`) and this function does none.
 ///
-/// RESIDUAL 2 — this twin also has no line-of-fire walk. `TechnoClass::InRange`
-/// ends in `CALL 0x004CC310` at 0x006F7642 and refuses the shot when a wall or
-/// a cliff sits on the line; `compute_in_range` runs that walk (see
-/// `sim::combat::line_of_fire`) and this function does not.
-///
-/// Pursuit no longer reaches it: `World::tick_attack_pursuit` measures through
-/// `pursuit_in_range` → `compute_in_range`, matching the approach search
-/// `FootClass::Greatest_Threat_Scan @ 0x004D5690`, which decides with `InRange`
-/// 0x006F7220 itself. Two production readers still take the plain radius, each
-/// recorded on its own call site:
-///
-/// - the fire gate's GARRISON branch (`resolve_attacker_fire`, the
-///   `is_garrison || effective_range != weapon.range` arm);
-/// - `ScanRange::Hard` in `greatest_threat::evaluate_candidate`, the
-///   garrison passive scan's override.
-///
-/// The remaining readers are the no-resolved-terrain fallbacks in the fire
-/// gate, the cursor and pursuit, which cannot run a walk at all and therefore
-/// agree with each other rather than diverging.
-///
-/// - Trigger: a garrisoned occupant firing, or a garrison passive scan
-///   choosing a candidate, across a wall or a ≥4-Level step.
-/// - Player effect: garrisoned infantry shoot through a wall the identical
-///   infantry standing in the open is refused; the passive scan can pick a
-///   candidate behind one.
-/// - Frequency: routine on urban maps, where garrisoning is a normal opening.
-/// - Downstream risk: none to deterministic state; both stages agree with each
-///   other, so it is a uniformly wrong answer, not a stall. The cure is
-///   threading the override-aware range into `compute_in_range` so the garrison
-///   branch can use the 3-D gate — the range VALUE chain M8 already records,
-///   not a second walk bolted onto this function.
+/// Every reader is a fallback for a world without resolved terrain (headless
+/// fixtures, pre-map bring-up): the fire gate, the threat scan, pursuit and
+/// the cursor. None of them can run a walk, so they agree with each other
+/// rather than diverging.
 pub(crate) fn is_within_range_leptons(dist_sq_leptons: i64, range_cells: SimFixed) -> bool {
     let range_leptons: i64 = (i64::from(range_cells.to_bits()) * 256) >> 16;
     let range_sq: i64 = range_leptons * range_leptons;

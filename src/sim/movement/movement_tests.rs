@@ -379,6 +379,38 @@ fn test_drive_queue_command_reissues_destination_without_navqueue_append() {
 }
 
 /// The fixture Drive types: a Unit's Process reads its type.
+/// The order-time adapter (here a Jumpjet's) admits a destination in the
+/// mover's own cell without asking the AStar core, whose start-equals-goal
+/// exit has no route for it (0x00429BF3..0x00429C0A): the setters record any
+/// destination unsearched. A queued order to the same cell appends nothing.
+#[test]
+fn order_time_admission_accepts_a_goal_in_the_start_cell() {
+    let mut entities = EntityStore::new();
+    let grid = PathGrid::new(10, 10);
+    let mut e = GameEntity::test_default(1, "JUMPJET", "Americans", 5, 5);
+    e.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
+    entities.insert(e);
+    for queue in [false, true] {
+        assert!(
+            issue_move_command(
+                &mut entities,
+                &grid,
+                1,
+                (5, 5),
+                SimFixed::from_num(1024),
+                queue,
+                None,
+                None,
+                None,
+                crate::sim::movement::DestinationTiming::new(0, 60),
+            ),
+            "queue={queue}"
+        );
+    }
+    let movement = entities.get(1).unwrap().movement_target.as_ref().unwrap();
+    assert_eq!(movement.final_goal, Some((5, 5)));
+}
+
 fn drive_type_rules() -> crate::rules::ruleset::RuleSet {
     crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
         "[VehicleTypes]\n0=HTNK\n1=MTNK\n2=DRIVE\n[HTNK]\nSpeed=6\n[MTNK]\nSpeed=6\n[DRIVE]\nSpeed=6\n",
@@ -644,7 +676,7 @@ fn drive_slope_boundary_is_detected_on_process_after_forced_track_crossing() {
     let rules = forced_drive_rules("DRIVE", 5);
     sim.resolved_terrain = Some(terrain.clone());
     crate::sim::arena_fixture::supply_native_map(&mut sim);
-    assert!(sim.force_drive_track(1, 0x47, DriveCoord { x: 0, y: 256, z: 0 }));
+    assert!(sim.force_track(1, 0x47, DriveCoord { x: 0, y: 256, z: 0 }));
     sim.substrate
         .entities
         .get_mut(1)
@@ -1033,7 +1065,7 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         .unwrap()
         .foot_speed
         .set_speed_fraction(SimFixed::lit("0.25"));
-    assert!(sim.force_drive_track(1, 0x47, head));
+    assert!(sim.force_track(1, 0x47, head));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
     let drive = entity

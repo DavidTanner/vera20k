@@ -50,20 +50,15 @@ use crate::util::native_x87::{
     MaskedX87Chop53 as X87Chop53, MaskedX87Ordering as X87Ordering, MaskedX87Value,
 };
 
-/// Snapshot of garrison state for a garrisoned building attacker.
-/// Extracted during Phase 1 to avoid borrow conflicts in Phase 2.
+/// The fire state of an occupied building attacker
+/// ([`super::combat_weapon::is_occupied`]), read in Phase 1. Its weapon is
+/// GetWeapon's, read live ([`super::combat_weapon::get_weapon`]).
 #[derive(Clone)]
 pub(crate) struct GarrisonSnapshot {
-    /// Type ID of the occupant that will fire this tick.
-    pub occupant_type_id: InternedId,
-    /// Veterancy of the firing occupant (for elite weapon selection).
-    pub occupant_veterancy: u16,
-    /// Current round-robin fire index.
+    /// `+0x69C`, the firing occupant's index: the shot's muzzle port.
     pub fire_index: u8,
-    /// Total occupant count (for ROF division).
+    /// The occupant count (`+0x694`), GetROF's divisor.
     pub occupant_count: u8,
-    /// Half foundation size: `min(width, height) / 2` (for range formula).
-    pub half_foundation: u16,
 }
 
 /// Snapshot of an attacker's state for target scanning.
@@ -85,17 +80,10 @@ pub(crate) struct AttackerSnapshot {
     pub sub_y: SimFixed,
     pub type_id: InternedId,
     pub veterancy: u16,
-    /// Read-only native Infantry Doing identity; never a generic animation projection.
-    pub infantry_doing: Option<i32>,
-    pub is_fully_deployed: bool,
     pub barrel_facing: Option<crate::sim::movement::FacingClass>,
     /// Body FacingClass (`+0x388`), including infantry fire-start snaps and
     /// vehicle turns. Facing gates and emission read its full 16-bit value.
     pub hull_facing: crate::sim::movement::FacingClass,
-    /// Read-only snapshot of Techno+138, owned by GameEntity's gunner state.
-    pub current_weapon_number: i32,
-    /// `TechnoClass+0x82` InOpenToppedTransport.
-    pub in_open_transport: bool,
     /// Garrison state — present only for garrisoned buildings (IsOccupied).
     pub garrison: Option<GarrisonSnapshot>,
     /// The threat mask this scan's CALLER pushed — `Greatest_Threat`'s second
@@ -228,7 +216,6 @@ pub(crate) fn greatest_threat_for_entity(
         &snapshot,
         obj,
         fog,
-        None,
         terrain,
         require_playfield_membership,
         zone_grid,
@@ -244,10 +231,6 @@ pub(crate) fn greatest_threat_for_entity(
 /// The walk, the per-cell single-candidate rule, the gate ladder and the
 /// weighted score all live in [`super::greatest_threat`]; this is the adapter
 /// the acquisition and retarget call sites already speak to.
-///
-/// `scan_range_override`: when `Some`, replaces the mission-derived radius with
-/// a hard cutoff. Used by garrisoned buildings whose scan range is derived from
-/// foundation size + OccupyWeaponRange.
 ///
 /// This replaces VERA's own `(distance², threat_class, stable_id)` nearest-first
 /// key, which had no native counterpart: gamemd scores each candidate and keeps
@@ -267,7 +250,6 @@ pub(crate) fn acquire_best_target(
     attacker: &AttackerSnapshot,
     attacker_obj: &ObjectType,
     fog: Option<&FogState>,
-    scan_range_override: Option<SimFixed>,
     terrain: Option<&ResolvedTerrainGrid>,
     require_playfield_membership: bool,
     zone_grid: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
@@ -283,7 +265,6 @@ pub(crate) fn acquire_best_target(
         attacker,
         attacker_obj,
         fog,
-        scan_range_override,
         terrain,
         require_playfield_membership,
         zone_grid,
@@ -472,7 +453,6 @@ pub(crate) fn should_retaliate(
         obj: victim_type,
         target: Some(super::TargetKind::Entity(source_id)),
         weapon_index: 0,
-        garrison: super::fire_error_world::garrison_weapon(world, rules, victim, victim_type),
     };
     // `0x007088A7` GetWeaponDamageValue(-1) > 0 (a healer never retaliates);
     // `0x007088BC` Is_Armed (`BuildingClass::Is_Armed @ 0x00458DB0` answers

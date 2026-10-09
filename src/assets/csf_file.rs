@@ -142,6 +142,16 @@ impl CsfFile {
     }
 }
 
+/// AbstractTypeClass's visible type name (`+0x60`): the constructor leaves
+/// it empty (`0x004108EE`), and ReadINI resolves `UIName=` through the
+/// process string table (`0x00410AFB..0x00410B69`). `Name=` is a separate
+/// internal/debug name. Without loaded CSF assets, retain the authored key.
+pub fn type_ui_name(ui_name: Option<&str>, csf: Option<&CsfFile>) -> String {
+    ui_name.map_or_else(String::new, |key| {
+        csf.map_or_else(|| key.to_string(), |csf| csf.text(key).into_owned())
+    })
+}
+
 /// One argument for [`format_csf`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CsfArg<'a> {
@@ -368,6 +378,20 @@ fn normalize_whitespace(units: &[u16]) -> Vec<u16> {
     out
 }
 
+/// Authored localization fixture using the CSF owner's binary encoder.
+#[cfg(test)]
+pub(crate) fn test_csf(entries: &[(&str, &str)]) -> CsfFile {
+    assert!(!entries.is_empty());
+    let mut data = tests::build_test_csf(entries[0].0, entries[0].1);
+    let count = u32::try_from(entries.len()).unwrap().to_le_bytes();
+    data[8..12].copy_from_slice(&count);
+    data[12..16].copy_from_slice(&count);
+    for &(key, value) in &entries[1..] {
+        data.extend_from_slice(&tests::build_test_csf(key, value)[24..]);
+    }
+    CsfFile::from_bytes(&data).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,7 +407,7 @@ mod tests {
     }
 
     /// Build a minimal CSF file with one label entry.
-    fn build_test_csf(label: &str, value: &str) -> Vec<u8> {
+    pub(super) fn build_test_csf(label: &str, value: &str) -> Vec<u8> {
         let encoded_value: Vec<u8> = encode_csf_string(value);
         let char_count: u32 = value.encode_utf16().count() as u32;
 

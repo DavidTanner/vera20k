@@ -30,6 +30,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Replay a recorded annotation pass onto another copy of the Ghidra database | [Ghidra annotation passes](ghidra_pass.md), `ApplyGhidraPass.java` |
 | Reproduce Foot coordinates and bridge source-layer / reachability queries | [checked Foot bridge-layer oracle](spatial_oracle/foot_bridge_layer.md) |
 | Run pinned native executable comparisons | [native oracle runner](native_oracle.md) |
+| Reproduce occupied-Building weapon/foundation queries and the scan-bound slice | [garrison queries](garrison_oracle/weapon_range.py), with JSON goldens and identity/coverage sidecar |
 | Preserve failed native execution context and diagnose timeouts | [native failure reports](native_oracle.md#investigating-a-failed-native-run) |
 | Compare shell captures | `python -m tools.shell_capture_diff --help` |
 | Capture and certify shell routes | [shell certification](shell_certification/README.md) |
@@ -40,7 +41,6 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Run one bounded child with retained diagnostics | `tools.child_process.run_child` (shared by capture wrappers) |
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |
 | Synchronize authoritative skill sources | `python tools/skill_sync.py --write`, then `--check` |
-| Check that a change does not raise the number of `src/sim` struct fields any simulation module can write (CI runs it on every PR) | `python tools/sim_field_ratchet.py --base origin/main` |
 
 ## Cargo ownership and labeled builds
 

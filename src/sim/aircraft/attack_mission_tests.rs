@@ -91,6 +91,8 @@ struct Replay<'a> {
     rng: SimRng,
     events: Vec<&'static str>,
     released: bool,
+    /// The row's Ammo: the oracle's FireAt stub spends none.
+    ammo: i32,
 }
 
 impl StrikeHost for Replay<'_> {
@@ -127,6 +129,9 @@ impl StrikeHost for Replay<'_> {
     fn epilogue(&mut self) -> i32 {
         self.events.push("draw");
         crate::sim::mission::authority::rate_epilogue(self.rules, self.mission, &mut self.rng)
+    }
+    fn ammo(&mut self) -> i32 {
+        self.ammo
     }
 }
 
@@ -210,6 +215,7 @@ fn original_attack_state_rows() {
                 rng: SimRng::new(get("seed").as_u64().unwrap()),
                 events: Vec::new(),
                 released: false,
+                ammo,
             };
             let visit = strike_visit(&facts, &mut host);
             let name = &input["name"];
@@ -423,15 +429,15 @@ fn state9_delay_matches_the_original_division() {
 /// house's own edge as its destination (`PickCellOnEdge 0x004AA440`, one
 /// Scenario draw for North) and enters idle mode in the same visit
 /// (`vt+0x484`). With no `Dock=` list, Enter_Idle_Mode leaves that
-/// destination (`0x0041796A..0x00417978` skips the dock arm), and a computer
-/// house keeps its target. A Harrier-like type with an airfield goes home at
-/// once instead: Enter_Idle_Mode replaces the edge cell with its dock
+/// destination (`0x0041796A..0x00417978` skips the dock arm) and commences
+/// Guard, or Area Guard for a computer house, which keeps its target. A
+/// Harrier-like type with an airfield goes home at once instead:
+/// Enter_Idle_Mode replaces the edge cell with its dock
 /// (`Assign_Destination(NULL, 1)` at `0x004179B4`, then the dock at
-/// `0x004179D7`).
+/// `0x004179D7`) once the dock answers HELLO, and commences Enter.
 #[test]
 fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
     use crate::map::entities::EntityCategory;
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::combat::AttackTarget;
     use crate::sim::components::NavTargetRef;
     use crate::sim::game_entity::GameEntity;
@@ -483,9 +489,16 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             crate::sim::house_state::HouseState::new(owner, 0, None, human, 0, 1),
         );
         sim.playfield_bounds = Some(bounds);
+        if airfield {
+            // Find_Docking_Bay walks the house's buildings and its tracked
+            // counts, which construction fills.
+            sim.append_house_base_building_for_test(2);
+            sim.update_house_tracking(2, crate::sim::house_tracking::HouseTracking::add_tracking);
+        }
         plane.category = EntityCategory::Aircraft;
+        // The RadioClass constructor's one contact slot (`0x0065A764`).
+        plane.radio_contacts.set_capacity(1);
         plane.mission_leaf = MissionLeafState::aircraft_raw_for_test(1, 1, false);
-        plane.aircraft_mission = Some(AircraftMission::Attack { sub_state: 10 });
         plane
             .mission
             .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -493,7 +506,7 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
                 suspended: crate::sim::mission::MissionId::NONE,
                 queued: crate::sim::mission::MissionId::NONE,
                 movement_bypass_latch: 0,
-                handler_state: 0,
+                handler_state: 10,
                 mission_start_frame: 0,
                 ai_counter: 0,
                 dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
@@ -505,9 +518,11 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             rules.object(plane_type).unwrap(),
             0,
         ));
-        // In flight: a grounded plane takes Enter_Idle_Mode's landed arm.
+        // In flight, on the map: a grounded plane takes Enter_Idle_Mode's
+        // landed arm, and an unmarked one is not in the air (vt+0x54).
         plane.locomotor.as_mut().unwrap().altitude =
             crate::util::fixed_math::SimFixed::from_num(1500);
+        plane.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(plane);
         sim.set_logic_order_for_test(vec![1]);
         let mut expected_rng = sim.scenario_rng.clone();
@@ -533,36 +548,41 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
         plane.navigation.nav_com,
         Some(NavTargetRef::cell(edge.0, edge.1))
     );
-    assert!(
-        matches!(plane.aircraft_mission, Some(AircraftMission::Guard)),
-        "no airfield: the idle decision holds station"
+    assert_eq!(
+        plane.mission.current().known(),
+        Some(MissionType::Guard),
+        "no airfield: the idle mode holds station"
     );
     assert_eq!(plane.mission_leaf.as_aircraft().unwrap().action_latch(), 0);
 
     let (sim, _) = exit("ORCA", false, false);
+    let plane = sim.substrate.entities.get(1).unwrap();
     assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .attack_target
-            .is_some(),
+        plane.attack_target.is_some(),
         "a computer house keeps its target"
+    );
+    assert_eq!(
+        plane.mission.current().known(),
+        Some(MissionType::AreaGuard)
     );
 
     let (sim, edge) = exit("HARR", true, true);
     let plane = sim.substrate.entities.get(1).unwrap();
-    assert!(matches!(
-        plane.aircraft_mission,
-        Some(AircraftMission::ReturnToBase { airfield_id: 2 })
-    ));
+    assert_eq!(plane.mission.current().known(), Some(MissionType::Enter));
+    assert!(plane.radio_contacts.contains(2), "HELLO linked the dock");
     assert_eq!(
         plane.navigation.nav_com,
         Some(NavTargetRef::Building { id: 2 }),
         "home to the dock, not to the edge {edge:?}"
     );
-    let target = plane.movement_target.as_ref().unwrap();
-    assert_eq!(target.final_goal, Some((21, 41)), "Fly heads for the pad");
+    let fly = plane.locomotor.as_ref().unwrap().fly_runtime().unwrap();
+    let destination = fly.destination();
+    assert!(fly.moving());
+    assert_eq!(
+        (destination.x / 256, destination.y / 256),
+        (21, 41),
+        "Fly heads for the pad"
+    );
 }
 
 /// The retail inputs the loop reads, through the production reader:

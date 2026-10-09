@@ -68,13 +68,19 @@ fn save(
         .borrow()
         .saved();
     sinking_waterlines.retain(|(id, _)| sim.entities().contains(*id));
-    let bytes = crate::sim::snapshot::GameSnapshot::save_validated_with_sinking_waterlines(
+    let sidebar_order = state
+        .match_state
+        .match_presentation
+        .sidebar_projection
+        .saved_order();
+    let bytes = crate::sim::snapshot::GameSnapshot::save_validated_with_presentation(
         sim,
         map_hash,
         runtime.resources.rules.simulation_config_hash(),
         name.unwrap_or(&sim.session.map_name),
         now,
         &sinking_waterlines,
+        sidebar_order.as_ref(),
     );
     let tick = sim.session.tick;
     if let Some(path) = overwrite {
@@ -243,6 +249,9 @@ fn log_prepared_load_error(
             log::error!("Load: restoration validation failed: {error}")
         }
         PreparedLoadError::Restore(source) => {
+            log::error!("Load: restoration validation failed: {source}")
+        }
+        PreparedLoadError::SidebarOrder(source) => {
             log::error!("Load: restoration validation failed: {source}")
         }
         PreparedLoadError::FactoryState(source) => {

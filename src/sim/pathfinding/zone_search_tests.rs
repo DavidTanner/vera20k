@@ -515,8 +515,8 @@ fn zoned_path_same_cell() {
         false,
         false,
     );
-    assert!(path.is_some());
-    assert_eq!(path.unwrap(), vec![(2, 0)]);
+    // 0x00429BF3..0x00429C0A: no route for a goal in the start cell.
+    assert!(path.is_none());
 }
 
 #[test]
@@ -2324,7 +2324,9 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
         if case["name"] == "initial_source_miss_False" {
             // Physical backing admits this same-cell request, while the native
             // allocation table has a hole. With no playfield configured and
-            // hierarchy disabled, only the live entry lookup publishes it.
+            // hierarchy disabled, only the live entry lookup publishes it;
+            // AStar then has no route for a goal in its start cell
+            // (0x00429BF3..0x00429C0A).
             let hole = (4, 4);
             assert!(terrain.cell(hole.0, hole.1).is_none());
             dummy.stamp_coord(1234, -2345);
@@ -2348,7 +2350,7 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     false,
                     None
                 )
-                .is_some()
+                .is_none()
             );
             assert_eq!(dummy.snapshot().coord, (4, 4));
             dummy.stamp_coord(1234, -2345);
@@ -2374,7 +2376,7 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     false,
                     None
                 )
-                .is_some()
+                .is_none()
             );
             assert_eq!(dummy.snapshot().coord, (4, 4));
         }

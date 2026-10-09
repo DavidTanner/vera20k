@@ -120,6 +120,8 @@ pub(crate) enum PreparedLoadError {
     Restore(#[from] SnapshotRestoreError),
     #[error(transparent)]
     FactoryState(#[from] crate::sim::production::FactoryRestoreError),
+    #[error("invalid saved sidebar order: {0}")]
+    SidebarOrder(String),
 }
 
 /// Fully validated, cache-rebuilt replacement state ready for one infallible commit.
@@ -127,12 +129,20 @@ pub(crate) struct PreparedLoad {
     simulation: Simulation,
     map_restore: SnapshotMapRestoreOutput,
     sinking_waterlines: Vec<(u64, i16)>,
+    sidebar_order: Option<(
+        crate::sim::intern::InternedId,
+        crate::ui::sidebar::cameo_order::CameoStrips,
+    )>,
 }
 
 /// Presentation changes released only after the validated world commits.
 pub(crate) struct CommittedLoadPresentation {
     pub(crate) occupied_overlays: Vec<crate::map::overlay::OverlayEntry>,
     pub(crate) sinking_waterlines: Vec<(u64, i16)>,
+    pub(crate) sidebar_order: Option<(
+        crate::sim::intern::InternedId,
+        crate::ui::sidebar::cameo_order::CameoStrips,
+    )>,
 }
 
 /// Immutable production input to an in-scenario load transaction.
@@ -237,6 +247,7 @@ impl PreparedLoad {
 
         let terrain_speed_config = current_simulation.terrain_speed_config.clone();
 
+        let saved_sidebar_order = snapshot.sidebar_order().cloned();
         let mut simulation = snapshot.sim;
         // This is the in-scenario Load Game route: native load reseeds
         // Scenario->Random after reading ScenarioClass, while the process-global
@@ -267,10 +278,20 @@ impl PreparedLoad {
         // do not infer +3CA from current height or from the sinking byte.
         let mut sinking_waterlines = snapshot.sinking_waterlines;
         sinking_waterlines.retain(|(id, _)| simulation.entities().contains(*id));
+        // MouseLoad5BDF70 preserves the four strip lists; no-init5BE9B0
+        // resets their progress only. Hydration is fallible and borrows no
+        // outgoing projection, so a rejected save cannot replace its order.
+        let sidebar_order = crate::app::sidebar_projection::prepare_saved_order(
+            saved_sidebar_order,
+            &simulation,
+            rules,
+        )
+        .map_err(PreparedLoadError::SidebarOrder)?;
         Ok(Self {
             simulation,
             map_restore,
             sinking_waterlines,
+            sidebar_order,
         })
     }
 
@@ -296,6 +317,7 @@ impl PreparedLoad {
         CommittedLoadPresentation {
             occupied_overlays: self.map_restore.occupied_overlays,
             sinking_waterlines: self.sinking_waterlines,
+            sidebar_order: self.sidebar_order,
         }
     }
 }
@@ -786,6 +808,7 @@ mod tests {
     mod factory_restore_tests;
     mod infantry_terminal_restore_tests;
     mod rule_cache_restore_tests;
+    mod sidebar_order_restore_tests;
     mod sinking_waterline_restore_tests;
 
     include!("tube_hierarchy_restore_tests.rs");

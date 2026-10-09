@@ -14,8 +14,8 @@
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::render::batch::BatchTexture;
-use crate::ui::sidebar::{self, SidebarView};
 use crate::sim::production;
+use crate::ui::sidebar::{self, SidebarView};
 
 // Re-export instance builders so callers don't need to know about the split.
 pub(crate) use crate::app::presentation::sidebar_build::{
@@ -36,6 +36,13 @@ pub(crate) fn current_sidebar_view(state: &AppState) -> Option<&SidebarView> {
         .view()
 }
 
+/// The money the credits counter counts toward: `CreditsClass::AI @
+/// 0x004A2600` reads the player's Available_Money and shows a balance at or
+/// below zero as 0 (`0x004A2687..0x004A2698`).
+pub(crate) fn counter_credits(sim: &crate::sim::world::Simulation, owner: &str) -> i32 {
+    production::credits_for_owner(sim, owner).max(0)
+}
+
 /// Advance the displayed balance at the authoritative gameplay-frame seam.
 pub(crate) fn advance_sidebar_credits_after_frame(
     state: &mut AppState,
@@ -54,7 +61,7 @@ pub(crate) fn advance_sidebar_credits_after_frame(
     else {
         return;
     };
-    let credits = production::credits_for_owner(sim, &owner_name);
+    let credits = counter_credits(sim, &owner_name);
     let Some(tick) = state
         .match_state
         .match_presentation
@@ -93,12 +100,19 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         spec.side3_height = atlas.side3.pixel_size[1];
     }
     state.match_state.match_presentation.sidebar_layout_spec = spec;
+    let visible_rows = sidebar::compute_layout_with_spec(
+        spec,
+        state.render_width() as f32,
+        state.render_height() as f32,
+        0,
+    )
+    .side2_tile_count;
     let owner_name: String =
         preferred_local_owner_name(state).unwrap_or_else(|| "Americans".to_string());
     let Some((
-        mut build_options,
-        mut queue_items,
-        mut ready_buildings,
+        build_options,
+        queue_items,
+        ready_buildings,
         producer_focus,
         credits,
         power_produced,
@@ -131,11 +145,11 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         let (power_produced, power_drained) =
             production::power_balance_for_owner(sim, rules, &owner_name);
         Some((
-            production::build_options_for_owner(sim, rules, &owner_name),
+            production::all_build_options_for_owner(sim, rules, &owner_name),
             production::queue_view_for_owner(sim, rules, &owner_name),
             production::ready_buildings_for_owner(sim, rules, &owner_name),
             producer_focus,
-            production::credits_for_owner(sim, &owner_name),
+            counter_credits(sim, &owner_name),
             power_produced,
             power_drained,
             sw_views,
@@ -150,21 +164,27 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         return;
     };
 
-    // `SidebarClass::AddCameo 0x006A63D6..0x006A6415`: a build cameo the
-    // strip did not hold (`visible_in_sidebar` is the strip entry set; the
-    // superweapon strip is the `RTTI == 0x1F` exclusion) speaks
-    // `EVA_NewConstructionOptions` once the scenario-init nesting counter
-    // is back to zero — the first projection of a match is that window.
-    let cameos: std::collections::BTreeSet<_> = build_options
-        .iter()
-        .filter(|opt| opt.visible_in_sidebar())
-        .map(|opt| opt.type_id)
-        .collect();
+    let sim = &state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .expect("sidebar runtime")
+        .simulation;
+    let owner = sim.interner.get(&owner_name).unwrap_or_default();
+    let cameos = crate::app::sidebar_projection::cameo_candidates(
+        sim,
+        state.rules().expect("sidebar rules"),
+        state.process_assets.csf.as_ref(),
+        owner,
+        &build_options,
+        &ready_buildings,
+        &sw_views,
+    );
     if state
         .match_state
         .match_presentation
         .sidebar_projection
-        .note_cameos(cameos)
+        .reconcile_cameos(owner, &cameos, visible_rows)
     {
         crate::app::input::dispatch::push_local_eva(
             state,
@@ -172,18 +192,6 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         );
     }
 
-    // Resolve CSF display names (e.g., "Name:MTNK" → "Grizzly Battle Tank").
-    if let Some(csf) = &state.process_assets.csf {
-        for opt in &mut build_options {
-            opt.display_name = resolve_csf_name(csf, &opt.display_name);
-        }
-        for item in &mut queue_items {
-            item.display_name = resolve_csf_name(csf, &item.display_name);
-        }
-        for ready in &mut ready_buildings {
-            ready.display_name = resolve_csf_name(csf, &ready.display_name);
-        }
-    }
     let display_credits = state
         .match_state
         .match_presentation
@@ -252,7 +260,6 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         &ready_buildings,
         armed_entry.as_ref(),
         &producer_focus,
-        state.match_state.match_presentation.sidebar_scroll_rows,
         state
             .match_state
             .sim_runtime
@@ -269,7 +276,8 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
         state
             .match_state
             .match_presentation
-            .sidebar_scroll_rows_parked,
+            .sidebar_projection
+            .cameo_strips(),
     );
     if let Some(selected) = view.tabs.iter().find(|tab| tab.active) {
         crate::app::input::dispatch::apply_sidebar_action(
@@ -277,7 +285,14 @@ pub(crate) fn refresh_sidebar_projection(state: &mut AppState) {
             sidebar::SidebarAction::SelectTab(selected.tab),
         );
     }
-    state.match_state.match_presentation.sidebar_scroll_rows = view.scroll_rows;
+    state
+        .match_state
+        .match_presentation
+        .sidebar_projection
+        .set_scroll_row(
+            state.match_state.match_presentation.active_sidebar_tab,
+            view.scroll_rows,
+        );
     // Publish the same strip-derived state to input and Flash_AI. Native
     //6A6472 enables after Add;6A6820 disables after the last entry is removed.
     for tab in &view.tabs {
@@ -669,18 +684,6 @@ pub(crate) fn sidebar_theme_for_owner_sources(
         2 => Some(crate::render::sidebar_chrome::SidebarTheme::Yuri),
         _ => None,
     }
-}
-
-// ---------------------------------------------------------------------------
-// CSF display name resolution
-// ---------------------------------------------------------------------------
-
-/// Resolve a display name through the CSF string table.
-///
-/// Rules `Name=` values are CSF keys (e.g., `"Name:MTNK"`). Retail emits its
-/// visible `MISSING:'<key>'` marker when the initialized table lacks a key.
-fn resolve_csf_name(csf: &crate::assets::csf_file::CsfFile, name: &str) -> String {
-    csf.text(name).into_owned()
 }
 
 // ---------------------------------------------------------------------------

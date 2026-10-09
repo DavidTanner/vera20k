@@ -8,6 +8,9 @@
 
 pub mod gadget_flash;
 pub mod command_bar;
+pub(crate) mod cameo_order;
+#[cfg(test)]
+mod cameo_order_tests;
 mod layout_spec;
 pub mod power_bar_anim;
 mod sidebar_view;
@@ -57,6 +60,15 @@ pub enum SidebarTab {
 }
 
 impl SidebarTab {
+    pub(crate) fn for_category(category: ProductionCategory) -> Self {
+        match category {
+            ProductionCategory::Building => Self::Building,
+            ProductionCategory::Defense => Self::Defense,
+            ProductionCategory::Infantry => Self::Infantry,
+            ProductionCategory::Vehicle | ProductionCategory::Aircraft | ProductionCategory::Ship => Self::Vehicle,
+        }
+    }
+
     pub fn all() -> [Self; 4] {
         [Self::Building, Self::Defense, Self::Infantry, Self::Vehicle]
     }

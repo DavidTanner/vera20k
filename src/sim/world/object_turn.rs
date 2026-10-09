@@ -48,6 +48,13 @@ pub(super) struct LiveObjectPassOutcome {
     pub destroyed_structure: bool,
     pub bridge_state_changed: bool,
     pub tube_turn_owned_ids: BTreeSet<u64>,
+    ownership_changed: bool,
+}
+
+impl LiveObjectPassOutcome {
+    pub(super) fn ownership_changed(&self) -> bool {
+        self.ownership_changed
+    }
 }
 
 #[derive(Default)]
@@ -72,6 +79,7 @@ pub(super) struct ObjectTurnOutcome {
     destroyed_structure: bool,
     bridge_state_changed: bool,
     tube_owned: bool,
+    ownership_changed: bool,
 }
 
 /// What one object's locomotor Process did this turn.
@@ -331,9 +339,13 @@ impl Simulation {
         // (`AircraftClass::AI 0x00414DAA`).
         match rules {
             Some(rules) if jumpjet => {
-                self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
+                process.bridge_state_changed |=
+                    self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
             }
-            Some(rules) => self.fly_crash_impact(stable_id, rules, overlay_registry),
+            Some(rules) => {
+                process.bridge_state_changed |=
+                    self.fly_crash_impact(stable_id, rules, overlay_registry);
+            }
             None => self.uninit(stable_id),
         }
         process.ended = true;
@@ -357,7 +369,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_some_and(|entity| entity.chrono_warp().is_some())
+                .is_some_and(|entity| entity.active_chrono_warp().is_some())
         {
             let bridge_state_changed = self.process_chrono_warp(stable_id, rules, ctx)?;
             return Ok(LocomotorProcess {
@@ -757,6 +769,7 @@ impl Simulation {
             outcome.movement.merge(turn.movement);
             outcome.destroyed_structure |= turn.destroyed_structure;
             outcome.bridge_state_changed |= turn.bridge_state_changed;
+            outcome.ownership_changed |= turn.ownership_changed;
             if turn.tube_owned {
                 outcome.tube_turn_owned_ids.insert(stable_id);
             }
@@ -793,6 +806,7 @@ impl Simulation {
             .is_some_and(|entity| entity.category == EntityCategory::Structure);
         let ai = sim.object_ai_visit_one_with_effects(stable_id, rules, object_ctx);
         outcome.bridge_state_changed |= ai.bridge_state_changed;
+        outcome.ownership_changed |= ai.ownership_changed();
         if was_structure
             && sim
                 .substrate
@@ -1001,10 +1015,11 @@ impl Simulation {
         //
         // RESIDUAL: native Fly and Jumpjet cruise reach none of these from a
         // cell change. Trigger: such a mover changing cell. Effect: its
-        // sensor deposit, cloak scan, Temporal release and playfield promote
-        // run there. Risk: an aircraft with `Sensors=` or a held Temporal
-        // target; the promote is what admits an aircraft arriving from off
-        // the map.
+        // sensor deposit, cloak scan, Temporal release and (but for a Fly,
+        // whose Process latches `+0x3D5` itself, `0x004CD510`) playfield
+        // promote run there. Risk: an aircraft with `Sensors=` or a held
+        // Temporal target; the promote is what admits a Jumpjet arriving
+        // from off the map.
         if !track_owned
             && !walk_process_owned
             && !per_cell_ran
@@ -1017,7 +1032,15 @@ impl Simulation {
                 );
             }
             sim.temporal_release_if_warping(stable_id);
-            sim.promote_entity_playfield_membership_after_move(stable_id);
+            let fly = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
+                entity
+                    .locomotor
+                    .as_ref()
+                    .is_some_and(|locomotor| locomotor.fly_runtime().is_some())
+            });
+            if !fly {
+                sim.promote_entity_playfield_membership_after_move(stable_id);
+            }
         }
 
         let mut lifecycle_requests = std::mem::take(&mut sim.pending_lifecycle_requests);

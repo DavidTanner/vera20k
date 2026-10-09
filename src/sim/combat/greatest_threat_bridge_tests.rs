@@ -318,6 +318,7 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
         super::super::build_attacker_snapshot(firer, super::super::TargetKind::Entity(2), None);
     let context = ScanContext {
         entities: &world.substrate.entities,
+        scanner: firer,
         los: Default::default(),
         rules: &rules,
         interner: &interner,
@@ -373,7 +374,6 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
             obj,
             target: Some(super::super::TargetKind::Entity(2)),
             weapon_index: 0,
-            garrison: None,
         }
         .fire_error(false),
         FireError::Facing

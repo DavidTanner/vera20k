@@ -15,11 +15,9 @@
 //! - Part of sim/ — depends on rules/ and sim/ only.
 
 use crate::map::entities::EntityCategory;
-use crate::rules::object_type::FactoryType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::entity_store::EntityStore;
 use crate::sim::game_options::GameOptions;
-use crate::sim::intern::{InternedId, StringInterner};
+use crate::sim::intern::InternedId;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// `evamd.ini` section played at `0x004F8BA0`.
@@ -44,79 +42,22 @@ pub fn speak_delay_frames(rules: &RuleSet, options: &GameOptions) -> i32 {
     options.speed_normalize(frames)
 }
 
-/// `HouseClass::GetFactoryCount @ 0x00500940` sum used at
-/// `0x004F8B74..0x004F8B94`: `+0x537C` (infantry) + `+0x5380` (vehicle) +
-/// `+0x5384` (building) + `+0x5388` (naval); `+0x5378` (aircraft) is not read.
-/// The native counters follow building Unlimbo/Limbo, so a factory still
-/// building up already counts, while a Dying corpse or a limbo object does
-/// not.
-pub fn funds_nag_factory_count(
-    entities: &EntityStore,
-    rules: &RuleSet,
-    owner: InternedId,
-    interner: &StringInterner,
-) -> u32 {
-    entities
-        .values()
-        .filter(|e| {
-            !e.dying
-                && !e.lifecycle.in_limbo
-                && e.owner() == owner
-                && e.category == EntityCategory::Structure
-                && rules
-                    .object(interner.resolve(e.type_ref()))
-                    .and_then(|obj| obj.factory)
-                    .is_some_and(|factory| {
-                        // Naval yards are `Factory=UnitType` + `Naval=yes`
-                        // (`GetFactoryCount` case 1/0x28 splits them on the
-                        // naval flag); both counters are summed here.
-                        matches!(
-                            factory,
-                            FactoryType::InfantryType
-                                | FactoryType::UnitType
-                                | FactoryType::BuildingType
-                        )
-                    })
-        })
-        .count() as u32
-}
-
-/// `0x004F8C0B..0x004F8C21`: with the funds timer expired and no nag due,
-/// a nearly full silo bank (`capacity - stored < 30 && capacity > 50`,
-/// `HouseClass+0x310` vs `StorageClass::GetTotal(+0x2FC)` through `ftol`)
-/// re-arms the same timer without any line, pushing the next funds nag out by
-/// one SpeakDelay. There is no `EVA_SilosNeeded` in YR.
-pub const fn silo_nearly_full(capacity: i32, stored: i32) -> bool {
-    capacity - stored < 30 && capacity > 50
-}
-
-/// The house owns a live instance of one of the first three
-/// `[AI] BuildPower=` types (`0x004F8C97..0x004F8CFC` reads exactly
-/// `Rules+0x8B0[0..3]` through `CountOwnedInstances @ 0x0049FAE0` on the
-/// `House+0x5550` per-type counter, which Unlimbo/Limbo maintain).
-pub fn owns_build_power_plant(
-    entities: &EntityStore,
-    rules: &RuleSet,
-    owner: InternedId,
-    interner: &StringInterner,
-) -> bool {
-    let build_power: Vec<&str> = rules
-        .build_power_types
-        .iter()
-        .take(3)
-        .map(String::as_str)
-        .collect();
-    if build_power.is_empty() {
+/// The house has one of the first three `[AI] BuildConst=` types on the map:
+/// `0x004F8C97..0x004F8CFC` reads `Rules+0x8B0[0..3]` (the BuildConst list,
+/// ReadAI `0x00672BB9`) and tests each type's `+0x5550` count above zero
+/// (`CounterClass::GetItemCount @ 0x0049FAE0`). It reads three entries with
+/// no bound; a shorter list is read past its end natively and ends here.
+fn owns_construction_yard(sim: &Simulation, rules: &RuleSet, owner: InternedId) -> bool {
+    let Some(house) = sim.houses.get(&owner) else {
         return false;
-    }
-    entities.values().any(|e| {
-        !e.dying
-            && !e.lifecycle.in_limbo
-            && e.owner() == owner
-            && e.category == EntityCategory::Structure
-            && build_power
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case(interner.resolve(e.type_ref())))
+    };
+    rules.build_const_types.iter().take(3).any(|name| {
+        sim.interner.get(name).is_some_and(|type_id| {
+            house
+                .tracking
+                .active_count(EntityCategory::Structure, type_id)
+                > 0
+        })
     })
 }
 
@@ -132,60 +73,41 @@ pub(crate) fn update_house_eva(sim: &mut Simulation, rules: &RuleSet, owner: Int
     if !house.is_controlled_by_human(game_mode_nonzero) {
         return;
     }
-    let credits = house.economy.credits;
+    let available = house.economy.available_money();
+    let factories = house.tracking.funds_nag_factories();
     let mut timer = house.eva_funds_timer;
     let mut guard = house.eva_low_power_guard;
 
     // --- Insufficient funds, `0x004F8B3C..0x004F8BE1` ---
     // Available money (`IHouse::Available_Money`, House vtable `0x7EA834`
-    // slot `+0x18` = `0x004F6990`: credits plus stored ore) below 100 and
-    // any infantry/vehicle/building/naval factory owned → the line, the
-    // sidebar credits flash and a re-arm. VERA banks ore straight into
-    // `credits`, so the wallet is the available money.
-    if timer.expired(now)
-        && credits < FUNDS_NAG_CREDITS
-        && funds_nag_factory_count(&sim.substrate.entities, rules, owner, &sim.interner) > 0
-    {
+    // slot `+0x18` = `0x004F6990`, called at `0x004F8B6C`) below 100 and
+    // the infantry, vehicle, building and naval factory counters summing
+    // above zero → the line, the sidebar credits flash and a re-arm.
+    if timer.expired(now) && available < FUNDS_NAG_CREDITS && factories > 0 {
         sim.sound_events.push(SimSoundEvent::HouseEva {
             owner,
             event: EVA_INSUFFICIENT_FUNDS,
         });
         timer.start(now, delay);
     }
-    // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- (timer re-read after
-    // the nag's own re-arm). VERA has no ore storage authority, so
-    // `stored` is 0 and the branch is unreachable on any real capacity.
-    if timer.expired(now) {
-        let capacity: i32 = sim
-            .substrate
-            .entities
-            .values()
-            .filter(|e| {
-                !e.dying
-                    && !e.lifecycle.in_limbo
-                    && e.owner() == owner
-                    && e.category == EntityCategory::Structure
-            })
-            .filter_map(|e| rules.object(sim.interner.resolve(e.type_ref())))
-            .map(|obj| obj.storage)
-            .fold(0i32, i32::saturating_add);
-        if silo_nearly_full(capacity, 0) {
-            timer.start(now, delay);
-        }
-    }
+    // --- Silo re-arm, `0x004F8BE4..0x004F8C53` --- With the timer expired,
+    // a nearly full silo bank (`0x004F8C0B..0x004F8C21`: capacity `+0x310`
+    // minus `ftol(+0x2FC)` below 30, capacity above 50) re-arms it without a
+    // line. The store stays empty in YR (`crate::sim::economy`), so capacity
+    // would have to be both below 30 and above 50: it never re-arms.
 
     // --- Low power, `0x004F8C56..0x004F8DAB` ---
     // Short = `PowerOutput < PowerDrain && PowerDrain != 0 && (Output == 0
     // || Output / Drain < 1.0)` (`0x004F8C62..0x004F8C91`); otherwise the
-    // guard clears (`0x004F8DAB`). Short without a `BuildPower=` plant
-    // leaves the guard untouched (`0x004F8CFC JLE` straight out).
+    // guard clears (`0x004F8DAB`). Short without a construction yard leaves
+    // the guard untouched (`0x004F8CFC JLE` straight out).
     let short = sim
         .power_states
         .get(&owner)
         .is_some_and(|power| power.is_low_power);
     if !short {
         guard = false;
-    } else if owns_build_power_plant(&sim.substrate.entities, rules, owner, &sim.interner) {
+    } else if owns_construction_yard(sim, rules, owner) {
         if !guard {
             sim.sound_events.push(SimSoundEvent::HouseEva {
                 owner,
@@ -215,38 +137,37 @@ fn tick_house_eva(sim: &mut Simulation, rules: &RuleSet) {
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::game_entity::GameEntity;
     use crate::sim::house_state::HouseState;
+    use crate::sim::house_tracking::FactorySlot;
     use crate::sim::timer::CdTimer;
 
     fn rules() -> RuleSet {
         RuleSet::from_ini(&IniFile::from_str(
             "[General]\nSpeakDelayIsInAudioVisual=yes\n\n\
              [AudioVisual]\nSpeakDelay=2\n\n\
-             [AI]\nBuildPower=NAPOWR,GAPOWR,YAPOWR\n\n\
-             [BuildingTypes]\n0=GAPOWR\n1=GAPILE\n2=GAREFN\n3=GASILO\n\n\
+             [AI]\nBuildConst=GACNST,NACNST\nBuildPower=GAPOWR\n\n\
+             [BuildingTypes]\n0=GAPOWR\n1=GAPILE\n2=GAREFN\n3=GASILO\n4=GACNST\n5=NACNST\n\
+             6=GAYARD\n7=GAAIRC\n\n\
              [GAPOWR]\nStrength=750\nPower=200\n\n\
              [GAPILE]\nStrength=500\nPower=-10\nFactory=InfantryType\n\n\
              [GAREFN]\nStrength=900\nPower=-50\nStorage=2000\n\n\
-             [GASILO]\nStrength=300\nStorage=2000\n",
+             [GASILO]\nStrength=300\nStorage=2000\n\n\
+             [GACNST]\nStrength=1000\nFactory=BuildingType\n\n\
+             [NACNST]\nStrength=1000\nFactory=BuildingType\n\n\
+             [GAYARD]\nStrength=1000\nFactory=UnitType\nNaval=yes\n\n\
+             [GAAIRC]\nStrength=1000\nFactory=AircraftType\n",
         ))
         .expect("rules parse")
     }
 
-    fn structure(sim: &mut Simulation, id: u64, type_id: &str, owner: &str, cx: u16) {
-        let mut e = GameEntity::test_default_of_category(
-            id,
-            type_id,
-            owner,
-            cx,
-            5,
-            EntityCategory::Structure,
-        );
-        e.type_ref = sim.interner.intern(type_id);
-        e.owner = sim.interner.intern(owner);
-        e.lifecycle.in_limbo = false;
-        e.lifecycle.cell_marked = true;
-        sim.substrate.entities.insert(e);
+    /// Place a building through BuildingClass::Unlimbo, as production does.
+    fn structure(sim: &mut Simulation, rules: &RuleSet, type_id: &str, cx: u16) -> u64 {
+        sim.spawn_object(type_id, "Americans", cx, 5, 0, rules)
+            .expect("building placed")
+    }
+
+    fn set_health(sim: &mut Simulation, id: u64, health: i32) {
+        sim.substrate.entities.get_mut(id).unwrap().health.current = health;
     }
 
     fn sim_with_house(credits: i32, human: bool) -> (Simulation, InternedId) {
@@ -314,7 +235,7 @@ mod tests {
         let rules = rules();
         let (mut sim, owner) = sim_with_house(50, true);
         sim.session.game_options.game_speed = 4;
-        structure(&mut sim, 1, "GAPILE", "Americans", 3);
+        structure(&mut sim, &rules, "GAPILE", 3);
         let lines = run_frames(&mut sim, &rules, 2880 * 2 + 2);
         let nags: Vec<u32> = lines
             .iter()
@@ -334,105 +255,146 @@ mod tests {
         let rules = rules();
         // Exactly 100 credits: `CMP EAX,0x64 ; JGE` skips.
         let (mut sim, _) = sim_with_house(100, true);
-        structure(&mut sim, 1, "GAPILE", "Americans", 3);
+        structure(&mut sim, &rules, "GAPILE", 3);
         assert!(run_frames(&mut sim, &rules, 40).is_empty());
         // Broke, but only a refinery (no factory counter).
         let (mut sim, _) = sim_with_house(0, true);
-        structure(&mut sim, 1, "GAREFN", "Americans", 3);
+        structure(&mut sim, &rules, "GAREFN", 3);
+        assert!(run_frames(&mut sim, &rules, 40).is_empty());
+        // Broke with an airfield only: the nag does not read `+0x5378`.
+        let (mut sim, _) = sim_with_house(0, true);
+        structure(&mut sim, &rules, "GAAIRC", 3);
         assert!(run_frames(&mut sim, &rules, 40).is_empty());
         // Broke with a factory, but an AI house never reaches the block.
         let (mut sim, _) = sim_with_house(0, false);
-        structure(&mut sim, 1, "GAPILE", "Americans", 3);
+        structure(&mut sim, &rules, "GAPILE", 3);
         assert!(run_frames(&mut sim, &rules, 40).is_empty());
     }
 
+    /// The factory counters follow Unlimbo, ChangeOwner and the death's
+    /// Limbo, and the nag reads them: a shipyard counts as naval, not as a
+    /// war factory.
     #[test]
-    fn funds_nag_factory_count_excludes_dying_and_limbo_and_non_factories() {
+    fn factory_counters_follow_placement_capture_and_death() {
         let rules = rules();
         let (mut sim, owner) = sim_with_house(0, true);
-        structure(&mut sim, 1, "GAPILE", "Americans", 3);
-        structure(&mut sim, 2, "GAPILE", "Americans", 4);
-        structure(&mut sim, 3, "GAREFN", "Americans", 5);
-        sim.substrate.entities.get_mut(2).unwrap().dying = true;
-        assert_eq!(
-            funds_nag_factory_count(&sim.substrate.entities, &rules, owner, &sim.interner),
-            1
+        let soviet = sim.interner.intern("Russians");
+        sim.houses.insert(
+            soviet,
+            HouseState::new(soviet, 1, Some(soviet), false, 0, 10),
         );
-        sim.substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .lifecycle
-            .in_limbo = true;
-        assert_eq!(
-            funds_nag_factory_count(&sim.substrate.entities, &rules, owner, &sim.interner),
-            0
-        );
+        sim.session.house_order.push(soviet);
+        let barracks = structure(&mut sim, &rules, "GAPILE", 3);
+        structure(&mut sim, &rules, "GAPILE", 4);
+        let yard = structure(&mut sim, &rules, "GAYARD", 6);
+        structure(&mut sim, &rules, "GAAIRC", 8);
+        structure(&mut sim, &rules, "GAREFN", 10);
+        let counts = |sim: &Simulation, house| {
+            let tracking = &sim.houses[&house].tracking;
+            [
+                FactorySlot::Aircraft,
+                FactorySlot::Infantry,
+                FactorySlot::Vehicle,
+                FactorySlot::Building,
+                FactorySlot::Naval,
+            ]
+            .map(|slot| tracking.factory_count(slot))
+        };
+        assert_eq!(counts(&sim, owner), [1, 2, 0, 0, 1]);
+        assert_eq!(sim.houses[&owner].tracking.funds_nag_factories(), 3);
+
+        sim.change_owner_with_rules(barracks, soviet, &rules, None);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 1]);
+        assert_eq!(counts(&sim, soviet), [0, 1, 0, 0, 0]);
+
+        sim.uninit_with_rules(barracks, &rules);
+        assert_eq!(counts(&sim, soviet), [0; 5]);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 1]);
+
+        // Only the first Limbo recounts (`0x004458CE`); ChangeOwner moves a
+        // limbo factory's counter all the same.
+        sim.techno_limbo_with_rules(yard, &rules, None);
+        sim.techno_limbo_with_rules(yard, &rules, None);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 0]);
+        sim.change_owner_with_rules(yard, soviet, &rules, None);
+        assert_eq!(counts(&sim, owner), [1, 1, 0, 0, -1]);
+        assert_eq!(counts(&sim, soviet), [0, 0, 0, 0, 1]);
     }
 
+    /// Short on power without a construction yard: silence, and the guard
+    /// stays clear, even with a power plant on the map.
     #[test]
-    fn silo_nearly_full_predicate_is_exact() {
-        assert!(silo_nearly_full(100, 80));
-        assert!(!silo_nearly_full(100, 70));
-        assert!(!silo_nearly_full(50, 40));
-        assert!(silo_nearly_full(51, 30));
-    }
-
-    /// Barracks and refinery before any power plant: short on power, but no
-    /// `BuildPower=` type owned → silence, and the guard stays clear.
-    #[test]
-    fn low_power_is_silent_without_a_build_power_plant() {
+    fn low_power_is_silent_without_a_construction_yard() {
         let rules = rules();
         let (mut sim, owner) = sim_with_house(5_000, true);
-        structure(&mut sim, 1, "GAPILE", "Americans", 3);
-        structure(&mut sim, 2, "GAREFN", "Americans", 5);
+        let plant = structure(&mut sim, &rules, "GAPOWR", 3);
+        structure(&mut sim, &rules, "GAPILE", 4);
+        structure(&mut sim, &rules, "GAREFN", 6);
+        set_health(&mut sim, plant, 1);
         let lines = run_frames(&mut sim, &rules, 10);
         assert!(lines.is_empty(), "{lines:?}");
         assert!(sim.power_states[&owner].is_low_power);
         assert!(!sim.houses[&owner].eva_low_power_guard);
     }
 
-    /// With a plant the line plays once, stays silent while short, clears on
-    /// recovery and re-announces on the next shortfall.
+    /// A construction yard is enough: short on power with no power plant at
+    /// all, the line plays.
     #[test]
-    fn low_power_announces_once_per_shortfall_with_a_build_power_plant() {
+    fn low_power_speaks_with_a_construction_yard_and_no_power_plant() {
         let rules = rules();
         let (mut sim, owner) = sim_with_house(5_000, true);
-        structure(&mut sim, 1, "GAPOWR", "Americans", 3);
-        structure(&mut sim, 2, "GAPILE", "Americans", 4);
+        structure(&mut sim, &rules, "GACNST", 3);
+        structure(&mut sim, &rules, "GAPILE", 7);
+        let lines = run_frames(&mut sim, &rules, 3);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0].1, EVA_LOW_POWER);
+        assert!(sim.houses[&owner].eva_low_power_guard);
+    }
+
+    /// With a construction yard the line plays once, stays silent while
+    /// short, clears on recovery and re-announces on the next shortfall. The
+    /// yard need not be the first `BuildConst=` type.
+    #[test]
+    fn low_power_announces_once_per_shortfall_with_a_construction_yard() {
+        let rules = rules();
+        let (mut sim, owner) = sim_with_house(5_000, true);
+        structure(&mut sim, &rules, "NACNST", 3);
+        let plant = structure(&mut sim, &rules, "GAPOWR", 6);
+        structure(&mut sim, &rules, "GAPILE", 7);
         // Drain 10 vs output 200: fine.
         assert!(run_frames(&mut sim, &rules, 3).is_empty());
         // Damage the plant to 1/750 → output 0 < drain 10.
-        sim.substrate.entities.get_mut(1).unwrap().health.current = 1;
+        set_health(&mut sim, plant, 1);
         let lines = run_frames(&mut sim, &rules, 5);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].1, EVA_LOW_POWER);
         assert!(sim.houses[&owner].eva_low_power_guard);
         // Repair: guard clears.
-        sim.substrate.entities.get_mut(1).unwrap().health.current = 750;
+        set_health(&mut sim, plant, 750);
         assert!(run_frames(&mut sim, &rules, 2).is_empty());
         assert!(!sim.houses[&owner].eva_low_power_guard);
         // Short again: one more line.
-        sim.substrate.entities.get_mut(1).unwrap().health.current = 1;
+        set_health(&mut sim, plant, 1);
         let lines = run_frames(&mut sim, &rules, 5);
         assert_eq!(lines.len(), 1);
     }
 
-    /// Short with the guard already set and the plant sold: the guard is not
-    /// cleared by the no-plant exit, so rebuilding the plant while still
-    /// short does not replay the line.
+    /// Short with the guard already set and the yard destroyed: the guard is
+    /// not cleared by the no-yard exit, so a new yard while still short does
+    /// not replay the line.
     #[test]
-    fn low_power_guard_survives_the_no_plant_exit() {
+    fn low_power_guard_survives_the_no_yard_exit() {
         let rules = rules();
         let (mut sim, owner) = sim_with_house(5_000, true);
-        structure(&mut sim, 1, "GAPOWR", "Americans", 3);
-        structure(&mut sim, 2, "GAPILE", "Americans", 4);
-        sim.substrate.entities.get_mut(1).unwrap().health.current = 1;
+        let yard = structure(&mut sim, &rules, "GACNST", 3);
+        let plant = structure(&mut sim, &rules, "GAPOWR", 6);
+        structure(&mut sim, &rules, "GAPILE", 7);
+        set_health(&mut sim, plant, 1);
         assert_eq!(run_frames(&mut sim, &rules, 2).len(), 1);
-        sim.substrate.entities.get_mut(1).unwrap().dying = true;
+        sim.uninit_with_rules(yard, &rules);
         assert!(run_frames(&mut sim, &rules, 2).is_empty());
         assert!(sim.houses[&owner].eva_low_power_guard);
-        sim.substrate.entities.get_mut(1).unwrap().dying = false;
+        structure(&mut sim, &rules, "GACNST", 9);
         assert!(run_frames(&mut sim, &rules, 2).is_empty());
     }
 }

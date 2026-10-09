@@ -9,7 +9,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::util::direction_tables::CELL_DELTAS;
-use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
 
 #[cfg(test)]
 #[path = "foot_mission_oracle_tests.rs"]
@@ -294,7 +293,9 @@ pub(crate) fn dispatch_foot_mission(
             // MissionAttack4D4E6A calls Approach before its Scenario cadence
             // draw. The accepted destination is visible to this object's
             // subsequent Drive Process, and is retained while it fires.
-            if sim.owns_unit_cell_approach(id, rules) {
+            if !sim.approach_balloon_target(id, rules, ctx.overlay_registry)
+                && sim.owns_unit_cell_approach(id, rules)
+            {
                 sim.approach_unit_cell_target(id, rules, ctx.overlay_registry)
                     .expect("ordinary Cell approach requires valid live map/navigation state");
             }
@@ -397,9 +398,11 @@ pub(crate) fn dispatch_foot_mission(
                 let actor = sim.substrate.entities.get(id).expect("deployed shim actor");
                 let Some(weapon) = crate::sim::combat::combat_weapon::resolve_weapon_index(
                     rules,
+                    actor,
                     object,
-                    actor.veterancy(),
                     1,
+                    &sim.substrate.entities,
+                    &sim.interner,
                 ) else {
                     return bridge_changed;
                 };
@@ -425,7 +428,6 @@ pub(crate) fn dispatch_foot_mission(
                         obj: object,
                         target: actual_target,
                         weapon_index: 1,
-                        garrison: None,
                     }
                     .fire_error(true);
                     if error == crate::sim::combat::fire_error::FireError::Ok {
@@ -780,6 +782,13 @@ impl MissionHandlerEvaluation {
             queue: Some(mission),
         }
     }
+
+    /// The frames the handler returns. The aircraft Guard bodies
+    /// (`aircraft_guard`) tail into the Foot ones, which queue nothing and
+    /// keep their Target.
+    pub(super) const fn delay(&self) -> i32 {
+        self.delay
+    }
 }
 
 /// Undeployed half of Infantry Guard521320, original5214F7..5216B6.
@@ -927,25 +936,41 @@ impl Simulation {
     }
 }
 
-/// EnterIdle(0,1) through the actual class receiver, with deferred Mission
-/// assignment. Parasite/Temporal/team release paths use the same Foot base
-/// and concrete Infantry/Unit tail as Unlimbo and locomotor callbacks.
-pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+/// `Enter_Idle_Mode(0, 1)` (vt+0x484) through the object's class receiver,
+/// with deferred Mission assignment: Unit `0x00738970`
+/// ([`Simulation::unit_enter_idle_mode`]), Infantry `0x0051CBA0`
+/// ([`Simulation::infantry_enter_idle_mode`]), Aircraft `0x004176F0`
+/// ([`crate::sim::aircraft::enter_idle_mode_for`]) and Building `0x0044D6A0`
+/// ([`Simulation::building_enter_idle_mode`]). Unlimbo's `(1, 1)` is
+/// [`foot_unlimbo_idle_mode`].
+pub(crate) fn enter_idle_mode(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+) {
     match sim.substrate.entities.get(id).map(|entity| entity.category) {
         Some(EntityCategory::Unit) => {
             sim.unit_enter_idle_mode(id, Some(rules), false);
         }
         Some(EntityCategory::Infantry) => {
-            sim.infantry_enter_idle_mode(id, rules, None);
+            sim.infantry_enter_idle_mode(id, rules, registry);
         }
-        _ => {}
+        Some(EntityCategory::Aircraft) => {
+            crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+        }
+        Some(EntityCategory::Structure) => {
+            sim.building_enter_idle_mode(id, false, Some(rules));
+        }
+        None => {}
     }
 }
 
-/// `TechnoClass::Unlimbo @ 0x006F6E2A..0x006F6E4F` for a Foot on the
-/// ground: `Enter_Idle_Mode(1, 1)` (`InfantryClass::Enter_Idle_Mode @
-/// 0x0051CBA0`, `UnitClass::Enter_Idle_Mode @ 0x00738970`), then
-/// Ready_To_Commence and Commence, so the mission it picks is current at once.
+/// `TechnoClass::Unlimbo @ 0x006F6E2A..0x006F6E4F` for a Foot:
+/// `Enter_Idle_Mode(1, 1)` (`InfantryClass::Enter_Idle_Mode @ 0x0051CBA0`,
+/// `UnitClass::Enter_Idle_Mode @ 0x00738970`, `AircraftClass::
+/// Enter_Idle_Mode @ 0x004176F0`), then Ready_To_Commence and Commence, so
+/// the mission it picks is current at once.
 /// A fresh object with nowhere to go takes Guard; a map placement then assigns
 /// its authored mission over it. A factory-built vehicle used to keep no
 /// mission at all, so its dispatch took the missionless 450-frame arm instead
@@ -964,9 +989,7 @@ pub(crate) fn queue_foot_enter_idle_mode(sim: &mut Simulation, id: u64, rules: &
 ///   `Passengers=` and cargo, outside a team) is not taken; it gets Guard.
 ///   Trigger: an unarmed transport leaving the factory loaded. Effect: it
 ///   keeps its cargo aboard.
-/// - buildings have their own Unlimbo/mission owner. Aircraft still use a
-///   separate legacy AircraftMission producer and omit the common passive
-///   scan; migrating that class's mission lifecycle is a separate mechanism.
+/// - buildings have their own Unlimbo/mission owner.
 pub(crate) fn foot_unlimbo_idle_mode(
     sim: &mut Simulation,
     id: u64,
@@ -976,6 +999,11 @@ pub(crate) fn foot_unlimbo_idle_mode(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
+    if entity.category == EntityCategory::Aircraft {
+        crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+        sim.mission_host_promote(id, sim.session.binary_frame, rules);
+        return;
+    }
     let vehicle = entity.category == EntityCategory::Unit;
     if !vehicle && entity.category != EntityCategory::Infantry {
         return;
@@ -1182,10 +1210,10 @@ fn evaluate_foot_hunt(
         .is_some_and(|obj| obj.stupid_hunt);
     if !stupid_hunt {
         // The return value selects between the type arms (all recorded above)
-        // and the idle / return-to-base arm (already covered elsewhere), so
-        // nothing branches on it here — but the call itself is the mission:
-        // it is what installs the target the pursuit pass then closes on.
-        let _acquired = super::target_scan::scan(
+        // and the idle / return-to-base arm (already covered elsewhere). The
+        // call itself is the mission: it is what installs the target the
+        // pursuit pass then closes on.
+        let acquired = super::target_scan::scan(
             sim,
             id,
             rules,
@@ -1195,6 +1223,11 @@ fn evaluate_foot_hunt(
             ctx,
             None,
         );
+        // `0x004D54DD`: a Unit approaches what the scan holds; the balloon
+        // arm takes only a Unit.
+        if acquired {
+            sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+        }
     }
     //4D54EE..4D5576: the human no-target arm invokes the class idle
     //receiver before the mission-rate jitter. Campaign AI return-to-base
@@ -1415,6 +1448,9 @@ fn evaluate_foot_rescue(
             .get_mut(id)
             .expect("Rescue receiver")
             .set_archive_target(None);
+    } else if state == 0 {
+        // `0x004DDFDB..0x004DDFEB`: with a Target, approach it.
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
     }
     let mission = sim
         .substrate
@@ -1444,7 +1480,7 @@ const AREA_GUARD_CADENCE_JITTER_MAX: u32 = 5;
 /// PR#798), Tesla ElectricAssault adjacency4D6F44 (+68E, Overpowerable), the
 /// AI C4/Sabotage arm4D6DDA and the early containment/waypoint/harvester arms.
 /// They retain their existing boundaries; these controls do not certify them.
-fn evaluate_foot_area_guard(
+pub(super) fn evaluate_foot_area_guard(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
@@ -1505,6 +1541,11 @@ fn evaluate_foot_area_guard(
         .entities
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none());
+    // `0x004D6ED1..0x004D6F32`: with a Target the body approaches it instead
+    // of scanning; without a post it does neither (`0x004D6E66`).
+    if !needs_target && archive.is_some() {
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+    }
     let timer_due = sim
         .substrate
         .entities
@@ -1547,6 +1588,18 @@ fn evaluate_foot_area_guard(
         let _ = sim.infantry_idle_action(id, rules);
     }
     let base = mission_cadence(rules, MissionType::AreaGuard);
+    // `0x004D7040..0x004D7048`: an aircraft (What_Am_I 2) doubles the Rate
+    // before the draw.
+    let base = if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|entity| entity.category == EntityCategory::Aircraft)
+    {
+        base.wrapping_add(base)
+    } else {
+        base
+    };
     let jitter = sim
         .scenario_rng
         .next_range_u32_inclusive(AREA_GUARD_CADENCE_JITTER_MIN, AREA_GUARD_CADENCE_JITTER_MAX)
@@ -1559,8 +1612,7 @@ fn evaluate_foot_area_guard(
     // `0x004D714A` is a signed divide by 6). The draw is never skipped — the
     // band only scales what it produced.
     //
-    // Aircraft doubles this before the draw, but this dispatcher admits
-    // Unit/Infantry only. Target-present Approach_Target remains required.
+    // Target-present Approach_Target remains required.
     let delay = if foot_dispatch_in_cadence_band(sim, rules, id) {
         jittered / 6
     } else {
@@ -1666,7 +1718,7 @@ fn evaluate_foot_area_guard(
 ///   with an Allied player only. Downstream risk: VERA implements no
 ///   distributed-fire mechanism at all (recorded at `target_scan`), so
 ///   the counter this gate reads has no VERA counterpart to bind to.
-fn evaluate_foot_guard_cadence(
+pub(super) fn evaluate_foot_guard_cadence(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
@@ -1948,9 +2000,8 @@ const CADENCE_BAND_MAX_LEPTONS: i64 = 768;
 /// gamemd-derived: the identical block in `FootClass::Mission_Attack @
 /// 0x004D4F22`-`0x004D4F9B` and `FootClass::Mission_AreaGuard @
 /// 0x004D70D3`-`0x004D7148`. The two `FILD`s take the **integer lepton**
-/// component differences, the products and their sum are exact in f64, and the
-/// only inexact step is `Sqrt_Approx`, which is reproduced bit-for-bit by
-/// [`sqrt_approx_f32`].
+/// component differences; the length is
+/// [`sqrt_approx_length`](crate::util::native_x87::sqrt_approx_length).
 fn native_distance_is_in_cadence_band(
     from: &crate::sim::components::Position,
     to: &crate::sim::components::Position,
@@ -1965,21 +2016,9 @@ fn native_distance_is_in_cadence_band(
         // enough to overflow one cannot exist.
         return false;
     };
-    let dx = X87Chop53::load_i32(dx);
-    let dy = X87Chop53::load_i32(dy);
-    // `FADDP` adds dy*dy (ST0) into dx*dx (ST1); both products are exact, so
-    // the order is immaterial, but it is written the native way.
-    let sum = X87Chop53::add(X87Chop53::mul(dx, dx), X87Chop53::mul(dy, dy));
-    let Ok(root) = sqrt_approx_f32(sum) else {
-        return false;
-    };
-    let Ok(loaded) = X87Chop53::load_f32(root) else {
-        return false;
-    };
-    let Ok(len) = X87Chop53::ftol_i64(loaded) else {
-        return false;
-    };
-    (CADENCE_BAND_MIN_LEPTONS..=CADENCE_BAND_MAX_LEPTONS).contains(&len)
+    // `FADDP` adds dy*dy (ST0) into dx*dx (ST1).
+    let len = crate::util::native_x87::sqrt_approx_length([dx, dy]);
+    (CADENCE_BAND_MIN_LEPTONS..=CADENCE_BAND_MAX_LEPTONS).contains(&i64::from(len))
 }
 
 /// The type half of the halved-cadence gate.

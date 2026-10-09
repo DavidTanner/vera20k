@@ -13,41 +13,36 @@
 //! Chronosphere's charge and restarts its recharge (`StopPreclickAnim`).
 //! Case 4 hands every Foot in the source's 3x3 block a Teleport locomotor
 //! for the warp (`movement::teleport_chrono`, the Teleport's Chronosphere
-//! states) and kills the Organic ones that cannot teleport.
+//! states) and kills the Organic ones that cannot teleport. A Drive or Ship
+//! Unit's own locomotor first takes `Force_Track(-1, destination)`; the warp
+//! hands it back with head and destination in its own cell, and its next
+//! Process asks Find_Path for that cell, which AStar refuses
+//! (`0x00429BF3..0x00429C0A`): the destination clears, the head stays and
+//! the Unit stays where it landed.
 //!
 //! Evidence: instruction reading (`0x006CC3B9..0x006CCD3E`, `0x006CB3A0`,
-//! `0x006CB830`, `0x004FAE50`).
+//! `0x006CB830`, `0x004FAE50`); the post-warp Process executed in
+//! `tools/spatial_oracle/track_path_continuation`'s post_warp rows.
 //!
 //! Scenario draws: case 4's C4 kills draw through their damage receivers and
 //! the destination setter may draw an Infantry sub-cell through its own;
 //! Fire_SW's computer-house alert (`fire.rs`) draws after both clicks. Timer
 //! writes: the Teleport's (`movement::teleport_chrono`), a Naval eater's
-//! 500-frame suppression and the Chronosphere's recharge (StopPreclickAnim).
+//! 500-frame suppression, the Chronosphere's recharge (StopPreclickAnim) and
+//! the post-warp refusal's PathDelay (Foot+640, `0x004D4016..0x004D4041`).
 //! Detach calls: the radio OVER_OUT to every contact, ClearBunker, the
 //! eater's ExitUnit and the placement anim's release.
 //!
 //! RESIDUALS:
-//! - A warped vehicle's Drive `Force_Track(-1, destination)` picks up a crate
-//!   on the destination cell at the launch (`CellClass::PickupCrate @
-//!   0x00481A00` from `0x004B0D1B`, with its draws); the shared track host's
-//!   crate receiver is unfinished (`crates::pickup`). Trigger: a crate on a
-//!   warped vehicle's destination cell. Effect: the crate stays until
-//!   something enters the cell, without the launch's crate draws.
-//! - A Foot whose active locomotor already holds a piggyback (a Chrono Miner
-//!   driving on its Drive) is not warped: native stacks the new Teleport over
-//!   the Drive over the Teleport, which VERA's one-slot piggyback cannot hold.
-//!   Trigger: a driving Chrono Miner in the source block. Effect: it stays.
-//! - A Ship Unit's `Force_Track(-1, destination)` (`0x006A0310`) is not
-//!   ported; only Drive's is. Trigger: a naval Unit in the source block.
-//!   Effect: its retained track state is not reset to the destination.
+//! - A warped Unit's `Force_Track(-1, destination)`, Drive's or Ship's,
+//!   picks up a crate on the destination cell at the launch
+//!   (`CellClass::PickupCrate @ 0x00481A00` from `0x004B0D1B`/`0x006A03EB`,
+//!   with its draws); the shared track host's crate receiver is unfinished
+//!   (`crates::pickup`). Trigger: a crate on a warped vehicle's destination
+//!   cell. Effect: the crate stays until something enters the cell, without
+//!   the launch's crate draws.
 //! - An off-map cell of either block reads the shared dummy cell's
 //!   coordinates natively; VERA reads the requested cell's.
-//! - A Chrono Miner warped off its own Teleport: the NULL destinations of
-//!   states 5 and 7 run the Unit setter's Teleporter arm, which natively
-//!   installs a Drive over the warp's Teleport (Begin_Piggyback on the new
-//!   Drive, `0x00742684..0x0074277E`); VERA's one-slot piggyback refuses it.
-//!   Trigger: a Chrono Miner on its Teleport in the source block. Effect:
-//!   its warp ends without the Drive interludes, so the END comes earlier.
 //! - The warp latch (`TechnoClass+0x27C`) has two more writers,
 //!   `FootClass::ChronoWarpTo @ 0x004DF7F0` (`0x004DF9EA`) and
 //!   `InfantryClass::ChronoWarpTo @ 0x00522FE0` (`0x005231C1`), reached only
@@ -386,11 +381,7 @@ fn arm_chrono_warp(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    if entity
-        .locomotor
-        .as_ref()
-        .is_none_or(|locomotor| locomotor.piggyback.is_some())
-    {
+    if entity.locomotor.is_none() {
         return;
     }
     let category = entity.category;
@@ -408,7 +399,7 @@ fn arm_chrono_warp(
     let mut destination = DriveCoord { x, y, z };
     if category == EntityCategory::Unit {
         sim.locomotor_mark_all_occupation_bits_up(id);
-        let _ = sim.force_drive_track(id, -1, destination);
+        let _ = sim.force_track(id, -1, destination);
         sim.object_raw_receiver_at(id, destination, false);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.foot_occupation_enabled = true;
@@ -423,9 +414,10 @@ fn arm_chrono_warp(
     else {
         return;
     };
-    if !locomotor.begin_piggyback(LocomotorKind::Teleport, frame) {
-        return;
-    }
+    // Whatever is active goes into the fresh Teleport's slot, a driving
+    // Chrono Miner's Drive with the miner's Teleport inside it; the result
+    // goes unread (`0x006CCB4A`).
+    locomotor.begin_piggyback(LocomotorKind::Teleport, frame);
     if category != EntityCategory::Unit {
         let Some(entity) = sim.substrate.entities.get(id) else {
             return;

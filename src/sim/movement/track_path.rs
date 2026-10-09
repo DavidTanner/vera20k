@@ -192,19 +192,6 @@ impl Simulation {
         }
         let outcome = match found {
             FindPathResult::Route => self.finish_found_track_path(id, rules, registry)?,
-            FindPathResult::EmptyRoute => {
-                //Residual: a zero-cost route leaves Foot+5E0 at -1 and native
-                //continues with that word (the success arm then steps toward
-                //octant 7 and head selection turns toward 0xE000). VERA ends
-                //the visit instead. Trigger: +34 in the mover's own cell: a
-                //non-Cell NavCom whose coordinate lies there (a same-cell Cell
-                //NavCom stops earlier, 0x4B066C), or a forced track's end
-                //(Force_Track wrote +34 = its cell, 0x4B0D3F, and a null
-                //NavCom skips the arrival clear, 0x4B2129), in the track-end
-                //Process. Effect: no turn; whether native then stops or
-                //re-requests is unexecuted.
-                FootPathOutcome::Returned
-            }
             FindPathResult::Failed => self.finish_failed_track_path(id, rules, registry)?,
         };
         if outcome == FootPathOutcome::Returned {
@@ -607,21 +594,19 @@ impl Simulation {
     }
 
     /// Retire the MovementTarget scheduling adapter once the Drive/Ship
-    /// locomotor has neither a destination nor a head nor an active track
-    /// (native Is_Moving false, no Process_Track work left).
+    /// locomotor is not moving (Is_Moving: no destination, and no head away
+    /// from the owner, which a refused own-cell search leaves) and has no
+    /// active track (no Process_Track work left).
     fn retire_idle_track_adapter(&mut self, id: u64) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        let Some(loco) = actor.locomotor.as_ref() else {
-            return;
-        };
-        let Some(family) = super::track_process::TrackFamily::from_kind(loco.kind) else {
-            return;
-        };
-        let head = loco.track_head(family);
-        if track_destination(actor).is_none()
-            && head.is_none()
+        let track = actor
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
+        if track
+            && super::motion_query::is_moving(actor) == Some(false)
             && super::track_head::active_track_family(actor).is_none()
         {
             actor.movement_target = None;
@@ -855,9 +840,8 @@ impl Simulation {
     ///   deploy action before any write; the adapter keeps only a committed
     ///   Walk head, so a Jumpjet or Teleport man drops it and his locomotor
     ///   flies its Stop alone;
-    /// - an Aircraft's null arm (0x41AA8B -> 0x41ADAC) is Foot's own; its Fly
-    ///   Stop preserves the represented adapter behavior; its landing and
-    ///   airfield selection remain a residual in `locomotor_stop_moving`.
+    /// - an Aircraft's null arm (0x41AA8B -> 0x41ADAC) is Foot's own, whose
+    ///   Fly Stop re-targets a moving aircraft (`Simulation::fly_stop_moving`).
     ///
     /// A Building takes Building455D50 ([`Self::set_building_destination`]):
     /// it clears an eligible rally ArchiveTarget and never writes Foot NavCom.
@@ -1319,8 +1303,10 @@ impl Simulation {
     /// while radio slot 0 holds a `DockUnload=` building (any such cell, not
     /// only the pad: oracle row `contact_other_cell`); in the dock chain that
     /// is the refinery's MOVE_HERE to its pad. Every other destination, NULL
-    /// included, drives: a Drive piggybacks over the Teleport
-    /// (`0x007425E6..0x0074277E`).
+    /// included, drives: a Drive piggybacks over whatever is active, after an
+    /// active piggyback that may end has ended
+    /// ([`locomotor_owner::begin_drive_for_teleporter`](super::locomotor_owner::begin_drive_for_teleporter),
+    /// `0x007425E6..0x0074277E`).
     ///
     /// Back to Teleport, a Drive piggyback ends when `Is_Ok_To_End` allows it
     /// (`0x00742500..0x0074258A`). A Drive that cannot end yet is stopped, the
@@ -1386,7 +1372,8 @@ impl Simulation {
                 return false;
             }
             let actor = self.substrate.entities.get_mut(id).expect("same arm actor");
-            if super::locomotor_owner::try_end_drive_at_foot_idle(actor) {
+            // 0x0074250E..0x0074258A: a piggyback that may end ends instead.
+            if super::locomotor_owner::try_end_piggyback(actor) {
                 return false;
             }
             super::navcom::track_stop_moving(actor);
@@ -1427,15 +1414,34 @@ impl Simulation {
     /// - A `Teleporter=` type runs its arm first ([`Self::unit_teleporter_arm`]):
     ///   a NULL destination installs a Drive over the Teleport, which the
     ///   FootClass::AI tail ends again once it is stopped.
+    /// - The BalloonHover arm runs ahead of all of these
+    ///   ([`Self::balloon_hover_keeps_nav_com`]).
     ///
-    /// Residual (not represented): the BalloonHover arm (0x741983), the
-    /// +2B0 linked-object branches (0x741ABD /0x742E3A).
+    /// Residual (not represented): the +2B0 linked-object branches (0x741ABD
+    /// /0x742E3A).
     /// A Jumpjet Stop's failed search retains the caller's overlay context
     /// for synchronous damage; callers without that context retain their
     /// existing damage-closure limitation.
     /// Returns whether Foot 0x4D94B0 ran; the Rust scheduling adapter is then
     /// trimmed to the committed head.
     pub(crate) fn set_unit_null_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        registry: Option<&OverlayTypeRegistry>,
+    ) -> bool {
+        if rules.is_some_and(|rules| self.balloon_hover_keeps_nav_com(id, rules)) {
+            return false;
+        }
+        self.unit_null_destination_past_balloon_arm(id, rules, registry)
+    }
+
+    /// [`Self::set_unit_null_destination`] from its NavCom guard (0x741A80)
+    /// on, past the BalloonHover arm. Besides the setter itself, only the
+    /// pursuit pass's halt for a cruising Jumpjet calls it: that halt stands in
+    /// for the Jumpjet's arrival at the cell Foot's approach (0x4D5690) would
+    /// have sent it to, which native never routes through this setter.
+    pub(crate) fn unit_null_destination_past_balloon_arm(
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
@@ -1491,6 +1497,73 @@ impl Simulation {
         // and its terminal then retires the adapter.
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             super::retain_committed_movement(actor);
+        }
+        true
+    }
+
+    /// Unit 0x741970's BalloonHover arm (0x741983..0x741A7D), the first test
+    /// of a NULL destination. A `BalloonHover=` type (+0xD6A) holding a
+    /// NavCom (+0x5A4) and a Target (+0x2B4) keeps the NavCom when it:
+    /// - is the Target;
+    /// - is a Cell whose first ground object (+0xE4) is the Target; or
+    /// - lies within a quarter turn of the body: Direction_To(Target)
+    ///   (0x5F3DB0) minus PrimaryFacing's Current (+0x388), as a signed word,
+    ///   is at most 0x4000 either way (0x4D03D0), so 0x8000 is outside.
+    ///
+    /// A kept NavCom puts the Unit on Attack (Assign_Mission, vt+0x1F0
+    /// 0x5B2FD0) unless Get_Mission (vt+0x184 0x5B3040, current else queued)
+    /// already answers Attack, and the setter returns with nothing else
+    /// written. Event STOP therefore calls the setter again for a balloon once
+    /// it has cleared the Target.
+    ///
+    /// Native comparison: tools/spatial_oracle/balloon_hover.json `null` rows.
+    pub(crate) fn balloon_hover_keeps_nav_com(&mut self, id: u64, rules: &RuleSet) -> bool {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return false;
+        };
+        let (Some(nav_com), Some(target)) = (
+            actor.navigation.nav_com,
+            actor.attack_target.as_ref().map(|attack| attack.target),
+        ) else {
+            return false;
+        };
+        if !self
+            .object_type(actor.type_ref(), rules)
+            .is_some_and(|object| object.balloon_hover)
+        {
+            return false;
+        }
+        let frame = self.session.binary_frame;
+        let leads_to_target = match (nav_com, target) {
+            (_, crate::sim::combat::TargetKind::Cell(rx, ry)) => {
+                nav_com == NavTargetRef::cell(rx, ry)
+            }
+            (NavTargetRef::Cell { rx, ry }, crate::sim::combat::TargetKind::Entity(target)) => {
+                self.substrate
+                    .occupancy
+                    .get(rx, ry)
+                    .and_then(|cell| cell.first_on_layer(MovementLayer::Ground))
+                    == Some(target)
+            }
+            (_, crate::sim::combat::TargetKind::Entity(target)) => {
+                super::navcom::nav_targets_same_receiver(
+                    Some(nav_com),
+                    NavTargetRef::object(target),
+                )
+            }
+        };
+        let keeps = leads_to_target
+            || super::turret::facing_toward_target(actor, &target, &self.substrate.entities)
+                .is_some_and(|direction| {
+                    let turn = direction.wrapping_sub(actor.body_facing_current(frame)) as i16;
+                    i32::from(turn).abs() <= 0x4000
+                });
+        if !keeps {
+            return false;
+        }
+        let attack = crate::sim::mission::MissionId::from_known(MissionType::Attack);
+        if actor.mission.effective() != attack {
+            let _ = self.mission_assign_exact(id, attack, frame);
         }
         true
     }

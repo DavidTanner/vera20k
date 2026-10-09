@@ -127,7 +127,6 @@ pub(super) fn candidate_admitted(
         obj: candidate_object,
         target: Some(TargetKind::Entity(attacker_id)),
         weapon_index: 0,
-        garrison: None,
     }
     .fire_error(false);
     if peek == FireError::Illegal {

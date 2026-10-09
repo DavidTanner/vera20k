@@ -26,7 +26,7 @@ use crate::sim::command::{
     SellWallAtCellRecord,
 };
 use crate::sim::components::OrderIntent;
-use crate::sim::mission::{DockTeardown, MissionType};
+use crate::sim::mission::MissionType;
 use crate::sim::movement;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::{
@@ -611,14 +611,9 @@ impl Simulation {
                 if !self.order_actor_admits(*entity_id) {
                     return false;
                 }
-                // Tear down aircraft reservations and queue Move. The Unit
-                // destination/radio owners handle any existing depot contact.
-                self.queue_megamission_with_teardown(
-                    *entity_id,
-                    MissionType::Move,
-                    DockTeardown::AircraftOnly,
-                    rules,
-                );
+                // Queue Move. The destination/radio owners handle any existing
+                // dock contact.
+                self.queue_megamission(*entity_id, MissionType::Move, rules);
                 // Clear attack and order intent.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
@@ -627,7 +622,6 @@ impl Simulation {
                     // resets retained burst state; dropping Target alone cannot.
                     e.order_intent = None;
                     e.c4_plant = None;
-                    Self::clear_aircraft_dock_phase(e);
                 }
                 // Snapshot speed, locomotor, and rules data in one lookup.
                 let Some(info) = self.resolve_move_info(*entity_id, rules) else {
@@ -649,9 +643,6 @@ impl Simulation {
                         )),
                         rules,
                     );
-                    if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                        crate::sim::aircraft::queue_move_state(e);
-                    }
                     true
                 } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines — no A* pathfinding needed.
@@ -732,14 +723,11 @@ impl Simulation {
                 {
                     return true;
                 }
-                // Aircraft teardown releases RTB/wait and docked-idle pads;
-                // Foot contacts follow the native class destination setter.
                 // Event6 IDLE4C74CB..4C76BB retains the committed/queued
                 // mission and its dispatch timer. Only the ore-miner exception
                 // below writes Guard. Ordinary Move/Attack handlers see the
                 // cleared NavCom/TarCom on their next dispatch and own the idle
                 // transition, including Temporal LetGo at that later boundary.
-                self.run_dock_teardown(*entity_id, DockTeardown::AircraftOnly);
                 // Event6 sends BREAK to every sparse contact (vt28065ACE0
                 // at4C75E0), before NULL destination4C75ED/target4C75F8.
                 // Unlike MEGAMISSION it never clears Foot pending-entry+500.
@@ -763,6 +751,20 @@ impl Simulation {
                 // Event Stop4C75F8 invokes virtual+3C8 AFTER its null
                 // destination4C75ED, including the Infantry class effects.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
+                // `0x004C75FE..0x004C7624`: a `BalloonHover=` type takes both
+                // again. Its setter's arm (`0x00741983`) kept the NavCom while
+                // the Target stood; without the Target this one clears it.
+                let balloon = rules.is_some_and(|rules| {
+                    self.substrate
+                        .entities
+                        .get(*entity_id)
+                        .and_then(|entity| self.object_type(entity.type_ref(), rules))
+                        .is_some_and(|object| object.balloon_hover)
+                });
+                if balloon {
+                    self.assign_null_destination(*entity_id, rules, overlay_registry);
+                    let _ = self.assign_target_represented(*entity_id, None, rules);
+                }
                 // `0x004C762A..0x004C7634`: a spawner's manager drops its
                 // targets, so a queued launch is cancelled and an attacking
                 // wing is recalled at the next pass.
@@ -791,7 +793,7 @@ impl Simulation {
                         && crate::sim::movement::locomotor_owner::piggyback_end_admitted(e)
                 });
                 if may_end && let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    crate::sim::movement::locomotor_owner::restore_admitted_primary(e);
+                    crate::sim::movement::locomotor_owner::end_admitted_piggyback(e);
                 }
                 // Ore-miner arm, last — retail runs it after the radio break,
                 // the navigation clear, the target clear and the path-cursor
@@ -838,17 +840,11 @@ impl Simulation {
                 {
                     return false;
                 }
-                // Cancel aircraft RTB/wait + docked-idle (not depot), then retask
-                // onto Attack keeping the interrupt stack (combat sets the target).
-                self.queue_megamission_with_teardown(
-                    *attacker_id,
-                    MissionType::Attack,
-                    DockTeardown::AircraftOnly,
-                    rules,
-                );
+                // Retask onto Attack keeping the interrupt stack (combat sets
+                // the target).
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
-                    Self::clear_aircraft_dock_phase(e);
                 }
                 let issued = self.order_attack_target(
                     *attacker_id,
@@ -888,14 +884,9 @@ impl Simulation {
                 {
                     return false;
                 }
-                // Force-attack bypasses friendship check (Ctrl+click). Release a
-                // docked-idle aircraft only, then retask onto Attack keeping fields.
-                self.queue_megamission_with_teardown(
-                    *attacker_id,
-                    MissionType::Attack,
-                    DockTeardown::IdleOnly,
-                    rules,
-                );
+                // Force-attack bypasses friendship check (Ctrl+click). Retask
+                // onto Attack keeping fields.
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
@@ -931,17 +922,11 @@ impl Simulation {
                 if !self.order_actor_admits(*attacker_id) {
                     return false;
                 }
-                // No target-entity existence check — cells always "exist". Release
-                // a docked-idle aircraft only, then retask onto Attack keeping fields.
-                self.queue_megamission_with_teardown(
-                    *attacker_id,
-                    MissionType::Attack,
-                    DockTeardown::IdleOnly,
-                    rules,
-                );
+                // No target-entity existence check — cells always "exist".
+                // Retask onto Attack keeping fields.
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
-                    Self::clear_aircraft_dock_phase(e);
                 }
                 let issued = self.order_attack_target(
                     *attacker_id,
@@ -983,14 +968,9 @@ impl Simulation {
                 if !self.order_actor_admits(*entity_id) {
                     return false;
                 }
-                // Release a docked-idle aircraft only, then retask onto AttackMove
-                // (the order_intent set after the move issues is the real driver).
-                self.queue_megamission_with_teardown(
-                    *entity_id,
-                    MissionType::AttackMove,
-                    DockTeardown::IdleOnly,
-                    rules,
-                );
+                // Retask onto AttackMove (the order_intent set after the move
+                // issues is the real driver).
+                self.queue_megamission(*entity_id, MissionType::AttackMove, rules);
                 let _ = self.assign_target_represented(*entity_id, None, rules);
 
                 // Snapshot speed, locomotor, and rules data in one lookup.
@@ -1006,8 +986,8 @@ impl Simulation {
                     // Event4C747C's virtual+480 (Aircraft41AA80) takes the
                     // ordered cell, so Mission_Move, until the Commence ends
                     // it, steers there too. The original sends mission 29 to
-                    // Mission_Sleep (`0x005B34C4`); VERA's stand-in flies in
-                    // `AircraftMission::Move` and ends on arrival.
+                    // Mission_Sleep (`0x005B34C4`; `aircraft::dispatch_mission`'s
+                    // RESIDUAL).
                     self.assign_aircraft_destination(
                         *entity_id,
                         Some(crate::sim::components::NavTargetRef::cell(
@@ -1015,12 +995,6 @@ impl Simulation {
                         )),
                         rules,
                     );
-                    if let Some(e) = self.substrate.entities.get_mut(*entity_id)
-                        && e.aircraft_mission.is_some()
-                    {
-                        e.aircraft_mission =
-                            Some(crate::sim::aircraft::AircraftMission::Move { sub_state: 0 });
-                    }
                     true
                 } else if info.loco_layer == MovementLayer::Air {
                     // Air units fly in straight lines.
@@ -1398,12 +1372,7 @@ impl Simulation {
                 }
                 // Queue Enter; the Unit setter below owns depot admission and
                 // contact changes, without a parallel reservation teardown.
-                self.queue_megamission_with_teardown(
-                    *entity_id,
-                    MissionType::Enter,
-                    DockTeardown::None,
-                    Some(rules),
-                );
+                self.queue_megamission(*entity_id, MissionType::Enter, Some(rules));
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*entity_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
@@ -1502,12 +1471,7 @@ impl Simulation {
                         None
                     };
                 // Retask onto Enter; the target setter below owns combat cancellation.
-                self.queue_megamission_with_teardown(
-                    *passenger_id,
-                    MissionType::Enter,
-                    DockTeardown::None,
-                    Some(rules),
-                );
+                self.queue_megamission(*passenger_id, MissionType::Enter, Some(rules));
                 // Clear existing state on the passenger.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*passenger_id, None, Some(rules));
@@ -1569,12 +1533,7 @@ impl Simulation {
                         if !self.order_actor_admits(*transport_id) {
                             return false;
                         }
-                        self.queue_megamission_with_teardown(
-                            *transport_id,
-                            MissionType::Unload,
-                            DockTeardown::AircraftOnly,
-                            rules,
-                        );
+                        self.queue_megamission(*transport_id, MissionType::Unload, rules);
                         true
                     }
                     Some(crate::map::entities::EntityCategory::Unit)
@@ -1789,12 +1748,7 @@ impl Simulation {
                     return false;
                 }
                 // Retask onto Sabotage; the target setter below owns combat cancellation.
-                self.queue_megamission_with_teardown(
-                    *attacker_id,
-                    MissionType::Sabotage,
-                    DockTeardown::None,
-                    Some(rules),
-                );
+                self.queue_megamission(*attacker_id, MissionType::Sabotage, Some(rules));
                 // Clear conflicting state and set c4_plant.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*attacker_id, None, Some(rules));
@@ -1887,12 +1841,7 @@ impl Simulation {
                     return false;
                 }
                 // Retask onto Capture; the target setter below owns combat cancellation.
-                self.queue_megamission_with_teardown(
-                    *engineer_id,
-                    MissionType::Capture,
-                    DockTeardown::None,
-                    Some(rules),
-                );
+                self.queue_megamission(*engineer_id, MissionType::Capture, Some(rules));
                 // Clear conflicting state and set capture target.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
@@ -2009,12 +1958,7 @@ impl Simulation {
                 );
                 // Retask onto Enter (no dock reservation), mark the unit as
                 // approaching THIS bunker (the install machine's keep-alive gate).
-                self.queue_megamission_with_teardown(
-                    *unit_id,
-                    MissionType::Enter,
-                    DockTeardown::None,
-                    Some(rules),
-                );
+                self.queue_megamission(*unit_id, MissionType::Enter, Some(rules));
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*unit_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*unit_id) {
@@ -2126,60 +2070,6 @@ impl Simulation {
                         .object_type(entity.type_ref(), rules)
                         .is_some_and(|obj| obj.has_rally_line())
             })
-    }
-
-    /// Cancel aircraft dock reservation if in ReturnToBase or WaitForDock phase.
-    pub(crate) fn cancel_aircraft_dock(&mut self, entity_id: u64) {
-        use crate::sim::docking::aircraft_dock::AircraftDockPhase;
-        if self
-            .substrate
-            .entities
-            .get(entity_id)
-            .and_then(|e| e.aircraft_ammo.as_ref())
-            .is_some_and(|ammo| {
-                matches!(
-                    ammo.dock_phase,
-                    Some(AircraftDockPhase::ReturnToBase) | Some(AircraftDockPhase::WaitForDock)
-                )
-            })
-        {
-            self.release_airfield_pad(entity_id);
-        }
-    }
-
-    /// Clear aircraft dock phase on an entity if interruptible (RTB/WaitForDock).
-    fn clear_aircraft_dock_phase(entity: &mut crate::sim::game_entity::GameEntity) {
-        if let Some(ref mut ammo) = entity.aircraft_ammo {
-            use crate::sim::docking::aircraft_dock::AircraftDockPhase;
-            if matches!(
-                ammo.dock_phase,
-                Some(AircraftDockPhase::ReturnToBase) | Some(AircraftDockPhase::WaitForDock)
-            ) {
-                ammo.dock_phase = None;
-                ammo.target_airfield = None;
-            }
-        }
-    }
-
-    /// Release a DockedIdle aircraft from its helipad and trigger takeoff.
-    /// Called when a docked aircraft receives a Move or Attack command.
-    pub(crate) fn release_docked_idle(&mut self, entity_id: u64) {
-        if !self.substrate.entities.get(entity_id).is_some_and(|e| {
-            e.aircraft_mission
-                .as_ref()
-                .is_some_and(|m| m.is_docked_idle())
-        }) {
-            return;
-        }
-        // Release dock slot.
-        self.release_airfield_pad(entity_id);
-        // Clear to Idle — the command handler will set the appropriate mission.
-        self.substrate
-            .entities
-            .get_mut(entity_id)
-            .unwrap()
-            .aircraft_mission = Some(crate::sim::aircraft::AircraftMission::Idle);
-        // The following accepted Fly MoveTo owns the takeoff transition.
     }
 
     /// Replace the current selection with exactly the given stable entity IDs.
@@ -2565,12 +2455,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
-        self.queue_megamission_with_teardown(
-            id,
-            MissionType::Unload,
-            DockTeardown::AircraftOnly,
-            Some(rules),
-        );
+        self.queue_megamission(id, MissionType::Unload, Some(rules));
         // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
         // NavQueue588/598, and has no represented producer here.
         self.assign_target_represented(id, None, Some(rules))

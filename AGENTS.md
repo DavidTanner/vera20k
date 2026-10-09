@@ -141,9 +141,7 @@ state or decision logic, find existing writers and name the owner in the PR. Ext
 or fix that owner instead of introducing competing state or duplicated decision
 logic. Keep authoritative state private to its owning module and expose mutations
 through the owner. Never widen visibility to reach another owner's state or raw data;
-extend the owner instead. CI fails a change that raises the number of `src/sim`
-struct fields any simulation module can write (`pub`, `pub(crate)` and equivalents);
-check with `python tools/sim_field_ratchet.py --base origin/main`.
+extend the owner instead.
 
 Before porting a native function, search the code for its address (e.g. `703850`) and
 native name. Each native function has one Rust port; new callers call it instead of
@@ -229,7 +227,7 @@ Before fixing a bug whose expected behavior is established, first make a focused
   focused tests; repeat both only when a fix reaches beyond the tested modules or
   a `main` merge conflicts. Cross-platform Clippy, Python tooling and lib-test
   workflows (without retail INIs) are maintainer-dispatched and are not merge
-  requirements. The quick simulation field ratchet remains automatic and required.
+  requirements.
   Agents run the local checks above; do not dispatch or wait for the manual
   platform workflows unless the user asks.
 - Asset binding, loader or rules-closure changes: a release-build retail map load

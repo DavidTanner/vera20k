@@ -2172,10 +2172,9 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
             }
         }
 
-        sim.queue_megamission_with_teardown(
+        sim.queue_megamission(
             miner_id,
             crate::sim::mission::MissionType::Move,
-            crate::sim::mission::DockTeardown::AircraftOnly,
             Some(&rules),
         );
 
@@ -2213,10 +2212,9 @@ fn megamission_mid_unload_abandons_the_unload_and_commences_the_order() {
         "the order arrives with cargo still aboard"
     );
 
-    sim.queue_megamission_with_teardown(
+    sim.queue_megamission(
         miner_id,
         crate::sim::mission::MissionType::Move,
-        crate::sim::mission::DockTeardown::AircraftOnly,
         Some(&rules),
     );
     assert!(!crate::sim::miner::miner_dock::has_contact(
@@ -3501,7 +3499,7 @@ fn player_move_arrival_returns_a_war_miner_to_harvest_on_ore() {
     place_ore(&mut sim, 20, 20, 5);
     install_land_types_for_placed_ore(&mut sim);
     // Mid-harvest cursor, then the player Move takes over (Command::Move's
-    // `queue_megamission_with_teardown(Move)` promoted).
+    // `queue_megamission(Move)` promoted).
     let now = sim.session.binary_frame;
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), now)
         .expect("assign Harvest");
@@ -4014,4 +4012,23 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
     assert_eq!(miner.owner, captor);
     assert_eq!(miner.mission.current().known(), Some(MissionType::Guard));
     assert_eq!(miner.mission.queued(), MissionId::NONE);
+}
+
+/// A deposit too small to pay a credit still scores: the first
+/// `Add_Tiberium_Credits` call (`0x0073E4A9`) runs for every drained slot.
+#[test]
+fn a_deposit_too_small_to_pay_still_scores() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[Countries]\n0=Americans\n[Americans]\nIncomeMult=0.01\n",
+    ))
+    .unwrap();
+    let mut sim = Simulation::new();
+    spawn_structure(&mut sim, 1, "GAREFN", 10, 10);
+    let owner = sim.interner.get("Americans").unwrap();
+    sim.houses.get_mut(&owner).unwrap().country = Some(owner);
+    let before = sim.houses[&owner].economy.credits();
+    // One bale worth 25 at IncomeMult 0.01 pays ftol(0.25) = 0 credits.
+    crate::sim::miner::pay_refinery_owner(&mut sim, &rules, 1, 25, 1);
+    let economy = &sim.houses[&owner].economy;
+    assert_eq!((economy.credits(), economy.score()), (before, 5));
 }

@@ -14,6 +14,7 @@
 //! Dispatch is `match category` only — no trait object / dyn / vtable
 //! (invariant #2).
 
+mod aircraft_guard;
 mod building_missile;
 mod building_missions;
 mod building_retaliation;
@@ -21,11 +22,11 @@ pub(crate) use building_missions::queue_and_commence;
 mod mission_handlers;
 mod target_scan;
 pub(crate) use mission_handlers::dispatch_foot_mission;
+pub(crate) use mission_handlers::enter_idle_mode;
 pub(crate) use mission_handlers::foot_enter_idle_mode_selection;
 pub(crate) use mission_handlers::foot_unlimbo_idle_mode;
-pub(crate) use mission_handlers::queue_foot_enter_idle_mode;
+pub(crate) use target_scan::direct_greatest_threat;
 pub(crate) use target_scan::passive_target_acquire;
-pub(crate) use target_scan::team_leader_greatest_threat;
 
 use mission_handlers::*;
 use target_scan::{can_acquire_target, passive_acquire_step};
@@ -55,6 +56,20 @@ pub(crate) struct ObjectAiCtx<'a> {
 pub(super) struct ObjectAiOutcome {
     pub(super) visited: bool,
     pub(super) bridge_state_changed: bool,
+    ownership_changed: bool,
+}
+
+impl ObjectAiOutcome {
+    pub(super) fn visited() -> Self {
+        Self {
+            visited: true,
+            ..Default::default()
+        }
+    }
+
+    pub(super) fn ownership_changed(&self) -> bool {
+        self.ownership_changed
+    }
 }
 
 impl Simulation {
@@ -287,10 +302,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         ctx: ObjectAiCtx<'_>,
     ) -> ObjectAiOutcome {
-        let mut outcome = ObjectAiOutcome {
-            visited: true,
-            ..Default::default()
-        };
+        let mut outcome = ObjectAiOutcome::visited();
         if self.substrate.anims.contains_key(id) {
             if let Some(rules) = rules {
                 outcome.bridge_state_changed = self.visit_anim(id, rules, ctx.overlay_registry);
@@ -623,7 +635,7 @@ fn techno_ai_shell(
     }
     match category {
         EntityCategory::Unit => {
-            unit_techno_bracket(sim, id, rules, ctx);
+            unit_techno_bracket(sim, id, rules, ctx, &mut outcome.bridge_state_changed);
         }
         // InfantryClass::AI promotes queued missions via Ready→Commence
         // (`0x0051BC51`/`0x0051BF03`); fear, fire and sequence run in
@@ -635,7 +647,8 @@ fn techno_ai_shell(
         // something shoots it. A passenger inside a closed transport is gated
         // out by the mission read, an open-topped transport's rider scans from
         // the Guard its boarding gave it (`SetInOpenTransport 0x00710470`), and
-        // a garrisoned occupant fires through the garrison path instead.
+        // a garrisoned occupant's weapon is fired by its building
+        // (`BuildingClass::GetWeapon @ 0x004526F0`).
         // The supported Foot mission cadence branches run here as well.
         EntityCategory::Infantry => {
             if let Some(rules) = rules
@@ -657,7 +670,13 @@ fn techno_ai_shell(
                 // existing owner until retained AttackMove is ported.
                 sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
             }
-            bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+            bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            );
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             if let Some(rules) = rules {
@@ -700,7 +719,13 @@ fn techno_ai_shell(
                 return;
             }
             passive_acquire_step(sim, id, rules, ctx);
-            if !bomb_fuse_slot(sim, id, rules, ctx.overlay_registry) {
+            if !bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            ) {
                 return;
             }
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
@@ -722,6 +747,23 @@ fn techno_ai_shell(
             // repair step.
             if let Some(rules) = rules {
                 building_missions::process_delayed_fire(sim, id, rules, ctx);
+                // Building4401A3..4401AF: allegiance belongs to this object's
+                // AI tail, before repair/power and factory work. Earlier
+                // native returns admit only a live, nonzero-health building.
+                if sim.substrate.entities.get(id).is_some_and(|entity| {
+                    entity.lifecycle.object_alive
+                        && entity.health.current != 0
+                        && !entity.is_warped_out()
+                        && !entity.is_warping_in()
+                }) {
+                    outcome.ownership_changed |=
+                        crate::sim::passenger::reconcile_civilian_garrison_owner_for_building(
+                            sim,
+                            rules,
+                            ctx.overlay_registry,
+                            id,
+                        );
+                }
                 crate::sim::production::update_repair_and_power(
                     sim,
                     rules,
@@ -759,43 +801,41 @@ fn techno_ai_shell(
         // (`0x0041504A`/`0x00415058`). Keep the counter here; the sole promotion
         // is `object_ai_post_movement_promote_one`.
         //
-        // RESIDUAL — no passive block on this arm. Aircraft reach the common
-        // Techno AI body in the original through the same foot-leaf call the
-        // Unit and Infantry leaves use, so the block is shared with them there;
-        // whether it does anything for a YR aircraft in practice is UNCHECKED.
-        // It is omitted here because VERA's aircraft mission machine owns firing
-        // and return-to-base, and the idle/parked/docked aircraft states all read
-        // as Guard — so wiring this in would install targets on helipad-parked
-        // aircraft outside the system that decides when they may shoot. Doing it
-        // properly means choosing which aircraft states may acquire and routing
-        // the pick through that machine, which is its own slice.
+        // AircraftClass::AI drops an unsensed cloaked Target, then reaches the
+        // common Techno AI body through FootClass::AI (`0x00414DA3`), so the
+        // off-mission clear, the counter, MissionClass::AI and the passive
+        // block run in AI_Update's order (`0x006FA5E8..0x006FA6EE`). The
+        // retail fixed-wing types are `CanPassiveAquire=no`, so the block's
+        // gate refuses them except on Move in a computer house's
+        // `Aggressive=yes`, `Suicide=no` team (Korea's Black Eagles). A scan
+        // takes nothing for an aircraft: with no `+0x3C4` override its mask 1
+        // gives a zero flags word, which the class gate (`0x006F821A`) refuses
+        // for every candidate; the scan's Scenario draw and timer remain.
         EntityCategory::Aircraft => {
+            drop_unsensed_cloaked_target_step(sim, id);
             if let Some(rules) = rules
                 && !techno_common_steps(sim, id, rules, ctx.overlay_registry)
             {
                 return;
             }
-            drop_unsensed_cloaked_target_step(sim, id);
+            clear_passive_target_off_mission(sim, id, rules);
             mission_counter_step(sim, id);
-            // The aircraft mission handlers absorbed so far: Retreat, Unload,
-            // the paradrop plane's two and the Spy Plane's two, behind
-            // MissionClass::AI's timer gate.
+            // MissionClass::AI, inside this slot and before Fly Process
+            // (FootClass::AI4DA530).
             if let Some(rules) = rules
                 && mission_handlers_run(sim, id)
+                && crate::sim::aircraft::dispatch_mission(sim, id, rules, ctx)
             {
-                crate::sim::aircraft::dispatch_native_mission(sim, id, rules, ctx.overlay_registry);
-                // The remaining aircraft missions dispatch here too, inside
-                // this slot and before Fly Process (FootClass::AI4DA530).
-                if crate::sim::aircraft::dispatch_aircraft_mission(
-                    sim,
-                    rules,
-                    id,
-                    ctx.overlay_registry,
-                ) {
-                    sim.fire_requests.aircraft.insert(id);
-                }
+                sim.fire_requests.aircraft.insert(id);
             }
-            bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+            passive_acquire_step(sim, id, rules, ctx);
+            bomb_fuse_slot(
+                sim,
+                id,
+                rules,
+                ctx.overlay_registry,
+                &mut outcome.bridge_state_changed,
+            );
             slave_manager_slot(sim, id, rules, ctx.overlay_registry);
             spawn_manager_slot(sim, id, rules, ctx.overlay_registry);
             techno_common_post(sim, id, rules);
@@ -1393,15 +1433,17 @@ fn spawn_manager_slot(
 /// The bomb fuse's slot in `TechnoClass::AI_Update` (`0x006FA6F5..
 /// 0x006FA717`): after the mission step and passive acquisition, before the
 /// SlaveManager and CaptureManager. A carrier its own blast kills runs no
-/// further AI this frame (the IsAlive gate at `0x006FA735`).
+/// further AI this frame (the IsAlive gate at `0x006FA735`). A bridge the
+/// blast changes is reported through `bridge_state_changed`.
 fn bomb_fuse_slot(
     sim: &mut Simulation,
     id: u64,
     rules: Option<&RuleSet>,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    bridge_state_changed: &mut bool,
 ) -> bool {
     if let Some(rules) = rules {
-        sim.bomb_fuse_step(id, rules, overlay_registry);
+        *bridge_state_changed |= sim.bomb_fuse_step(id, rules, overlay_registry);
     }
     ai_alive(sim, id)
 }
@@ -1633,6 +1675,7 @@ fn unit_techno_bracket(
     id: u64,
     rules: Option<&RuleSet>,
     ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
 ) -> BracketReach {
     techno_common_pre(sim, id, rules, ctx.overlay_registry);
     // Guard B (IsAlive, `0x006FA23C`). A crashing wreck is alive at Health 0,
@@ -1652,7 +1695,7 @@ fn unit_techno_bracket(
     // match routes Harvest, Attack and the other represented Foot handlers.
     if mission_handlers_run(sim, id) {
         if let Some(rules) = rules {
-            dispatch_foot_mission(sim, id, rules, ctx);
+            *bridge_state_changed |= dispatch_foot_mission(sim, id, rules, ctx);
         }
     }
     // `UnitClass::AI @ 0x007361A9..0x007361E9`: a draining Floating Disc
@@ -1668,7 +1711,7 @@ fn unit_techno_bracket(
         // its unported retained state/cadence is documented there.
         sim.acquire_order_intent_target_one(id, rules, ctx.overlay_registry);
     }
-    bomb_fuse_slot(sim, id, rules, ctx.overlay_registry);
+    bomb_fuse_slot(sim, id, rules, ctx.overlay_registry, bridge_state_changed);
     slave_manager_slot(sim, id, rules, ctx.overlay_registry);
     // Guard E (IsAlive, `0x006FA735`): the dispatched handler, or the bomb it
     // carried, may have destroyed the Unit; a dead Unit runs no post-mission
@@ -1735,7 +1778,6 @@ mod tests {
     use crate::map::tube_facts::TubeId;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::locomotor_type::LocomotorKind;
-    use crate::sim::aircraft::AircraftMission;
     use crate::sim::combat::{AttackTarget, TargetKind};
     use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
     use crate::sim::game_entity::{BunkerLink, GameEntity};
@@ -1945,7 +1987,7 @@ mod tests {
         // A live Unit reaches the dispatch point: +0xC4 counter tick; the
         // verb-owned current selector is untouched.
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         let u = sim.substrate.entities.get(1).unwrap();
@@ -1963,7 +2005,7 @@ mod tests {
         // Guard B (IsAlive) fires after the (empty) pre-block: a dead Unit runs
         // no mission work (counter stays 0).
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::DiedInPre
         );
         assert_eq!(
@@ -1982,7 +2024,7 @@ mod tests {
         e.crashing = true;
         sim.substrate.entities.insert(e);
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         assert_eq!(
@@ -2001,7 +2043,7 @@ mod tests {
         // common mission step for every live Unit (the miner FSM keeps driving
         // behavior; its mission commits arrive through the departure verbs).
         assert_eq!(
-            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default()),
+            unit_techno_bracket(&mut sim, 1, None, ObjectAiCtx::default(), &mut false),
             BracketReach::Dispatched
         );
         assert_eq!(
@@ -2635,6 +2677,129 @@ mod tests {
                 .object(sim.interner.resolve(scout.type_ref()))
                 .unwrap()
                 .strength,
+        );
+    }
+
+    /// One boarded `OCCUPANT` (`OccupyWeapon=` of `range` cells) in a 2x2
+    /// house at (10, 10), and an unarmed enemy at `enemy`, on flat ground
+    /// through `advance_tick`. Answers the house's target and the enemy's
+    /// health.
+    fn run_garrison(range: &str, enemy: (u16, u16)) -> (Option<TargetKind>, i32) {
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(
+            &IniFile::from_str(&format!(
+                "[General]\nNormalTargetingDelay=27\nGuardAreaTargetingDelay=36\n\n\
+             [CombatDamage]\nOccupyWeaponRange=3\n\n\
+             [InfantryTypes]\n0=OCCUPANT\n[AircraftTypes]\n\
+             [VehicleTypes]\n0=UNARM\n[BuildingTypes]\n0=HOUSE\n\n\
+             [HOUSE]\nStrength=750\nArmor=wood\nSight=5\n\
+             CanBeOccupied=yes\nCanOccupyFire=yes\nMaxNumberOccupants=5\n\n\
+             [OCCUPANT]\nLocomotor={{4A582744-9839-11d1-B709-00A024DDAFD1}}\n\
+             Strength=125\nArmor=none\nSpeed=4\nSight=10\nOccupier=yes\n\
+             Primary=Gun\nOccupyWeapon=Gun\n\n\
+             [UNARM]\nLocomotor={{4A582741-9839-11d1-B709-00A024DDAFD1}}\n\
+             Strength=300\nArmor=heavy\nSpeed=6\nSight=10\n\n\
+             [Gun]\nDamage=20\nROF=30\nRange={range}\nWarhead=AP\nProjectile=InvisibleHigh\n\n\
+             [InvisibleHigh]\nInviso=yes\nSubjectToElevation=yes\n\n\
+             [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n"
+            )),
+            &IniFile::from_str("[HOUSE]\nFoundation=2x2\n"),
+        )
+        .expect("garrison passive-acquire rules parse");
+        assert_eq!(rules.object("HOUSE").unwrap().foundation, "2x2");
+        run_boarded_garrison(&rules, "HOUSE", "OCCUPANT", "UNARM", enemy)
+    }
+
+    fn run_boarded_garrison(
+        rules: &RuleSet,
+        building_type: &str,
+        occupant_type: &str,
+        enemy_type: &str,
+        enemy: (u16, u16),
+    ) -> (Option<TargetKind>, i32) {
+        let mut sim = Simulation::with_seed(0x5CA1_AB1E_000B);
+        let grid = crate::sim::arena_fixture::flat_ground(&mut sim, rules);
+        sim.spawn_from_map(
+            &[
+                passive_map_entity(
+                    "Americans",
+                    building_type,
+                    10,
+                    10,
+                    EntityCategory::Structure,
+                ),
+                passive_map_entity("Americans", occupant_type, 9, 10, EntityCategory::Infantry),
+                passive_map_entity("Soviet", enemy_type, enemy.0, enemy.1, EntityCategory::Unit),
+            ],
+            Some(rules),
+        );
+        sim.substrate.entities.get_mut(2).unwrap().passenger_role =
+            crate::sim::passenger::PassengerRole::Boarding {
+                target_transport_id: 1,
+            };
+        for _ in 0..160 {
+            let _ = sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
+        }
+        assert!(
+            sim.substrate
+                .entities
+                .get(1)
+                .and_then(|house| house.passenger_role.cargo())
+                .is_some_and(|cargo| cargo.passengers == [2]),
+            "precondition: the occupant boarded"
+        );
+        (
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .attack_target
+                .as_ref()
+                .map(|attack| attack.target),
+            sim.substrate.entities.get(3).unwrap().health.current,
+        )
+    }
+
+    /// An occupied building takes its occupant's weapon (`BuildingClass::GetWeapon
+    /// @ 0x004526F0`) but measures with its reach, HalfFoundation (`0x00458E00`)
+    /// plus `OccupyWeaponRange=`: InRange replaces the weapon's range with it
+    /// (`0x006F727E..0x006F729F`) and the passive scan's ring bound is one cell
+    /// more (`0x006F917F..0x006F91A3`). This 2x2 house reaches 1 + 3 = 4 cells,
+    /// 1024 leptons, from its centre (the corner of cells (10, 10) and
+    /// (11, 11)). An enemy 905 leptons away is shot with a 2-cell gun; one 1159
+    /// leptons away is not taken with an 8-cell gun.
+    #[test]
+    fn an_occupied_building_acquires_and_fires_at_its_reach() {
+        let (target, health) = run_garrison("2", (10, 14));
+        assert_eq!(target, Some(TargetKind::Entity(3)));
+        assert!(
+            health < 300,
+            "the occupant's 2-cell gun fired at 905 leptons"
+        );
+        let (target, health) = run_garrison("8", (10, 15));
+        assert_eq!(target, None, "1159 leptons is beyond the reach");
+        assert_eq!(health, 300);
+    }
+
+    #[test]
+    fn a_retail_garrison_acquires_and_fires_with_its_art_foundation() {
+        let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+            return;
+        };
+        let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+            .expect("retail RULESMD and fixed ARTMD");
+        assert_eq!(rules.object("CABUNK01").unwrap().foundation, "2x2");
+        let initial_health = rules.object("AMCV").unwrap().strength;
+        let (target, health) = run_boarded_garrison(&rules, "CABUNK01", "E1", "AMCV", (10, 16));
+        assert_eq!(target, Some(TargetKind::Entity(3)));
+        assert!(
+            health < initial_health,
+            "the retail GI fired from the bunker"
+        );
+        let (target, health) = run_boarded_garrison(&rules, "CABUNK01", "E1", "AMCV", (10, 17));
+        assert_eq!(target, None);
+        assert_eq!(
+            health, initial_health,
+            "the MCV outside occupied reach was not shot"
         );
     }
 
@@ -4897,7 +5062,7 @@ mod tests {
         entity: &GameEntity,
         gates: HostTraceGates,
     ) -> Result<(), HostTraceError> {
-        if entity.category == EntityCategory::Aircraft || entity.aircraft_mission.is_some() {
+        if entity.category == EntityCategory::Aircraft {
             return Err(HostTraceError::AircraftPath);
         }
         if entity.category != EntityCategory::Unit {
@@ -5890,7 +6055,7 @@ mod tests {
             ));
             let head = DriveCoord::cell(8, 7, 731);
             if forced {
-                assert!(sim.force_drive_track(ORDINARY_DRIVE_HOST_ID, 0x47, head));
+                assert!(sim.force_track(ORDINARY_DRIVE_HOST_ID, 0x47, head));
             } else {
                 let loco = sim
                     .substrate
@@ -6041,7 +6206,7 @@ mod tests {
             .entities
             .get_mut(ORDINARY_DRIVE_HOST_ID)
             .unwrap()
-            .aircraft_mission = Some(AircraftMission::Guard);
+            .category = EntityCategory::Aircraft;
         assert_ordinary_drive_host_error(
             &aircraft,
             &control,
@@ -6060,7 +6225,7 @@ mod tests {
             .unwrap()
             .locomotor
             .insert(LocomotorState::for_test_kind(LocomotorKind::Teleport));
-        assert!(teleporter.begin_drive_piggyback_for_teleporter(0));
+        assert!(teleporter.begin_piggyback(LocomotorKind::Drive, 0));
         assert_ordinary_drive_host_error(
             &primary_mismatch,
             &control,

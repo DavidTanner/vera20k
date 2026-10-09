@@ -1924,7 +1924,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 });
             }
             let progress = products.iter_mut().find(|p| p.id == held).unwrap();
-            if view.ready && progress.completed_frame.is_none() {
+            if view.complete_object().is_some() && progress.completed_frame.is_none() {
                 progress.completed_frame = Some(frame);
                 let entity = sim.substrate.entities.get(held).unwrap();
                 assert!(entity.lifecycle.in_limbo && !entity.in_logic_vector);
@@ -2150,11 +2150,11 @@ fn joined_two_paid_gi(route: OutputRoute) {
     assert!(factory.is_none_or(|view| view.object.is_none() && view.queue.is_empty()));
     assert!(sim.pending_command_snapshot().is_empty());
     assert_eq!(
-        json!(sim.houses[&owner].economy.credits),
+        json!(sim.houses[&owner].economy.credits()),
         native["final_wallet"]["credits"]
     );
     assert_eq!(
-        json!(sim.houses[&owner].economy.spent_credits),
+        json!(sim.houses[&owner].economy.spent_credits()),
         native["final_wallet"]["spent"]
     );
 }

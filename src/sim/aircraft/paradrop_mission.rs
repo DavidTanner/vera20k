@@ -2,7 +2,7 @@
 //! 0x004158E0` (mission 26) and `Mission_ParadropOverfly @ 0x00415960` (27).
 //! `MissionClass::AI @ 0x005B3060` runs the current one when its timer is
 //! due (jump table `0x005B34E8`, cases 26 and 27) and restarts the timer
-//! with the frames it returns ([`super::dispatch_native_mission`]).
+//! with the frames it returns ([`super::dispatch_mission`]).
 //!
 //! Approach flies at its Target, the clicked cell, and turns into Overfly
 //! within `[General] ParadropRadius=` (`Rules+0x54C`) of it, spending one of

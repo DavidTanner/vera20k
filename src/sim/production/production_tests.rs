@@ -2,10 +2,7 @@
 //! harvester auto-creation, and sell/undeploy flows through the full production pipeline.
 
 use super::production_spawn::mark_war_factory_spawn_contact;
-use super::{
-    ProductionCategory, STARTING_CREDITS, credits_for_owner, is_matching_factory,
-    structure_satisfies_prerequisite,
-};
+use super::{ProductionCategory, STARTING_CREDITS, credits_for_owner, is_matching_factory};
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::object_type::ObjectCategory;
@@ -222,12 +219,15 @@ pub(super) fn build_catalog_rules() -> RuleSet {
              Foundation=3x3\n\
              [GAPILE]\n\
              TechLevel=-1\n\
+             Owner=Americans,Alliance\n\
              Factory=InfantryType\n\
              [GAWEAP]\n\
              TechLevel=-1\n\
+             Owner=Americans,Alliance\n\
              Factory=UnitType\n\
              [GAAIRC]\n\
              TechLevel=-1\n\
+             Owner=Americans,Alliance\n\
              Factory=AircraftType\n[Clear]\nBuildable=yes\n",
     );
     RuleSet::from_ini(&ini).expect("build catalog rules should parse")
@@ -489,52 +489,6 @@ pub(super) fn factory_rules() -> RuleSet {
         .expect("factory rules and ART should parse")
 }
 
-/// Rules with [General] PrerequisiteXxx groups for testing data-driven
-/// prerequisite alias resolution.
-pub(super) fn prerequisite_group_rules() -> RuleSet {
-    let ini = IniFile::from_str(
-        "[General]\n\
-         PrerequisitePower=GAPOWR,NAPOWR,NANRCT\n\
-         PrerequisiteProc=GAREFN,NAREFN\n\
-         PrerequisiteRadar=GAAIRC,NARADR\n\
-         PrerequisiteTech=GATECH,NATECH\n\
-         PrerequisiteBarracks=GAPILE,NAHAND\n\
-         PrerequisiteFactory=GAWEAP,NAWEAP\n\
-             [InfantryTypes]\n\
-             [VehicleTypes]\n\
-             0=MTNK\n\
-             [AircraftTypes]\n\
-         [BuildingTypes]\n\
-         0=GAPOWR\n\
-         1=NAPOWR\n\
-         2=NANRCT\n\
-         3=GAREFN\n\
-         4=NAREFN\n\
-         5=GAAIRC\n\
-         6=NARADR\n\
-         7=GATECH\n\
-         8=NATECH\n\
-         9=GAPILE\n\
-         10=NAHAND\n\
-         11=GAWEAP\n\
-         12=NAWEAP\n\
-         [GAPOWR]\n\
-         [NAPOWR]\n\
-         [NANRCT]\n\
-         [GAREFN]\n\
-         [NAREFN]\n\
-         [GAAIRC]\n\
-         [NARADR]\n\
-         [GATECH]\n\
-         [NATECH]\n\
-         [GAPILE]\n\
-         [NAHAND]\n\
-         [GAWEAP]\n\
-         [NAWEAP]\n",
-    );
-    RuleSet::from_ini(&ini).expect("prerequisite group rules should parse")
-}
-
 /// Explicit synthetic map prior for focused Infantry delivery tests. Native
 /// GetDock44EFB0 requires physical cells and Map::InBounds568300, unlike the
 /// retired category-only foundation-centre adapter.
@@ -557,6 +511,7 @@ pub(super) fn install_infantry_delivery_fixture_map(sim: &mut Simulation) {
 
 pub(super) fn spawn_structure(
     sim: &mut Simulation,
+    rules: &RuleSet,
     sid: u64,
     owner: &str,
     type_id: &str,
@@ -591,11 +546,24 @@ pub(super) fn spawn_structure(
     ge.in_playfield = true;
     ge.finish_building_construction_for_test();
     ge.building_actually_placed = true;
+    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
+        crate::map::entities::EntityCategory::Structure,
+        rules.object(type_id),
+        Some(rules),
+    );
     sim.substrate.entities.insert(ge);
     // Use the lifecycle boundary so the fixture is a placed (not factory-held)
     // structure and raw-store consumers see the same Mark state as gameplay.
     sim.add_entity_occupancy(sid);
     sim.append_house_base_building_for_test(sid);
+    // Its house counts it as tracked and on the map, as CanBuild's
+    // prerequisites read them.
+    sim.update_house_tracking(sid, crate::sim::house_tracking::HouseTracking::add_tracking);
+    sim.update_house_presence(sid, true);
+    sim.update_house_tracking(
+        sid,
+        crate::sim::house_tracking::HouseTracking::increment_factory_count,
+    );
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -648,54 +616,6 @@ pub(super) fn arm_build_via(
         super::construct_active_factory_fixture(sim, rules, oid, queue_category, tid)
             .expect("test production type must construct at StartProduction");
     }
-}
-
-#[test]
-fn structure_satisfies_prerequisite_with_groups() {
-    let rules = prerequisite_group_rules();
-    // Direct match: GAWEAP satisfies GAWEAP.
-    assert!(structure_satisfies_prerequisite(&rules, "GAWEAP", "GAWEAP"));
-    // Alias match: NAWEAP is in PrerequisiteFactory list, which also maps to WARFACTORY.
-    assert!(structure_satisfies_prerequisite(
-        &rules,
-        "NAWEAP",
-        "WARFACTORY"
-    ));
-    assert!(structure_satisfies_prerequisite(
-        &rules, "GAWEAP", "FACTORY"
-    ));
-    // Power alias.
-    assert!(structure_satisfies_prerequisite(&rules, "GAPOWR", "POWER"));
-    assert!(structure_satisfies_prerequisite(&rules, "NANRCT", "POWER"));
-    // Barracks alias + TENT secondary alias.
-    assert!(structure_satisfies_prerequisite(
-        &rules, "GAPILE", "BARRACKS"
-    ));
-    assert!(structure_satisfies_prerequisite(&rules, "NAHAND", "TENT"));
-    // Unknown alias: not in any group and not a direct match.
-    assert!(!structure_satisfies_prerequisite(&rules, "GAPOWR", "RADAR"));
-}
-
-#[test]
-fn custom_modded_prerequisite_group_recognized() {
-    let ini = IniFile::from_str(
-        "[General]\n\
-         PrerequisitePower=MODPOWR,MODSOLR\n\
-         [InfantryTypes]\n\
-         [VehicleTypes]\n\
-         [AircraftTypes]\n\
-         [BuildingTypes]\n\
-         0=MODPOWR\n\
-         1=MODSOLR\n\
-         [MODPOWR]\n\
-         Name=Mod Power\n\
-         [MODSOLR]\n\
-         Name=Mod Solar\n",
-    );
-    let rules = RuleSet::from_ini(&ini).expect("modded rules should parse");
-    assert!(structure_satisfies_prerequisite(&rules, "MODPOWR", "POWER"));
-    assert!(structure_satisfies_prerequisite(&rules, "MODSOLR", "POWER"));
-    assert!(!structure_satisfies_prerequisite(&rules, "GAPOWR", "POWER"));
 }
 
 #[test]
@@ -752,7 +672,7 @@ fn exit_coord_parsed_and_used_for_spawn() {
 
     // Spawn test: GAWEAP at (20,20), ExitCoord→primary cell (22,21).
     let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 20, 20);
     let producer = sim.substrate.entities.get(1).unwrap();
     let exit = crate::sim::movement::building_exit_coordinate(
         crate::sim::movement::ground_pose::position_world_coord(&producer.position),
@@ -775,7 +695,7 @@ fn exit_coord_parsed_and_used_for_spawn() {
 fn war_factory_spawn_contact_is_marked_per_produced_mover() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
+    spawn_structure(&mut sim, &rules, 10, "Americans", "GAWEAP", 20, 20);
 
     // Supply the ordinary ExitCoord pose. This isolates the shared contact
     // owner; producer selection and Unlimbo have their own native comparisons.
@@ -842,7 +762,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     });
     sim.playfield_size_height = Some(32);
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     let produced = sim
         .construct_object_limbo_at_height("DEST", "Americans", 0, 0, 0, 0, &rules)
@@ -896,8 +816,8 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     sim.session.map_height = 40;
 
     // The older/lower stable-id land factory must never win the Ship slot.
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 4, 4);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 4, 4);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     // Direct fixture insertion bypasses Building::Unlimbo's 448070 call.
@@ -1080,8 +1000,8 @@ fn naval_delivery_nonzero_canenter_refunds_without_trying_second_producer() {
     });
     sim.playfield_size_height = Some(40);
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     super::initialize_factory_primary(&mut sim, 1, &rules);
@@ -1197,8 +1117,8 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         americans,
         crate::sim::house_state::HouseState::new(americans, 0, None, true, STARTING_CREDITS, 10),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     super::initialize_factory_primary(&mut sim, 1, &rules);
@@ -1249,7 +1169,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         .view(americans, ProductionCategory::Ship)
         .unwrap();
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
@@ -1326,7 +1246,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1431,7 +1351,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1507,7 +1427,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1606,7 +1526,7 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     let harvester_sid = sim
         .spawn_object("HARV", "Americans", 10, 10, 64, &rules)
         .expect("spawn harvester");
-    spawn_structure(&mut sim, 2, "Americans", "GAREFN", 8, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAREFN", 8, 10);
     // Whole-multiple of the ore base (120) so the cell drains cleanly. The
     // production overlay seeder always stores `(frame+1) * base`, so cells
     // in real maps never carry a sub-density-level leftover.
@@ -1647,10 +1567,21 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     );
 }
 
+/// Each house has its own wallet; a house that does not exist has no money
+/// and is not made up.
 #[test]
 fn owner_credits_are_isolated() {
     let mut sim = Simulation::new();
-    *super::credits_entry_for_owner(&mut sim, "Americans") -= 750;
+    super::house_for_test(&mut sim, "Soviet");
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .add_credits(-750);
     assert_eq!(credits_for_owner(&sim, "Americans"), STARTING_CREDITS - 750);
     assert_eq!(credits_for_owner(&sim, "Soviet"), STARTING_CREDITS);
+    assert_eq!(credits_for_owner(&sim, "Germans"), 0);
+    assert!(
+        sim.interner
+            .get("Germans")
+            .is_none_or(|id| !sim.houses.contains_key(&id))
+    );
 }

@@ -10,6 +10,14 @@ native rows execute the original Find_Path wrapper with only the AStar core
 wrapper's buffer. Rows stop where Process_Movement returns to the outer
 Process (Drive 0x4B0A7E / Ship 0x6A0147) or at head selection in the same
 call (Drive 0x4B32A1 / Ship 0x6A28F1).
+
+The post_warp rows replace the setter with a Chrono Warp's
+Force_Track(-1, destination) (0x6CCAA2 through the locomotor's vt+0x70) on
+a Unit already standing on its landing: the original Force_Track with the
+Unit's own coordinate, after the warp's NULL setter left Foot+5E0's live
+head -1 and no NavCom. Find_Path then asks for the Unit's own cell, and the
+AStar core is supplied NULL: AStar_pathfind_search returns 0 without
+searching when the start cell and height are the goal's (0x429BF3..0x429C0A).
 """
 from pathlib import Path
 import struct
@@ -24,11 +32,13 @@ from tools.spatial_oracle.unit_scatter_state import SP, TYPE
 from tools.spatial_oracle.unit_source_scatter import CELLS, MAP
 
 PROCESS = {'drive': 0x4B0500, 'ship': 0x69FC10}
+FORCE_TRACK = {'drive': 0x4B0C40, 'ship': 0x6A0310}
 RETURNED = {'drive': 0x4B0A7E, 'ship': 0x6A0147}
 HEAD_SELECTION = {'drive': 0x4B32A1, 'ship': 0x6A28F1}
 FIND_PATH, ASTAR = 0x4D3920, 0x4CBBA0
 RULES = EXTRA + 0x10000
 ZONE_RECORDS, ZONE_TABLE, PATH_TYPE = EXTRA + 0x2C000, EXTRA + 0x2D000, EXTRA + 0x2E000
+COUNTRY = EXTRA + 0x2F800
 PROCESS_FRAME = 101
 
 
@@ -58,8 +68,20 @@ def query(case):
     u.mem_write(ZONE_TABLE, struct.pack('<HH', 1, 2))
     u.mem_write(MAP + 0x68, dwords(ZONE_RECORDS, count))
     u.mem_write(MAP + 0x18, dwords(ZONE_TABLE))
-    destination = case.get('destination', [11, 10])
-    call(0x741970, ACTOR, [cell(*destination), 1])
+    if case.get('post_warp'):
+        # HouseClass::GetSpeedBonus 0x50C050 reads the country type's +0x12C.
+        u.mem_write(HOUSE + 0x34, dwords(COUNTRY))
+        u.mem_write(COUNTRY + 0x12C, struct.pack('<f', 1.0))
+        u.mem_write(ACTOR + 0x5E0, dwords(-1))
+        location = struct.unpack('<iii', u.mem_read(ACTOR + 0x9C, 12))
+        force = FORCE_TRACK[family]
+        assert read32(read32(LOCO + 4) + 0x70) == force
+        u.mem_write(SP, dwords(RET_MAGIC, LOCO + 4, -1, *location))
+        u.reg_write(UC_X86_REG_ESP, SP)
+        run_checked(u, force, RET_MAGIC, count=100000, required_addresses=[force])
+    else:
+        destination = case.get('destination', [11, 10])
+        call(0x741970, ACTOR, [cell(*destination), 1])
     if case.get('empty_path'):
         u.mem_write(ACTOR + 0x5E0, dwords(-1))
     u.mem_write(ACTOR + 0x64C, dwords(case.get('retries', 10)))
@@ -75,6 +97,9 @@ def query(case):
     observed = {0x741970: 'unit_destination', 0x4D55C0: 'failed_receiver',
                 0x4B28A8: 'drive_continuation', 0x6A1EF8: 'ship_continuation',
                 0x481670: 'scatter_objects', 0x578AD0: 'gate_open'}
+    if case.get('post_warp'):
+        # Scenario draws, Random 0x65C780 and RandomRanged 0x65C7E0.
+        observed.update({0x65C780: 'random', 0x65C7E0: 'random_ranged'})
 
     def observe(_u, address, _size, _data):
         if address == FIND_PATH:
@@ -149,13 +174,17 @@ def generate():
         rows += [dict(base, find_path='native', destination=destination, human=human)
                  for destination in ([11, 10], [13, 10]) for human in (True, False)]
         rows += [dict(base, find_path='native', destination=[13, 10], route=[2, 2, 2])]
+        rows += [dict(base, find_path='native', post_warp=True, mission=mission)
+                 for mission in (5, 2)]
     return [query(row) for row in rows]
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Original Unit Cell setter then Drive/Ship outer Process through the no-queue Find_Path continuation: 6 supplied found routes, 18 supplied refusals (retry ladder, CloseEnough stop for Move/AreaGuard with Guard and Enter contrasts, the Enter-without-contact setter keeping the path word, zone recheck), 8 original-wrapper AStar-NULL rows (near/far, human/nonhuman) and 2 original-wrapper found rows. No head selection, Process_Track, NavQueue, code-3/code-6 cell answers or Rust parity claim.',
+        scope='Original Unit Cell setter then Drive/Ship outer Process through the no-queue Find_Path continuation: 6 supplied found routes, 18 supplied refusals (retry ladder, CloseEnough stop for Move/AreaGuard with Guard and Enter contrasts, the Enter-without-contact setter keeping the path word, zone recheck), 8 original-wrapper AStar-NULL rows (near/far, human/nonhuman), 2 original-wrapper found rows, and 4 post-warp rows (original Force_Track(-1, own coordinate), Guard and Move, own-cell Find_Path with the AStar-NULL core). No head selection, Process_Track, NavQueue, code-3/code-6 cell answers or Rust parity claim.',
         entry_points={'unit_destination': 0x741970, 'find_path': FIND_PATH, 'astar_core': ASTAR,
+                      'drive_force_track': FORCE_TRACK['drive'],
+                      'ship_force_track': FORCE_TRACK['ship'],
                       'failed_receiver': 0x4D55C0, 'zone_precheck': 0x4D3810, **PROCESS,
                       'drive_returned': RETURNED['drive'], 'ship_returned': RETURNED['ship'],
                       'drive_head_selection': HEAD_SELECTION['drive'],
@@ -165,9 +194,11 @@ if __name__ == '__main__':
             'Rules PathDelay double 0.01 (9 frames), CloseEnough 128 unless the row sets it. MovementZone 0 zone lookup [1,2] over zeroed records; far_zone assigns record index 1 (zone 2) to the listed cells. Map width/height and bounds are the inherited fixture values.',
             'Setter at frame 100; Process at frame 101 (timer +640 expired). Foot+64C supplied after the setter (10 unless the row sets it). Mission Guard(5) unless set: Move 2, Enter 7, AreaGuard 11. House+1EC human byte per row; GameMode is the fixture default (0).',
             'The fixture path prestate 2,3,4,5 survives the setter only for Enter without a radio contact (0x741C54..0x741C78); empty_path supplies Foot+5E0=-1 after it to reach the continuation.',
+            'post_warp rows: no setter; Foot+5E0 live word -1, NavCom null, Foot+64C 10, then the original Drive 0x4B0C40 / Ship 0x6A0310 Force_Track(-1, Actor+9C) before the Process. House+34 names a supplied country type whose +0x12C speed bonus is the float 1.0 (read by HouseClass::GetSpeedBonus 0x50C050).',
         ],
         substitutions=[
             'found/failed rows: Find_Path 0x4D3920 returns AL=1 after writing the route (then -1 words) to Foot+5E0, or AL=0 with no writes; original stdcall 12 cleanup.',
+            'post_warp rows: the AStar core returns EAX=0 as AStar_pathfind_search does for a goal in its start cell (0x429BF3..0x429C0A -> 0x42A451, read). Their events also record calls of Random 0x65C780 and RandomRanged 0x65C7E0.',
             'native rows: only the AStar core 0x4CBBA0 is supplied (stdcall 24 cleanup): EAX=0, or a PathType in the shape of AStar_reconstruct_path 0x42AA90 (moves then -1 in the wrapper buffer, cost = moves, length = moves + 1); the Find_Path wrapper (copy, Mark, timers, Unit vt+540 = 0x41C140 no-op), Unit receivers, setters and continuation execute.',
             'Only OS Interlocked imports inherited from the fixture.',
         ]))

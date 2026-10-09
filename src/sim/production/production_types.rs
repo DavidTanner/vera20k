@@ -3,7 +3,7 @@
 //! Shared types used across production sub-modules: queue items, build options,
 //! placement previews, and the central `ProductionState` struct.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,8 @@ use crate::sim::intern::InternedId;
 use crate::sim::ore_growth::{OreGrowthConfig, OreGrowthState};
 use crate::sim::production::factory::FactoryRegistry;
 
-/// Initial credits for the local player.
+/// A test house's opening balance.
+#[cfg(test)]
 pub const STARTING_CREDITS: i32 = 5000;
 
 /// One queued item formatted for UI rendering.
@@ -60,16 +61,19 @@ pub struct BuildingPlacementPreview {
     pub wall_autofill_cells: Vec<(u16, u16)>,
 }
 
-/// Why an item cannot currently be built.
+/// Why the player cannot build an item now
+/// (`production_tech::build_option_for_owner`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildDisabledReason {
-    UnbuildableTechLevel,
-    WrongOwner,
-    WrongHouse,
-    ForbiddenHouse,
-    RequiresStolenTech,
-    MissingPrerequisite(String),
+    /// No building of the house could build it (`FindFactory(1, 0, 0)`):
+    /// off the sidebar.
     NoFactory,
+    /// `HouseClass::CanBuild(type, 0, 1)` refuses it: off the sidebar.
+    CannotBuild,
+    /// On the sidebar, darkened: no online factory may build it now
+    /// (`FindFactory(1, 1, 1)`).
+    NoReadyFactory,
+    /// On the sidebar, darkened: at its build limit.
     AtBuildLimit,
 }
 
@@ -168,22 +172,20 @@ pub struct BuildOption {
 }
 
 impl BuildOption {
-    /// Whether the sidebar should show a cameo for this option.
-    ///
-    /// Tech-tree, faction, and factory failures hide the item entirely — the
-    /// player never sees a cameo they cannot act on. A reached build limit keeps
-    /// the cameo visible (greyed): the item is still part of the player's tech
-    /// tree, it just can't start right now. Money never greys a cameo: a build
-    /// the house cannot pay for starts and waits on hold.
+    /// Whether the sidebar shows a cameo for this option: the strip keeps it
+    /// (`production_tech::strip_keeps`), darkened or not. Money never darkens
+    /// a cameo: a build the house cannot pay for starts and waits on hold.
     pub fn visible_in_sidebar(&self) -> bool {
-        self.enabled || self.reason == Some(BuildDisabledReason::AtBuildLimit)
+        !matches!(
+            self.reason,
+            Some(BuildDisabledReason::NoFactory | BuildDisabledReason::CannotBuild)
+        )
     }
 }
 
 /// Player production state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductionState {
-    pub ready_by_owner: BTreeMap<InternedId, VecDeque<InternedId>>,
     active_producer_by_owner: BTreeMap<InternedId, BTreeMap<ProductionCategory, u64>>,
     pub next_enqueue_order: u64,
     /// Ore growth/spread configuration resolved from merged INI sources.
@@ -202,8 +204,6 @@ pub struct ProductionState {
     /// This has a different gate from `terrain_animations`: a non-animated
     /// spawner rejects new ore, while an animated non-spawner still draws RNG.
     pub tiberium_spawning_terrain_cells: BTreeSet<(u16, u16)>,
-    /// Airfield dock reservations — multi-slot (NumberOfDocks per airfield).
-    pub airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks,
     /// Per-(house, category) factory registry — the authoritative production state
     /// machine AND (as of P5d) the queue-of-record: the active build is the `Factory` head
     /// fields, the FIFO tail is `Factory.queue` of `QueueEntry`. Mutated directly by
@@ -254,6 +254,13 @@ impl ProductionState {
         self.active_producer_by_owner
             .retain(|_, categories| !categories.is_empty());
     }
+    /// The building's own primary byte (`TechnoClass+0x3D3`): it is its
+    /// house's primary factory of some category.
+    pub(crate) fn is_primary_factory(&self, id: u64) -> bool {
+        self.active_producer_by_owner
+            .values()
+            .any(|categories| categories.values().any(|&primary| primary == id))
+    }
     pub(crate) fn retain_primary_factory_links(&mut self, live: &std::collections::BTreeSet<u64>) {
         for categories in self.active_producer_by_owner.values_mut() {
             categories.retain(|_, id| live.contains(id));
@@ -280,7 +287,6 @@ impl ProductionState {
 impl Default for ProductionState {
     fn default() -> Self {
         Self {
-            ready_by_owner: BTreeMap::new(),
             active_producer_by_owner: BTreeMap::new(),
             next_enqueue_order: 1,
             ore_growth_config: OreGrowthConfig::disabled(),
@@ -289,7 +295,6 @@ impl Default for ProductionState {
             terrain_objects: BTreeMap::new(),
             terrain_object_cells: BTreeMap::new(),
             tiberium_spawning_terrain_cells: BTreeSet::new(),
-            airfield_docks: crate::sim::docking::aircraft_dock::AirfieldDocks::default(),
             factories: FactoryRegistry::default(),
         }
     }

@@ -5,7 +5,7 @@
 //!      scripted skirmish drives every retasking command site (Move / Stop /
 //!      Attack / ForceAttack / ForceAttackCell / AttackMove) and asserts the
 //!      end-of-run `state_hash()` equals the committed baseline. At the slice's
-//!      introduction, this exposed wrong `DockTeardown` subsets and dropped
+//!      introduction, this exposed wrong aircraft dock teardown subsets and dropped
 //!      legacy-field clears. Changes require causal behavior or hash-composition
 //!      evidence before updating the Rust regression receipt.
 //!   2. The verb-write + retaliation-gate tripwires (added below the gate).

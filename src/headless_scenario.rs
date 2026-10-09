@@ -952,12 +952,12 @@ mod retail_construction_tests {
                 .expect("a free cell near the Yuri base");
             spawned.push(id);
         }
-        let factory_scan = crate::sim::world::team_leader_greatest_threat(
+        let factory_scan = crate::sim::world::direct_greatest_threat(
             sim,
             &resources.rules,
             None,
             spawned[5],
-            crate::sim::combat::ScanMission::TeamQuarry {
+            crate::sim::combat::ScanMission::Quarry {
                 mask: 0x1000,
                 only_target_house_enemy: false,
             },

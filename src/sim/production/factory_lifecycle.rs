@@ -1,20 +1,19 @@
 //! Complete mutations of factory-held Techno identity and its accounting.
 //!
 //! The registry owns queue/charge kernels. This world-facing owner completes
-//! their constructor, disposal, ready projection and successor work before an
-//! operation returns. Native StartProduction/AbandonProduction/StartNextQueued:
-//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0; see FACTORY_CREDIT_SYSTEM_GHIDRA_REPORT.md.
+//! their constructor, disposal and successor work before an operation returns.
+//! Native StartProduction/AbandonProduction/StartNextQueued:
+//! 0x004C9C70 / 0x004C9FF0 / 0x004CA5A0.
 //! Delivery selection and placement keep their existing phase positions and
 //! call settlement only after their successful world effects have committed.
 
 use super::CancelOutcome;
+use super::can_build::{check_build_limit, find_factory};
 use super::factory::{
     AbandonedObject, EnqueueOutcome, FactoryHolder, time_to_build, time_to_build_inputs,
 };
-use super::production_tech::{
-    build_option_for_owner, production_category_for_object, supports_live_production,
-};
-use super::production_types::{BuildDisabledReason, ProductionCategory};
+use super::production_tech::{production_category_for_object, strip_keeps};
+use super::production_types::ProductionCategory;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_unit_choice::UnitChoiceKind;
@@ -23,21 +22,21 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// The PRODUCE event for `type_id`: `HouseClass::Begin_Production @ 0x004FA350`.
 ///
-/// The build needs a factory that may build it: VERA's build option, for
-/// gamemd's `FindFactory(0,1,1)` (`0x004FA438`), whose `CanBuild(type, 1, 1)`
-/// lets a type at its build limit through while one of the house's factories
-/// holds it (`0x004F8348`). A stopped active object of the same type takes the
-/// same-type branch (`0x004FA5A8..0x004FA5C4`): a held build resumes, and a
-/// finished one stays (the build start refuses stage 54, `0x004C9ECD`).
-/// Otherwise `FactoryClass::StartProduction @ 0x004C9C70` starts or queues
-/// the build. Nothing on this path checks money: a short wallet stalls the
-/// steps instead. A queue already holding `[General] MaximumQueuedObjects=`
-/// builds refuses the append (`0x004C9CDE`) and scolds the local player.
-///
-/// Residual: an append refused at the build limit (`0x004C9CEA`) scolds as
-/// well; VERA refuses it before StartProduction, silently. Trigger: a second
-/// click on a limited type whose first PRODUCE has not executed yet. Rare,
-/// sound only.
+/// The build needs an online factory that may build it, `FindFactory(0,1,1)`
+/// (`0x004FA438`), whose `CanBuild(type, 1, 1)` asks only the build limit and
+/// lets a type at it through while one of the house's factories holds it
+/// (`0x004F8348`); a PRODUCE event asks no second time (`0x004C7130` passes
+/// 0). Nothing here asks the house's prerequisites: the sidebar offers only
+/// what the strip keeps, and the frame's [`revalidate_and_step_factories`]
+/// abandons what it no longer keeps. A stopped active object of the same
+/// type takes the same-type branch (`0x004FA5A8..0x004FA5C4`): a held build
+/// resumes, and a finished one stays (the build start refuses stage 54,
+/// `0x004C9ECD`). Otherwise `FactoryClass::StartProduction @ 0x004C9C70`
+/// starts or queues the build. Nothing on this path checks money: a short
+/// wallet stalls the steps instead. A queue already holding `[General]
+/// MaximumQueuedObjects=` builds, or a type at its limit
+/// (`HouseClass::CheckBuildLimit`, `0x004C9CEA`), refuses the append and
+/// scolds the local player.
 ///
 /// Residual (building path): a building never queues in gamemd.
 /// Begin_Production refuses a building PRODUCE while the building factory runs
@@ -47,43 +46,33 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 /// (the sidebar refuses a busy structure strip, and VERA's AI asks only while
 /// no building is queued). Effect: VERA builds both in turn. Rare.
 pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &str) -> bool {
-    let Some(option) = build_option_for_owner(sim, rules, owner, type_id) else {
-        return false;
-    };
     let Some(obj) = rules.object(type_id) else {
         return false;
     };
-    if !supports_live_production(obj) {
+    let owner_id = sim.interner.intern(owner);
+    if find_factory(sim, rules, owner_id, obj, false, true, true).is_none() {
         return false;
     }
     let category = production_category_for_object(obj);
-    let owner_id = sim.interner.intern(owner);
     let type_interned = sim.interner.intern(type_id);
     if let Some((active, held, finished)) =
         sim.production.factories.active_object(owner_id, category)
         && active == type_interned
         && (held || finished)
     {
-        let may_resume = matches!(
-            option.reason,
-            None | Some(BuildDisabledReason::AtBuildLimit)
-        );
-        if !held || !may_resume {
+        if !held {
             return false;
         }
-        let time_to_build =
-            time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+        let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, obj));
         let frame = sim.session.binary_frame;
         sim.production
             .factories
             .resume(owner_id, category, time_to_build, frame);
         return true;
     }
-    if !option.enabled {
-        return false;
-    }
     let enqueue_order = sim.production.next_enqueue_order;
     let cost = sim.cost_of(owner_id, obj, rules);
+    let at_build_limit = check_build_limit(sim, rules, owner_id, obj);
     let outcome = sim.production.factories.enqueue(
         owner_id,
         category,
@@ -91,8 +80,9 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
         enqueue_order,
         cost,
         rules.general.maximum_queued_objects,
+        at_build_limit,
     );
-    if outcome == EnqueueOutcome::QueueFull {
+    if outcome == EnqueueOutcome::AppendRefused {
         sim.sound_events
             .push(SimSoundEvent::ProductionRefused { owner: owner_id });
         return false;
@@ -148,11 +138,11 @@ pub(super) fn start_active_production(
     holder: FactoryHolder,
     type_id: InternedId,
 ) -> Option<u64> {
-    let (owner_id, category) = sim
+    let owner_id = sim
         .production
         .factories
         .factory(holder)
-        .map(|factory| (factory.owner, factory.category))?;
+        .map(|factory| factory.owner)?;
     let obj = sim.object_type(type_id, rules)?;
     let owner = sim.interner.resolve(owner_id).to_string();
     let type_name = sim.interner.resolve(type_id).to_string();
@@ -168,7 +158,7 @@ pub(super) fn start_active_production(
         let _ = sim.discard_constructed_limbo(stable_id, Some(rules));
         return None;
     }
-    let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+    let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, obj));
     let frame = sim.session.binary_frame;
     sim.production
         .factories
@@ -259,31 +249,12 @@ pub fn cancel_by_type_for_owner(
     match outcome {
         CancelOutcome::NoMatch => return false,
         CancelOutcome::QueuedRemoved => {}
-        CancelOutcome::AbandonedActive { object, finished } => {
+        CancelOutcome::AbandonedActive(object) => {
             settle_abandoned(sim, rules, owner_id, object);
-            if finished {
-                remove_ready_entry(sim, owner_id, type_interned);
-            }
             advance_after_delivery(sim, rules, owner_id, category);
         }
     }
     sim.production.factories.prune_all_idle();
-    true
-}
-
-/// Drop one `ready_by_owner` entry of `type_id`: its finished building left
-/// the factory.
-fn remove_ready_entry(sim: &mut Simulation, owner: InternedId, type_id: InternedId) -> bool {
-    let Some(ready_queue) = sim.production.ready_by_owner.get_mut(&owner) else {
-        return false;
-    };
-    let Some(index) = ready_queue.iter().position(|&ready| ready == type_id) else {
-        return false;
-    };
-    ready_queue.remove(index);
-    if ready_queue.is_empty() {
-        sim.production.ready_by_owner.remove(&owner);
-    }
     true
 }
 
@@ -348,19 +319,6 @@ fn discard_active_factory_entity(
         );
     }
 }
-fn consume_ready_building(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner_id: InternedId,
-    type_id: InternedId,
-    category: ProductionCategory,
-) -> bool {
-    if !remove_ready_entry(sim, owner_id, type_id) {
-        return false;
-    }
-    advance_after_delivery(sim, rules, owner_id, category);
-    true
-}
 /// Publish the completion edge once, without releasing the held object.
 pub(super) fn publish_completion(
     sim: &mut Simulation,
@@ -387,11 +345,6 @@ pub(super) fn publish_completion(
         .object(sim.interner.resolve(type_id))
         .is_some_and(|object| object.category == ObjectCategory::Building)
     {
-        sim.production
-            .ready_by_owner
-            .entry(owner)
-            .or_default()
-            .push_back(type_id);
         sim.sound_events
             .push(SimSoundEvent::BuildingComplete { owner });
     }
@@ -476,26 +429,40 @@ impl ReadyFactoryObject {
     }
 
     /// Building Unlimbo/build-up/superweapon effects precede factory release.
-    pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
-        consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
+    pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) {
+        advance_after_delivery(sim, rules, self.owner, self.category);
     }
 
     /// Primary and autofill overlays are already stamped when the constructor
-    /// identity is consumed. Ready removal and successor construction follow.
-    pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) -> bool {
+    /// identity is consumed. Successor construction follows.
+    pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) {
         let _ = sim.discard_constructed_limbo(self.entity_id, Some(rules));
         record_last_built(sim, rules, self.owner, self.type_id);
-        consume_ready_building(sim, rules, self.owner, self.type_id, self.category)
+        advance_after_delivery(sim, rules, self.owner, self.category);
     }
 }
 
+/// `owner`'s completed `type_id` waiting in its `category` factory: the
+/// factory `FactoryClass::IsComplete @ 0x004CA130` answers (its object at the
+/// last stage), holding an object of that type.
+///
+/// RESIDUAL: `HouseClass::Place_Production @ 0x004FB0E0` uses the event's type
+/// only to choose the factory and places whatever object that factory holds
+/// (`0x004FB18C`); VERA refuses a PLACE whose type is not the held object's.
+/// Trigger: a building PLACE naming another type of the same factory, which
+/// the sidebar never sends. Effect: native places the held building, VERA
+/// refuses the event.
 pub(super) fn ready_object(
     sim: &Simulation,
     owner: InternedId,
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<ReadyFactoryObject> {
-    let object = sim.production.factories.view(owner, category)?.object?;
+    let object = sim
+        .production
+        .factories
+        .view(owner, category)?
+        .complete_object()?;
     if object.type_id != type_id {
         return None;
     }
@@ -510,6 +477,43 @@ pub(super) fn ready_object(
     })
 }
 
+/// Fixture: `owner`'s `type_id` completed in its House factory and held there
+/// with its completion published, as a finished building waits for placement.
+/// Returns the held object's identity.
+#[cfg(test)]
+pub(crate) fn complete_held_building_for_test(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    type_id: InternedId,
+) -> u64 {
+    let object = sim
+        .object_type(type_id, rules)
+        .expect("completed-building fixture type");
+    let (category, cost) = (production_category_for_object(object), object.cost.max(0));
+    let enqueue_order = sim.production.next_enqueue_order;
+    assert!(
+        sim.production
+            .factories
+            .test_enqueue_kernel(owner, category, type_id, enqueue_order, cost),
+        "the fixture arms one fresh factory head"
+    );
+    sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
+    let held = start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
+        .expect("the fixture constructs its object at StartProduction");
+    assert!(sim.production.factories.test_arm_ready(owner, category));
+    super::production_queue::publish_production_changes(sim, rules);
+    assert!(
+        sim.production
+            .factories
+            .view(owner, category)
+            .and_then(|factory| factory.complete_object())
+            .is_some_and(|object| object.completion_accounted),
+        "the Strip publishes the completed building"
+    );
+    held
+}
+
 /// Fixture-only bridge for tests that deliberately seed a registry kernel.
 #[cfg(test)]
 pub(in crate::sim) fn construct_active_factory_fixture(
@@ -522,31 +526,81 @@ pub(in crate::sim) fn construct_active_factory_fixture(
     start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
 }
 
-/// Revalidate before the charge sweep at its existing frame phase. Dispose all
-/// abandoned objects before starting any promoted ones.
+/// Revalidate before the charge sweep at its existing frame phase: first
+/// `HouseClass::Update_Factory_Queue` (`FactoryRegistry::plan_revalidation`),
+/// disposing all abandoned objects before starting any promoted ones, then
+/// the human houses' strips ([`recalculate_strips`]). A freshly abandoned
+/// factory is not charged this frame.
 pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules: &RuleSet) {
     let mut registry = std::mem::take(&mut sim.production.factories);
-    // P6: prereq/factory-loss revalidation BEFORE the charge sweep. Builds whose
-    // prerequisites or producing factory were lost are abandoned and refunded
-    // + now-unbuildable queued items dropped, so a freshly-abandoned factory is not
-    // charged this tick; a promoted build is started at this frame.
     let reval_plan = registry.plan_revalidation(sim, rules);
     let lifecycle = registry.apply_revalidation(&reval_plan);
     for (owner, abandoned) in lifecycle.abandoned {
         settle_abandoned(sim, rules, owner, abandoned);
-    }
-    // An abandoned finished building no longer waits for placement.
-    for (owner, type_id) in lifecycle.abandoned_finished {
-        remove_ready_entry(sim, owner, type_id);
     }
     sim.production.factories = registry;
     for (owner, category, type_id) in lifecycle.promoted {
         start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
             .expect("validated revalidation promotion must construct one Techno");
     }
+    recalculate_strips(sim, rules);
     let mut registry = std::mem::take(&mut sim.production.factories);
     registry.step_all(&mut sim.houses, sim.session.binary_frame);
     sim.production.factories = registry;
+}
+
+/// `StripClass::Recalculate @ 0x006AA600` over the builds of every human
+/// house, as a player's strip runs it when the house's tech tree is
+/// rechecked (`HouseClass::Update @ 0x004F926C`). A type the strip no longer
+/// keeps ([`strip_keeps`]) sends ABANDON (event `0x10`) when it is its
+/// category's active build, whose cameo holds the factory (`0x006AA7B6`),
+/// and ABANDON_ALL (event `0x2E`) when the house has a factory for the
+/// type's kind (`HouseClass::GetPrimaryFactory @ 0x00500510` with build
+/// category 0, so a defense asks the Buildings factory; `0x006AA809..`),
+/// both through [`cancel_by_type_for_owner`]. Every event is decided before
+/// any runs.
+///
+/// Residual: the strip recalculates only when the house's tech tree is
+/// rechecked (House `+0x1FC`, set by a building's placement, opening,
+/// limbo, sale and capture, trigger actions and more), and its events run
+/// on a later frame; VERA decides every frame and abandons at once.
+/// Trigger: a build whose prerequisite or last factory is lost. Effect: the
+/// abandon and refund land a frame or more earlier. Frequency: occasional.
+fn recalculate_strips(sim: &mut Simulation, rules: &RuleSet) {
+    let mut abandons = Vec::new();
+    for (owner, category, types) in sim.production.factories.house_build_types() {
+        if !sim.houses.get(&owner).is_some_and(|house| house.is_human) {
+            continue;
+        }
+        let active = sim
+            .production
+            .factories
+            .active_object(owner, category)
+            .map(|(type_id, ..)| type_id);
+        let kind = match category {
+            ProductionCategory::Defense => ProductionCategory::Building,
+            other => other,
+        };
+        let kind_factory = sim.production.factories.view(owner, kind).is_some();
+        for type_id in types {
+            let kept = sim
+                .object_type(type_id, rules)
+                .is_some_and(|obj| strip_keeps(sim, rules, owner, obj));
+            if !kept {
+                abandons.push((owner, type_id, active == Some(type_id), kind_factory));
+            }
+        }
+    }
+    for (owner, type_id, own_factory, kind_factory) in abandons {
+        let owner_name = sim.interner.resolve(owner).to_string();
+        let type_name = sim.interner.resolve(type_id).to_string();
+        if own_factory {
+            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, false);
+        }
+        if kind_factory {
+            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, true);
+        }
+    }
 }
 
 /// House508D88 invokes the existing Factory rate owner after power changes.
@@ -580,44 +634,9 @@ pub(crate) fn validate_restored_factory_state(
     rules: &RuleSet,
 ) -> Result<(), FactoryRestoreError> {
     use crate::map::entities::EntityCategory;
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeSet;
 
     let fail = |owner, reason| FactoryRestoreError { owner, reason };
-    let mut ready = BTreeMap::new();
-    for (&owner, entries) in &sim.production.ready_by_owner {
-        if sim.interner.try_resolve(owner).is_none() {
-            return Err(fail(owner, "ready owner is absent from the interner"));
-        }
-        for &type_id in entries {
-            let object = sim
-                .interner
-                .try_resolve(type_id)
-                .and_then(|name| rules.object(name))
-                .ok_or_else(|| fail(owner, "ready type is absent from bound rules"))?;
-            if object.category != ObjectCategory::Building {
-                return Err(fail(owner, "ready entry is not a building"));
-            }
-            let category = production_category_for_object(object);
-            if ready.insert((owner, category), type_id).is_some() {
-                return Err(fail(owner, "multiple ready entries claim one factory"));
-            }
-            let factory = sim
-                .production
-                .factories
-                .view(owner, category)
-                .ok_or_else(|| fail(owner, "ready entry has no factory"))?;
-            let held = factory
-                .object
-                .ok_or_else(|| fail(owner, "ready entry has no active object"))?;
-            if held.type_id != type_id {
-                return Err(fail(owner, "ready type disagrees with active object"));
-            }
-            if !factory.ready || !held.completion_accounted {
-                return Err(fail(owner, "ready entry precedes completion publication"));
-            }
-        }
-    }
-
     let mut roots = BTreeSet::new();
     for (&holder, factory) in sim.production.factories.keyed_factories() {
         let (owner, category) = (factory.owner, factory.category);
@@ -723,12 +742,6 @@ pub(crate) fn validate_restored_factory_state(
                 owner,
                 "completion accounting precedes completed progress",
             ));
-        }
-        if held.completion_accounted
-            && object.category == ObjectCategory::Building
-            && ready.get(&(owner, category)) != Some(&held.type_id)
-        {
-            return Err(fail(owner, "accounted building has no ready entry"));
         }
     }
 

@@ -160,12 +160,13 @@ impl App {
         let gpu: GpuContext = GpuContext::new(window.clone())?;
         let egui: EguiIntegration = EguiIntegration::new(&gpu, &window);
         let batch_renderer: BatchRenderer = BatchRenderer::new(&gpu);
-        let terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
+        let mut terrain_draw_renderer = crate::render::terrain_draw::TerrainDrawRenderer::new(
             &gpu.device,
             &gpu.queue,
             gpu.surface_format,
             &batch_renderer,
         );
+        terrain_draw_renderer.generate_ion_blast_frames(&gpu.device, &gpu.queue);
         let combat_light_renderer = crate::render::combat_light::CombatLightRenderer::new(&gpu);
         let mut bit_font = BitFont::fallback_5x7(&gpu, &batch_renderer);
         let depth_view: wgpu::TextureView = gpu.create_depth_texture();
@@ -523,8 +524,6 @@ impl App {
                     active_sidebar_tab: SidebarTab::default_active_tab(),
                     sidebar_layout_spec,
                     ui_scale,
-                    sidebar_scroll_rows: 0,
-                    sidebar_scroll_rows_parked: [0; 4],
                     tooltips: startup_tooltips,
                     tooltip_epoch: Instant::now(),
                     message_list: crate::ui::messages::MessageList::new(

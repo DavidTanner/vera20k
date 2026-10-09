@@ -143,11 +143,13 @@ impl Simulation {
         self.complete_pending_order(id, rules, None);
     }
 
-    /// Rust bookkeeping, no native counterpart: Process_Movement runs through
-    /// the MovementTarget scheduling adapter, and a +34 can outlive it without
-    /// a deferred order: Force_Track writes +34 directly (0x4B0D3F), and a
-    /// NavCom object's pointer expiry clears NavCom but not +34 (0x4D9ABD).
-    /// Those continue toward +34 through an empty-route adapter.
+    /// Rust bookkeeping, no native counterpart: a +34 can outlive the
+    /// MovementTarget adapter without a deferred order: Force_Track writes +34
+    /// directly (0x4B0D3F), and a NavCom object's pointer expiry clears NavCom
+    /// but not +34 (0x4D9ABD). Process_Movement does not need the adapter (the
+    /// outer gates in `track_turn` admit a moving Drive/Ship); its readers
+    /// that treat it as "moving" do: `block_index`'s moving next cell, the
+    /// pursuit orders (`world_orders`) and the bunker install.
     fn ensure_track_scheduling_adapter(&mut self, id: u64, rules: Option<&RuleSet>) {
         let destination = self.substrate.entities.get(id).and_then(|entity| {
             if entity.movement_target.is_some() {

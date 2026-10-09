@@ -4,12 +4,14 @@ use crate::sim::production::{Factory, PRODUCTION_STEPS, ProductionCategory};
 
 fn factory_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
-        "[InfantryTypes]\n0=SLAV\n1=E1\n\
+        "[Countries]\n0=Americans\n\
+         [InfantryTypes]\n0=SLAV\n1=E1\n\
          [VehicleTypes]\n0=MTNK\n[AircraftTypes]\n0=HORN\n\
          [BuildingTypes]\n0=PARENT\n1=OTHER\n2=DEFENSE\n\
-         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\n\
+         [PARENT]\nCost=1000\nStrength=2000\nFoundation=1x1\nTechLevel=1\nOwner=Americans\n\
          Enslaves=SLAV\nSlavesNumber=2\nSlaveRegenRate=500\nSlaveReloadRate=25\n\
          [OTHER]\nCost=500\nStrength=1000\nFoundation=1x1\nTechLevel=1\nFactory=BuildingType\n\
+         Owner=Americans\n\
          [DEFENSE]\nCost=500\nStrength=1000\nFoundation=1x1\nBuildCat=Combat\nTechLevel=1\n\
          [SLAV]\nStrength=125\nSpeed=4\nStorage=4\n\
          [E1]\nCost=200\nStrength=125\nSpeed=4\nTechLevel=1\n\
@@ -157,10 +159,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .get_mut(&owner)
         .unwrap()
         .economy
-        .harvested_credits = 35;
+        .set_score_for_test(35);
     let expected = saved.houses[&owner].economy.clone();
-    assert!(expected.spent_credits > 0);
-    assert_eq!(expected.credits + expected.spent_credits, 50_123);
+    assert!(expected.spent_credits() > 0);
+    assert_eq!(expected.credits() + expected.spent_credits(), 50_123);
 
     let prepared = prepare_saved(&saved, rules, "wallet-authority").expect("prepare current save");
     let mut resources = crate::sim::runtime::SimResources::empty();
@@ -195,10 +197,10 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     }
     let resumed = runtime.simulation.houses[&owner].economy.clone();
     assert!(
-        resumed.spent_credits > expected.spent_credits,
+        resumed.spent_credits() > expected.spent_credits(),
         "restored production must charge again"
     );
-    assert_eq!(resumed.credits + resumed.spent_credits, 50_123);
+    assert_eq!(resumed.credits() + resumed.spent_credits(), 50_123);
     let factory = runtime
         .simulation
         .production
@@ -221,37 +223,9 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
         .expect("restored frame");
     let economy = &runtime.simulation.houses[&owner].economy;
-    assert_eq!(economy.credits, 50_123);
-    assert_eq!(economy.spent_credits, resumed.spent_credits);
-    assert_eq!(economy.harvested_credits, 35);
-}
-
-#[test]
-fn factory_restore_rejects_unrelated_ready_projection_before_match_commit() {
-    let (mut saved, rules, owner, parent) = factory_fixture("PARENT", ProductionCategory::Building);
-    assert_eq!(
-        saved
-            .substrate
-            .entities
-            .get(parent)
-            .and_then(|entity| entity.slave_manager.as_ref())
-            .map(|manager| manager.nodes().len()),
-        Some(2)
-    );
-    let missing = saved.interner.intern("REMOVED_TYPE");
-    saved
-        .production
-        .ready_by_owner
-        .insert(owner, [missing].into());
-    let error = match prepare_saved(&saved, rules, "factory-invalid-ready") {
-        Ok(_) => panic!("malformed ready projection was admitted"),
-        Err(error) => error,
-    };
-    assert!(
-        matches!(error, PreparedLoadError::FactoryState(ref error)
-        if error.owner == owner && error.reason == "ready type is absent from bound rules"),
-        "{error}"
-    );
+    assert_eq!(economy.credits(), 50_123);
+    assert_eq!(economy.spent_credits(), resumed.spent_credits());
+    assert_eq!(economy.score(), 35);
 }
 
 #[test]
@@ -338,11 +312,10 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
             .into_iter()
             .cloned()
             .collect();
-        let ready = saved.production.ready_by_owner.clone();
         let counts = saved
             .houses
             .get(&owner)
-            .map(|house| (house.tracking.clone(), house.economy.credits, house.stats));
+            .map(|house| (house.tracking.clone(), house.economy.credits(), house.stats));
         let identities: Vec<_> = saved
             .substrate
             .entities
@@ -384,11 +357,10 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
             factories,
             "{label}"
         );
-        assert_eq!(restored.production.ready_by_owner, ready, "{label}");
         assert_eq!(
             restored.houses.get(&owner).map(|house| (
                 house.tracking.clone(),
-                house.economy.credits,
+                house.economy.credits(),
                 house.stats
             )),
             counts,
@@ -425,11 +397,10 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
 }
 
 #[test]
-fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
+fn factory_restore_rejects_inconsistent_roots() {
     for label in [
         "key-owner",
         "idle-owner-index",
-        "ready-owner-index",
         "tail-unknown-type",
         "tail-type-index",
         "tail-category",
@@ -448,14 +419,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
         "manager-owned-root",
         "child-root-alias",
         "tail-without-head",
-        "ready-no-factory",
-        "ready-no-head",
-        "ready-mismatch",
-        "ready-nonbuilding",
-        "duplicate-ready",
-        "early-ready",
-        "unaccounted-ready",
-        "missing-ready",
         "early-accounting",
     ] {
         let (mut saved, rules, owner, parent) =
@@ -465,19 +428,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
         let other = saved.interner.get("OTHER").unwrap();
         let foreign = saved.interner.intern("Russians");
         let missing = saved.interner.intern("REMOVED_TYPE");
-        if (label.starts_with("ready-") && label != "ready-owner-index")
-            || matches!(
-                label,
-                "duplicate-ready" | "early-ready" | "unaccounted-ready"
-            )
-        {
-            assert!(saved.production.factories.test_arm_ready(owner, category));
-            assert!(
-                !crate::sim::production::dispatch_production_changes_for_tests(
-                    &mut saved, &rules, None
-                )
-            );
-        }
         match label {
             "idle-owner-index" => {
                 let invalid_owner = InternedId::from_index(u32::MAX);
@@ -494,13 +444,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     .test_factory_mut(invalid_owner, category)
                     .unwrap()
                     .object = None;
-            }
-            "ready-owner-index" => {
-                saved.production.ready_by_owner.clear();
-                saved
-                    .production
-                    .ready_by_owner
-                    .insert(InternedId::from_index(u32::MAX), Default::default());
             }
             "tail-unknown-type" | "tail-type-index" | "tail-category" => {
                 let queued_type = match label {
@@ -638,56 +581,6 @@ fn factory_restore_rejects_inconsistent_roots_and_ready_relationships() {
                     1000,
                 );
                 saved.production.factories.test_first_mut().unwrap().object = None;
-            }
-            "ready-no-factory" => saved.production.factories = Default::default(),
-            "ready-no-head" => saved.production.factories.test_first_mut().unwrap().object = None,
-            "ready-mismatch" => {
-                *saved
-                    .production
-                    .ready_by_owner
-                    .get_mut(&owner)
-                    .unwrap()
-                    .front_mut()
-                    .unwrap() = other
-            }
-            "ready-nonbuilding" => {
-                *saved
-                    .production
-                    .ready_by_owner
-                    .get_mut(&owner)
-                    .unwrap()
-                    .front_mut()
-                    .unwrap() = saved.interner.get("E1").unwrap()
-            }
-            "duplicate-ready" => saved
-                .production
-                .ready_by_owner
-                .get_mut(&owner)
-                .unwrap()
-                .push_back(parent_type),
-            "early-ready" => {
-                saved
-                    .production
-                    .factories
-                    .test_first_mut()
-                    .unwrap()
-                    .progress = 1
-            }
-            "unaccounted-ready" => {
-                saved
-                    .production
-                    .factories
-                    .test_first_mut()
-                    .unwrap()
-                    .object
-                    .as_mut()
-                    .unwrap()
-                    .completion_accounted = false
-            }
-            "missing-ready" => {
-                let factory = saved.production.factories.test_first_mut().unwrap();
-                factory.progress = PRODUCTION_STEPS;
-                factory.object.as_mut().unwrap().completion_accounted = true;
             }
             "early-accounting" => {
                 saved

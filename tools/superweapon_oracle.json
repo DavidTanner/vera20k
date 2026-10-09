@@ -25858,6 +25858,518 @@
       "team": false
     }
   ],
+  "aircraft_light": {
+    "level_height": {
+      "0x027F": 104,
+      "0x0E7F": 104
+    },
+    "rows": [
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 207,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 208,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 209,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 415,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1232,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1264,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1424,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 2000,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1488,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -1,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -207,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -208,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1168,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -209,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1168,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -416,
+        "ion_level": 0,
+        "level": 32,
+        "light": 1136,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1200,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1264,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1216,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1424,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1256,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1200,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 0,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1200,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1240,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 416,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1176,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 20,
+        "level": 32,
+        "light": 1340,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": -12,
+        "level": 8,
+        "light": 1116,
+        "storm": true,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 256,
+        "storm": false,
+        "word": 0
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 2256,
+        "storm": false,
+        "word": 2000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 255,
+        "storm": false,
+        "word": -1
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 33023,
+        "storm": false,
+        "word": 32767
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": -32512,
+        "storm": false,
+        "word": -32768
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 0,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 1056,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": -300,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": 756,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 2147483647,
+        "height": 1500,
+        "ion_level": 0,
+        "level": 8,
+        "light": -2147482593,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": 1073741824,
+        "ion_level": 0,
+        "level": 1000,
+        "light": 867253904,
+        "storm": false,
+        "word": 1000
+      },
+      {
+        "coord": [
+          10368,
+          12928,
+          900
+        ],
+        "extra": 200,
+        "height": -2147483648,
+        "ion_level": 0,
+        "level": 3,
+        "light": -30972120,
+        "storm": false,
+        "word": 1000
+      }
+    ]
+  },
   "ambient_step": [
     {
       "cell_redraw": 1,
@@ -42754,6 +43266,1572 @@
       "key": "DominatorAmbientChangeRate",
       "offset": 13716,
       "stored_default": 1
+    }
+  ],
+  "draw_curtain_arm": [
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        11
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        10
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        7
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        5001,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 300,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1332,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1998,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 399,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 600,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 558,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 837,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 167,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 347,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 521,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 104,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 308,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 462,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 92,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 199,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 298,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 59,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 496,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 744,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 148,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 600,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 450,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "aircraft",
+      "out_intensity": 1500,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "aircraft",
+      "out_intensity": 300,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "aircraft",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "self",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "other",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "aircraft",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        11
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        10
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        7
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        5001,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 300,
+      "stage": 0,
+      "tint": [
+        -1,
+        0
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1332,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1998,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 399,
+      "stage": 1,
+      "tint": [
+        4998,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 600,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 558,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 837,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 167,
+      "stage": 3,
+      "tint": [
+        4980,
+        24
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 347,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 521,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 104,
+      "stage": 4,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 308,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 462,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 92,
+      "stage": 5,
+      "tint": [
+        4990,
+        16
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 199,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 298,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 59,
+      "stage": 6,
+      "tint": [
+        4996,
+        8
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 496,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 744,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 148,
+      "stage": 7,
+      "tint": [
+        4999,
+        6
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 600,
+      "stage": 8,
+      "tint": [
+        4997,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 450,
+      "stage": 9,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1500,
+      "kind": "building",
+      "out_intensity": 1500,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 300,
+      "kind": "building",
+      "out_intensity": 300,
+      "stage": 10,
+      "tint": [
+        4990,
+        20
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 2,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 3,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": null,
+      "curtain": [
+        4990,
+        750
+      ],
+      "flash": 1,
+      "frame": 5000,
+      "intensity": 1600,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "self",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 2000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
+    },
+    {
+      "airstrike": "other",
+      "curtain": [
+        -1,
+        0
+      ],
+      "flash": 0,
+      "frame": 5000,
+      "intensity": 1000,
+      "kind": "building",
+      "out_intensity": 1000,
+      "stage": 2,
+      "tint": [
+        4998,
+        4
+      ]
     }
   ],
   "drawshp_curtain_arm": [
@@ -65133,6 +67211,4937 @@
       "source": true,
       "source_scheme": 4,
       "spot": true
+    }
+  ],
+  "ion_blast_draw": [
+    {
+      "blasts": [
+        [
+          25600,
+          25600,
+          0,
+          5
+        ]
+      ],
+      "changed": 5807,
+      "detail": 2,
+      "first_changed": [
+        [
+          2,
+          0,
+          613,
+          23837
+        ],
+        [
+          4,
+          0,
+          1195,
+          12807
+        ],
+        [
+          7,
+          0,
+          2068,
+          19486
+        ],
+        [
+          9,
+          0,
+          2650,
+          8456
+        ],
+        [
+          12,
+          0,
+          3523,
+          15135
+        ],
+        [
+          17,
+          0,
+          4978,
+          10784
+        ],
+        [
+          29,
+          0,
+          8470,
+          37500
+        ],
+        [
+          34,
+          0,
+          9925,
+          33149
+        ],
+        [
+          37,
+          0,
+          10798,
+          39828
+        ],
+        [
+          39,
+          0,
+          11380,
+          28798
+        ],
+        [
+          42,
+          0,
+          12253,
+          35477
+        ],
+        [
+          44,
+          0,
+          12835,
+          24447
+        ],
+        [
+          47,
+          0,
+          13708,
+          31126
+        ],
+        [
+          49,
+          0,
+          14290,
+          20096
+        ],
+        [
+          52,
+          0,
+          15163,
+          26775
+        ],
+        [
+          57,
+          0,
+          16618,
+          22424
+        ]
+      ],
+      "fnv1a64": "0x1748596304819dbc",
+      "name": "centre",
+      "points": [
+        [
+          96,
+          60,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          23270,
+          25370,
+          0,
+          1
+        ]
+      ],
+      "changed": 1007,
+      "detail": 2,
+      "first_changed": [
+        [
+          9,
+          0,
+          2650,
+          31680
+        ],
+        [
+          14,
+          0,
+          4105,
+          27329
+        ],
+        [
+          17,
+          0,
+          4978,
+          34008
+        ],
+        [
+          19,
+          0,
+          5560,
+          22978
+        ],
+        [
+          22,
+          0,
+          6433,
+          29657
+        ],
+        [
+          24,
+          0,
+          7015,
+          18627
+        ],
+        [
+          27,
+          0,
+          7888,
+          25306
+        ],
+        [
+          29,
+          0,
+          8470,
+          14276
+        ],
+        [
+          32,
+          0,
+          9343,
+          20955
+        ],
+        [
+          37,
+          0,
+          10798,
+          16604
+        ],
+        [
+          49,
+          0,
+          14290,
+          43320
+        ],
+        [
+          54,
+          0,
+          15745,
+          38969
+        ],
+        [
+          57,
+          0,
+          16618,
+          45648
+        ],
+        [
+          59,
+          0,
+          17200,
+          34618
+        ],
+        [
+          62,
+          0,
+          18073,
+          41297
+        ],
+        [
+          64,
+          0,
+          18655,
+          30267
+        ]
+      ],
+      "fnv1a64": "0x74404746cf725705",
+      "name": "top_left",
+      "points": [
+        [
+          -150,
+          -90,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          27451,
+          26137,
+          0,
+          35
+        ]
+      ],
+      "changed": 2389,
+      "detail": 2,
+      "first_changed": [
+        [
+          0,
+          71,
+          9536,
+          15342
+        ],
+        [
+          3,
+          71,
+          10409,
+          22021
+        ],
+        [
+          8,
+          71,
+          11864,
+          17670
+        ],
+        [
+          20,
+          71,
+          15356,
+          44386
+        ],
+        [
+          25,
+          71,
+          16811,
+          40035
+        ],
+        [
+          28,
+          71,
+          17684,
+          46714
+        ],
+        [
+          30,
+          71,
+          18266,
+          35684
+        ],
+        [
+          33,
+          71,
+          19139,
+          42363
+        ],
+        [
+          35,
+          71,
+          19721,
+          31333
+        ],
+        [
+          38,
+          71,
+          20594,
+          38012
+        ],
+        [
+          40,
+          71,
+          21176,
+          26982
+        ],
+        [
+          43,
+          71,
+          22049,
+          33661
+        ],
+        [
+          48,
+          71,
+          23504,
+          29310
+        ],
+        [
+          60,
+          71,
+          26996,
+          56026
+        ],
+        [
+          65,
+          71,
+          28451,
+          51675
+        ],
+        [
+          68,
+          71,
+          29324,
+          58354
+        ]
+      ],
+      "fnv1a64": "0x36a5b04bedaa5283",
+      "name": "bottom_right",
+      "points": [
+        [
+          249,
+          199,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          24166,
+          26692,
+          0,
+          12
+        ]
+      ],
+      "changed": 1695,
+      "detail": 2,
+      "first_changed": [
+        [
+          4,
+          0,
+          1195,
+          24419
+        ],
+        [
+          7,
+          0,
+          2068,
+          31098
+        ],
+        [
+          9,
+          0,
+          2650,
+          20068
+        ],
+        [
+          12,
+          0,
+          3523,
+          26747
+        ],
+        [
+          14,
+          0,
+          4105,
+          15717
+        ],
+        [
+          17,
+          0,
+          4978,
+          22396
+        ],
+        [
+          19,
+          0,
+          5560,
+          11366
+        ],
+        [
+          22,
+          0,
+          6433,
+          18045
+        ],
+        [
+          27,
+          0,
+          7888,
+          13694
+        ],
+        [
+          39,
+          0,
+          11380,
+          40410
+        ],
+        [
+          44,
+          0,
+          12835,
+          36059
+        ],
+        [
+          47,
+          0,
+          13708,
+          42738
+        ],
+        [
+          49,
+          0,
+          14290,
+          31708
+        ],
+        [
+          52,
+          0,
+          15163,
+          38387
+        ],
+        [
+          54,
+          0,
+          15745,
+          27357
+        ],
+        [
+          0,
+          1,
+          2934,
+          31964
+        ]
+      ],
+      "fnv1a64": "0x4f40bf74433fc2a0",
+      "name": "left_of_view",
+      "points": [
+        [
+          -200,
+          39,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          25446,
+          25583,
+          0,
+          3
+        ],
+        [
+          25744,
+          25625,
+          0,
+          9
+        ]
+      ],
+      "changed": 6969,
+      "detail": 2,
+      "first_changed": [
+        [
+          2,
+          0,
+          613,
+          29643
+        ],
+        [
+          4,
+          0,
+          1195,
+          18613
+        ],
+        [
+          7,
+          0,
+          2068,
+          42710
+        ],
+        [
+          9,
+          0,
+          2650,
+          14262
+        ],
+        [
+          12,
+          0,
+          3523,
+          20941
+        ],
+        [
+          14,
+          0,
+          4105,
+          21523
+        ],
+        [
+          17,
+          0,
+          4978,
+          16590
+        ],
+        [
+          22,
+          0,
+          6433,
+          12239
+        ],
+        [
+          29,
+          0,
+          8470,
+          37500
+        ],
+        [
+          34,
+          0,
+          9925,
+          38955
+        ],
+        [
+          37,
+          0,
+          10798,
+          39828
+        ],
+        [
+          39,
+          0,
+          11380,
+          34604
+        ],
+        [
+          42,
+          0,
+          12253,
+          41283
+        ],
+        [
+          44,
+          0,
+          12835,
+          30253
+        ],
+        [
+          47,
+          0,
+          13708,
+          54350
+        ],
+        [
+          49,
+          0,
+          14290,
+          25902
+        ]
+      ],
+      "fnv1a64": "0x3ed31657a36c7a96",
+      "name": "two_blasts",
+      "points": [
+        [
+          80,
+          49,
+          1
+        ],
+        [
+          109,
+          69,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          25600,
+          25600,
+          0,
+          5
+        ]
+      ],
+      "changed": 0,
+      "detail": 1,
+      "first_changed": [],
+      "fnv1a64": "0xb47465528ced0de1",
+      "name": "low_detail",
+      "points": [
+        [
+          96,
+          60,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32765
+    },
+    {
+      "blasts": [
+        [
+          27443,
+          27443,
+          1500,
+          20
+        ]
+      ],
+      "changed": 5806,
+      "detail": 2,
+      "first_changed": [
+        [
+          2,
+          0,
+          613,
+          12225
+        ],
+        [
+          7,
+          0,
+          2068,
+          7874
+        ],
+        [
+          19,
+          0,
+          5560,
+          34590
+        ],
+        [
+          24,
+          0,
+          7015,
+          30239
+        ],
+        [
+          27,
+          0,
+          7888,
+          36918
+        ],
+        [
+          29,
+          0,
+          8470,
+          25888
+        ],
+        [
+          32,
+          0,
+          9343,
+          32567
+        ],
+        [
+          34,
+          0,
+          9925,
+          21537
+        ],
+        [
+          37,
+          0,
+          10798,
+          28216
+        ],
+        [
+          39,
+          0,
+          11380,
+          17186
+        ],
+        [
+          42,
+          0,
+          12253,
+          23865
+        ],
+        [
+          47,
+          0,
+          13708,
+          19514
+        ],
+        [
+          59,
+          0,
+          17200,
+          46230
+        ],
+        [
+          64,
+          0,
+          18655,
+          41879
+        ],
+        [
+          67,
+          0,
+          19528,
+          48558
+        ],
+        [
+          69,
+          0,
+          20110,
+          37528
+        ]
+      ],
+      "fnv1a64": "0x79bf53680b168e81",
+      "name": "raised_1500",
+      "points": [
+        [
+          96,
+          59,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32549
+    },
+    {
+      "blasts": [
+        [
+          25966,
+          25966,
+          300,
+          27
+        ]
+      ],
+      "changed": 5806,
+      "detail": 2,
+      "first_changed": [
+        [
+          2,
+          0,
+          613,
+          18031
+        ],
+        [
+          4,
+          0,
+          1195,
+          7001
+        ],
+        [
+          7,
+          0,
+          2068,
+          13680
+        ],
+        [
+          12,
+          0,
+          3523,
+          9329
+        ],
+        [
+          24,
+          0,
+          7015,
+          36045
+        ],
+        [
+          29,
+          0,
+          8470,
+          31694
+        ],
+        [
+          32,
+          0,
+          9343,
+          38373
+        ],
+        [
+          34,
+          0,
+          9925,
+          27343
+        ],
+        [
+          37,
+          0,
+          10798,
+          34022
+        ],
+        [
+          39,
+          0,
+          11380,
+          22992
+        ],
+        [
+          42,
+          0,
+          12253,
+          29671
+        ],
+        [
+          44,
+          0,
+          12835,
+          18641
+        ],
+        [
+          47,
+          0,
+          13708,
+          25320
+        ],
+        [
+          52,
+          0,
+          15163,
+          20969
+        ],
+        [
+          64,
+          0,
+          18655,
+          47685
+        ],
+        [
+          69,
+          0,
+          20110,
+          43334
+        ]
+      ],
+      "fnv1a64": "0xd495f3d641e7b95f",
+      "name": "raised_300",
+      "points": [
+        [
+          96,
+          59,
+          1
+        ]
+      ],
+      "view_origin": [
+        -96,
+        2940
+      ],
+      "z_origin": 32722
+    }
+  ],
+  "ion_blast_ripple": {
+    "frames": [
+      {
+        "fnv1a64": "0x942e75d4d31bc9da",
+        "values": [
+          0,
+          255
+        ],
+        "written": 1
+      },
+      {
+        "fnv1a64": "0x993008d42a3f8d21",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 77
+      },
+      {
+        "fnv1a64": "0x73d5bef33e25d5f2",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          96,
+          255
+        ],
+        "written": 319
+      },
+      {
+        "fnv1a64": "0xeac43b588c4fb101",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          96,
+          139,
+          255
+        ],
+        "written": 715
+      },
+      {
+        "fnv1a64": "0x75dc95c324a8c111",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          96,
+          139,
+          255
+        ],
+        "written": 1281
+      },
+      {
+        "fnv1a64": "0x0f364110f54efb9b",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          96,
+          255
+        ],
+        "written": 1985
+      },
+      {
+        "fnv1a64": "0xbc54a2cae166d266",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          96,
+          255
+        ],
+        "written": 2859
+      },
+      {
+        "fnv1a64": "0x4c35aec81bd2a1f9",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          255
+        ],
+        "written": 3880
+      },
+      {
+        "fnv1a64": "0x5f8ab7dcdc7c20d5",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          255
+        ],
+        "written": 4896
+      },
+      {
+        "fnv1a64": "0xfbe7477da8943d99",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          61,
+          255
+        ],
+        "written": 5812
+      },
+      {
+        "fnv1a64": "0xffbca58c46f65205",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          255
+        ],
+        "written": 6684
+      },
+      {
+        "fnv1a64": "0xb61a22d62fe2fe91",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          255
+        ],
+        "written": 7482
+      },
+      {
+        "fnv1a64": "0x42c30ce915064319",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          255
+        ],
+        "written": 8196
+      },
+      {
+        "fnv1a64": "0x34c5a98e97791025",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          255
+        ],
+        "written": 8878
+      },
+      {
+        "fnv1a64": "0x5e26885a9dfb3dbd",
+        "values": [
+          0,
+          4,
+          15,
+          34,
+          255
+        ],
+        "written": 9430
+      },
+      {
+        "fnv1a64": "0xdda9baea2761dde5",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 9958
+      },
+      {
+        "fnv1a64": "0x7bdc8b883a7676b1",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 10402
+      },
+      {
+        "fnv1a64": "0x1049eb042ac6ef95",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 10768
+      },
+      {
+        "fnv1a64": "0x55cbf83c313bded1",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11048
+      },
+      {
+        "fnv1a64": "0xb477d6d160b19a05",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11318
+      },
+      {
+        "fnv1a64": "0x61eb3eb3c4a818a5",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11516
+      },
+      {
+        "fnv1a64": "0xeb65ae86b8eda94d",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11572
+      },
+      {
+        "fnv1a64": "0x585ed1d58f346ced",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11602
+      },
+      {
+        "fnv1a64": "0xf336cc17f7311cb1",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11524
+      },
+      {
+        "fnv1a64": "0x20c31b4ce9149639",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11454
+      },
+      {
+        "fnv1a64": "0x691da5f6b927df25",
+        "values": [
+          0,
+          4,
+          15,
+          255
+        ],
+        "written": 11238
+      },
+      {
+        "fnv1a64": "0xc2bd0a5353100bdd",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 11008
+      },
+      {
+        "fnv1a64": "0x07a2c001bc599b21",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 10654
+      },
+      {
+        "fnv1a64": "0x6b4ce5877550b281",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 10314
+      },
+      {
+        "fnv1a64": "0xd21d0c8ac03f996d",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 9848
+      },
+      {
+        "fnv1a64": "0x3a9acc85ca670509",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 9274
+      },
+      {
+        "fnv1a64": "0xa4de04b3c1c070bd",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 8700
+      },
+      {
+        "fnv1a64": "0x1038b75dbdc86b2d",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 7980
+      },
+      {
+        "fnv1a64": "0x3b6053bbe93715b1",
+        "values": [
+          0,
+          4,
+          255
+        ],
+        "written": 7250
+      },
+      {
+        "fnv1a64": "0xba59d80448b9bcbd",
+        "values": [
+          0,
+          255
+        ],
+        "written": 6420
+      },
+      {
+        "fnv1a64": "0x79902612b1962421",
+        "values": [
+          0,
+          255
+        ],
+        "written": 5586
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      },
+      {
+        "fnv1a64": "0x0dd9b5a4ccdc2325",
+        "values": [
+          255
+        ],
+        "written": 0
+      }
+    ],
+    "generator_fpcw": "0x0E7F",
+    "spiral_indexes": [
+      [
+        -9,
+        -9,
+        343
+      ],
+      [
+        -9,
+        -8,
+        342
+      ],
+      [
+        -9,
+        -7,
+        341
+      ],
+      [
+        -9,
+        -6,
+        340
+      ],
+      [
+        -9,
+        -5,
+        339
+      ],
+      [
+        -9,
+        -4,
+        338
+      ],
+      [
+        -9,
+        -3,
+        337
+      ],
+      [
+        -9,
+        -2,
+        336
+      ],
+      [
+        -9,
+        -1,
+        335
+      ],
+      [
+        -9,
+        0,
+        334
+      ],
+      [
+        -9,
+        1,
+        333
+      ],
+      [
+        -9,
+        2,
+        332
+      ],
+      [
+        -9,
+        3,
+        331
+      ],
+      [
+        -9,
+        4,
+        330
+      ],
+      [
+        -9,
+        5,
+        329
+      ],
+      [
+        -9,
+        6,
+        328
+      ],
+      [
+        -9,
+        7,
+        327
+      ],
+      [
+        -9,
+        8,
+        326
+      ],
+      [
+        -9,
+        9,
+        325
+      ],
+      [
+        -8,
+        -9,
+        344
+      ],
+      [
+        -8,
+        -8,
+        273
+      ],
+      [
+        -8,
+        -7,
+        272
+      ],
+      [
+        -8,
+        -6,
+        271
+      ],
+      [
+        -8,
+        -5,
+        270
+      ],
+      [
+        -8,
+        -4,
+        269
+      ],
+      [
+        -8,
+        -3,
+        268
+      ],
+      [
+        -8,
+        -2,
+        267
+      ],
+      [
+        -8,
+        -1,
+        266
+      ],
+      [
+        -8,
+        0,
+        265
+      ],
+      [
+        -8,
+        1,
+        264
+      ],
+      [
+        -8,
+        2,
+        263
+      ],
+      [
+        -8,
+        3,
+        262
+      ],
+      [
+        -8,
+        4,
+        261
+      ],
+      [
+        -8,
+        5,
+        260
+      ],
+      [
+        -8,
+        6,
+        259
+      ],
+      [
+        -8,
+        7,
+        258
+      ],
+      [
+        -8,
+        8,
+        257
+      ],
+      [
+        -8,
+        9,
+        324
+      ],
+      [
+        -7,
+        -9,
+        345
+      ],
+      [
+        -7,
+        -8,
+        274
+      ],
+      [
+        -7,
+        -7,
+        211
+      ],
+      [
+        -7,
+        -6,
+        210
+      ],
+      [
+        -7,
+        -5,
+        209
+      ],
+      [
+        -7,
+        -4,
+        208
+      ],
+      [
+        -7,
+        -3,
+        207
+      ],
+      [
+        -7,
+        -2,
+        206
+      ],
+      [
+        -7,
+        -1,
+        205
+      ],
+      [
+        -7,
+        0,
+        204
+      ],
+      [
+        -7,
+        1,
+        203
+      ],
+      [
+        -7,
+        2,
+        202
+      ],
+      [
+        -7,
+        3,
+        201
+      ],
+      [
+        -7,
+        4,
+        200
+      ],
+      [
+        -7,
+        5,
+        199
+      ],
+      [
+        -7,
+        6,
+        198
+      ],
+      [
+        -7,
+        7,
+        197
+      ],
+      [
+        -7,
+        8,
+        256
+      ],
+      [
+        -7,
+        9,
+        323
+      ],
+      [
+        -6,
+        -9,
+        346
+      ],
+      [
+        -6,
+        -8,
+        275
+      ],
+      [
+        -6,
+        -7,
+        212
+      ],
+      [
+        -6,
+        -6,
+        157
+      ],
+      [
+        -6,
+        -5,
+        156
+      ],
+      [
+        -6,
+        -4,
+        155
+      ],
+      [
+        -6,
+        -3,
+        154
+      ],
+      [
+        -6,
+        -2,
+        153
+      ],
+      [
+        -6,
+        -1,
+        152
+      ],
+      [
+        -6,
+        0,
+        151
+      ],
+      [
+        -6,
+        1,
+        150
+      ],
+      [
+        -6,
+        2,
+        149
+      ],
+      [
+        -6,
+        3,
+        148
+      ],
+      [
+        -6,
+        4,
+        147
+      ],
+      [
+        -6,
+        5,
+        146
+      ],
+      [
+        -6,
+        6,
+        145
+      ],
+      [
+        -6,
+        7,
+        196
+      ],
+      [
+        -6,
+        8,
+        255
+      ],
+      [
+        -6,
+        9,
+        322
+      ],
+      [
+        -5,
+        -9,
+        347
+      ],
+      [
+        -5,
+        -8,
+        276
+      ],
+      [
+        -5,
+        -7,
+        213
+      ],
+      [
+        -5,
+        -6,
+        158
+      ],
+      [
+        -5,
+        -5,
+        111
+      ],
+      [
+        -5,
+        -4,
+        110
+      ],
+      [
+        -5,
+        -3,
+        109
+      ],
+      [
+        -5,
+        -2,
+        108
+      ],
+      [
+        -5,
+        -1,
+        107
+      ],
+      [
+        -5,
+        0,
+        106
+      ],
+      [
+        -5,
+        1,
+        105
+      ],
+      [
+        -5,
+        2,
+        104
+      ],
+      [
+        -5,
+        3,
+        103
+      ],
+      [
+        -5,
+        4,
+        102
+      ],
+      [
+        -5,
+        5,
+        101
+      ],
+      [
+        -5,
+        6,
+        144
+      ],
+      [
+        -5,
+        7,
+        195
+      ],
+      [
+        -5,
+        8,
+        254
+      ],
+      [
+        -5,
+        9,
+        321
+      ],
+      [
+        -4,
+        -9,
+        348
+      ],
+      [
+        -4,
+        -8,
+        277
+      ],
+      [
+        -4,
+        -7,
+        214
+      ],
+      [
+        -4,
+        -6,
+        159
+      ],
+      [
+        -4,
+        -5,
+        112
+      ],
+      [
+        -4,
+        -4,
+        73
+      ],
+      [
+        -4,
+        -3,
+        72
+      ],
+      [
+        -4,
+        -2,
+        71
+      ],
+      [
+        -4,
+        -1,
+        70
+      ],
+      [
+        -4,
+        0,
+        69
+      ],
+      [
+        -4,
+        1,
+        68
+      ],
+      [
+        -4,
+        2,
+        67
+      ],
+      [
+        -4,
+        3,
+        66
+      ],
+      [
+        -4,
+        4,
+        65
+      ],
+      [
+        -4,
+        5,
+        100
+      ],
+      [
+        -4,
+        6,
+        143
+      ],
+      [
+        -4,
+        7,
+        194
+      ],
+      [
+        -4,
+        8,
+        253
+      ],
+      [
+        -4,
+        9,
+        320
+      ],
+      [
+        -3,
+        -9,
+        349
+      ],
+      [
+        -3,
+        -8,
+        278
+      ],
+      [
+        -3,
+        -7,
+        215
+      ],
+      [
+        -3,
+        -6,
+        160
+      ],
+      [
+        -3,
+        -5,
+        113
+      ],
+      [
+        -3,
+        -4,
+        74
+      ],
+      [
+        -3,
+        -3,
+        43
+      ],
+      [
+        -3,
+        -2,
+        42
+      ],
+      [
+        -3,
+        -1,
+        41
+      ],
+      [
+        -3,
+        0,
+        40
+      ],
+      [
+        -3,
+        1,
+        39
+      ],
+      [
+        -3,
+        2,
+        38
+      ],
+      [
+        -3,
+        3,
+        37
+      ],
+      [
+        -3,
+        4,
+        64
+      ],
+      [
+        -3,
+        5,
+        99
+      ],
+      [
+        -3,
+        6,
+        142
+      ],
+      [
+        -3,
+        7,
+        193
+      ],
+      [
+        -3,
+        8,
+        252
+      ],
+      [
+        -3,
+        9,
+        319
+      ],
+      [
+        -2,
+        -9,
+        350
+      ],
+      [
+        -2,
+        -8,
+        279
+      ],
+      [
+        -2,
+        -7,
+        216
+      ],
+      [
+        -2,
+        -6,
+        161
+      ],
+      [
+        -2,
+        -5,
+        114
+      ],
+      [
+        -2,
+        -4,
+        75
+      ],
+      [
+        -2,
+        -3,
+        44
+      ],
+      [
+        -2,
+        -2,
+        21
+      ],
+      [
+        -2,
+        -1,
+        20
+      ],
+      [
+        -2,
+        0,
+        19
+      ],
+      [
+        -2,
+        1,
+        18
+      ],
+      [
+        -2,
+        2,
+        17
+      ],
+      [
+        -2,
+        3,
+        36
+      ],
+      [
+        -2,
+        4,
+        63
+      ],
+      [
+        -2,
+        5,
+        98
+      ],
+      [
+        -2,
+        6,
+        141
+      ],
+      [
+        -2,
+        7,
+        192
+      ],
+      [
+        -2,
+        8,
+        251
+      ],
+      [
+        -2,
+        9,
+        318
+      ],
+      [
+        -1,
+        -9,
+        351
+      ],
+      [
+        -1,
+        -8,
+        280
+      ],
+      [
+        -1,
+        -7,
+        217
+      ],
+      [
+        -1,
+        -6,
+        162
+      ],
+      [
+        -1,
+        -5,
+        115
+      ],
+      [
+        -1,
+        -4,
+        76
+      ],
+      [
+        -1,
+        -3,
+        45
+      ],
+      [
+        -1,
+        -2,
+        22
+      ],
+      [
+        -1,
+        -1,
+        7
+      ],
+      [
+        -1,
+        0,
+        6
+      ],
+      [
+        -1,
+        1,
+        5
+      ],
+      [
+        -1,
+        2,
+        16
+      ],
+      [
+        -1,
+        3,
+        35
+      ],
+      [
+        -1,
+        4,
+        62
+      ],
+      [
+        -1,
+        5,
+        97
+      ],
+      [
+        -1,
+        6,
+        140
+      ],
+      [
+        -1,
+        7,
+        191
+      ],
+      [
+        -1,
+        8,
+        250
+      ],
+      [
+        -1,
+        9,
+        317
+      ],
+      [
+        0,
+        -9,
+        352
+      ],
+      [
+        0,
+        -8,
+        281
+      ],
+      [
+        0,
+        -7,
+        218
+      ],
+      [
+        0,
+        -6,
+        163
+      ],
+      [
+        0,
+        -5,
+        116
+      ],
+      [
+        0,
+        -4,
+        77
+      ],
+      [
+        0,
+        -3,
+        46
+      ],
+      [
+        0,
+        -2,
+        23
+      ],
+      [
+        0,
+        -1,
+        8
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        4
+      ],
+      [
+        0,
+        2,
+        15
+      ],
+      [
+        0,
+        3,
+        34
+      ],
+      [
+        0,
+        4,
+        61
+      ],
+      [
+        0,
+        5,
+        96
+      ],
+      [
+        0,
+        6,
+        139
+      ],
+      [
+        0,
+        7,
+        190
+      ],
+      [
+        0,
+        8,
+        249
+      ],
+      [
+        0,
+        9,
+        316
+      ],
+      [
+        1,
+        -9,
+        353
+      ],
+      [
+        1,
+        -8,
+        282
+      ],
+      [
+        1,
+        -7,
+        219
+      ],
+      [
+        1,
+        -6,
+        164
+      ],
+      [
+        1,
+        -5,
+        117
+      ],
+      [
+        1,
+        -4,
+        78
+      ],
+      [
+        1,
+        -3,
+        47
+      ],
+      [
+        1,
+        -2,
+        24
+      ],
+      [
+        1,
+        -1,
+        1
+      ],
+      [
+        1,
+        0,
+        2
+      ],
+      [
+        1,
+        1,
+        3
+      ],
+      [
+        1,
+        2,
+        14
+      ],
+      [
+        1,
+        3,
+        33
+      ],
+      [
+        1,
+        4,
+        60
+      ],
+      [
+        1,
+        5,
+        95
+      ],
+      [
+        1,
+        6,
+        138
+      ],
+      [
+        1,
+        7,
+        189
+      ],
+      [
+        1,
+        8,
+        248
+      ],
+      [
+        1,
+        9,
+        315
+      ],
+      [
+        2,
+        -9,
+        354
+      ],
+      [
+        2,
+        -8,
+        283
+      ],
+      [
+        2,
+        -7,
+        220
+      ],
+      [
+        2,
+        -6,
+        165
+      ],
+      [
+        2,
+        -5,
+        118
+      ],
+      [
+        2,
+        -4,
+        79
+      ],
+      [
+        2,
+        -3,
+        48
+      ],
+      [
+        2,
+        -2,
+        9
+      ],
+      [
+        2,
+        -1,
+        10
+      ],
+      [
+        2,
+        0,
+        11
+      ],
+      [
+        2,
+        1,
+        12
+      ],
+      [
+        2,
+        2,
+        13
+      ],
+      [
+        2,
+        3,
+        32
+      ],
+      [
+        2,
+        4,
+        59
+      ],
+      [
+        2,
+        5,
+        94
+      ],
+      [
+        2,
+        6,
+        137
+      ],
+      [
+        2,
+        7,
+        188
+      ],
+      [
+        2,
+        8,
+        247
+      ],
+      [
+        2,
+        9,
+        314
+      ],
+      [
+        3,
+        -9,
+        355
+      ],
+      [
+        3,
+        -8,
+        284
+      ],
+      [
+        3,
+        -7,
+        221
+      ],
+      [
+        3,
+        -6,
+        166
+      ],
+      [
+        3,
+        -5,
+        119
+      ],
+      [
+        3,
+        -4,
+        80
+      ],
+      [
+        3,
+        -3,
+        25
+      ],
+      [
+        3,
+        -2,
+        26
+      ],
+      [
+        3,
+        -1,
+        27
+      ],
+      [
+        3,
+        0,
+        28
+      ],
+      [
+        3,
+        1,
+        29
+      ],
+      [
+        3,
+        2,
+        30
+      ],
+      [
+        3,
+        3,
+        31
+      ],
+      [
+        3,
+        4,
+        58
+      ],
+      [
+        3,
+        5,
+        93
+      ],
+      [
+        3,
+        6,
+        136
+      ],
+      [
+        3,
+        7,
+        187
+      ],
+      [
+        3,
+        8,
+        246
+      ],
+      [
+        3,
+        9,
+        313
+      ],
+      [
+        4,
+        -9,
+        356
+      ],
+      [
+        4,
+        -8,
+        285
+      ],
+      [
+        4,
+        -7,
+        222
+      ],
+      [
+        4,
+        -6,
+        167
+      ],
+      [
+        4,
+        -5,
+        120
+      ],
+      [
+        4,
+        -4,
+        49
+      ],
+      [
+        4,
+        -3,
+        50
+      ],
+      [
+        4,
+        -2,
+        51
+      ],
+      [
+        4,
+        -1,
+        52
+      ],
+      [
+        4,
+        0,
+        53
+      ],
+      [
+        4,
+        1,
+        54
+      ],
+      [
+        4,
+        2,
+        55
+      ],
+      [
+        4,
+        3,
+        56
+      ],
+      [
+        4,
+        4,
+        57
+      ],
+      [
+        4,
+        5,
+        92
+      ],
+      [
+        4,
+        6,
+        135
+      ],
+      [
+        4,
+        7,
+        186
+      ],
+      [
+        4,
+        8,
+        245
+      ],
+      [
+        4,
+        9,
+        312
+      ],
+      [
+        5,
+        -9,
+        357
+      ],
+      [
+        5,
+        -8,
+        286
+      ],
+      [
+        5,
+        -7,
+        223
+      ],
+      [
+        5,
+        -6,
+        168
+      ],
+      [
+        5,
+        -5,
+        81
+      ],
+      [
+        5,
+        -4,
+        82
+      ],
+      [
+        5,
+        -3,
+        83
+      ],
+      [
+        5,
+        -2,
+        84
+      ],
+      [
+        5,
+        -1,
+        85
+      ],
+      [
+        5,
+        0,
+        86
+      ],
+      [
+        5,
+        1,
+        87
+      ],
+      [
+        5,
+        2,
+        88
+      ],
+      [
+        5,
+        3,
+        89
+      ],
+      [
+        5,
+        4,
+        90
+      ],
+      [
+        5,
+        5,
+        91
+      ],
+      [
+        5,
+        6,
+        134
+      ],
+      [
+        5,
+        7,
+        185
+      ],
+      [
+        5,
+        8,
+        244
+      ],
+      [
+        5,
+        9,
+        311
+      ],
+      [
+        6,
+        -9,
+        358
+      ],
+      [
+        6,
+        -8,
+        287
+      ],
+      [
+        6,
+        -7,
+        224
+      ],
+      [
+        6,
+        -6,
+        121
+      ],
+      [
+        6,
+        -5,
+        122
+      ],
+      [
+        6,
+        -4,
+        123
+      ],
+      [
+        6,
+        -3,
+        124
+      ],
+      [
+        6,
+        -2,
+        125
+      ],
+      [
+        6,
+        -1,
+        126
+      ],
+      [
+        6,
+        0,
+        127
+      ],
+      [
+        6,
+        1,
+        128
+      ],
+      [
+        6,
+        2,
+        129
+      ],
+      [
+        6,
+        3,
+        130
+      ],
+      [
+        6,
+        4,
+        131
+      ],
+      [
+        6,
+        5,
+        132
+      ],
+      [
+        6,
+        6,
+        133
+      ],
+      [
+        6,
+        7,
+        184
+      ],
+      [
+        6,
+        8,
+        243
+      ],
+      [
+        6,
+        9,
+        310
+      ],
+      [
+        7,
+        -9,
+        359
+      ],
+      [
+        7,
+        -8,
+        288
+      ],
+      [
+        7,
+        -7,
+        169
+      ],
+      [
+        7,
+        -6,
+        170
+      ],
+      [
+        7,
+        -5,
+        171
+      ],
+      [
+        7,
+        -4,
+        172
+      ],
+      [
+        7,
+        -3,
+        173
+      ],
+      [
+        7,
+        -2,
+        174
+      ],
+      [
+        7,
+        -1,
+        175
+      ],
+      [
+        7,
+        0,
+        176
+      ],
+      [
+        7,
+        1,
+        177
+      ],
+      [
+        7,
+        2,
+        178
+      ],
+      [
+        7,
+        3,
+        179
+      ],
+      [
+        7,
+        4,
+        180
+      ],
+      [
+        7,
+        5,
+        181
+      ],
+      [
+        7,
+        6,
+        182
+      ],
+      [
+        7,
+        7,
+        183
+      ],
+      [
+        7,
+        8,
+        242
+      ],
+      [
+        7,
+        9,
+        309
+      ],
+      [
+        8,
+        -9,
+        360
+      ],
+      [
+        8,
+        -8,
+        225
+      ],
+      [
+        8,
+        -7,
+        226
+      ],
+      [
+        8,
+        -6,
+        227
+      ],
+      [
+        8,
+        -5,
+        228
+      ],
+      [
+        8,
+        -4,
+        229
+      ],
+      [
+        8,
+        -3,
+        230
+      ],
+      [
+        8,
+        -2,
+        231
+      ],
+      [
+        8,
+        -1,
+        232
+      ],
+      [
+        8,
+        0,
+        233
+      ],
+      [
+        8,
+        1,
+        234
+      ],
+      [
+        8,
+        2,
+        235
+      ],
+      [
+        8,
+        3,
+        236
+      ],
+      [
+        8,
+        4,
+        237
+      ],
+      [
+        8,
+        5,
+        238
+      ],
+      [
+        8,
+        6,
+        239
+      ],
+      [
+        8,
+        7,
+        240
+      ],
+      [
+        8,
+        8,
+        241
+      ],
+      [
+        8,
+        9,
+        308
+      ],
+      [
+        9,
+        -9,
+        289
+      ],
+      [
+        9,
+        -8,
+        290
+      ],
+      [
+        9,
+        -7,
+        291
+      ],
+      [
+        9,
+        -6,
+        292
+      ],
+      [
+        9,
+        -5,
+        293
+      ],
+      [
+        9,
+        -4,
+        294
+      ],
+      [
+        9,
+        -3,
+        295
+      ],
+      [
+        9,
+        -2,
+        296
+      ],
+      [
+        9,
+        -1,
+        297
+      ],
+      [
+        9,
+        0,
+        298
+      ],
+      [
+        9,
+        1,
+        299
+      ],
+      [
+        9,
+        2,
+        300
+      ],
+      [
+        9,
+        3,
+        301
+      ],
+      [
+        9,
+        4,
+        302
+      ],
+      [
+        9,
+        5,
+        303
+      ],
+      [
+        9,
+        6,
+        304
+      ],
+      [
+        9,
+        7,
+        305
+      ],
+      [
+        9,
+        8,
+        306
+      ],
+      [
+        9,
+        9,
+        307
+      ]
+    ],
+    "spiral_points": [
+      [
+        1,
+        1,
+        -1
+      ],
+      [
+        2,
+        1,
+        0
+      ],
+      [
+        3,
+        1,
+        1
+      ],
+      [
+        4,
+        0,
+        1
+      ],
+      [
+        5,
+        -1,
+        1
+      ],
+      [
+        6,
+        -1,
+        0
+      ],
+      [
+        7,
+        -1,
+        -1
+      ],
+      [
+        8,
+        0,
+        -1
+      ],
+      [
+        9,
+        2,
+        -2
+      ],
+      [
+        10,
+        2,
+        -1
+      ],
+      [
+        11,
+        2,
+        0
+      ],
+      [
+        12,
+        2,
+        1
+      ],
+      [
+        13,
+        2,
+        2
+      ],
+      [
+        14,
+        1,
+        2
+      ],
+      [
+        15,
+        0,
+        2
+      ],
+      [
+        16,
+        -1,
+        2
+      ],
+      [
+        17,
+        -2,
+        2
+      ],
+      [
+        18,
+        -2,
+        1
+      ],
+      [
+        19,
+        -2,
+        0
+      ],
+      [
+        20,
+        -2,
+        -1
+      ],
+      [
+        21,
+        -2,
+        -2
+      ],
+      [
+        22,
+        -1,
+        -2
+      ],
+      [
+        23,
+        0,
+        -2
+      ],
+      [
+        24,
+        1,
+        -2
+      ],
+      [
+        25,
+        3,
+        -3
+      ],
+      [
+        26,
+        3,
+        -2
+      ],
+      [
+        27,
+        3,
+        -1
+      ],
+      [
+        28,
+        3,
+        0
+      ],
+      [
+        29,
+        3,
+        1
+      ],
+      [
+        30,
+        3,
+        2
+      ],
+      [
+        31,
+        3,
+        3
+      ],
+      [
+        32,
+        2,
+        3
+      ],
+      [
+        33,
+        1,
+        3
+      ],
+      [
+        34,
+        0,
+        3
+      ],
+      [
+        35,
+        -1,
+        3
+      ],
+      [
+        36,
+        -2,
+        3
+      ],
+      [
+        37,
+        -3,
+        3
+      ],
+      [
+        38,
+        -3,
+        2
+      ],
+      [
+        39,
+        -3,
+        1
+      ],
+      [
+        40,
+        -3,
+        0
+      ],
+      [
+        41,
+        -3,
+        -1
+      ],
+      [
+        42,
+        -3,
+        -2
+      ],
+      [
+        43,
+        -3,
+        -3
+      ],
+      [
+        44,
+        -2,
+        -3
+      ],
+      [
+        45,
+        -1,
+        -3
+      ],
+      [
+        46,
+        0,
+        -3
+      ],
+      [
+        47,
+        1,
+        -3
+      ],
+      [
+        48,
+        2,
+        -3
+      ],
+      [
+        49,
+        4,
+        -4
+      ],
+      [
+        50,
+        4,
+        -3
+      ],
+      [
+        51,
+        4,
+        -2
+      ],
+      [
+        52,
+        4,
+        -1
+      ],
+      [
+        53,
+        4,
+        0
+      ],
+      [
+        54,
+        4,
+        1
+      ],
+      [
+        55,
+        4,
+        2
+      ],
+      [
+        56,
+        4,
+        3
+      ],
+      [
+        57,
+        4,
+        4
+      ],
+      [
+        58,
+        3,
+        4
+      ],
+      [
+        59,
+        2,
+        4
+      ],
+      [
+        60,
+        1,
+        4
+      ],
+      [
+        61,
+        0,
+        4
+      ],
+      [
+        62,
+        -1,
+        4
+      ],
+      [
+        63,
+        -2,
+        4
+      ],
+      [
+        64,
+        -3,
+        4
+      ],
+      [
+        65,
+        -4,
+        4
+      ],
+      [
+        66,
+        -4,
+        3
+      ],
+      [
+        67,
+        -4,
+        2
+      ],
+      [
+        68,
+        -4,
+        1
+      ],
+      [
+        69,
+        -4,
+        0
+      ],
+      [
+        70,
+        -4,
+        -1
+      ],
+      [
+        71,
+        -4,
+        -2
+      ],
+      [
+        72,
+        -4,
+        -3
+      ],
+      [
+        73,
+        -4,
+        -4
+      ],
+      [
+        74,
+        -3,
+        -4
+      ],
+      [
+        75,
+        -2,
+        -4
+      ],
+      [
+        76,
+        -1,
+        -4
+      ],
+      [
+        77,
+        0,
+        -4
+      ],
+      [
+        78,
+        1,
+        -4
+      ],
+      [
+        79,
+        2,
+        -4
+      ],
+      [
+        80,
+        3,
+        -4
+      ],
+      [
+        81,
+        5,
+        -5
+      ],
+      [
+        82,
+        5,
+        -4
+      ],
+      [
+        83,
+        5,
+        -3
+      ],
+      [
+        84,
+        5,
+        -2
+      ],
+      [
+        85,
+        5,
+        -1
+      ],
+      [
+        86,
+        5,
+        0
+      ],
+      [
+        87,
+        5,
+        1
+      ],
+      [
+        88,
+        5,
+        2
+      ],
+      [
+        89,
+        5,
+        3
+      ],
+      [
+        90,
+        5,
+        4
+      ],
+      [
+        91,
+        5,
+        5
+      ],
+      [
+        92,
+        4,
+        5
+      ],
+      [
+        93,
+        3,
+        5
+      ],
+      [
+        94,
+        2,
+        5
+      ],
+      [
+        95,
+        1,
+        5
+      ],
+      [
+        96,
+        0,
+        5
+      ],
+      [
+        97,
+        -1,
+        5
+      ],
+      [
+        98,
+        -2,
+        5
+      ],
+      [
+        99,
+        -3,
+        5
+      ],
+      [
+        100,
+        -4,
+        5
+      ],
+      [
+        101,
+        -5,
+        5
+      ],
+      [
+        102,
+        -5,
+        4
+      ],
+      [
+        103,
+        -5,
+        3
+      ],
+      [
+        104,
+        -5,
+        2
+      ],
+      [
+        105,
+        -5,
+        1
+      ],
+      [
+        106,
+        -5,
+        0
+      ],
+      [
+        107,
+        -5,
+        -1
+      ],
+      [
+        108,
+        -5,
+        -2
+      ],
+      [
+        109,
+        -5,
+        -3
+      ],
+      [
+        110,
+        -5,
+        -4
+      ],
+      [
+        111,
+        -5,
+        -5
+      ],
+      [
+        112,
+        -4,
+        -5
+      ],
+      [
+        113,
+        -3,
+        -5
+      ],
+      [
+        114,
+        -2,
+        -5
+      ],
+      [
+        115,
+        -1,
+        -5
+      ],
+      [
+        116,
+        0,
+        -5
+      ],
+      [
+        117,
+        1,
+        -5
+      ],
+      [
+        118,
+        2,
+        -5
+      ],
+      [
+        119,
+        3,
+        -5
+      ],
+      [
+        120,
+        4,
+        -5
+      ],
+      [
+        121,
+        6,
+        -6
+      ],
+      [
+        122,
+        6,
+        -5
+      ],
+      [
+        123,
+        6,
+        -4
+      ],
+      [
+        124,
+        6,
+        -3
+      ],
+      [
+        125,
+        6,
+        -2
+      ],
+      [
+        126,
+        6,
+        -1
+      ],
+      [
+        127,
+        6,
+        0
+      ],
+      [
+        128,
+        6,
+        1
+      ],
+      [
+        129,
+        6,
+        2
+      ],
+      [
+        130,
+        6,
+        3
+      ],
+      [
+        131,
+        6,
+        4
+      ],
+      [
+        132,
+        6,
+        5
+      ],
+      [
+        133,
+        6,
+        6
+      ],
+      [
+        134,
+        5,
+        6
+      ],
+      [
+        135,
+        4,
+        6
+      ],
+      [
+        136,
+        3,
+        6
+      ],
+      [
+        137,
+        2,
+        6
+      ],
+      [
+        138,
+        1,
+        6
+      ],
+      [
+        139,
+        0,
+        6
+      ],
+      [
+        140,
+        -1,
+        6
+      ],
+      [
+        141,
+        -2,
+        6
+      ],
+      [
+        142,
+        -3,
+        6
+      ],
+      [
+        143,
+        -4,
+        6
+      ],
+      [
+        144,
+        -5,
+        6
+      ],
+      [
+        145,
+        -6,
+        6
+      ],
+      [
+        146,
+        -6,
+        5
+      ],
+      [
+        147,
+        -6,
+        4
+      ],
+      [
+        148,
+        -6,
+        3
+      ],
+      [
+        149,
+        -6,
+        2
+      ],
+      [
+        150,
+        -6,
+        1
+      ],
+      [
+        151,
+        -6,
+        0
+      ],
+      [
+        152,
+        -6,
+        -1
+      ],
+      [
+        153,
+        -6,
+        -2
+      ],
+      [
+        154,
+        -6,
+        -3
+      ],
+      [
+        155,
+        -6,
+        -4
+      ],
+      [
+        156,
+        -6,
+        -5
+      ],
+      [
+        157,
+        -6,
+        -6
+      ],
+      [
+        158,
+        -5,
+        -6
+      ],
+      [
+        159,
+        -4,
+        -6
+      ],
+      [
+        160,
+        -3,
+        -6
+      ],
+      [
+        161,
+        -2,
+        -6
+      ],
+      [
+        162,
+        -1,
+        -6
+      ],
+      [
+        163,
+        0,
+        -6
+      ],
+      [
+        164,
+        1,
+        -6
+      ],
+      [
+        165,
+        2,
+        -6
+      ],
+      [
+        166,
+        3,
+        -6
+      ],
+      [
+        167,
+        4,
+        -6
+      ],
+      [
+        168,
+        5,
+        -6
+      ],
+      [
+        169,
+        7,
+        -7
+      ],
+      [
+        170,
+        7,
+        -6
+      ],
+      [
+        171,
+        7,
+        -5
+      ],
+      [
+        172,
+        7,
+        -4
+      ],
+      [
+        173,
+        7,
+        -3
+      ],
+      [
+        174,
+        7,
+        -2
+      ],
+      [
+        175,
+        7,
+        -1
+      ],
+      [
+        176,
+        7,
+        0
+      ],
+      [
+        177,
+        7,
+        1
+      ],
+      [
+        178,
+        7,
+        2
+      ],
+      [
+        179,
+        7,
+        3
+      ],
+      [
+        180,
+        7,
+        4
+      ],
+      [
+        181,
+        7,
+        5
+      ],
+      [
+        182,
+        7,
+        6
+      ],
+      [
+        183,
+        7,
+        7
+      ],
+      [
+        184,
+        6,
+        7
+      ],
+      [
+        185,
+        5,
+        7
+      ],
+      [
+        186,
+        4,
+        7
+      ],
+      [
+        187,
+        3,
+        7
+      ],
+      [
+        188,
+        2,
+        7
+      ],
+      [
+        189,
+        1,
+        7
+      ],
+      [
+        190,
+        0,
+        7
+      ],
+      [
+        191,
+        -1,
+        7
+      ],
+      [
+        192,
+        -2,
+        7
+      ],
+      [
+        193,
+        -3,
+        7
+      ],
+      [
+        194,
+        -4,
+        7
+      ],
+      [
+        195,
+        -5,
+        7
+      ],
+      [
+        196,
+        -6,
+        7
+      ],
+      [
+        197,
+        -7,
+        7
+      ],
+      [
+        198,
+        -7,
+        6
+      ],
+      [
+        199,
+        -7,
+        5
+      ],
+      [
+        200,
+        -7,
+        4
+      ],
+      [
+        201,
+        -7,
+        3
+      ],
+      [
+        202,
+        -7,
+        2
+      ],
+      [
+        203,
+        -7,
+        1
+      ],
+      [
+        204,
+        -7,
+        0
+      ],
+      [
+        205,
+        -7,
+        -1
+      ],
+      [
+        206,
+        -7,
+        -2
+      ],
+      [
+        207,
+        -7,
+        -3
+      ],
+      [
+        208,
+        -7,
+        -4
+      ],
+      [
+        209,
+        -7,
+        -5
+      ],
+      [
+        210,
+        -7,
+        -6
+      ],
+      [
+        211,
+        -7,
+        -7
+      ],
+      [
+        212,
+        -6,
+        -7
+      ],
+      [
+        213,
+        -5,
+        -7
+      ],
+      [
+        214,
+        -4,
+        -7
+      ],
+      [
+        215,
+        -3,
+        -7
+      ],
+      [
+        216,
+        -2,
+        -7
+      ],
+      [
+        217,
+        -1,
+        -7
+      ],
+      [
+        218,
+        0,
+        -7
+      ],
+      [
+        219,
+        1,
+        -7
+      ],
+      [
+        220,
+        2,
+        -7
+      ],
+      [
+        221,
+        3,
+        -7
+      ],
+      [
+        222,
+        4,
+        -7
+      ],
+      [
+        223,
+        5,
+        -7
+      ],
+      [
+        224,
+        6,
+        -7
+      ],
+      [
+        225,
+        8,
+        -8
+      ],
+      [
+        226,
+        8,
+        -7
+      ],
+      [
+        227,
+        8,
+        -6
+      ],
+      [
+        228,
+        8,
+        -5
+      ],
+      [
+        229,
+        8,
+        -4
+      ],
+      [
+        230,
+        8,
+        -3
+      ],
+      [
+        231,
+        8,
+        -2
+      ],
+      [
+        232,
+        8,
+        -1
+      ],
+      [
+        233,
+        8,
+        0
+      ],
+      [
+        234,
+        8,
+        1
+      ],
+      [
+        235,
+        8,
+        2
+      ],
+      [
+        236,
+        8,
+        3
+      ],
+      [
+        237,
+        8,
+        4
+      ],
+      [
+        238,
+        8,
+        5
+      ],
+      [
+        239,
+        8,
+        6
+      ],
+      [
+        240,
+        8,
+        7
+      ],
+      [
+        241,
+        8,
+        8
+      ],
+      [
+        242,
+        7,
+        8
+      ],
+      [
+        243,
+        6,
+        8
+      ],
+      [
+        244,
+        5,
+        8
+      ],
+      [
+        245,
+        4,
+        8
+      ],
+      [
+        246,
+        3,
+        8
+      ],
+      [
+        247,
+        2,
+        8
+      ],
+      [
+        248,
+        1,
+        8
+      ],
+      [
+        249,
+        0,
+        8
+      ],
+      [
+        250,
+        -1,
+        8
+      ],
+      [
+        251,
+        -2,
+        8
+      ],
+      [
+        252,
+        -3,
+        8
+      ],
+      [
+        253,
+        -4,
+        8
+      ],
+      [
+        254,
+        -5,
+        8
+      ],
+      [
+        255,
+        -6,
+        8
+      ],
+      [
+        256,
+        -7,
+        8
+      ],
+      [
+        257,
+        -8,
+        8
+      ],
+      [
+        258,
+        -8,
+        7
+      ],
+      [
+        259,
+        -8,
+        6
+      ],
+      [
+        260,
+        -8,
+        5
+      ],
+      [
+        261,
+        -8,
+        4
+      ],
+      [
+        262,
+        -8,
+        3
+      ],
+      [
+        263,
+        -8,
+        2
+      ],
+      [
+        264,
+        -8,
+        1
+      ],
+      [
+        265,
+        -8,
+        0
+      ],
+      [
+        266,
+        -8,
+        -1
+      ],
+      [
+        267,
+        -8,
+        -2
+      ],
+      [
+        268,
+        -8,
+        -3
+      ],
+      [
+        269,
+        -8,
+        -4
+      ],
+      [
+        270,
+        -8,
+        -5
+      ],
+      [
+        271,
+        -8,
+        -6
+      ],
+      [
+        272,
+        -8,
+        -7
+      ],
+      [
+        273,
+        -8,
+        -8
+      ],
+      [
+        274,
+        -7,
+        -8
+      ],
+      [
+        275,
+        -6,
+        -8
+      ],
+      [
+        276,
+        -5,
+        -8
+      ],
+      [
+        277,
+        -4,
+        -8
+      ],
+      [
+        278,
+        -3,
+        -8
+      ],
+      [
+        279,
+        -2,
+        -8
+      ],
+      [
+        280,
+        -1,
+        -8
+      ],
+      [
+        281,
+        0,
+        -8
+      ],
+      [
+        282,
+        1,
+        -8
+      ],
+      [
+        283,
+        2,
+        -8
+      ],
+      [
+        284,
+        3,
+        -8
+      ],
+      [
+        285,
+        4,
+        -8
+      ],
+      [
+        286,
+        5,
+        -8
+      ],
+      [
+        287,
+        6,
+        -8
+      ],
+      [
+        288,
+        7,
+        -8
+      ]
+    ],
+    "step_bits": {
+      "0x027F": [
+        "0x401c733333333334",
+        "0x401c733333333334"
+      ],
+      "0x0E7F": [
+        "0x401c733333333333",
+        "0x401c733333333333"
+      ]
+    }
+  },
+  "ion_blast_update": [
+    {
+      "frames": [
+        0
+      ],
+      "left": [
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "frames": [
+        78
+      ],
+      "left": [
+        [
+          0,
+          79
+        ]
+      ]
+    },
+    {
+      "frames": [
+        79
+      ],
+      "left": []
+    },
+    {
+      "frames": [
+        80
+      ],
+      "left": []
+    },
+    {
+      "frames": [
+        0,
+        5,
+        78,
+        79,
+        80,
+        3
+      ],
+      "left": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          2,
+          79
+        ],
+        [
+          5,
+          4
+        ]
+      ]
+    },
+    {
+      "frames": [
+        79,
+        79,
+        1
+      ],
+      "left": [
+        [
+          2,
+          2
+        ]
+      ]
     }
   ],
   "iron_curtain_launch": [

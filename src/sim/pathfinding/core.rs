@@ -989,19 +989,10 @@ pub fn astar_search(
     let goal_cell = grid.cell(goal.0, goal.1).unwrap_or(&DEFAULT_BLOCKED_CELL);
     let (start_height, goal_height) = initial_search_heights(start_cell, start_layer, goal_cell);
 
-    // Trivial: already at goal with matching height
+    // 0x00429BF3..0x00429C0A: a start cell and height that are the goal's
+    // skip the search, and AStar returns no route (0x0042A451).
     if start == goal && start_height == goal_height {
-        let layer = if is_at_bridge_level(start_height, start_cell) {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        return Ok(vec![LayeredPathStep {
-            rx: start.0,
-            ry: start.1,
-            layer,
-            path_height: compute_node_height(start_height, None, start_cell),
-        }]);
+        return Err(PathSearchFailure::CellSearchExhausted);
     }
 
     // --- Arrays ---

@@ -1864,6 +1864,18 @@ pub(crate) fn cell_is_shrouded(
     cell: (u16, u16),
 ) -> bool {
     let point = crate::sim::movement::target_cell_coord(cell.0, cell.1, Some(cells));
+    point_is_shrouded(fog, cells, viewer, point)
+}
+
+/// `viewer`'s map shrouds `point`: [`coordinate_is_shrouded`], a Cell being
+/// open when `viewer` has mapped its ground and the Dummy never. A query
+/// error counts as unshrouded.
+pub(crate) fn point_is_shrouded(
+    fog: &FogState,
+    cells: &crate::map::resolved_terrain::NativeCellQuery<'_>,
+    viewer: InternedId,
+    point: crate::sim::components::DriveCoord,
+) -> bool {
     let terrain = cells.terrain();
     let open = |cell| {
         Ok(match cell {
@@ -2032,14 +2044,61 @@ pub(crate) fn allied_viewers(
         .collect()
 }
 
-/// `MapClass::RevealArea @ 0x005678E0` as `SuperClass::Launch @ 0x006CC390`
-/// case 11 calls it twice: around `cell` raised by `z` leptons (the cell's
-/// GetCoords), `radius` cells, with no line of sight, for each map the
-/// house gate admits ([`direct_reveal_viewers`]). Final 0 (`0x006CD773`)
-/// reduces each cell's shroud counter, then final 1 (`0x006CD79C`) raises it
-/// again, through the leaf MapCell `0x00653830` -> `0x004A9CA0`, so the
-/// cells end mapped with no lasting sight source. Only the launcher's gate
-/// is asked: a viewer's own allies gain nothing.
+/// `MapClass::RevealArea @ 0x005678E0` with no outline or unreveal, on the
+/// maps of `viewers`, the houses its house gate admits for the caller: the
+/// cells `radius` around `cell` raised by `z` leptons
+/// ([`collect_reveal_cells`]), with the height line of sight when the
+/// caller's by-height argument is set and `RevealByHeight=` is on
+/// (`line_of_sight` then holds the ground heights). Through the leaf MapCell
+/// `0x00653830` -> `0x004A9CA0`, final 0 reduces each cell's shroud counter
+/// and final 1 raises it again, so a call of each leaves the cells mapped
+/// with no lasting sight source.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn reveal_area(
+    fog: &mut FogState,
+    viewers: &[InternedId],
+    cell: (u16, u16),
+    z: i32,
+    radius: u16,
+    line_of_sight: Option<&[u8]>,
+    final_pass: bool,
+    config: &VisionConfig,
+) {
+    let cells = collect_reveal_cells(
+        cell.0,
+        cell.1,
+        radius,
+        z,
+        line_of_sight.is_some(),
+        line_of_sight,
+        (fog.width, fog.height),
+        config.map_size,
+    );
+    for &viewer in viewers {
+        let vis = fog
+            .by_owner
+            .entry(viewer)
+            .or_insert_with(|| OwnerVisibility::new(fog.width, fog.height));
+        for &(rx, ry) in &cells {
+            vis.mark_sight(rx, ry);
+            let index = vis.index(rx, ry).expect("collected cell is in bounds");
+            if final_pass {
+                vis.shroud_knowledge[index].leave();
+            } else {
+                vis.shroud_knowledge[index].reveal();
+            }
+            vis.shroud_knowledge[index].transient_visible = true;
+            vis.publish_knowledge(index);
+        }
+    }
+}
+
+/// [`reveal_area`] as `SuperClass::Launch @ 0x006CC390` case 11 calls it
+/// twice: around `cell` raised by `z` leptons (the cell's GetCoords),
+/// `radius` cells, with no line of sight, final 0 (`0x006CD773`) then
+/// final 1 (`0x006CD79C`), for each map the house gate admits
+/// ([`direct_reveal_viewers`]). Only the launcher's gate is asked: a
+/// viewer's own allies gain nothing.
 pub(crate) fn psychic_reveal(
     fog: &mut FogState,
     owner: InternedId,
@@ -2050,34 +2109,8 @@ pub(crate) fn psychic_reveal(
     interner: &StringInterner,
 ) {
     let viewers = direct_reveal_viewers(fog, owner, config, interner);
-    let cells = collect_reveal_cells(
-        cell.0,
-        cell.1,
-        radius,
-        z,
-        false,
-        None,
-        (fog.width, fog.height),
-        config.map_size,
-    );
-    for release in [false, true] {
-        for &viewer in &viewers {
-            let vis = fog
-                .by_owner
-                .entry(viewer)
-                .or_insert_with(|| OwnerVisibility::new(fog.width, fog.height));
-            for &(rx, ry) in &cells {
-                vis.mark_sight(rx, ry);
-                let index = vis.index(rx, ry).expect("collected cell is in bounds");
-                if release {
-                    vis.shroud_knowledge[index].leave();
-                } else {
-                    vis.shroud_knowledge[index].reveal();
-                }
-                vis.shroud_knowledge[index].transient_visible = true;
-                vis.publish_knowledge(index);
-            }
-        }
+    for final_pass in [false, true] {
+        reveal_area(fog, &viewers, cell, z, radius, None, final_pass, config);
     }
 }
 

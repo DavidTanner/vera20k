@@ -12,18 +12,29 @@ use crate::sim::world::Simulation;
 use super::PRODUCTION_STEPS;
 use super::factory_lifecycle;
 use super::production_spawn::{
-    ProductionDeliveryKind, ProductionSpawnSelection, mark_war_factory_spawn_contact,
-    unlimbo_held_naval_unit,
+    ProductionDeliveryKind, mark_war_factory_spawn_contact, unlimbo_held_naval_unit,
 };
-use super::production_tech::{owner_matches_build_identity, production_category_for_object};
 use super::production_types::*;
 
+/// `owner`'s Available_Money, by house name; 0 for a house that does not
+/// exist.
 pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
     sim.interner
         .get(owner)
-        .and_then(|id| sim.houses.get(&id))
-        .map(|h| h.economy.credits)
-        .unwrap_or(STARTING_CREDITS)
+        .map_or(0, |id| crate::sim::credit_income::available_money(sim, id))
+}
+
+/// `owner`'s house, created as a human house holding [`STARTING_CREDITS`]
+/// when the test never made one.
+#[cfg(test)]
+pub(in crate::sim) fn house_for_test<'a>(
+    sim: &'a mut Simulation,
+    owner: &str,
+) -> &'a mut crate::sim::house_state::HouseState {
+    let key = sim.interner.intern(owner);
+    sim.houses.entry(key).or_insert_with(|| {
+        crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10)
+    })
 }
 
 pub fn power_balance_for_owner(sim: &Simulation, _rules: &RuleSet, owner: &str) -> (i32, i32) {
@@ -50,29 +61,7 @@ pub fn theoretical_power_for_owner(sim: &Simulation, owner: &str) -> i32 {
         .unwrap_or(0)
 }
 
-pub(in crate::sim) fn credits_entry_for_owner<'a>(
-    sim: &'a mut Simulation,
-    owner: &str,
-) -> &'a mut i32 {
-    let key = sim.interner.intern(owner);
-    // Ensure house entry exists (auto-create with defaults if missing).
-    // is_human defaults to true: in real games the app loading path seeds every house
-    // with its actual flag, so the only callers that hit this fallback are
-    // tests / edge cases that never declared a player. Defaulting to human
-    // keeps those paths from accidentally activating AI-only behavior
-    // (e.g., AIVirtualPurifiers credit bonus in the deposit path).
-    if !sim.houses.contains_key(&key) {
-        sim.houses.insert(
-            key,
-            crate::sim::house_state::HouseState::new(key, 0, None, true, STARTING_CREDITS, 10),
-        );
-    }
-    &mut sim.houses.get_mut(&key).unwrap().economy.credits
-}
-
-/// Build a production list across supported sidebar categories for an owner.
-///
-/// In RA2, only items the player has unlocked via the tech tree are shown
+/// The options the player's sidebar shows for `owner`, by category
 /// ([`BuildOption::visible_in_sidebar`]).
 pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> Vec<BuildOption> {
     let options: Vec<BuildOption> =
@@ -84,13 +73,9 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         let mut reason_counts: BTreeMap<&str, usize> = BTreeMap::new();
         for opt in &options {
             let key = match &opt.reason {
-                Some(BuildDisabledReason::UnbuildableTechLevel) => "UnbuildableTechLevel",
-                Some(BuildDisabledReason::WrongOwner) => "WrongOwner",
-                Some(BuildDisabledReason::WrongHouse) => "WrongHouse",
-                Some(BuildDisabledReason::ForbiddenHouse) => "ForbiddenHouse",
-                Some(BuildDisabledReason::RequiresStolenTech) => "RequiresStolenTech",
-                Some(BuildDisabledReason::MissingPrerequisite(_)) => "MissingPrerequisite",
                 Some(BuildDisabledReason::NoFactory) => "NoFactory",
+                Some(BuildDisabledReason::CannotBuild) => "CannotBuild",
+                Some(BuildDisabledReason::NoReadyFactory) => "NoReadyFactory",
                 Some(BuildDisabledReason::AtBuildLimit) => "AtBuildLimit",
                 None => "Enabled",
             };
@@ -128,92 +113,10 @@ pub fn build_options_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -
         }
     }
 
-    let visible: Vec<BuildOption> = options
+    options
         .into_iter()
         .filter(BuildOption::visible_in_sidebar)
-        .collect();
-    dedupe_visible_build_options(visible, sim, rules, owner, &sim.interner)
-}
-
-fn dedupe_visible_build_options(
-    options: Vec<BuildOption>,
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    interner: &crate::sim::intern::StringInterner,
-) -> Vec<BuildOption> {
-    let mut deduped: Vec<BuildOption> = Vec::new();
-    let mut seen: BTreeMap<(ProductionCategory, String), usize> = BTreeMap::new();
-
-    for option in options {
-        let Some(key) = build_option_sidebar_key(rules, &option, interner) else {
-            deduped.push(option);
-            continue;
-        };
-
-        let seen_key = (option.queue_category, key);
-        if let Some(existing_idx) = seen.get(&seen_key).copied() {
-            let existing = &deduped[existing_idx];
-            if prefers_sidebar_variant(sim, rules, owner, &option, existing, interner) {
-                deduped[existing_idx] = option;
-            }
-            continue;
-        }
-
-        seen.insert(seen_key, deduped.len());
-        deduped.push(option);
-    }
-
-    deduped
-}
-
-fn build_option_sidebar_key(
-    rules: &RuleSet,
-    option: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> Option<String> {
-    let type_str = interner.resolve(option.type_id);
-    let obj = rules.object(type_str)?;
-    let image_key = if obj.image.trim().is_empty() {
-        obj.id.to_ascii_uppercase()
-    } else {
-        obj.image.to_ascii_uppercase()
-    };
-    Some(format!("{}:{image_key}", option.object_category as u8))
-}
-
-fn prefers_sidebar_variant(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    candidate: &BuildOption,
-    existing: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> bool {
-    sidebar_variant_rank(sim, rules, owner, candidate, interner)
-        > sidebar_variant_rank(sim, rules, owner, existing, interner)
-}
-
-fn sidebar_variant_rank(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: &str,
-    option: &BuildOption,
-    interner: &crate::sim::intern::StringInterner,
-) -> (u8, u16, u8) {
-    let type_str = interner.resolve(option.type_id);
-    let Some(obj) = rules.object(type_str) else {
-        return (0, 0, 0);
-    };
-
-    let required_house_match = obj
-        .required_houses
-        .iter()
-        .any(|house| owner_matches_build_identity(sim, owner, house));
-    let owner_specificity = u16::MAX.saturating_sub(obj.owner.len() as u16);
-    let enabled = option.enabled as u8;
-
-    (required_house_match as u8, owner_specificity, enabled)
+        .collect()
 }
 
 /// True if this owner has at least one buildable production option — useful
@@ -224,8 +127,8 @@ pub fn has_build_option_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str
         .any(|o| o.enabled)
 }
 
-/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, publishes
-/// building readiness, and issues mobile PLACE6A8EB8 without releasing its head.
+/// StripClass::AI6A8DD3 consumes Factory::HasChanged4C9C60, announces a
+/// completed building, and issues mobile PLACE6A8EB8 without releasing its head.
 /// The next frame's input prefix visits Strip before Logic/Factory and appends
 /// PLACE after already accepted OutList events, for that frame's
 /// Event4C710B -> House4FB0E0 tail. Native controls observe completion267/484
@@ -353,40 +256,36 @@ pub(in crate::sim) fn exit_produced_object(
             entity.set_archive_target(archive);
         }
     }
-    let (selection, airfield) = if kind == UnitChoiceKind::Aircraft {
-        let Some(cell) = super::production_spawn::free_helipad_cell(sim, rules, producer_id) else {
-            return BuildingExit::Failed;
-        };
-        (
-            ProductionSpawnSelection {
-                producer_id,
-                cell,
-                delivery: ProductionDeliveryKind::Standard,
-            },
-            Some(producer_id),
-        )
-    } else {
-        let Some(producer) = sim.substrate.entities.get(producer_id) else {
-            return BuildingExit::Failed;
-        };
-        let Some(selection) = super::production_spawn::spawn_selection_at_producer(
+    if kind == UnitChoiceKind::Aircraft {
+        let airport_bound = product_type.airport_bound;
+        return exit_aircraft(
             sim,
             rules,
-            (
-                producer_id,
-                producer.position.rx,
-                producer.position.ry,
-                sim.interner.resolve(producer.type_ref()),
-            ),
-            Some(stable_id),
-            Some(type_name),
-            product_type.category,
-            product_type.naval,
+            producer_id,
+            stable_id,
+            airport_bound,
             overlay_registry,
-        ) else {
-            return BuildingExit::Failed;
-        };
-        (selection, None)
+        );
+    }
+    let Some(producer) = sim.substrate.entities.get(producer_id) else {
+        return BuildingExit::Failed;
+    };
+    let Some(selection) = super::production_spawn::spawn_selection_at_producer(
+        sim,
+        rules,
+        (
+            producer_id,
+            producer.position.rx,
+            producer.position.ry,
+            sim.interner.resolve(producer.type_ref()),
+        ),
+        Some(stable_id),
+        Some(type_name),
+        product_type.category,
+        product_type.naval,
+        overlay_registry,
+    ) else {
+        return BuildingExit::Failed;
     };
     let (rx, ry) = selection.cell;
     let is_unit = product_type.category == crate::rules::object_type::ObjectCategory::Vehicle;
@@ -635,36 +534,13 @@ pub(in crate::sim) fn exit_produced_object(
     let Some(spawned) = spawned else {
         return BuildingExit::Failed;
     };
-    // Aircraft spawned on helipad: reserve dock slot then set
-    // DockedIdle carrying the assigned pad index.
-    if let Some(af_id) = airfield {
-        let max_slots = sim
-            .substrate
-            .entities
-            .get(af_id)
-            .and_then(|af| {
-                let af_type = sim.interner.resolve(af.type_ref());
-                let af_obj = rules.object(af_type)?;
-                Some(af_obj.dock_contact_capacity())
-            })
-            .unwrap_or(1);
-        // The fresh spawn books its pad; on a single-pad helipad it always
-        // wins pad 0.
-        sim.reserve_airfield_pad(af_id, spawned, max_slots);
-        if let Some(entity) = sim.substrate.entities.get_mut(spawned) {
-            entity.aircraft_mission =
-                Some(crate::sim::aircraft::AircraftMission::DockedIdle { airfield_id: af_id });
-        }
-    }
     let stable_id = spawned;
     // A Slave Miner leaving its war factory starts its hunt instead of
     // taking the rally point (`sim::slave_manager`).
     let hunting = matches!(selection.delivery, ProductionDeliveryKind::Standard)
         && sim.slave_master_leaves_factory(stable_id, rules);
     // Auto-move newly produced unit to rally point (if set).
-    // Skip for aircraft docked on helipad — they wait for orders.
-    if airfield.is_none()
-        && !hunting
+    if !hunting
         && !land_factory
         && !matches!(selection.delivery, ProductionDeliveryKind::Infantry { .. })
     {
@@ -766,6 +642,104 @@ pub(in crate::sim) fn exit_produced_object(
     BuildingExit::Placed
 }
 
+/// The aircraft arm of `BuildingClass::ExitObject_Main @ 0x00443C60`
+/// (`0x00443CB4..`), after the production-mode step and the unit-choice
+/// clear: with a contact slot free or already its own (`0x0065ADF0`,
+/// `0x00443CD4`) the aircraft is unlimboed at the factory's dock coordinate
+/// for it (vt+0xA8, `0x00447B20`) facing Rules PoseDir (`0x00417FD0`), its
+/// Z first zeroed (`ObjectClass::SetZ @ 0x005F6060`). The factory then sends
+/// it HELLO and TETHER (vt+0x278, answers ignored): HELLO links the slot,
+/// TETHER tethers only an aircraft that is not `AirportBound=`
+/// (`0x006F4B4B`). The aircraft moves to the dock coordinate of that slot
+/// (vt+0x1B4) and takes the factory as its dock (`+0x6CC`). One that is not
+/// `AirportBound=` also takes the factory's rally point (`+0x218`) as its
+/// destination and queues Move. Unlimbo's own idle mode
+/// (`TechnoClass::Unlimbo @ 0x006F6E2A`) picks its mission before the link.
+///
+/// Without a slot an `AirportBound=` aircraft fails (`0x00443D12`).
+/// RESIDUAL: any other flies in from the map edge (`0x00443D18..`: a cell
+/// off the house's edge with one Scenario `RandomRanged(0, height)` draw,
+/// Unlimbo there, the rally point or the cell near the factory as its
+/// destination, `Assign_Mission(Move)`); VERA fails it too. Dormant: every
+/// buildable retail aircraft is `AirportBound=`.
+fn exit_aircraft(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    producer_id: u64,
+    stable_id: u64,
+    airport_bound: bool,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+) -> crate::sim::ai_base_building::BuildingExit {
+    use crate::sim::ai_base_building::BuildingExit;
+    use crate::sim::radio::{self, RadioMessage, RadioPayload};
+    let linkable = sim
+        .substrate
+        .entities
+        .get(producer_id)
+        .is_some_and(|producer| producer.radio_contacts.has_free_or(stable_id));
+    if !linkable {
+        return BuildingExit::Failed;
+    }
+    sim.set_object_z(stable_id, 0, Some(rules), overlay_registry);
+    let dock_coordinate = |sim: &Simulation| {
+        crate::sim::movement::building_dock_coordinate(
+            &sim.substrate.entities,
+            producer_id,
+            Some(stable_id),
+            sim.resolved_terrain.as_ref(),
+            rules,
+            &sim.interner,
+        )
+        .expect("an aircraft factory has a dock coordinate")
+    };
+    let placed = sim.with_object_placement_scope(|sim| {
+        let spawned = sim.reveal_constructed_object_at_coord_with_overlay_context(
+            stable_id,
+            dock_coordinate(sim),
+            rules.general.pose_dir as u8,
+            crate::sim::world::PlacementEvidence::EvaluateMark,
+            rules,
+            overlay_registry,
+        )?;
+        for message in [RadioMessage::Hello, RadioMessage::Tether] {
+            radio::transmit(
+                sim,
+                producer_id,
+                spawned,
+                message,
+                RadioPayload::default(),
+                Some(rules),
+            );
+        }
+        let pad = dock_coordinate(sim);
+        sim.foot_set_location_marked(spawned, pad, Some(rules), overlay_registry);
+        sim.set_aircraft_dock(spawned, Some(producer_id));
+        let rally = sim
+            .substrate
+            .entities
+            .get(producer_id)
+            .and_then(|producer| producer.archive_target());
+        if let Some(rally) = rally
+            && !airport_bound
+        {
+            sim.assign_aircraft_destination(spawned, Some(rally.into()), rules);
+            let _ = sim.mission_queue_exact(
+                spawned,
+                crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Move),
+                0,
+                sim.session.binary_frame,
+                &crate::sim::mission::authority::LiveReadyInputProvider { rules },
+            );
+        }
+        Some(spawned)
+    });
+    if placed.is_some() {
+        BuildingExit::Placed
+    } else {
+        BuildingExit::Failed
+    }
+}
+
 /// Build a queue snapshot for one owner, including progress metadata for UI.
 ///
 /// Projects the player-visible build queue from the registry (the queue-of-record).
@@ -833,27 +807,29 @@ pub fn queue_view_for_owner(sim: &Simulation, rules: &RuleSet, owner: &str) -> V
         .collect()
 }
 
+/// The owner's completed buildings waiting for placement: the object of its
+/// Buildings and Defenses factories once `FactoryClass::IsComplete @
+/// 0x004CA130` answers, which the sidebar strip also reads to draw "Ready".
 pub fn ready_buildings_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: &str,
 ) -> Vec<ReadyBuildingView> {
-    let owner_id = sim.interner.get(owner);
-    let ready = owner_id.and_then(|id| sim.production.ready_by_owner.get(&id));
-    ready
-        .map(|ready| {
-            ready
-                .iter()
-                .filter_map(|&type_id| {
-                    let type_str = sim.interner.resolve(type_id);
-                    let obj = rules.object(type_str)?;
-                    Some(ReadyBuildingView {
-                        type_id,
-                        display_name: obj.name.clone().unwrap_or_else(|| type_str.to_string()),
-                        queue_category: production_category_for_object(obj),
-                    })
-                })
-                .collect()
+    let Some(owner_id) = sim.interner.get(owner) else {
+        return Vec::new();
+    };
+    [ProductionCategory::Building, ProductionCategory::Defense]
+        .into_iter()
+        .filter_map(|category| {
+            let factory = sim.production.factories.view(owner_id, category)?;
+            let type_id = factory.complete_object()?.type_id;
+            let type_str = sim.interner.resolve(type_id);
+            let obj = rules.object(type_str)?;
+            Some(ReadyBuildingView {
+                type_id,
+                display_name: obj.name.clone().unwrap_or_else(|| type_str.to_string()),
+                queue_category: category,
+            })
         })
-        .unwrap_or_default()
+        .collect()
 }

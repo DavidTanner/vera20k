@@ -372,7 +372,6 @@ fn native_fire_error_corpus() {
             obj: rules.object(firer_type).unwrap(),
             target: Some(crate::sim::combat::TargetKind::Entity(ids[0])),
             weapon_index: 0,
-            garrison: None,
         }
         .fire_error(false);
         let expected = match case.result.as_ref().and_then(serde_json::Value::as_i64) {

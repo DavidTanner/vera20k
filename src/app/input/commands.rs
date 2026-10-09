@@ -410,12 +410,15 @@ pub(crate) fn place_ready_building_at_cursor(state: &mut AppState, type_id: &str
 ///
 /// `section` is the SW INI section name (e.g., "LightningStormSpecial").
 ///
-/// Returns early WITHOUT clearing `targeting_mode` when the cursor is over
-/// the sidebar or minimap — this matters for the release of the arming
-/// click itself, which lands on the cameo. Leaving the mode armed lets
-/// the next real tactical-map click fire the SW. On a real tactical-map
-/// click, schedules the command and clears the mode. The sim's ClickFire
-/// admits the Super; UI does not duplicate it.
+/// Returns early when the cursor is over the sidebar or minimap — this
+/// matters for the release of the arming click itself, which lands on the
+/// cameo. On a real tactical-map click it schedules the command, as
+/// `DisplayClass::BandBox_LeftUp @ 0x004AB9B0` queues the SPECIAL_PLACE event
+/// (`0x12`), and keeps the selection: Launch's tail clears or moves it
+/// (`match_runtime::super_selection`). The sim's ClickFire admits the Super;
+/// UI does not duplicate it. The event names the first type whose `Action=`
+/// is the click's action (`SuperWeaponTypeClass::FindFirstOfAction`); retail
+/// types' actions are unique, so that is the selected one.
 pub(crate) fn launch_super_weapon_at_cursor(state: &mut AppState, section: &str) {
     // Guard: arming click's RELEASE lands on the cameo. Don't fire the SW
     // at a bogus off-map cell behind the sidebar panel; leave the mode
@@ -442,7 +445,6 @@ pub(crate) fn launch_super_weapon_at_cursor(state: &mut AppState, section: &str)
             target_ry: ry,
         },
     );
-    state.match_state.input.targeting_mode = None;
     log::info!(
         "SuperWeapon launch queued: owner={} section={} cell=({}, {}) issue_frame=current",
         owner,

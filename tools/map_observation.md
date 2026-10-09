@@ -280,6 +280,51 @@ clocks. The clock does not change simulation scheduling or provide evidence for
 native pixels, audio playback, menus or outcome timing. Full-frame comparison
 remains exact: no radar masks, channel tolerances or skipped pixels are applied.
 
+## Sidebar input and retained-order observation
+
+The [retail opening profile](map_observation.sidebar-opening.example.json)
+uses stock AnyTown and ordinary MCV deployment/production before clicking the GI.
+Numeric command handles belong to that seeded launch; rediscover them with a
+zero-step observation after population changes. The
+[base-input profile](map_observation.sidebar-order.example.json) uses an
+[authored clear-ground base](map_observation/examples/sidebar_order.map) with
+unchanged retail type rules. It visits all four tabs, scrolls the infantry,
+defense and building strips, and clicks MTNK and the revealed CLEG. For this
+loose map, copy the profile and set `launch.selected_map_file` to the absolute
+path of the tracked map; relative map names resolve under the retail root.
+Pass absolute profile/contract paths to the wrapper.
+
+The [removal profile](map_observation.sidebar-removal.example.json) uses the
+same unchanged base at 640 by 530 pixels. It scrolls the defense strip,
+issues the existing sale command for its Weather Control Device, and later
+clicks the wall cameo through the resulting view. The native removal row
+adjustment has separate executed controls in the sidebar oracle. This profile
+observes the removal's sidebar consumer, not native sale or grant timing.
+
+A v2 profile may opt in to `observe_sidebar_steps: [0, 1, 100]`. Each listed
+step records the local retained sidebar view: tabs, ordered visible type/name/
+cost/queue rows, scroll position and hit rectangles. At rendered steps, the
+harness checks that the actual `GameRenderOutput.sidebar_view` matches the
+retained projection. Step 0 in a positive-step run is explicitly retained-only.
+
+Sidebar gestures resolve their coordinates from that current view and dispatch
+ordinary left mouse press/release edges through the production gadget router:
+
+```json
+{
+  "issue_after_step": 100,
+  "gesture": {"kind": "sidebar", "target": {"kind": "tab", "tab": "vehicle"}}
+}
+```
+
+Other targets are `{"kind":"cameo","type_id":"MTNK"}`,
+`{"kind":"scroll_down"}` and `{"kind":"scroll_up"}`. Cameos must already
+be visible; scroll controls must be enabled. Each receipt records the target's
+resolved coordinates and before/after views. Commands created by a cameo click
+still use the ordinary synchronized command scheduler. This observes Rust
+production integration; native ordering comparisons are owned by the
+[sidebar oracle](sidebar_oracle/cameo_order.md), with their separate bounds.
+
 ## War Miner Attack return observation
 
 [`map_observation.war-miner-attack.example.json`](map_observation.war-miner-attack.example.json)
@@ -1246,10 +1291,10 @@ A miner row contains `cargo_bales`, `capacity_bales`, `unload_active` and
 `harvesting`; other actors have null `miner`. Radio rows preserve the complete
 contact-slot array, including null holes, and the optional `dock_entered_with`
 stable ID on both the miner and refinery. House rows follow requested-owner order
-and expose the existing economy's `credits`, `spent_credits` and
-`harvested_credits`. A missing House has null economy; the observer never creates
-a wallet. HarvestedCredits is the existing deposit statistic, including its x5
-bale multiplier, rather than spendable cash. These immutable reads never send
+and expose the existing economy's `credits`, `spent_credits` and `score`. A
+missing House has null economy; the observer never creates a wallet. The score is
+House+0x54E8, fed by refinery deposits (x5 per bale), kills and captures, rather
+than spendable cash. These immutable reads never send
 radio queries, advance timers or change cargo.
 
 Capture manifests and sealed run receipts use compact JSON with the same fields

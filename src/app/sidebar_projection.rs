@@ -4,11 +4,12 @@
 //! explicit simulation, input, resize, and match-replacement transitions that
 //! rebuild the projection.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
-use crate::ui::sidebar::SidebarView;
 use crate::sim::intern::InternedId;
 use crate::sim::world::TickLane;
+use crate::ui::sidebar::SidebarView;
+use crate::ui::sidebar::cameo_order::{Cameo, CameoId, CameoKey, CameoStrips};
 
 /// One changed `CreditsClass::AI` step: the `animating(+0xA)` latch plus the
 /// `counting_up(+0x9)` direction that `CreditsClass::Draw @ 0x004A250D` reads
@@ -22,12 +23,9 @@ pub(crate) struct CreditTick {
 pub(crate) struct SidebarProjectionState {
     displayed_credits: HashMap<String, i32>,
     current_view: Option<SidebarView>,
-    /// The build cameos the strips held at the last projection — the
-    /// `StripClass` entry list `SidebarClass::AddCameo @ 0x006A63E0` scans
-    /// before inserting. `None` until the first projection of a match, which
-    /// is the scenario-init window (`[0xA8E7AC] != 0`) where insertions are
-    /// silent.
-    cameo_types: Option<BTreeSet<InternedId>>,
+    /// Retained native strip order, keyed to the local house. `None` is the
+    /// scenario-init window (`[0xA8E7AC] != 0`), where insertions are silent.
+    cameos: Option<(InternedId, CameoStrips)>,
 }
 
 impl SidebarProjectionState {
@@ -39,29 +37,74 @@ impl SidebarProjectionState {
 
     pub(crate) fn replace_view(&mut self, view: Option<SidebarView>) {
         if view.is_none() {
-            self.cameo_types = None;
+            self.cameos = None;
         }
         self.current_view = view;
     }
 
-    /// Forget the strip entry list: the next `note_cameos` is a scenario's
+    /// Forget the strip entry list: the next reconciliation is a scenario's
     /// first projection again (`[0xA8E7AC] != 0`, silent). Called wherever a
-    /// simulation is installed — a new match or an in-scenario load — so a
+    /// new scenario is installed, so a
     /// different pre-placed base never reads as freshly inserted cameos.
     pub(crate) fn reset_cameo_seed(&mut self) {
-        self.cameo_types = None;
+        self.cameos = None;
     }
 
-    /// Record the build cameos now shown and report whether at least one was
-    /// inserted since the previous projection
-    /// (`crate::app::input::sidebar_eva::new_construction_options`).
-    pub(crate) fn note_cameos(&mut self, current: BTreeSet<InternedId>) -> bool {
-        let (set, inserted) = crate::app::input::sidebar_eva::new_construction_options(
-            self.cameo_types.as_ref(),
-            current,
-        );
-        self.cameo_types = Some(set);
-        inserted
+    /// AddCameo 6A6406 speaks NewConstructionOptions for an accepted
+    /// non-Super insertion outside initialization. The retained strip itself
+    /// owns membership; there is no second set diff beside it.
+    pub(crate) fn reconcile_cameos(
+        &mut self,
+        owner: InternedId,
+        current: &[Cameo],
+        visible_rows: usize,
+    ) -> bool {
+        let initialized = self
+            .cameos
+            .as_ref()
+            .is_some_and(|(previous, _)| *previous == owner);
+        if !initialized {
+            self.cameos = Some((owner, CameoStrips::default()));
+        }
+        let inserted = self
+            .cameos
+            .as_mut()
+            .expect("cameos initialized")
+            .1
+            .reconcile(current, visible_rows);
+        initialized && inserted
+    }
+
+    /// Mouse Save 5BE6D0 writes the display object, including each strip's
+    /// identities and order. Sort keys remain derived from rules/House/CSF.
+    pub(crate) fn saved_order(&self) -> Option<crate::sim::snapshot::SavedSidebarOrder> {
+        self.cameos.as_ref().map(|(owner, strips)| {
+            crate::sim::snapshot::SavedSidebarOrder::new(
+                *owner,
+                strips.saved_identities(),
+                strips.scroll_rows(),
+            )
+        })
+    }
+
+    pub(crate) fn restore_order(&mut self, saved: Option<(InternedId, CameoStrips)>) {
+        self.cameos = saved;
+    }
+
+    pub(crate) fn cameo_strips(&self) -> &CameoStrips {
+        &self
+            .cameos
+            .as_ref()
+            .expect("reconcile cameos before building the view")
+            .1
+    }
+
+    pub(crate) fn set_scroll_row(&mut self, tab: crate::ui::sidebar::SidebarTab, row: usize) {
+        self.cameos
+            .as_mut()
+            .expect("reconcile cameos before scrolling")
+            .1
+            .set_scroll_row(tab, row);
     }
 
     /// Return the owner's retained display value, seeding a newly observed
@@ -119,6 +162,171 @@ impl SidebarProjectionState {
 
 pub(crate) fn credits_advance_for_frame(frame_committed: bool, tick_lane: TickLane) -> bool {
     frame_committed && tick_lane == TickLane::Ordinary
+}
+
+/// Project comparison fields from their existing owners. The full build
+/// roster supplies live costs even for a retained cameo about to be removed.
+/// Super additions follow their native type-array order, not interned-ID order.
+pub(crate) fn cameo_candidates(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    csf: Option<&crate::assets::csf_file::CsfFile>,
+    owner: InternedId,
+    options: &[crate::sim::production::BuildOption],
+    ready: &[crate::sim::production::ReadyBuildingView],
+    supers: &[crate::sim::superweapon::SuperWeaponView],
+) -> Vec<Cameo> {
+    let object = |id, available, cost| object_cameo(sim, rules, csf, owner, id, available, cost);
+    let mut candidates: Vec<_> = options
+        .iter()
+        .filter_map(|item| {
+            object(
+                item.type_id,
+                item.visible_in_sidebar()
+                    || ready.iter().any(|ready| ready.type_id == item.type_id),
+                item.cost,
+            )
+        })
+        .collect();
+    for item in ready {
+        if !candidates
+            .iter()
+            .any(|entry| entry.id == CameoId::Object(item.type_id))
+            && let Some(kind) = rules.object(sim.interner.resolve(item.type_id))
+            && let Some(entry) = object(item.type_id, true, sim.cost_of(owner, kind, rules))
+        {
+            candidates.push(entry);
+        }
+    }
+    let mut supers: Vec<_> = supers.iter().collect();
+    supers.sort_by_key(|item| rules.super_weapon_index(sim.interner.resolve(item.type_id)));
+    candidates.extend(
+        supers
+            .into_iter()
+            .filter_map(|item| super_cameo(sim, rules, csf, item.type_id)),
+    );
+    candidates
+}
+
+/// Hydrate comparison inputs without taking ownership of production admission.
+fn object_cameo(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    csf: Option<&crate::assets::csf_file::CsfFile>,
+    owner: InternedId,
+    id: InternedId,
+    available: bool,
+    cost: i32,
+) -> Option<Cameo> {
+    use crate::rules::object_type::ObjectCategory;
+    use crate::ui::sidebar::SidebarTab;
+    let object = rules.object(sim.interner.try_resolve(id)?)?;
+    let side = sim
+        .houses
+        .get(&owner)
+        .and_then(|house| rules.country_side_index(sim.interner.resolve(house.house_type_id())))
+        .map(|side| i32::from(side.0));
+    let vehicle = matches!(
+        object.category,
+        ObjectCategory::Vehicle | ObjectCategory::Aircraft
+    );
+    Some(Cameo {
+        id: CameoId::Object(id),
+        tab: SidebarTab::for_category(crate::sim::production::category_for_object(object)),
+        available,
+        key: CameoKey::Techno {
+            own_side: side == Some(object.ai_base_planning_side),
+            considered_aircraft: vehicle && object.considered_aircraft,
+            naval: vehicle && object.naval,
+            tech_level: object.tech_level,
+            cost,
+            name: crate::assets::csf_file::type_ui_name(object.ui_name.as_deref(), csf),
+        },
+    })
+}
+
+fn super_cameo(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    csf: Option<&crate::assets::csf_file::CsfFile>,
+    id: InternedId,
+) -> Option<Cameo> {
+    let kind = rules.super_weapon(sim.interner.try_resolve(id)?)?;
+    Some(Cameo {
+        id: CameoId::SuperWeapon(id),
+        tab: crate::ui::sidebar::SidebarTab::Defense,
+        available: true,
+        key: CameoKey::SuperWeapon {
+            recharge_frames: kind.recharge_time_frames,
+            name: crate::assets::csf_file::type_ui_name(kind.ui_name.as_deref(), csf),
+        },
+    })
+}
+
+/// Validate the saved presentation against the loaded interner and rules before
+/// committing either world. Mouse Load 5BDF70 restores counts/identities/order;
+/// Sidebar NoInit 6A4F20 resets progress only. It never sorts retained entries.
+/// CSF is reapplied by the first normal projection refresh after commit.
+pub(crate) fn prepare_saved_order(
+    saved: Option<crate::sim::snapshot::SavedSidebarOrder>,
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+) -> Result<Option<(InternedId, CameoStrips)>, String> {
+    let Some(saved) = saved else {
+        return Ok(None);
+    };
+    let (owner, saved_strips, scroll_rows) = saved.into_parts();
+    if sim.session.current_house != Some(owner) || !sim.houses.contains_key(&owner) {
+        return Err("saved sidebar owner differs from the loaded current house".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut strips: [Vec<Cameo>; 4] = std::array::from_fn(|_| Vec::new());
+    for (index, identities) in saved_strips.into_iter().enumerate() {
+        if identities.len() > 76 {
+            return Err(format!(
+                "saved sidebar strip {index} exceeds native admission capacity"
+            ));
+        }
+        if scroll_rows[index] > identities.len().div_ceil(2).saturating_sub(1) {
+            return Err(format!(
+                "saved sidebar strip {index} has an invalid scroll row"
+            ));
+        }
+        for id in identities {
+            if !seen.insert(id) {
+                return Err(format!("duplicate saved sidebar identity {id:?}"));
+            }
+            let item = match id {
+                CameoId::Object(type_id) => sim
+                    .interner
+                    .try_resolve(type_id)
+                    .and_then(|name| rules.object(name))
+                    .and_then(|kind| {
+                        object_cameo(
+                            sim,
+                            rules,
+                            None,
+                            owner,
+                            type_id,
+                            false,
+                            sim.cost_of(owner, kind, rules),
+                        )
+                    }),
+                CameoId::SuperWeapon(type_id) => super_cameo(sim, rules, None, type_id),
+            }
+            .ok_or_else(|| format!("unknown saved sidebar identity {id:?}"))?;
+            if item.tab.tab_index() != index {
+                return Err(format!(
+                    "saved sidebar identity {id:?} belongs on another strip"
+                ));
+            }
+            strips[index].push(item);
+        }
+    }
+    Ok(Some((
+        owner,
+        CameoStrips::from_retained(strips, scroll_rows),
+    )))
 }
 
 /// The `[AudioVisual] CreditTicks` cue for one changed step, or `None` when
@@ -191,21 +399,39 @@ mod tests {
     fn installing_another_sim_reseeds_the_cameo_strip_silently() {
         let a = InternedId::from_index(1);
         let b = InternedId::from_index(2);
+        let owner = InternedId::from_index(3);
+        let candidate = |id| Cameo {
+            id: CameoId::Object(id),
+            tab: SidebarTab::Building,
+            available: true,
+            key: CameoKey::Techno {
+                own_side: true,
+                considered_aircraft: false,
+                naval: false,
+                tech_level: 0,
+                cost: 100,
+                name: String::new(),
+            },
+        };
         let mut projection = SidebarProjectionState::default();
         // Sim A: the first projection seeds silently, growth speaks.
-        assert!(!projection.note_cameos(BTreeSet::from([a])));
-        assert!(projection.note_cameos(BTreeSet::from([a, b])));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
         // Sim B with a different pre-placed base: without the reset its
         // first refresh would read `b`-less/`a`-less strips as insertions.
         projection.reset_cameo_seed();
         assert!(
-            !projection.note_cameos(BTreeSet::from([b])),
+            !projection.reconcile_cameos(owner, &[candidate(b)], 3),
             "the first refresh after a sim install is the init window"
         );
-        assert!(projection.note_cameos(BTreeSet::from([a, b])));
+        assert!(projection.reconcile_cameos(owner, &[candidate(a), candidate(b)], 3));
+        assert!(!projection.reconcile_cameos(InternedId::from_index(4), &[candidate(a)], 3));
         // Leaving the match still clears the seed.
         projection.replace_view(None);
-        assert!(!projection.note_cameos(BTreeSet::from([a])));
+        assert!(!projection.reconcile_cameos(owner, &[candidate(a)], 3));
     }
 
     #[test]

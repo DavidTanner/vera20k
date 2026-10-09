@@ -407,6 +407,13 @@ impl X87Chop53 {
             Err(error) => unreachable!("unexpected finite integer conversion error: {error}"),
         }
     }
+
+    /// [`Self::ftol_i32_low_masked`] of a binary64 operand. A NaN or infinity
+    /// converts to the integer indefinite, whose low dword is zero.
+    pub fn ftol_f64_low_masked(value: f64) -> i32 {
+        Self::load_f64(NativeF64Bits::from_bits(value.to_bits()))
+            .map_or(0, Self::ftol_i32_low_masked)
+    }
 }
 
 /// Active `gamemd.exe` `Sqrt_Approx` (`0x004CAC40`).
@@ -493,16 +500,27 @@ pub fn adjust_for_z_standard(world_z: i32) -> i32 {
 /// Substituting an exact integer square root silently changes which object wins
 /// those comparisons.
 pub fn distance_3d_leptons(lhs: [i32; 3], rhs: [i32; 3]) -> i32 {
-    let mut squared = X87Chop53::load_i32(0);
-    for axis in 0..3 {
-        let delta = X87Chop53::load_i32(lhs[axis].wrapping_sub(rhs[axis]));
-        squared = X87Chop53::add(squared, X87Chop53::mul(delta, delta));
-    }
-    let root_bits =
-        sqrt_approx_f32(squared).expect("map-space squared distance stays in finite f32 range");
+    sqrt_approx_length([0, 1, 2].map(|axis| lhs[axis].wrapping_sub(rhs[axis])))
+}
+
+/// The x87 length native distances take: each component `FILD`ed, squared and
+/// added in `components` order (`(c0*c0 + c1*c1) + c2*c2`), the sum through
+/// [`sqrt_approx_f32`] and the root through `Math::ftol @ 0x007C5F00` as a
+/// caller reading EAX ([`X87Chop53::ftol_i32_low_masked`]). Callers narrow
+/// the result as their native site does. Squares of i32 components sum below
+/// 2^66, so the f32 store never overflows.
+pub fn sqrt_approx_length(components: impl IntoIterator<Item = i32>) -> i32 {
+    let mut components = components.into_iter().map(X87Chop53::load_i32);
+    let first = components
+        .next()
+        .expect("a length has at least one component");
+    let squared = components.fold(X87Chop53::mul(first, first), |sum, component| {
+        X87Chop53::add(sum, X87Chop53::mul(component, component))
+    });
+    let root_bits = sqrt_approx_f32(squared).expect("a sum of i32 squares is a finite f32");
     let root =
         X87Chop53::load_f32(root_bits).expect("Sqrt_Approx always returns a finite normal or zero");
-    X87Chop53::ftol_i64(root).expect("map-space distance fits a signed integer") as i32
+    X87Chop53::ftol_i32_low_masked(root)
 }
 
 /// `ObjectClass::Distance @ 0x005F6360` from an object at `from` to one at

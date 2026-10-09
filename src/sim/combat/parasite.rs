@@ -30,7 +30,7 @@
 //! - Area Guard after a release: Enter_Idle_Mode (Infantry `0x0051CD3E..`,
 //!   Unit `0x00738B67..`) picks Area Guard for DefaultToGuardArea types
 //!   (DOG/ADOG/DRON and 8 more) and, IQ-gated, for AI houses; the shared
-//!   selector (`queue_foot_enter_idle_mode`) still picks Guard. Effect: a
+//!   selector (`enter_idle_mode`) still picks Guard. Effect: a
 //!   released dog or drone guards in place instead of chasing nearby targets.
 //!   Frequency: every release. Owner: the Enter_Idle_Mode selector port.
 //! - Unlimbo's Can_Enter_Cell (`0x005F4F1B..0x005F4F44`) runs on the unbracketed
@@ -243,12 +243,13 @@ impl Simulation {
         }
         let victim = victim.expect("CanInfect admitted a victim");
         // 0x0062AAD9..0x0062AB24: the OWNER's locomotor Force_Track(-1, victim
-        // XYZ). Drive resets its track (and returns with the owner in limbo);
-        // Walk binds the base no-op 0x0055AC10.
+        // XYZ). Drive and Ship reset their track (and return with the owner in
+        // limbo); Walk binds the base no-op 0x0055AC10. Retail's one Ship
+        // parasite, SQD, takes the grapple arm above instead.
         let victim_coord = ground_pose::position_world_coord(
             &self.substrate.entities.get(victim).unwrap().position,
         );
-        self.force_drive_track(owner, -1, victim_coord);
+        self.force_track(owner, -1, victim_coord);
         self.substrate
             .entities
             .get_mut(victim)
@@ -300,7 +301,7 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.movement_target = None;
         }
-        crate::sim::world::queue_foot_enter_idle_mode(self, owner, rules);
+        crate::sim::world::enter_idle_mode(self, owner, rules, None);
     }
 
     /// A successful ExitUnit or PointerExpired release re-adds the owner to

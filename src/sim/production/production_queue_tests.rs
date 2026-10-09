@@ -4,7 +4,7 @@
 use super::{
     BuildQueueState, ProductionCategory, build_options_for_owner, cancel_by_type_for_owner,
     credits_for_owner, dispatch_production_changes_for_tests, enqueue_by_type,
-    queue_view_for_owner, suspend_production,
+    queue_view_for_owner, ready_buildings_for_owner, suspend_production,
 };
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::SpeedType;
@@ -60,7 +60,7 @@ fn busy_factory_exit_world() -> Option<(Simulation, RuleSet, InternedId)> {
     );
     crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
     for (id, cell) in [(1, (6, 6)), (2, (10, 20)), (3, (20, 10))] {
-        spawn_structure(&mut sim, id, "Americans", "GAWEAP", cell.0, cell.1);
+        spawn_structure(&mut sim, &rules, id, "Americans", "GAWEAP", cell.0, cell.1);
     }
     sim.houses
         .get_mut(&owner)
@@ -231,8 +231,8 @@ fn busy_factory_exit_skips_attached_different_type_and_non_guard_buildings() {
     let Some((mut sim, rules, owner)) = busy_factory_exit_world() else {
         return;
     };
-    spawn_structure(&mut sim, 4, "Americans", "NAWEAP", 20, 20);
-    spawn_structure(&mut sim, 5, "Americans", "GAWEAP", 24, 20);
+    spawn_structure(&mut sim, &rules, 4, "Americans", "NAWEAP", 20, 20);
+    spawn_structure(&mut sim, &rules, 5, "Americans", "GAWEAP", 24, 20);
     busy_factory_exit_mission(&mut sim, 3, crate::sim::mission::MissionType::Move);
     // Current NONE + queued Guard must be admitted by the same effective
     // mission getter that native vt+184 executes at4444FF.
@@ -287,7 +287,7 @@ fn busy_factory_exit_restores_building_attachment_after_success() {
     };
     let product = busy_factory_exit_product(&mut sim, &rules, owner, true);
     let registry = sim.production.factories.clone();
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     let next_id = sim.substrate.next_stable_object_id;
     assert_eq!(
         busy_factory_exit_attempt(&mut sim, &rules, owner, product),
@@ -296,7 +296,7 @@ fn busy_factory_exit_restores_building_attachment_after_success() {
     assert_busy_factory_exit_receiver(&sim, &rules, product, 3);
     assert_eq!(sim.production.factories, registry);
     assert!(sim.production.factories.building_factory(3).is_none());
-    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, next_id);
     assert_eq!(
         sim.production
@@ -324,7 +324,7 @@ fn busy_factory_exit_attachment_owner_preserves_identity_and_rejects_occupied_ta
     );
     let registry = sim.production.factories.clone();
     let source = sim.production.factories.building_factory(1).cloned();
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     let next_id = sim.substrate.next_stable_object_id;
     for (from, to) in [(1, 3), (1, 1), (4, 2)] {
         assert!(
@@ -352,7 +352,7 @@ fn busy_factory_exit_attachment_owner_preserves_identity_and_rejects_occupied_ta
             .transfer_building_factory_attachment(2, 1)
     );
     assert_eq!(sim.production.factories, registry);
-    assert_eq!(sim.houses[&owner].economy.credits, credits);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, next_id);
 }
 
@@ -375,7 +375,7 @@ fn busy_factory_exit_failed_chosen_receiver_returns_once_and_restores_attachment
             .lifecycle
             .cell_marked = true;
         let registry = sim.production.factories.clone();
-        let credits = sim.houses[&owner].economy.credits;
+        let credits = sim.houses[&owner].economy.credits();
         let next_id = sim.substrate.next_stable_object_id;
         let rng = (
             sim.main_rng.logical_state(),
@@ -395,7 +395,7 @@ fn busy_factory_exit_failed_chosen_receiver_returns_once_and_restores_attachment
         );
         assert_eq!(sim.production.factories, registry);
         assert!(sim.production.factories.building_factory(3).is_none());
-        assert_eq!(sim.houses[&owner].economy.credits, credits);
+        assert_eq!(sim.houses[&owner].economy.credits(), credits);
         assert_eq!(sim.substrate.next_stable_object_id, next_id);
         assert_eq!(
             (
@@ -428,7 +428,7 @@ fn busy_factory_exit_without_an_alternate_refunds_player_product_and_promotes_qu
         ProductionCategory::Vehicle,
         71,
     );
-    let credits = sim.houses[&owner].economy.credits;
+    let credits = sim.houses[&owner].economy.credits();
     let refund = sim.cost_of(owner, rules.object("MTNK").unwrap(), &rules);
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
@@ -437,13 +437,12 @@ fn busy_factory_exit_without_an_alternate_refunds_player_product_and_promotes_qu
     // rows below preserve that boundary. Human HousePlace4FB57F then sees
     // producer+524zero and abandons this paid product, not the queued tail.
     assert!(!sim.substrate.entities.contains(product));
-    assert_eq!(sim.houses[&owner].economy.credits, credits + refund);
+    assert_eq!(sim.houses[&owner].economy.credits(), credits + refund);
     let factory = sim
         .production
         .factories
         .view(owner, ProductionCategory::Vehicle)
         .unwrap();
-    assert!(!factory.ready);
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let successor = factory.object.unwrap().entity_id.unwrap();
@@ -727,7 +726,7 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
         sim.scenario_rng = serde_json::from_value(row["rng_before"]["scenario"].clone()).unwrap();
         sim.mapgen_rng = serde_json::from_value(row["rng_before"]["mapgen"].clone()).unwrap();
         let registry = sim.production.factories.clone();
-        let credits = sim.houses[&owner].economy.credits;
+        let credits = sim.houses[&owner].economy.credits();
         let next_id = sim.substrate.next_stable_object_id;
         for (label, id) in &labels {
             assert_eq!(
@@ -823,7 +822,7 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             sim.production.factories, registry,
             "{name}: same Factory values"
         );
-        assert_eq!(sim.houses[&owner].economy.credits, credits);
+        assert_eq!(sim.houses[&owner].economy.credits(), credits);
         assert_eq!(sim.substrate.next_stable_object_id, next_id);
         assert_eq!(
             sim.production
@@ -879,7 +878,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
     let mut sim = Simulation::with_seed(0xFAC7_0002);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 14, 14);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 14, 14);
     let owner = sim.interner.get("Americans").unwrap();
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
     assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E2"));
@@ -903,7 +902,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
                 .production
                 .factories
                 .view(owner, ProductionCategory::Infantry)
-                .is_some_and(|factory| factory.ready);
+                .is_some_and(|factory| factory.complete_object().is_some());
             completed
         })
         .expect("the paid native step ladder completes");
@@ -944,7 +943,7 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
         sim.intern_rule_type_ids(&rules);
         sim.resolve_type_handles(&rules);
         crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
-        spawn_structure(&mut sim, 1, "Americans", "GAPILE", 14, 14);
+        spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 14, 14);
         let owner = sim.interner.get("Americans").unwrap();
         assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
         assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
@@ -1076,8 +1075,8 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAWEAP", 14, 10);
 
     let mut expected = SimRng::new(seed);
     let mtnk_word = (expected.next_u32() & 0xFFFF) as u16;
@@ -1346,21 +1345,11 @@ fn a_house_builds_only_up_to_its_own_tech_level() {
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     let americans = sim.interner.intern("Americans");
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
     let e1 = sim.interner.intern("E1");
-    // An UnbuildableTechLevel option is hidden from the sidebar list.
+    // CanBuild refuses a type above the house's TechLevel: off the sidebar.
     for (house_tech_level, listed_enabled) in [(0, None), (1, Some(true))] {
-        sim.houses.insert(
-            americans,
-            crate::sim::house_state::HouseState::new(
-                americans,
-                0,
-                None,
-                true,
-                50_000,
-                house_tech_level,
-            ),
-        );
+        sim.houses.get_mut(&americans).unwrap().tech_level = house_tech_level;
         let options = build_options_for_owner(&sim, &rules, "Americans");
         assert_eq!(
             options
@@ -1388,14 +1377,14 @@ fn build_catalog_exposes_sidebar_categories_and_required_houses() {
             crate::sim::house_state::HouseState::new(id, side, None, true, 50_000, 10),
         );
     }
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 12, 10);
-    spawn_structure(&mut sim, 3, "Americans", "GAAIRC", 14, 10);
-    spawn_structure(&mut sim, 4, "Americans", "GACNST", 16, 10);
-    spawn_structure(&mut sim, 5, "Alliance", "GAPILE", 20, 10);
-    spawn_structure(&mut sim, 6, "Alliance", "GAWEAP", 22, 10);
-    spawn_structure(&mut sim, 7, "Alliance", "GAAIRC", 24, 10);
-    spawn_structure(&mut sim, 8, "Alliance", "GACNST", 26, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAWEAP", 12, 10);
+    spawn_structure(&mut sim, &rules, 3, "Americans", "GAAIRC", 14, 10);
+    spawn_structure(&mut sim, &rules, 4, "Americans", "GACNST", 16, 10);
+    spawn_structure(&mut sim, &rules, 5, "Alliance", "GAPILE", 20, 10);
+    spawn_structure(&mut sim, &rules, 6, "Alliance", "GAWEAP", 22, 10);
+    spawn_structure(&mut sim, &rules, 7, "Alliance", "GAAIRC", 24, 10);
+    spawn_structure(&mut sim, &rules, 8, "Alliance", "GACNST", 26, 10);
 
     let americans = build_options_for_owner(&sim, &rules, "Americans");
     let alliance = build_options_for_owner(&sim, &rules, "Alliance");
@@ -1475,7 +1464,7 @@ fn named_skirmish_owner_uses_country_for_build_permissions() {
             10,
         ),
     );
-    spawn_structure(&mut sim, 1, "Commander", "GACNST", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Commander", "GACNST", 10, 10);
 
     let options = build_options_for_owner(&sim, &rules, "Commander");
     let yard = options
@@ -1571,11 +1560,11 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
     let mut sim = Simulation::new();
     let rules = production_modifier_rules();
 
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAPILE", 12, 10);
-    spawn_structure(&mut sim, 3, "Americans", "GAWEAP", 14, 10);
-    spawn_structure(&mut sim, 4, "Soviet", "NAHAND", 20, 20);
-    spawn_structure(&mut sim, 5, "Soviet", "GAPOWR", 22, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAPILE", 12, 10);
+    spawn_structure(&mut sim, &rules, 3, "Americans", "GAWEAP", 14, 10);
+    spawn_structure(&mut sim, &rules, 4, "Soviet", "NAHAND", 20, 20);
+    spawn_structure(&mut sim, &rules, 5, "Soviet", "GAPOWR", 22, 20);
     crate::sim::power_system::tick_power_states(
         &mut sim.power_states,
         &mut sim.substrate.entities,
@@ -1588,11 +1577,9 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
     let soviet = sim.interner.intern("Soviet");
     let e1 = rules.object("E1").expect("E1");
     let mtnk = rules.object("MTNK").expect("MTNK");
-    let inputs = |owner, category, obj| {
-        super::factory::time_to_build_inputs(&sim, &rules, owner, category, obj)
-    };
+    let inputs = |owner, obj| super::factory::time_to_build_inputs(&sim, &rules, owner, obj);
 
-    let americans_infantry = inputs(americans, ProductionCategory::Infantry, e1);
+    let americans_infantry = inputs(americans, e1);
     assert_eq!(
         (
             americans_infantry.power_output,
@@ -1601,39 +1588,14 @@ fn build_time_inputs_read_owner_power_and_matching_factories() {
         (0, 60)
     );
     assert_eq!(americans_infantry.factory_count, 2);
-    assert_eq!(
-        inputs(americans, ProductionCategory::Vehicle, mtnk).factory_count,
-        1
-    );
-    let soviet_infantry = inputs(soviet, ProductionCategory::Infantry, e1);
+    assert_eq!(inputs(americans, mtnk).factory_count, 1);
+    let soviet_infantry = inputs(soviet, e1);
     assert_eq!(
         (soviet_infantry.power_output, soviet_infantry.power_drain),
         (200, 20)
     );
     assert_eq!(soviet_infantry.factory_count, 1);
     assert!(!soviet_infantry.wall);
-
-    // A factory counts from its Unlimbo (`0x00440D13`), so one still playing
-    // its build-up animation counts.
-    sim.substrate
-        .entities
-        .get_mut(2)
-        .unwrap()
-        .install_building_up(
-            crate::sim::components::BuildingUp::completing_in_ticks(30, 0),
-            0,
-        );
-    assert_eq!(
-        super::factory::time_to_build_inputs(
-            &sim,
-            &rules,
-            americans,
-            ProductionCategory::Infantry,
-            e1
-        )
-        .factory_count,
-        2
-    );
 }
 
 /// A `Wall=yes` building takes `WallBuildSpeedCoefficient=` (Time_To_Build's
@@ -1671,18 +1633,12 @@ fn wall_build_time_inputs_carry_the_wall_coefficient() {
     );
     let rules = RuleSet::from_ini(&ini).expect("wall rules should parse");
 
-    spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "NACNST", 12, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "NACNST", 12, 10);
 
     let americans = sim.interner.intern("Americans");
     let wall = rules.object("GAWALL").expect("wall should exist");
-    let inputs = super::factory::time_to_build_inputs(
-        &sim,
-        &rules,
-        americans,
-        ProductionCategory::Building,
-        wall,
-    );
+    let inputs = super::factory::time_to_build_inputs(&sim, &rules, americans, wall);
     assert!(inputs.wall);
     assert_eq!(inputs.factory_count, 2);
     assert_eq!(
@@ -1690,16 +1646,7 @@ fn wall_build_time_inputs_carry_the_wall_coefficient() {
         crate::util::native_x87::NativeF64Bits::HALF
     );
     let tower = rules.object("GACNST").expect("GACNST");
-    assert!(
-        !super::factory::time_to_build_inputs(
-            &sim,
-            &rules,
-            americans,
-            ProductionCategory::Building,
-            tower,
-        )
-        .wall
-    );
+    assert!(!super::factory::time_to_build_inputs(&sim, &rules, americans, tower).wall);
 }
 
 #[test]
@@ -1721,7 +1668,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         SpeedType::Float,
         TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Float),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 20, 20);
     sim.substrate
         .entities
         .get_mut(1)
@@ -1730,8 +1677,9 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     // spawn_structure supplied the human House and registered this yard in
     // its native base vector. Keep that identity/membership; only supply funds.
     let americans_display = sim.interner.get("Americans").unwrap();
-    *super::credits_entry_for_owner(&mut sim, "Americans") =
-        super::production_types::STARTING_CREDITS;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(super::production_types::STARTING_CREDITS);
     assert!(sim.houses[&americans_display].is_human);
     assert_eq!(
         sim.houses[&americans_display].base_projection.buildings(),
@@ -1795,8 +1743,11 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
     );
 }
 
+/// Retail `[GAAIRC] ForbiddenHouses=Americans` and `[AMRADR]
+/// RequiredHouses=Americans`: CanBuild leaves the Americans one Airforce
+/// Command; the strip lists every type it admits.
 #[test]
-fn build_options_dedupe_house_specific_sidebar_clone() {
+fn forbidden_houses_leave_americans_one_airforce_command() {
     let mut sim = Simulation::new();
     let ini = IniFile::from_str(
         "[Countries]\n0=Americans\n1=Alliance\n2=Russians\n3=Soviet\n[InfantryTypes]\n\
@@ -1822,6 +1773,7 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
          Armor=wood\n\
          TechLevel=1\n\
          Owner=Americans,Alliance,British,French,Germans,Koreans\n\
+         ForbiddenHouses=Americans\n\
          Image=GAAIRC\n\
          BuildCat=Tech\n\
          [AMRADR]\n\
@@ -1844,7 +1796,7 @@ fn build_options_dedupe_house_specific_sidebar_clone() {
         americans_id,
         crate::sim::house_state::HouseState::new(americans_id, 0, None, true, 50_000, 10),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
 
     let americans = build_options_for_owner(&sim, &rules, "Americans");
     let airforce: Vec<_> = americans
@@ -1866,8 +1818,8 @@ fn published_completions_dispatch_each_owners_next_frame_place() {
     super::tests::install_infantry_delivery_fixture_map(&mut sim);
     let rules = basic_infantry_rules();
 
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Soviet", "NAHAND", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Soviet", "NAHAND", 20, 20);
 
     let americans_id = sim.interner.intern("Americans");
     let soviet_id = sim.interner.intern("Soviet");
@@ -1938,8 +1890,8 @@ fn published_completions_dispatch_multiple_categories_for_one_owner() {
     super::tests::install_infantry_delivery_fixture_map(&mut sim);
     let rules = basic_multi_queue_rules();
 
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAWEAP", 14, 10);
 
     let americans_id = sim.interner.intern("Americans");
     // P5d: arm both category factories directly in the registry, then force both to the
@@ -2017,8 +1969,10 @@ fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
     sim.install_fixture_path_grid(Some(&grid));
     sim.resolved_terrain = Some(terrain);
 
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 1000;
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10);
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(1000);
 
     let americans_id = sim.interner.intern("Americans");
     // P5d: arm the front MTNK (active) then a second MTNK at a higher stamp (FIFO tail).
@@ -2073,7 +2027,7 @@ fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
         .view(americans_id, ProductionCategory::Vehicle)
         .unwrap();
     assert_eq!(factory.progress, 0);
-    assert!(!factory.ready && factory.queue.is_empty());
+    assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
     assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
@@ -2115,10 +2069,12 @@ fn failed_vehicle_exit_promotes_a_fresh_identity_that_can_deliver_after_cells_cl
     });
     sim.resolved_terrain = Some(terrain.clone());
 
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10);
 
     let americans_id = sim.interner.intern("Americans");
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     // P5d: arm the front MTNK (active) then a second MTNK at a higher stamp (FIFO tail).
     arm_build_via(
         &mut sim,
@@ -2207,11 +2163,13 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
     let mut sim = Simulation::new();
     let rules = basic_multi_queue_rules();
 
-    spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAWEAP", 14, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAPILE", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAWEAP", 14, 10);
 
     let americans_id = sim.interner.intern("Americans");
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     // P5d: arm both category factories directly in the registry.
     arm_build_via(
         &mut sim,
@@ -2234,11 +2192,6 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
     assert!(paused);
 
     // Run the actual frame owner, which now performs revalidation and charging.
-    sim.houses
-        .get_mut(&americans_id)
-        .unwrap()
-        .tracking
-        .set_buildings_for_test(2);
     for _ in 0..40 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
@@ -2272,8 +2225,7 @@ fn paused_category_projection_and_factory_charge_remain_independent() {
 }
 
 /// Canceling a finished building abandons the factory's object, refunding the cost
-/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6), and
-/// drops the ready entry with it.
+/// less the unpaid balance (Abandon_Production 0x004FAA10, refund at 0x004FABA6).
 #[test]
 fn cancel_by_type_removes_ready_building_and_refunds() {
     use super::cancel_by_type_for_owner;
@@ -2281,9 +2233,11 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     let mut sim = Simulation::new();
     let rules = build_catalog_rules();
 
-    spawn_structure(&mut sim, 1, "Americans", "GACNST", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GACNST", 10, 10);
     // The refund goes to an existing house; a cancel never creates one.
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 5000;
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(5000);
 
     let americans_id = sim.interner.intern("Americans");
     arm_build_via(
@@ -2303,21 +2257,20 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert_eq!(sim.production.ready_by_owner[&americans_id].len(), 1);
+    assert_eq!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").len(),
+        1
+    );
 
     let before_credits = credits_for_owner(&sim, "Americans");
 
     let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "GAREFN", false);
     assert!(cancelled, "should cancel ready building");
 
-    // Ready queue should be empty now.
-    let ready_count = sim
-        .production
-        .ready_by_owner
-        .get(&americans_id)
-        .map(|q| q.len())
-        .unwrap_or(0);
-    assert_eq!(ready_count, 0, "ready queue should be empty after cancel");
+    assert!(
+        ready_buildings_for_owner(&sim, &rules, "Americans").is_empty(),
+        "no building waits for placement after the cancel"
+    );
     assert!(
         sim.production
             .factories
@@ -2340,8 +2293,10 @@ fn cancel_by_type_removes_ready_building_and_refunds() {
 fn enqueue_starts_a_build_without_money_and_debits_nothing() {
     let mut sim = Simulation::new();
     let rules = basic_multi_queue_rules();
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10); // a UnitType war factory
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 0;
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10); // a UnitType war factory
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(0);
     assert!(super::enqueue_by_type(
         &mut sim,
         &rules,
@@ -2378,10 +2333,62 @@ fn hold_rules() -> RuleSet {
 fn hold_world() -> (Simulation, RuleSet, InternedId) {
     let rules = hold_rules();
     let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 10, 10);
-    *super::credits_entry_for_owner(&mut sim, "Americans") = 50_000;
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10);
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
     let owner = sim.interner.intern("Americans");
     (sim, rules, owner)
+}
+
+/// FindFactory's radio gate (`0x005F79C7..0x005F79FB`) is for AircraftType
+/// only (`CMP EAX,3`; `AircraftTypeClass::What_Am_I 0x0041CFB0`): an airfield
+/// whose contacts are all taken refuses an aircraft unless the caller skips
+/// the gate, while a War Factory holding the vehicle it just delivered still
+/// takes a vehicle PRODUCE.
+#[test]
+fn only_a_busy_airfield_refuses_its_type() {
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[Countries]\n0=Americans\n[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n\
+         [AircraftTypes]\n0=ORCA\n[BuildingTypes]\n0=GAWEAP\n1=GAAIRC\n\
+         [MTNK]\nCost=700\nStrength=300\nSpeed=6\nTechLevel=1\nOwner=Americans\n\
+         [ORCA]\nCost=1200\nStrength=150\nSpeed=14\nTechLevel=1\nOwner=Americans\n\
+         [GAWEAP]\nOwner=Americans\nFactory=UnitType\n\
+         [GAAIRC]\nOwner=Americans\nFactory=AircraftType\n",
+    ))
+    .expect("radio gate rules");
+    let mut sim = Simulation::new();
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAAIRC", 20, 20);
+    super::house_for_test(&mut sim, "Americans")
+        .economy
+        .set_credits_for_test(50_000);
+    for (building, contact) in [(1, 901), (2, 902)] {
+        let contacts = &mut sim
+            .substrate
+            .entities
+            .get_mut(building)
+            .unwrap()
+            .radio_contacts;
+        contacts.set_capacity(1);
+        contacts.insert(contact);
+    }
+    let owner = sim.interner.intern("Americans");
+    let factory = |sim: &Simulation, name: &str, skip_gate: bool| {
+        super::find_factory(
+            sim,
+            &rules,
+            owner,
+            rules.object(name).unwrap(),
+            skip_gate,
+            true,
+            true,
+        )
+    };
+    assert_eq!(factory(&sim, "MTNK", false), Some(1));
+    assert_eq!(factory(&sim, "ORCA", false), None);
+    assert_eq!(factory(&sim, "ORCA", true), Some(2));
+    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
 }
 
 /// A PRODUCE resumes a held build even at its type's build limit: the held build
@@ -2432,9 +2439,12 @@ fn a_held_build_at_its_build_limit_resumes_on_produce() {
         queue_view_for_owner(&sim, &rules, "Americans")[0].state,
         BuildQueueState::Building
     );
-    // Running, the build no longer passes the limit: gamemd's StartProduction
-    // refuses the append (0x004C9CEA), and VERA refuses it before that.
+    // Running, the build no longer passes the limit: StartProduction refuses
+    // the append (CheckBuildLimit, 0x004C9CEA) and scolds the house's player.
     assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "AMCV"));
+    assert!(sim.sound_events.iter().any(|event| {
+        matches!(event, SimSoundEvent::ProductionRefused { owner: refused } if *refused == owner)
+    }));
 }
 
 /// `[General] MaximumQueuedObjects=` caps the builds waiting behind the active

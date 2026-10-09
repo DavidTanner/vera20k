@@ -414,7 +414,7 @@ pub(crate) fn tick_locomotor_piggyback_restore_one(entities: &mut EntityStore, i
     let Some(entity) = entities.get_mut(id) else {
         return false;
     };
-    locomotor_owner::try_restore_primary(entity)
+    locomotor_owner::try_end_piggyback(entity)
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +496,8 @@ pub(crate) fn tick_movement_with_grid(
 // Internal helpers — shared across movement submodules
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
+mod balloon_hover_tests;
 #[cfg(test)]
 pub(crate) mod bridge_layer_oracle_tests;
 #[cfg(test)]

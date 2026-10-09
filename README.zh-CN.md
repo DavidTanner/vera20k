@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="最近一次手动运行的 Linux 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux 库测试" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="最近一次手动运行的 Windows 库测试"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Windows 库测试" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="加入 Discord" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ%E7%BE%A4-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ 群" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -20,7 +21,7 @@ VERA20k 由玩家打造、为玩家而做，项目的方向由玩家说了算。
 ## 项目目标
 
 1. 保留原版《红色警戒2：尤里的复仇》的玩法、画面和氛围。
-2. 支持更大规模的战斗：在更大的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
+2. 支持更大规模的战斗：在 500×500 的地图上，容纳最多 **30 名玩家**和 **20,000 个单位**。
 3. 加入新老 RTS 游戏中已有的功能，以及一些前所未见的功能。
 4. 内置多人游戏客户端
 
@@ -65,20 +66,16 @@ cargo run --release --bin vera20k
 VERA20k 的开发者都是你们的朋友。我们希望把庞大的中国红警玩家群体与世界各地的玩家联系在一起，让大家可以一起对战。
 
 我们非常希望中国的开发者和玩家加入进来，和我们一起开发、一起游玩！
-欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 找我们。
+欢迎在 GitHub 上[提交 issue](https://github.com/YuriPlanet/vera20k/issues)，或者来 [Discord](https://discord.gg/kmjRUn5m5F) 或 QQ 群（群号 1097193563）找我们。
 用中文写 issue 也完全没问题。
-
-我们还没有 QQ 群。如果你愿意为 VERA20k 建一个 QQ 群，请在 issue 或 Discord 上告诉我们，我们很乐意加入！
 
 ## 参与贡献
 
 欢迎帮忙。你可以编写代码、重构引擎、测试游戏、提出想法，或对照原版游玩，告诉我们哪些地方感觉不对。
-直接提交 PR 即可，剩下的交给我们；如果改动较大，请先在 issue 或 [Discord](https://discord.gg/kmjRUn5m5F) 上问一下。
+直接提交 PR 即可，剩下的交给我们。讨论在 [Discord](https://discord.gg/kmjRUn5m5F) 和 QQ 群（1097193563）进行。
 
 游戏逻辑在 `src/sim/`，渲染在 `src/render/`，菜单和输入在 `src/app/` 和 `src/ui/`；
-你不需要 `tools/` 中的 Python 工具。[架构概览](https://yuriplanet.github.io/vera20k/zh-CN/)介绍了引擎各部分如何协作。
-用 `cargo test -p vera20k --lib` 运行测试。需要游戏 INI 文件的测试会自动跳过，但仍计为通过，
-直到你运行 `cargo run --bin extract-ini [游戏文件夹]`。
+你不需要 `tools/` 中的 Python 工具。
 
 贡献内容与项目其余部分一样采用 GPLv3 许可证；无需签署 CLA。
 

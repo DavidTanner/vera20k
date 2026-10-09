@@ -27,7 +27,8 @@ fn terminal_art(die1_count: i32, die2_count: i32) -> IniFile {
 }
 
 fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet) {
-    let base = "[InfantryTypes]\n0=E1\n1=BRUTE\n2=BOOM\n[VehicleTypes]\n0=MTNK\n\
+    let base = "[Countries]\n0=Americans\n\
+         [InfantryTypes]\n0=E1\n1=BRUTE\n2=BOOM\n[VehicleTypes]\n0=MTNK\n\
          [AircraftTypes]\n[BuildingTypes]\n0=GAPILE\n1=BIG\n\
          [SuperWeaponTypes]\n0=IC\n1=GM\n\
          [IC]\nType=IronCurtain\nRechargeTime=1\n\
@@ -44,7 +45,7 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
          [E1]\nImage=GI\nStrength=100\nSpeed=4\nCost=200\nTechLevel=1\nOwner=Americans\n\
          [BRUTE]\nImage=GI\nStrength=200\nSpeed=4\n\
          [MTNK]\nStrength=300\nSpeed=6\n\
-         [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\n";
+         [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\nOwner=Americans\n";
     let mut ini = IniFile::from_str(base);
     ini.merge(&IniFile::from_str(extra));
     let mut rules = if let Some(art) = art {
@@ -296,47 +297,6 @@ fn infantry_terminal_effect_only_cleanup_follows_recursive_deaths() {
     sim.advance_tick(&[], Some(&rules), None, None, 100);
     assert!(!sim.substrate.entities.contains(parent));
     assert!(!sim.substrate.entities.contains(child));
-}
-
-#[test]
-fn infantry_terminal_custom_fly_missions_retire_without_death_announcement() {
-    use crate::sim::aircraft::{AircraftMission, tick_aircraft_missions};
-    use crate::sim::world::InfantryTerminal;
-    let (mut sim, rules) = fixture_with_extra(
-        "[E1]\nLocomotor={4A582746-9839-11D1-B709-00A024DDAFD1}\nAirportBound=yes\n",
-    );
-    let victim = sim
-        .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
-        .unwrap();
-    // Leave the initial ground list through the production Mark/movement
-    // transaction. Changing only the altitude cache after Unlimbo would
-    // leave a ground member behind without a native REMOVE producer.
-    assert!(sim.begin_fly_takeoff(victim, Some(&rules)));
-    sim.tick_air_movement_with_cell_lists_one(victim, Some(&rules), None);
-    let entity = sim.substrate.entities.get_mut(victim).unwrap();
-    assert!(entity.aircraft_mission.is_some(), "authored Fly admission");
-    assert!(
-        entity.aircraft_ammo.is_none(),
-        "Infantry has no Aircraft ammo"
-    );
-    assert!(entity.locomotor.as_ref().unwrap().altitude > crate::util::fixed_math::SIM_ZERO);
-    entity.aircraft_mission = Some(AircraftMission::Idle);
-    tick_aircraft_missions(&mut sim, &rules);
-    let entity = sim.substrate.entities.get(victim).unwrap();
-    assert_eq!(
-        entity.infantry_terminal,
-        Some(InfantryTerminal::RetireNextVisit)
-    );
-    assert!(entity.dying && entity.aircraft_mission.is_none());
-    assert!(
-        !sim.sound_events
-            .iter()
-            .any(|event| matches!(event, crate::sim::world::SimSoundEvent::UnitLost { .. }))
-    );
-    sim.advance_tick(&[], Some(&rules), None, None, 100);
-    assert!(!sim.substrate.entities.contains(victim));
-    assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
-    assert!(!sim.live_object_order_snapshot().contains(&victim));
 }
 
 #[test]

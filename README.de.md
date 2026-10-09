@@ -7,6 +7,7 @@
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml?query=branch%3Amain" title="Letzter Testlauf der Bibliothek unter Linux (manuell gestartet)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/linux.yml/badge.svg?branch=main" alt="Bibliothekstests unter Linux" height="20" align="middle"></a>
   <a href="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml?query=branch%3Amain" title="Letzter Testlauf der Bibliothek unter Windows (manuell gestartet)"><img src="https://github.com/YuriPlanet/vera20k/actions/workflows/windows.yml/badge.svg?branch=main" alt="Bibliothekstests unter Windows" height="20" align="middle"></a>
   <a href="https://discord.gg/kmjRUn5m5F"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" alt="Discord beitreten" height="20" align="middle"></a>
+  <img src="https://img.shields.io/badge/QQ_Gruppe-1097193563-1EBAFC?style=flat&amp;logo=qq&amp;logoColor=white" alt="QQ-Gruppe" height="20" align="middle">
 </p>
 
 # VERA20k
@@ -22,7 +23,7 @@ das Projekt entwickelt.
 ## Projektziele
 
 1. Spielmechanik, Grafik und Atmosphäre des ursprünglichen Red Alert 2: Yuri's Revenge bewahren.
-2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf größeren Karten.
+2. Größere Schlachten ermöglichen: bis zu **30 Spieler** und **20.000 Einheiten** auf 500×500-Karten.
 3. Bekannte RTS-Funktionen integrieren, alte wie neue, und einige, die es noch nie gab.
 4. Integrierter Mehrspieler-Client
 
@@ -73,15 +74,11 @@ ursprüngliche Engine mit Ghidra, übertragen dann ihr Verhalten nach Rust und p
 
 Hilfe ist willkommen. Du kannst Code schreiben, die Engine refaktorieren, das Spiel testen,
 Ideen einbringen oder es neben dem Original spielen und uns sagen, was sich falsch anfühlt.
-Öffne einen PR, und wir kümmern uns um den Rest; bei größeren Vorhaben frag vorher in einem
-Issue oder auf [Discord](https://discord.gg/kmjRUn5m5F).
+Öffne einen PR, und wir kümmern uns um den Rest.
+Diskutiert wird auf [Discord](https://discord.gg/kmjRUn5m5F) und in der QQ-Gruppe (1097193563).
 
 Die Spiellogik liegt in `src/sim/`, das Rendering in `src/render/` und Menüs und Eingabe in
 `src/app/` und `src/ui/`; die Python-Werkzeuge in `tools/` brauchst du nicht.
-Die [Architekturübersicht](https://yuriplanet.github.io/vera20k/de/) erklärt, wie die Engine
-aufgebaut ist. Führe die Tests mit `cargo test -p vera20k --lib` aus. Tests, die die INI-Dateien
-des Spiels brauchen, überspringen sich selbst und zählen trotzdem als bestanden, bis du
-`cargo run --bin extract-ini [Spielordner]` ausführst.
 
 Beiträge stehen wie das übrige Projekt unter der GPLv3; ein CLA gibt es nicht.
 

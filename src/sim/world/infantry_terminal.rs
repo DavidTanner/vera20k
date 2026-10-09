@@ -474,10 +474,7 @@ impl Simulation {
             return Default::default();
         };
         debug_assert!(entity.dying && entity.category == EntityCategory::Infantry);
-        let mut outcome = super::techno_ai::ObjectAiOutcome {
-            visited: true,
-            bridge_state_changed: false,
-        };
+        let mut outcome = super::techno_ai::ObjectAiOutcome::visited();
         match terminal {
             InfantryTerminal::AwaitingConsequences => return outcome,
             InfantryTerminal::Sequence(_) => {
