@@ -213,11 +213,10 @@ enum CoreRefusal {
 /// The result of one `Find_Path(cell, 0, 0)` call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FindPathResult {
-    /// A route of at least one direction was copied into Foot+5E0.
+    /// A route of at least one direction was copied into Foot+5E0. AStar
+    /// never returns a zero-cost route: a goal in the start cell is NULL
+    /// (0x429BF3..0x429C0A), so 0x4D3E52..0x4D3E5F always copies.
     Route,
-    /// The core returned a zero-cost route (start cell is the goal cell):
-    /// 0x4D3E52..0x4D3E5F copies no word, yet Find_Path returns success.
-    EmptyRoute,
     /// The precheck refused (0x4D3989, before Mark, AStar or +500), or the
     /// core returned NULL and the PathDelay re-arm, the class receiver +500
     /// and the continuation 0x4D404A..0x4D41F0 have run.
@@ -329,8 +328,7 @@ impl Simulation {
         }
         let goal = self.find_path_admitted_goal(id, request.destination, rules, registry)?;
         match self.search_foot_path(request, held, goal, rules, registry)? {
-            Ok(true) => Ok(FindPathResult::Route),
-            Ok(false) => Ok(FindPathResult::EmptyRoute),
+            Ok(()) => Ok(FindPathResult::Route),
             Err(refusal) => {
                 if let CoreRefusal::VeraOnly(reason) = refusal {
                     //Residual: a VERA-only search refusal (BridgeOnlyGoal,
@@ -387,8 +385,7 @@ impl Simulation {
     }
 
     /// Mark0, the core search, Mark1 and the +640 rewrite; a found route is
-    /// installed with its 0x4D4003 reference cell. `Ok(true)`: at least one
-    /// direction; `Ok(false)`: the zero-cost route. Search refusals return
+    /// installed with its 0x4D4003 reference cell. Search refusals return
     /// through the inner `Err`; an unavailable PathGrid stops the frame.
     fn search_foot_path(
         &mut self,
@@ -397,7 +394,7 @@ impl Simulation {
         goal: DriveCoord,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
-    ) -> Result<Result<bool, CoreRefusal>, String> {
+    ) -> Result<Result<(), CoreRefusal>, String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
         if self.path_grid.is_none() {
@@ -559,16 +556,10 @@ impl Simulation {
         use super::movement_path::MovePathFailure;
         use crate::sim::pathfinding::zone_search::PathSearchFailure as Search;
         match searched {
-            Ok(path) if path.len() < 2 => {
-                //4D3E52..5F skips the copy for a zero-cost route; 4D4003
-                //still records the current Cell.
-                let current = (actor.position.rx as i16, actor.position.ry as i16);
-                actor.navigation.path_replay.reference_cell = Some(current);
-                Ok(Ok(false))
-            }
             Ok(path) => {
+                debug_assert!(path.len() >= 2, "AStar routes leave the start cell");
                 request.install_route(actor, path);
-                Ok(Ok(true))
+                Ok(Ok(()))
             }
             Err(MovePathFailure::Search(
                 Search::NativeEntryRejected | Search::CellSearchExhausted,

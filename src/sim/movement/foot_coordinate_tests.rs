@@ -266,10 +266,8 @@ fn production_drive_reaim_reads_retained_target_head() {
             .unwrap()
             .destination()
     };
-    // Drive 0x4B05D0 is reached only after a track end in the same Process;
-    // an ordinary visit leaves +34 alone.
-    sim.process_ground_locomotor_for_test(1, None, None, None)
-        .unwrap();
+    // Drive 0x4B05D0, after a track end in the same Process, re-aims +34 at
+    // an Infantry NavCom's live coordinate.
     assert_eq!(destination(&sim), Some(DriveCoord::cell(7, 4, 0)));
     assert!(
         sim.begin_track_end_continuation(

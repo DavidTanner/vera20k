@@ -408,11 +408,12 @@ fn can_enter_layers_non_bridge_cells_retain_single_ground_layer() {
     assert_eq!(layers.occupancy_bits_layer, MovementLayer::Ground);
 }
 
+/// 0x00429BF3..0x00429C0A: AStar has no route for a goal in its start cell.
 #[test]
-fn test_find_path_trivial_same_cell() {
+fn test_find_path_same_cell_has_no_route() {
     let grid: PathGrid = PathGrid::new(10, 10);
     let path: Option<Vec<(u16, u16)>> = find_path(&grid, (5, 5), (5, 5));
-    assert_eq!(path, Some(vec![(5, 5)]));
+    assert_eq!(path, None);
 }
 
 #[test]

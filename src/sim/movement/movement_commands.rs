@@ -378,6 +378,11 @@ pub(crate) fn issue_move_command_with_destination(
                 // search only gates acceptance (a Jumpjet object order queued
                 // twice), and its cells were never read.
                 let append_start = movement.final_goal.unwrap_or((start_rx, start_ry));
+                // The setters record any destination unsearched, so a goal in
+                // the append start's cell is admitted without asking the core.
+                if append_start == effective_target {
+                    return true;
+                }
                 let append_layer = current_layer;
                 let zone_mz = movement_zone.unwrap_or(MovementZone::Normal);
                 let Some((appended, _)) = find_move_path(
@@ -408,14 +413,13 @@ pub(crate) fn issue_move_command_with_destination(
                 ) else {
                     return false;
                 };
-                if appended.len() >= 2 {
-                    movement.speed = speed;
-                    entity_mut
-                        .navigation
-                        .path_runtime
-                        .start_blocked(timing.binary_frame, 0);
-                    entity_mut.navigation.path_runtime.path_blocked = false;
-                }
+                debug_assert!(appended.len() >= 2, "AStar routes leave the start cell");
+                movement.speed = speed;
+                entity_mut
+                    .navigation
+                    .path_runtime
+                    .start_blocked(timing.binary_frame, 0);
+                entity_mut.navigation.path_runtime.path_blocked = false;
                 return true;
             }
         }
@@ -460,8 +464,17 @@ pub(crate) fn issue_move_command_with_destination(
     // destinations gamemd accepts. The recovered set is the same; only the
     // evaluation order differs.
     let mut effective_target = effective_target;
-    let mut found = search(effective_target);
-    if found.is_none()
+    // The setters record any destination unsearched, so a goal in the start
+    // cell is admitted without asking the core, which has no route for it at
+    // equal heights (0x00429BF3..0x00429C0A).
+    let same_cell = effective_target == (start_rx, start_ry);
+    let mut found = if same_cell {
+        None
+    } else {
+        search(effective_target)
+    };
+    if !same_cell
+        && found.is_none()
         && let Some(st) = speed_type
     {
         match resolve_reachable_move_goal(
@@ -488,19 +501,23 @@ pub(crate) fn issue_move_command_with_destination(
             _ => {}
         }
     }
-    let Some((path, _)) = found else {
-        let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
-        log::warn!(
-            "No path from ({},{}) to ({},{}) [entity_blocks={}, start_walkable={}, goal_walkable={}]",
-            start_rx,
-            start_ry,
-            effective_target.0,
-            effective_target.1,
-            eb_count,
-            grid.is_walkable(start_rx, start_ry),
-            grid.is_walkable(effective_target.0, effective_target.1),
-        );
-        return false;
+    let path = match found {
+        Some((path, _)) => path,
+        None if same_cell => vec![effective_target],
+        None => {
+            let eb_count = merged_entity_blocks_ref.map_or(0, |s| s.len());
+            log::warn!(
+                "No path from ({},{}) to ({},{}) [entity_blocks={}, start_walkable={}, goal_walkable={}]",
+                start_rx,
+                start_ry,
+                effective_target.0,
+                effective_target.1,
+                eb_count,
+                grid.is_walkable(start_rx, start_ry),
+                grid.is_walkable(effective_target.0, effective_target.1),
+            );
+            return false;
+        }
     };
 
     // Log path with walkability check for each cell — helps diagnose paths
@@ -654,18 +671,19 @@ pub(crate) fn clear_destination_path_head(entity: &mut GameEntity) {
 
 /// Install the empty-route scheduling adapter for a Drive/Ship Foot whose
 /// locomotor destination was set outside the ordinary setter (the outer
-/// Process NavCom reissue), so its next visit reaches Process_Movement.
+/// Process NavCom reissue). Process_Movement follows +34 without it; the
+/// adapter's readers (`block_index`'s moving next cell, the pursuit orders,
+/// the bunker install) see the Foot as moving.
 pub(super) fn schedule_track_process(entity: &mut GameEntity, target: (u16, u16), speed: SimFixed) {
     prepare_destination_execution(entity, target, speed);
 }
 
 /// A track terminal that found the Foot+5E0 queue empty (Drive 0x4B280D
-/// compares it with -1) short of the retained locomotor
-/// destination (+34): the adapter keeps scheduling, so the next
-/// Process_Movement reaches the no-queue arm (Drive 0x4B281C / Ship
-/// 0x6A1E75), in the same Process after the track end
-/// (`track_continuation`) or on the next visit. With no destination left it
-/// retires.
+/// compares it with -1) short of the retained locomotor destination (+34):
+/// the adapter stays while +34 does, as the next Process_Movement reaches the
+/// no-queue arm (Drive 0x4B281C / Ship 0x6A1E75), in the same Process after
+/// the track end (`track_continuation`) or on the next visit. With no
+/// destination left it retires.
 pub(super) fn spend_track_route(entity: &mut GameEntity) {
     let destination = entity.locomotor.as_ref().and_then(|loco| {
         loco.track_destination(super::track_process::TrackFamily::from_kind(

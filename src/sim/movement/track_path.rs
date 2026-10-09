@@ -192,19 +192,6 @@ impl Simulation {
         }
         let outcome = match found {
             FindPathResult::Route => self.finish_found_track_path(id, rules, registry)?,
-            FindPathResult::EmptyRoute => {
-                //Residual: a zero-cost route leaves Foot+5E0 at -1 and native
-                //continues with that word (the success arm then steps toward
-                //octant 7 and head selection turns toward 0xE000). VERA ends
-                //the visit instead. Trigger: +34 in the mover's own cell: a
-                //non-Cell NavCom whose coordinate lies there (a same-cell Cell
-                //NavCom stops earlier, 0x4B066C), or a forced track's end
-                //(Force_Track wrote +34 = its cell, 0x4B0D3F, and a null
-                //NavCom skips the arrival clear, 0x4B2129), in the track-end
-                //Process. Effect: no turn; whether native then stops or
-                //re-requests is unexecuted.
-                FootPathOutcome::Returned
-            }
             FindPathResult::Failed => self.finish_failed_track_path(id, rules, registry)?,
         };
         if outcome == FootPathOutcome::Returned {
@@ -607,21 +594,19 @@ impl Simulation {
     }
 
     /// Retire the MovementTarget scheduling adapter once the Drive/Ship
-    /// locomotor has neither a destination nor a head nor an active track
-    /// (native Is_Moving false, no Process_Track work left).
+    /// locomotor is not moving (Is_Moving: no destination, and no head away
+    /// from the owner, which a refused own-cell search leaves) and has no
+    /// active track (no Process_Track work left).
     fn retire_idle_track_adapter(&mut self, id: u64) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        let Some(loco) = actor.locomotor.as_ref() else {
-            return;
-        };
-        let Some(family) = super::track_process::TrackFamily::from_kind(loco.kind) else {
-            return;
-        };
-        let head = loco.track_head(family);
-        if track_destination(actor).is_none()
-            && head.is_none()
+        let track = actor
+            .locomotor
+            .as_ref()
+            .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
+        if track
+            && super::motion_query::is_moving(actor) == Some(false)
             && super::track_head::active_track_family(actor).is_none()
         {
             actor.movement_target = None;

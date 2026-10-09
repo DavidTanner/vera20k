@@ -357,7 +357,16 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                     sim.interner = crate::sim::intern::test_interner();
                     sim.substrate.entities.insert(entity);
                     let grid = PathGrid::new(20, 20);
-                    sim.process_ground_locomotor_for_test(1, None, Some(&grid), None)
+                    // A non-null head away from the owner is Is_Moving, so the
+                    // fresh arm's Process_Movement runs and returns at its null
+                    // destination (0x4B26D0).
+                    let rules = crate::rules::ruleset::RuleSet::from_ini(
+                        &crate::rules::ini_parser::IniFile::from_str(
+                            "[VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=0\n",
+                        ),
+                    )
+                    .unwrap();
+                    sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
                         .unwrap();
                     let entity = sim.substrate.entities.get(1).unwrap();
                     assert_eq!(

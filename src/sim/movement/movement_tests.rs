@@ -379,6 +379,38 @@ fn test_drive_queue_command_reissues_destination_without_navqueue_append() {
 }
 
 /// The fixture Drive types: a Unit's Process reads its type.
+/// The order-time adapter (here a Jumpjet's) admits a destination in the
+/// mover's own cell without asking the AStar core, whose start-equals-goal
+/// exit has no route for it (0x00429BF3..0x00429C0A): the setters record any
+/// destination unsearched. A queued order to the same cell appends nothing.
+#[test]
+fn order_time_admission_accepts_a_goal_in_the_start_cell() {
+    let mut entities = EntityStore::new();
+    let grid = PathGrid::new(10, 10);
+    let mut e = GameEntity::test_default(1, "JUMPJET", "Americans", 5, 5);
+    e.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
+    entities.insert(e);
+    for queue in [false, true] {
+        assert!(
+            issue_move_command(
+                &mut entities,
+                &grid,
+                1,
+                (5, 5),
+                SimFixed::from_num(1024),
+                queue,
+                None,
+                None,
+                None,
+                crate::sim::movement::DestinationTiming::new(0, 60),
+            ),
+            "queue={queue}"
+        );
+    }
+    let movement = entities.get(1).unwrap().movement_target.as_ref().unwrap();
+    assert_eq!(movement.final_goal, Some((5, 5)));
+}
+
 fn drive_type_rules() -> crate::rules::ruleset::RuleSet {
     crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
         "[VehicleTypes]\n0=HTNK\n1=MTNK\n2=DRIVE\n[HTNK]\nSpeed=6\n[MTNK]\nSpeed=6\n[DRIVE]\nSpeed=6\n",
