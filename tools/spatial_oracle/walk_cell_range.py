@@ -4,6 +4,8 @@ Rows with `target_object` range an Infantry object through CanFireAt 0x6F77B0
 instead. Rows with `subject_to_elevation` add InRange's elevation bonus
 (0x6F6F60 on both arms, 0x6F70E0 on the arcing arm). Rows that supply
 `elevation` or `arcing` also record `bonuses`, each bonus InRange computed.
+Arcing rows run the arc test (Ballistic_Launch_Speed 0x48AB90, Can_Reach
+0x48ABC0) under the row's `gravity` and `floater`, then the bridge ceiling.
 
 The weapon slot and object fields are supplied. No range verdict, Cell getter,
 map lookup, distance calculation or line-of-fire callable is substituted.
@@ -53,6 +55,10 @@ def query(row):
     u.mem_write(RULES + 0x1840, struct.pack('<dd', increment_bonus, cap))
     u.mem_write(PROJECTILE + 0x297, bytes([int(row.get('subject_to_elevation', False))]))
     u.mem_write(PROJECTILE + 0x29B, bytes([int(row.get('arcing', False))]))
+    # The arcing arm's arc test reads Rules+0x16B8 Gravity (0 unless supplied),
+    # halved through 0x48ACF0 for a BulletType+0x295 Floater.
+    u.mem_write(RULES + 0x16B8, dwords(row.get('gravity', 0)))
+    u.mem_write(PROJECTILE + 0x295, bytes([int(row.get('floater', False))]))
     u.mem_write(WEAPON + 0xA0, dwords(PROJECTILE))
     u.mem_write(WEAPON + 0xB4, dwords(row.get('range', 768)))
     u.mem_write(WEAPON + 0xB8, dwords(row.get('minimum', 0)))
@@ -205,12 +211,48 @@ def generate():
         (932, {**infantry, 'target_object': {'location': [3456, 2688, 0], 'marked': False}}),
     ]:
         rows += [{**case, 'range': edge}, {**case, 'range': edge - 1}]
+    # The arcing arm's arc test: the speed the range gives must reach the
+    # target's height. The actor stands 834 leptons from cell (13,10)'s centre;
+    # each case runs at the least range the native test admits, and one less.
+    def arc(target_level, **extra):
+        return {'arcing': True, 'gravity': 6, 'target': [3550, 2780, 0],
+                'cells': [{'coord': [10, 10]}, {'coord': [13, 10], 'level': target_level}], **extra}
+    for edge, case in [
+        (834, arc(0)),
+        (912, arc(2)),
+        (1004, arc(3)),
+        (1126, arc(4)),
+        (903, arc(2, floater=True)),
+        (834, arc(2, gravity=-6)),
+        (912, arc(0, gravity=-6, source=[2624, 2624, 208])),
+        (322, {**elevated(4), 'arcing': True, 'gravity': 6}),
+        # No 2-D distance: Can_Reach measures 0.001 leptons.
+        (701, arc(4, source=[3456, 2688, 0])),
+        # An Infantry target two levels up, snapped to its cell's ground.
+        (912, arc(2, target_object={'location': [3456, 2688, 208]})),
+    ]:
+        rows += [{**case, 'range': edge}, {**case, 'range': edge - 1}]
+    # The bridge ceiling: a target point whose cell carries the bridge bit
+    # (snapped onto the deck, 416 up) is refused from 312 leptons below.
+    def ceiling(source_z, gravity=0, flags=256, rng=834, level=0):
+        return {'arcing': True, 'gravity': gravity, 'range': rng, 'target': [3550, 2780, 0],
+                'source': [2624, 2624, source_z],
+                'cells': [{'coord': [10, 10]}, {'coord': [13, 10], 'level': level, 'flags': flags}]}
+    rows += [
+        ceiling(104), ceiling(105), ceiling(104, flags=0, level=4),
+        ceiling(104, gravity=6, rng=1100), ceiling(208, gravity=6, rng=1100),
+        # The Dummy's centre (-128) truncates into real cell (0,10), whose bit decides.
+        {'arcing': True, 'target': [-257, 2780, 0], 'source': [128, 2688, 0], 'range': 1024,
+         'cells': [{'coord': [0, 10], 'level': 3, 'flags': 256}], 'dummy': {'level': 1, 'flags': 256}},
+        {'arcing': True, 'target': [-257, 2780, 0], 'source': [128, 2688, 0], 'range': 1024,
+         'cells': [{'coord': [0, 10], 'level': 3}], 'dummy': {'level': 1, 'flags': 256}},
+    ]
     return [query(row) for row in rows]
 
 
 if __name__ == '__main__':
     finish_vectors(generate, Path(__file__).with_suffix('.json'), provenance=lambda: provenance(
-        scope='Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm) and the arcing arm\'s 2-D distance; explicit supplied object/weapon/map fields.',
-        entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'elevation_direct': 0x6F6F60, 'elevation_arcing': 0x6F70E0, 'cell_height': 0x487D50, 'map_cell_packed': 0x5657A0, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310},
-        assumptions=['Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows\' SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor\'s 0/1.0/0.0 otherwise.', 'Rules+0x16B8 Gravity is 0, so on the arcing arm Ballistic_Launch_Speed48AB90 is 0 and Can_Reach48ABC0 admits every row: its refusals and the bridge ceiling are not exercised.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
+        scope='Original6F7970->6F77B0->6F7220 Infantry Cell-target range and lookup ordering, including the +0x82 OpenToppedRangeBonus stage; 6F77B0->6F7220 against an Infantry object; the SubjectToElevation bonus (6F6F60 both arms, 6F70E0 arcing arm), the arcing arm\'s 2-D distance, its arc test (48AB90, 48ACF0, 48ABC0) under supplied Gravity/Floater and its bridge ceiling (6F74D7); explicit supplied object/weapon/map fields.',
+        entry_points={'coordinate_cell_wrapper': 0x6F7970, 'range_source': 0x6F77B0, 'range': 0x6F7220, 'elevation_direct': 0x6F6F60, 'elevation_arcing': 0x6F70E0, 'cell_height': 0x487D50, 'map_cell_packed': 0x5657A0, 'cell_coords': 0x486840, 'cell_tile_gate': 0x4867E0, 'cell_ground': 0x47B3A0, 'map_ground': 0x578080, 'map_cell': 0x565730, 'line': 0x4CC310, 'launch_speed': 0x48AB90, 'floater_gravity': 0x48ACF0, 'can_reach': 0x48ABC0},
+        assumptions=['Supplied original Infantry table7EB058 (actor and object target) and Cell table7E4EEC; actor non-garrison, no bunker/veteran range bonuses; the open-topped rows set +0x82 and Rules+0xF5C (Rules at0x8871E0, bonus2 unless supplied). Projectile flags are false but the rows\' Floater +0x295, SubjectToElevation +0x297 and Arcing +0x29B: no wall/cliff collision; original line callable executes.', 'Supplied independently established104 level/208 high-flight and416 bridge constants and the104 Techno level height0xB0EB34 (StaticInit6F2970), x87 control0E7F. WaterSet base is a supplied theater input; tile and Dummy level/slope/flags are supplied current state. [ElevationModel] Rules+0x1838/+0x1840/+0x1848 are supplied per row, the constructor\'s 0/1.0/0.0 otherwise.', 'Rules+0x16B8 Gravity and BulletType+0x295 Floater are supplied per row, Gravity 0 unless given: a zero gravity gives launch speed 0 and Can_Reach48ABC0 admits the row. Rows exercise gravity 6, 6 halved by Floater, -6 and 0, a zero 2-D distance, and the bridge ceiling on a real cell, without and with retail gravity, and through a Dummy target centre that truncates into a real cell.', 'No constructors or complete PerCell/weapon selection/flight behavior claimed.'],
         substitutions=['GetWeapon+3F8 records requested slot and supplies one original-shaped weapon slot. No other callable substitution.']))

@@ -21,14 +21,20 @@
 //! wall or a cliff on the line refuses the shot outright. That is why this
 //! module takes `LineOfFireInputs` alongside the terrain grid.
 //!
+//! The arcing arm also runs the native arc test (`Ballistic_Launch_Speed`
+//! `0x0048AB90`, `Ballistic_Can_Reach` `0x0048ABC0`, owned by
+//! `util::native_ballistics`) and the bridge ceiling (`0x006F74D7`).
+//!
 //! Still missing from the range value: the garrison (`IsOccupied`,
-//! `0x006F727E`) and bunker (`0x006F72A2`) arms. Still missing from the arcing
-//! arm: its slope solver (`0x0048AB90`, `0x0048ABC0`) and bridge ceiling
-//! (`0x006F74D7..0x006F7504`).
+//! `0x006F727E`) and bunker (`0x006F72A2`) arms. The arcing arm's launch speed
+//! comes from that range, so a bunkered cannon tank, short of its
+//! `BunkerWeaponRangeBonus=` (512 leptons in retail), is also refused uphill
+//! shots native allows.
 //!
 //! Depends on: rules (ObjectType, Weapon, ProjectileType, ElevationModel), map
 //! (terrain height + bridge), sim/combat/line_of_fire, sim/map/bridge_topology
-//! (effective cell height), util/lepton (constants), util/native_x87.
+//! (effective cell height), util/lepton (constants), util/native_x87,
+//! util/native_ballistics.
 //! Does NOT depend on render/ui/audio/net.
 
 use crate::map::cell_index::NativeCellIdentity;
@@ -49,6 +55,7 @@ use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{
     BRIDGE_DECK_HEIGHT_LEPTONS, LEPTONS_PER_LEVEL, WEAPON_RANGE_ALWAYS_IN_RANGE_LEPTONS,
 };
+use crate::util::native_ballistics::{ballistic_can_reach, ballistic_launch_speed};
 use crate::util::native_x87::{
     NativeF64Bits, X87Chop53, X87Ordering, sqrt_approx_f32, sqrt_approx_length,
 };
@@ -429,19 +436,34 @@ fn compute_range_target(
     // the 2-D distance through Sqrt_Approx and ftol, and against the range
     // without the direct bonus or a building's foundation (`EBX = EDI` at
     // `0x006F7457`), plus the arcing bonus.
-    // RESIDUAL: the slope solver (`0x0048AB90`, `0x0048ABC0`, with the
-    // projectile's gravity) and the bridge ceiling that follow are not ported,
-    // so a shot they refuse passes here. The ceiling (`0x006F74D7..0x006F7504`)
-    // refuses a target in a bridge cell (flag `0x100`, read at the TARGET's
-    // cell) three or more levels above the source: every cannon tank firing up
-    // at a bridge deck.
-    if projectile.is_some_and(|p| p.arcing) {
+    if let Some(projectile) = projectile.filter(|p| p.arcing) {
         let distance = sqrt_approx_length([
             (tx as i32).wrapping_sub(src.0 as i32),
             (ty as i32).wrapping_sub(src.1 as i32),
         ]);
         let range = initial_range_lep + elevation_bonus(ElevationArm::Arcing);
         if i64::from(distance) > range {
+            return false;
+        }
+        // `0x006F747E..0x006F74D1`: a shell launched at the speed that range
+        // gives (`Ballistic_Launch_Speed`) must reach the target's height,
+        // under Rules `Gravity=`, halved for a `Floater=` projectile. With
+        // retail gravity, a target 834 leptons away and two levels up needs a
+        // range of 912; four levels up needs 1126.
+        let rise = (tz as i32).wrapping_sub(src.2 as i32);
+        let gravity = rules.general.gravity;
+        let speed = ballistic_launch_speed(range as i32, gravity, projectile.floater);
+        if !ballistic_can_reach(speed, distance, rise, gravity, projectile.floater) {
+            return false;
+        }
+        // The bridge ceiling, `0x006F74D7..0x006F7504`: a target whose cell
+        // (`0x00565730` at the target point) carries the structural bridge
+        // bit and sits three or more levels above the source is refused. A
+        // target on the deck stands at deck height, and the target snap
+        // (`0x006F7336`) lifts a marked target under the deck there too, so a
+        // cannon at the bridge's ground level can shell neither.
+        let cell = cells.lookup_world(tx as i32, ty as i32);
+        if cells.flags(cell) & 0x100 != 0 && i64::from(rise) >= 3 * LEPTONS_PER_LEVEL {
             return false;
         }
         // The arcing arm is NOT exempt from the line-of-fire walk: 0x006F7519
@@ -966,28 +988,30 @@ mod tests {
             "tools/spatial_oracle/walk_cell_range.json",
         ))
         .unwrap();
-        // The projectile's Arcing= and SubjectToElevation= combinations.
-        let mut variants = [(false, false), (false, true), (true, false), (true, true)].map(
-            |(arcing, elevation)| {
-                let flag = |on: bool| if on { "yes" } else { "no" };
-                rules_with_weapon(
-                    &format!(
-                        "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing={}\n\
-                         SubjectToElevation={}\nSubjectToWalls=no\nSubjectToCliffs=no",
-                        flag(arcing),
-                        flag(elevation)
-                    ),
-                    "",
-                    "",
-                )
-            },
-        );
+        // The projectile's Arcing=, SubjectToElevation= and Floater=
+        // combinations, one bit each.
+        let mut variants: [RuleSet; 8] = std::array::from_fn(|bits| {
+            let flag = |bit: usize| if bits & bit != 0 { "yes" } else { "no" };
+            rules_with_weapon(
+                &format!(
+                    "Range=3\nProjectile=Bullet\nWarhead=WH\n[Bullet]\nArcing={}\n\
+                     SubjectToElevation={}\nFloater={}\nSubjectToWalls=no\nSubjectToCliffs=no",
+                    flag(4),
+                    flag(2),
+                    flag(1)
+                ),
+                "",
+                "",
+            )
+        });
         let interner = test_interner();
         let entities = EntityStore::new();
         for (index, row) in rows.as_array().unwrap().iter().enumerate() {
             let input = &row["input"];
-            let rules = &mut variants[usize::from(input["arcing"] == true) * 2
-                + usize::from(input["subject_to_elevation"] == true)];
+            let rules = &mut variants[usize::from(input["arcing"] == true) * 4
+                + usize::from(input["subject_to_elevation"] == true) * 2
+                + usize::from(input["floater"] == true)];
+            rules.general.gravity = input["gravity"].as_i64().unwrap_or(0) as i32;
             rules.garrison_rules.open_topped_range_bonus =
                 input["open_topped_bonus"].as_i64().unwrap_or(2) as i32;
             rules.elevation_model = input.get("elevation").map_or_else(
