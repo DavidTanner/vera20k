@@ -258,6 +258,7 @@ impl LocomotorState {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn fly_target_height(&self) -> i32 {
         self.fly_runtime().map_or(0, |state| state.target_height())
     }
@@ -265,7 +266,7 @@ impl LocomotorState {
     #[cfg(test)]
     pub(crate) fn set_fly_target_height(&mut self, height: i32) {
         if let Some(state) = self.fly_runtime_mut() {
-            state.set_target_height(height);
+            state.set_flight_level(height);
         }
     }
 

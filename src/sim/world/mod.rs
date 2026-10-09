@@ -50,6 +50,7 @@ pub(crate) mod display_layers;
 mod display_registry;
 mod fly_landing;
 mod fly_orders;
+mod fly_process;
 mod frame_error;
 mod ground_keys;
 mod lifecycle;
@@ -2594,6 +2595,41 @@ impl Simulation {
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
+        );
+    }
+
+    /// `ReceiveDamage(&Health, 0, C4Warhead=, NULL, 1, 1, NULL)` (vt+0x16C):
+    /// the self-destruct that ends a flying locomotor's owner when it has
+    /// nowhere to go, in Fly's Stop_Moving (`0x004CD0CD`) and landing retry
+    /// (`0x004CEBC7`) and Jumpjet's Stop_Moving (`0x0054B6B6`). Native passes
+    /// the Health field itself; this uses the shared bridge_ground stock
+    /// C4Warhead=Super fatal-path quotient, not general aliased packet
+    /// support: override-only early damage-pointer writes remain outside it.
+    pub(crate) fn receive_own_health_c4(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    ) {
+        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
+            return;
+        };
+        let warhead = self.interner.intern(&rules.bridge_warheads.c4_name);
+        self.commit_direct_damage_receiver(
+            rules,
+            overlay_registry,
+            crate::sim::combat::EntityDamageEvent::direct_receiver(
+                id,
+                health,
+                0,
+                crate::sim::combat::RAD_NO_ATTACKER,
+                None,
+                warhead,
+                crate::sim::combat::ReceiverCallFlags {
+                    ignore_defenses: true,
+                    arg6: true,
+                },
+            ),
         );
     }
 

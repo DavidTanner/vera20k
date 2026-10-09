@@ -302,7 +302,6 @@ fn missing_foot_receiver_is_an_error_and_tube_does_not_hide_missing_descriptor()
 
 #[test]
 fn flight_queries_follow_live_altitude_producers_and_keep_jumpjet_exact_z() {
-    use crate::sim::movement::air_movement;
     let mut sim = Simulation::new();
     sim.interner = crate::sim::intern::test_interner();
     let base = DriveCoord::cell(8, 6, 104);
@@ -328,11 +327,18 @@ fn flight_queries_follow_live_altitude_producers_and_keep_jumpjet_exact_z() {
         Some(104)
     );
     let mut fly = entity(1, LocomotorKind::Fly, base, NULL_COORD);
+    fly.lifecycle.object_alive = true;
+    fly.lifecycle.in_limbo = false;
     let loco = fly.locomotor.as_mut().unwrap();
 
     loco.set_fly_target_height(1000);
+    // Process steps the height of a moving Fly (`0x004CDA0B`).
+    loco.fly_runtime_mut()
+        .unwrap()
+        .retain_destination(DriveCoord::cell(12, 6, 0), None, || 0);
     sim.substrate.entities.insert(fly);
-    air_movement::tick_air_movement(&mut sim.substrate.entities, 1, 1, 1, Some(&terrain), None);
+    sim.resolved_terrain = Some(terrain);
+    sim.tick_air_movement_with_cell_lists_one(1, None, None);
     let e = sim.substrate.entities.get(1).unwrap();
     let altitude = e.locomotor.as_ref().unwrap().altitude;
     assert!(altitude > SimFixed::from_num(0));

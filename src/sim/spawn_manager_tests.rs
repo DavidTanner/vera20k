@@ -2462,8 +2462,7 @@ CurleyShuffle=yes
 /// zero target speed that no later destination raised again, so only the
 /// Hornet launched on the send-out pass ever reached the target. A
 /// retail-shaped Hornet (`Landable=`, ROT 3) does not cruise over its hold and
-/// slows by distance for it (native lands it there; the Process landing
-/// trigger is unported). Either way Fly Process's target speed (`0x004CE145`,
+/// slows by distance for it. Either way Fly Process's target speed (`0x004CE145`,
 /// `air_movement::write_fly_target_speed`) takes the Hornet to full speed for
 /// its run. Before the manager queued Attack in the child's mission owner,
 /// `AircraftClass::AI` paid a pass's ammo the frame after its first bomb
@@ -2500,28 +2499,37 @@ fn every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass() {
 
 /// After its pass a Hornet is recalled with the Carrier itself as its NavCom
 /// (`Assign_Destination(owner, 1)`, `0x006B766D`), and Mission_Move flies it
-/// home. Landing on the deck is Fly's Process landing trigger, unported (see
-/// [`every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass`]).
+/// home. Over the Carrier's cell, stopped, Fly's landing trigger
+/// (`0x004CE3C0`) sets it down on the deck, a landing zone a Spawned aircraft
+/// may share with its spawner (`0x004DDC60`), and the manager takes it in to
+/// reload.
 #[test]
-fn a_recalled_hornet_flies_home_to_the_carrier_itself() {
-    use crate::sim::aircraft::AircraftMission;
-    use crate::sim::mission::{MissionId, MissionType};
+fn a_recalled_hornet_flies_home_and_lands_on_the_carrier() {
+    use crate::sim::spawn_manager::SpawnSlotState;
     let sortie = strafing_carrier_sortie("Landable=yes\nROT=3\n");
-    let carrier = Some(crate::sim::components::NavTargetRef::Entity { id: sortie.carrier });
+    let carrier = sortie.sim.substrate.entities.get(sortie.carrier).unwrap();
+    let deck = crate::sim::movement::ground_pose::position_world_coord(&carrier.position);
+    let slots = &carrier.spawn_manager.as_ref().unwrap().slots;
     for hornet in &sortie.wing {
         let navs = &sortie.navs[hornet];
         assert_eq!(
-            navs.last().map(|&(_, nav)| nav),
-            Some(carrier),
+            navs.iter().rev().find_map(|&(_, nav)| nav),
+            Some(crate::sim::components::NavTargetRef::Entity { id: sortie.carrier }),
             "Hornet {hornet} is sent home to the Carrier: {navs:?}"
         );
         let h = sortie.sim.substrate.entities.get(*hornet).unwrap();
-        assert!(
-            matches!(h.aircraft_mission, Some(AircraftMission::Move { .. }))
-                && h.mission.current() == MissionId::from_known(MissionType::Move),
-            "Hornet {hornet} flies home on Mission_Move: {:?}",
-            h.aircraft_mission
+        let landed = crate::sim::movement::ground_pose::position_world_coord(&h.position);
+        assert_eq!(
+            ((landed.x / 256, landed.y / 256), landed.z),
+            ((deck.x / 256, deck.y / 256), deck.z),
+            "Hornet {hornet} lands on the deck"
         );
+        assert!(h.lifecycle.in_limbo, "Hornet {hornet} is taken in");
+        let slot = slots
+            .iter()
+            .find(|slot| slot.spawn == Some(*hornet))
+            .unwrap();
+        assert_eq!(slot.state, SpawnSlotState::Reloading, "Hornet {hornet}");
     }
 }
 

@@ -13,7 +13,8 @@
 //!
 //! Two FSMs coexist:
 //! - `tick_aircraft_docks` (this module) handles aircraft *without* an
-//!   `AircraftMission` (legacy ammo state machine).
+//!   `AircraftMission` (legacy ammo state machine), up to the full reload,
+//!   which hands the parked aircraft over as `AircraftMission::DockedIdle`.
 //! - `tick_aircraft_missions` ([`crate::sim::aircraft`]) handles aircraft
 //!   *with* an `AircraftMission::Docking`/`DockedIdle`.
 //!
@@ -118,10 +119,9 @@ pub enum AircraftDockPhase {
     WaitForDock,
     /// Dock slot reserved, descending to land.
     Descending,
-    /// On the ground, reloading ammo.
+    /// On the ground, reloading ammo. Fully reloaded, the aircraft stays on
+    /// its pad in `AircraftMission::DockedIdle`.
     Reloading,
-    /// Fully reloaded, ascending to resume flight.
-    Launching,
 }
 
 // ---------------------------------------------------------------------------
@@ -525,7 +525,8 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     .and_then(|l| l.fly_runtime())
                     .is_some_and(|s| s.landing()),
                 arrived: crate::sim::movement::air_movement::fly_landing_arrival(e),
-                has_movement_target: e.movement_target.is_some(),
+                has_movement_target: e.movement_target.is_some()
+                    || crate::sim::movement::air_movement::fly_moving(e),
             })
         })
         .collect();
@@ -545,8 +546,8 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
         clear_attack_target: bool,
         /// Fly BeginLanding4CFA70 through the world owner.
         begin_landing: bool,
-        /// Fly BeginTakeoff4CF950 through the world owner.
-        begin_takeoff: bool,
+        /// The airfield a fully reloaded aircraft stays parked on.
+        parked_at: Option<u64>,
         air_move_to: Option<(u16, u16)>,
         clear_movement: bool,
     }
@@ -564,7 +565,7 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             restore_ammo: 0,
             clear_attack_target: false,
             begin_landing: false,
-            begin_takeoff: false,
+            parked_at: None,
             air_move_to: None,
             clear_movement: false,
         };
@@ -700,24 +701,18 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
                     m.restore_ammo = 1;
                     let new_ammo = snap.current_ammo + 1;
                     if new_ammo >= snap.max_ammo {
-                        // Fully reloaded — launch.
-                        m.new_dock_phase = Some(Some(AircraftDockPhase::Launching));
-                        m.begin_takeoff = true;
-                        // Release dock slot.
-                        sim.release_airfield_pad(snap.id);
+                        // Fully reloaded, it keeps its pad and contact, as
+                        // the mission dispatcher's reload does: Mission_Guard
+                        // (`0x0041A5C0`) holds a landed aircraft, and Fly
+                        // climbs only toward a destination (`0x004CDA0B`).
+                        m.new_dock_phase = Some(None);
+                        m.new_target_airfield = Some(None);
+                        m.parked_at = snap.target_airfield;
                     } else {
                         m.new_reload_timer = Some(reload_ticks);
                     }
                 } else {
                     m.new_reload_timer = Some(timer);
-                }
-            }
-
-            Some(AircraftDockPhase::Launching) => {
-                // Wait for air_movement to reach cruising altitude.
-                if snap.air_phase == Some(AirMovePhase::Cruising) {
-                    m.new_dock_phase = Some(None);
-                    m.new_target_airfield = Some(None);
                 }
             }
         }
@@ -749,12 +744,13 @@ pub fn tick_aircraft_docks(sim: &mut Simulation, rules: &RuleSet) {
             if m.clear_movement {
                 entity.movement_target = None;
             }
+            if let Some(airfield_id) = m.parked_at {
+                entity.aircraft_mission =
+                    Some(crate::sim::aircraft::AircraftMission::DockedIdle { airfield_id });
+            }
         }
         if m.begin_landing {
             sim.begin_fly_landing(m.id, Some(rules));
-        }
-        if m.begin_takeoff {
-            sim.begin_fly_takeoff(m.id, Some(rules));
         }
     }
 

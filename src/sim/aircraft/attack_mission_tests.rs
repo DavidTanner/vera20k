@@ -561,8 +561,14 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
         Some(NavTargetRef::Building { id: 2 }),
         "home to the dock, not to the edge {edge:?}"
     );
-    let target = plane.movement_target.as_ref().unwrap();
-    assert_eq!(target.final_goal, Some((21, 41)), "Fly heads for the pad");
+    let fly = plane.locomotor.as_ref().unwrap().fly_runtime().unwrap();
+    let destination = fly.destination();
+    assert!(fly.moving());
+    assert_eq!(
+        (destination.x / 256, destination.y / 256),
+        (21, 41),
+        "Fly heads for the pad"
+    );
 }
 
 /// The retail inputs the loop reads, through the production reader:

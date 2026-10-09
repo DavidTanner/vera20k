@@ -55,11 +55,16 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
          Locomotor={{4A582746-9839-11D1-B709-00A024DDAFD1}}\n{sounds}\
          [VICTIM]\nStrength=1000\nArmor=none\n\
          [CrashGun]\nDamage=150\nWarhead=CrashWH\n\
-         [CrashWH]\nCellSpread=1\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n",
+         [CrashWH]\nCellSpread=1\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+         [Clear]\nTrack=100%\n",
         int(input, "strength", 150),
         int(input, "ini_speed", 14),
     )))
     .unwrap();
+    // The oracle records Crash's Stun without running it. VERA's runs, and
+    // its Fly Stop_Moving asks Find_Attack_Cell for the cell under the
+    // aircraft; Track-passable Clear land is taken without a Scenario draw
+    // (aircraft_move's rows), so the stream compares past it.
     // aircraft_crash.py supplies Rules+1708=0.25. Native ReadAudioVisual
     // 0066B337..0066B35E owns this key; the constructor default is 0.5.
     assert_eq!(
