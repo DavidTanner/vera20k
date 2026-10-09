@@ -4,6 +4,7 @@
 //! insertion, selection, placement, takeover, and Recenter remain separate.
 
 use crate::rules::object_type::{ObjectCategory, ObjectType};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_buildable::{
     candidate_allowed, country_bit, first_buildable_from_array, first_owner_compatible_harvester,
@@ -280,37 +281,33 @@ fn move_eligible_seed<'a>(
 }
 
 /// `HouseClass @ 0x00505360`: every `Prerequisite=` of `candidate` is among
-/// `present`, a generic one (`POWER`, `FACTORY`, `BARRACKS`, `RADAR`, `TECH`,
-/// `PROC`) through any type of its `[AI]` list. Recalc passes the types it
-/// has planned; the base defense choice the house's own building types.
+/// `present`, a group through any type of its `[AI]` list (`POWER` BuildPower
+/// `Rules+0x8C8`, `FACTORY` BuildWeapons `+0x938`, `BARRACKS` BuildBarracks
+/// `+0x900`, `RADAR` BuildRadar `+0xA34`, `TECH` BuildTech `+0x91C`, `PROC`
+/// BuildRefinery `+0x8E4`; jump table `0x0050548C`). Recalc passes the types
+/// it has planned; the base defense choice the house's own building types.
 pub(crate) fn prerequisites_satisfied(
     candidate: &ObjectType,
     present: &[&ObjectType],
     rules: &RuleSet,
 ) -> bool {
-    candidate.prerequisite.iter().all(|token| {
-        let family = match token.to_ascii_uppercase().as_str() {
-            "POWER" => Some(&rules.build_power_types),
-            "FACTORY" => Some(&rules.build_weapons_types),
-            "BARRACKS" => Some(&rules.build_barracks_types),
-            "RADAR" => Some(&rules.build_radar_types),
-            "TECH" => Some(&rules.build_tech_types),
-            "PROC" => Some(&rules.build_refinery_types),
-            _ => None,
-        };
-        if let Some(family) = family {
-            return present.iter().any(|ty| {
+    candidate.prerequisite.iter().all(|entry| match *entry {
+        Prerequisite::Building(index) => present.iter().any(|ty| ty.base_plan_type_index == index),
+        Prerequisite::Group(group) => {
+            let family = match group {
+                PrerequisiteGroup::Power => &rules.build_power_types,
+                PrerequisiteGroup::Factory => &rules.build_weapons_types,
+                PrerequisiteGroup::Barracks => &rules.build_barracks_types,
+                PrerequisiteGroup::Radar => &rules.build_radar_types,
+                PrerequisiteGroup::Tech => &rules.build_tech_types,
+                PrerequisiteGroup::Proc => &rules.build_refinery_types,
+            };
+            present.iter().any(|ty| {
                 family
                     .iter()
                     .any(|type_id| type_id.eq_ignore_ascii_case(&ty.id))
-            });
+            })
         }
-        let Some(required_index) = rules.building_type_index(token) else {
-            return false;
-        };
-        present
-            .iter()
-            .any(|ty| ty.base_plan_type_index == required_index)
     })
 }
 
@@ -496,10 +493,13 @@ mod tests {
 
     #[test]
     fn recalc_withholds_gaplug_and_breaks_cycle_with_last_unselected() {
+        // BLOCK waits on a BuildingType the planner never selects; a name no
+        // BuildingType has would be dropped by the parser and block nothing.
         let rules = basic_rules(
-            "7=BLOCK\n8=GAPLUG",
-            "[BLOCK]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nPrerequisite=MISSING\nFoundation=1x1\n\
-             [GAPLUG]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nFoundation=1x1\n",
+            "7=BLOCK\n8=GAPLUG\n9=NEVER",
+            "[BLOCK]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nPrerequisite=NEVER\nFoundation=1x1\n\
+             [GAPLUG]\nOwner=Americans\nAIBuildThis=yes\nTechLevel=1\nFoundation=1x1\n\
+             [NEVER]\nOwner=Americans\nTechLevel=1\nFoundation=1x1\n",
         );
         let (plan, _) = generated_values(&rules, "Americans", 0, HouseDifficulty::Hard, 11);
         assert_eq!(&values(&plan)[6..], [8, 7]);

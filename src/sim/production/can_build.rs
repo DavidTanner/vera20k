@@ -41,6 +41,7 @@
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{FactoryType, ObjectCategory, ObjectType};
+use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::house_state::HouseState;
 use crate::sim::house_tracking::HouseTracking;
@@ -100,13 +101,12 @@ pub(crate) fn can_build(
     let Some(house) = sim.houses.get(&owner) else {
         return CanBuild::No;
     };
-    let override_on_map = obj.prerequisite_override.iter().any(|type_id| {
-        sim.interner.get(type_id).is_some_and(|type_id| {
-            house
-                .tracking
-                .active_count(EntityCategory::Structure, type_id)
-                > 0
-        })
+    // `CounterClass::GetItemCount @ 0x0049FAE0` at a group's negative code
+    // reads before the counter array: the residual in
+    // `crate::rules::prerequisite`.
+    let override_on_map = obj.prerequisite_override.iter().any(|entry| match *entry {
+        Prerequisite::Building(index) => buildings_on_map(sim, rules, house, index) > 0,
+        Prerequisite::Group(_) => false,
     });
     if override_on_map {
         return build_limit(sim, owner, obj, count_in_production);
@@ -151,53 +151,59 @@ pub(crate) fn can_build(
     if !obj
         .prerequisite
         .iter()
-        .all(|entry| prerequisite_on_map(sim, rules, house, entry))
+        .all(|&entry| prerequisite_on_map(sim, rules, house, entry))
     {
         return CanBuild::No;
     }
     build_limit(sim, owner, obj, count_in_production)
 }
 
-/// One `Prerequisite=` entry of CanBuild's human arm, as
-/// `Prerequisite_INI_Parser @ 0x004770E0` reads it. `POWER`, `FACTORY`,
-/// `BARRACKS`, `RADAR`, `TECH` and `PROC` (any case) name the `[General]
-/// Prerequisite*` lists: any member on the map (`HouseClass+0x5550`, above
-/// zero) meets the entry, and an empty list never does. `PROC` is also met
-/// by an on-map `PrerequisiteProcAlternate=` unit (`+0x5564`,
-/// `0x004F7DB0..0x004F7DCE`), a Slave Miner in retail. Any other name is a
-/// BuildingType, met while its on-map count is not zero (`0x004F7E5C`); a
-/// name no BuildingType has was dropped by the parser.
-fn prerequisite_on_map(sim: &Simulation, rules: &RuleSet, house: &HouseState, entry: &str) -> bool {
-    const LISTS: [&str; 6] = ["POWER", "FACTORY", "BARRACKS", "RADAR", "TECH", "PROC"];
-    let on_map = |category: ObjectCategory, name: &str| {
-        rules
-            .object_in_category(category, name)
-            .and_then(|ty| sim.interner.get(&ty.id))
-            .map_or(0, |type_id| {
-                house
-                    .tracking
-                    .active_count(EntityCategory::from(category), type_id)
-            })
+/// One `Prerequisite=` entry of CanBuild's human arm
+/// (`0x004F7C01..0x004F7E5E`). A group is met by any member of its
+/// `[General] Prerequisite*` list on the map (`HouseClass+0x5550` above
+/// zero), never by an empty list; `PROC` also by an on-map
+/// `PrerequisiteProcAlternate=` unit (`+0x5564`, `0x004F7DB0..0x004F7DCE`), a
+/// Slave Miner in retail. A BuildingType is met while its on-map count is not
+/// zero (`0x004F7E50..0x004F7E5E`).
+fn prerequisite_on_map(
+    sim: &Simulation,
+    rules: &RuleSet,
+    house: &HouseState,
+    entry: Prerequisite,
+) -> bool {
+    let group = match entry {
+        Prerequisite::Building(index) => return buildings_on_map(sim, rules, house, index) != 0,
+        Prerequisite::Group(group) => group,
     };
-    let Some(list) = LISTS
-        .into_iter()
-        .find(|list| list.eq_ignore_ascii_case(entry))
-    else {
-        return rules
-            .object_in_category(ObjectCategory::Building, entry)
-            .is_none()
-            || on_map(ObjectCategory::Building, entry) != 0;
-    };
-    rules.prerequisite_group(list).is_some_and(|members| {
-        members
-            .iter()
-            .any(|member| on_map(ObjectCategory::Building, member) > 0)
-    }) || (list == "PROC"
-        && rules
-            .general
-            .prerequisite_proc_alternate
-            .as_deref()
-            .is_some_and(|unit| on_map(ObjectCategory::Vehicle, unit) > 0))
+    rules
+        .prerequisite_list(group)
+        .iter()
+        .any(|member| match *member {
+            Prerequisite::Building(index) => buildings_on_map(sim, rules, house, index) > 0,
+            // A group's code reads before the counter array: the residual in
+            // `crate::rules::prerequisite`.
+            Prerequisite::Group(_) => false,
+        })
+        || (group == PrerequisiteGroup::Proc
+            && rules
+                .general
+                .prerequisite_proc_alternate
+                .as_deref()
+                .and_then(|unit| rules.object_in_category(ObjectCategory::Vehicle, unit))
+                .and_then(|unit| sim.interner.get(&unit.id))
+                .is_some_and(|unit| house.tracking.active_count(EntityCategory::Unit, unit) > 0))
+}
+
+/// The house's on-map count of BuildingType `index` (`HouseClass+0x5550`).
+fn buildings_on_map(sim: &Simulation, rules: &RuleSet, house: &HouseState, index: i32) -> i32 {
+    rules
+        .building_type_at(index)
+        .and_then(|building| sim.interner.get(&building.id))
+        .map_or(0, |type_id| {
+            house
+                .tracking
+                .active_count(EntityCategory::Structure, type_id)
+        })
 }
 
 /// CanBuild's build limit (`0x004F7F9E..0x004F8357`): a type at or over

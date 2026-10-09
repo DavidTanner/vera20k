@@ -423,12 +423,14 @@ pub struct ObjectType {
     pub ai_build_this: bool,
     /// Whether this type may appear in multiplayer starting-unit generation.
     pub allowed_to_start_in_multiplayer: bool,
-    /// Building prerequisites required before this can be built.
-    pub prerequisite: Vec<String>,
-    /// Alternative prerequisite path (PrerequisiteOverride= in rules.ini).
-    /// If non-empty AND the owner has ANY building from this list, the normal
-    /// Prerequisite check is skipped entirely (OR logic).
-    pub prerequisite_override: Vec<String>,
+    /// `Prerequisite=` (`TechnoTypeClass+0x638`, items `+0x63C`, count
+    /// `+0x648`), parsed in each rules pass that reads it
+    /// (`crate::rules::prerequisite`).
+    pub prerequisite: Vec<crate::rules::prerequisite::Prerequisite>,
+    /// `PrerequisiteOverride=` (`TechnoTypeClass+0x654`): a house with one of
+    /// these on the map skips CanBuild's tech and prerequisite gates. Parsed
+    /// like [`Self::prerequisite`].
+    pub prerequisite_override: Vec<crate::rules::prerequisite::Prerequisite>,
     /// `BuildLimit=` (`TechnoTypeClass+0x3B8`, ReadINI `0x00713157`): the
     /// constructor's `0x7FFFFFFF` (`0x00710CF0`) when absent. `CanBuild`
     /// caps a positive limit by the house's tracked count of the type and a
@@ -2003,15 +2005,10 @@ impl ObjectType {
                 .is_present(key)
                 .then(|| SimFixed::from_bits(section.read_range(key, 0) << 8))
         };
-        // The house lists (`0x004750D0`) and the two prerequisite lists
-        // (`Prerequisite_INI_Parser @ 0x004770E0`) each read `char[128]`.
+        // The house lists (`0x004750D0`) read `char[128]`. The two
+        // prerequisite lists name BuildingTypes, so `RuleSet` parses them.
         let owner: Vec<String> = section
             .read_list("Owner", 0x80)
-            .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
-            .unwrap_or_default();
-
-        let prerequisite: Vec<String> = section
-            .read_list("Prerequisite", 0x80)
             .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
             .unwrap_or_default();
 
@@ -2022,11 +2019,6 @@ impl ObjectType {
 
         let forbidden_houses: Vec<String> = section
             .read_list("ForbiddenHouses", 0x80)
-            .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
-            .unwrap_or_default();
-
-        let prerequisite_override: Vec<String> = section
-            .read_list("PrerequisiteOverride", 0x80)
             .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
             .unwrap_or_default();
 
@@ -2186,8 +2178,8 @@ impl ObjectType {
             // 0x00460FE2..0x00460FF6 binds `AIBuildThis=`.
             ai_build_this: section.read_bool("AIBuildThis", false),
             allowed_to_start_in_multiplayer: section.read_bool("AllowedToStartInMultiplayer", true),
-            prerequisite,
-            prerequisite_override,
+            prerequisite: Vec::new(),
+            prerequisite_override: Vec::new(),
             // ReadInt over the constructor's 0x7FFFFFFF (`0x00713152`).
             build_limit: section.read_int("BuildLimit", i32::MAX),
             requires_stolen_allied_tech: section.read_bool("RequiresStolenAlliedTech", false),
@@ -3116,7 +3108,6 @@ mod tests {
         assert_eq!(obj.owner, vec!["Americans", "Alliance"]);
         assert_eq!(obj.required_houses, vec!["Americans"]);
         assert!(obj.allowed_to_start_in_multiplayer);
-        assert_eq!(obj.prerequisite, vec!["GAWEAP"]);
         assert_eq!(obj.primary(), Some("105mm"));
         assert_eq!(obj.secondary(), None);
         assert_eq!(obj.image, "MTNK"); // Defaults to ID when Image= absent.
@@ -3399,7 +3390,6 @@ mod tests {
         );
         assert!(obj.owner.is_empty());
         assert!(obj.required_houses.is_empty());
-        assert!(obj.prerequisite.is_empty());
         assert_eq!(obj.primary(), None);
         assert_eq!(obj.image, "BARE");
         assert_eq!(obj.power, 0);
