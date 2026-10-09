@@ -511,6 +511,7 @@ pub(super) fn install_infantry_delivery_fixture_map(sim: &mut Simulation) {
 
 pub(super) fn spawn_structure(
     sim: &mut Simulation,
+    rules: &RuleSet,
     sid: u64,
     owner: &str,
     type_id: &str,
@@ -545,6 +546,11 @@ pub(super) fn spawn_structure(
     ge.in_playfield = true;
     ge.finish_building_construction_for_test();
     ge.building_actually_placed = true;
+    ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
+        crate::map::entities::EntityCategory::Structure,
+        rules.object(type_id),
+        Some(rules),
+    );
     sim.substrate.entities.insert(ge);
     // Use the lifecycle boundary so the fixture is a placed (not factory-held)
     // structure and raw-store consumers see the same Mark state as gameplay.
@@ -554,6 +560,10 @@ pub(super) fn spawn_structure(
     // prerequisites read them.
     sim.update_house_tracking(sid, crate::sim::house_tracking::HouseTracking::add_tracking);
     sim.update_house_presence(sid, true);
+    sim.update_house_tracking(
+        sid,
+        crate::sim::house_tracking::HouseTracking::increment_factory_count,
+    );
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -662,7 +672,7 @@ fn exit_coord_parsed_and_used_for_spawn() {
 
     // Spawn test: GAWEAP at (20,20), ExitCoord→primary cell (22,21).
     let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 20, 20);
     let producer = sim.substrate.entities.get(1).unwrap();
     let exit = crate::sim::movement::building_exit_coordinate(
         crate::sim::movement::ground_pose::position_world_coord(&producer.position),
@@ -685,7 +695,7 @@ fn exit_coord_parsed_and_used_for_spawn() {
 fn war_factory_spawn_contact_is_marked_per_produced_mover() {
     let rules = factory_rules();
     let mut sim = Simulation::new();
-    spawn_structure(&mut sim, 10, "Americans", "GAWEAP", 20, 20);
+    spawn_structure(&mut sim, &rules, 10, "Americans", "GAWEAP", 20, 20);
 
     // Supply the ordinary ExitCoord pose. This isolates the shared contact
     // owner; producer selection and Unlimbo have their own native comparisons.
@@ -752,7 +762,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     });
     sim.playfield_size_height = Some(32);
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     let produced = sim
         .construct_object_limbo_at_height("DEST", "Americans", 0, 0, 0, 0, &rules)
@@ -806,8 +816,8 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
     sim.session.map_height = 40;
 
     // The older/lower stable-id land factory must never win the Ship slot.
-    spawn_structure(&mut sim, 1, "Americans", "GAWEAP", 4, 4);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAWEAP", 4, 4);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     // Direct fixture insertion bypasses Building::Unlimbo's 448070 call.
@@ -990,8 +1000,8 @@ fn naval_delivery_nonzero_canenter_refunds_without_trying_second_producer() {
     });
     sim.playfield_size_height = Some(40);
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     super::initialize_factory_primary(&mut sim, 1, &rules);
@@ -1107,8 +1117,8 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         americans,
         crate::sim::house_state::HouseState::new(americans, 0, None, true, STARTING_CREDITS, 10),
     );
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
-    spawn_structure(&mut sim, 2, "Americans", "GAYARD", 20, 20);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     stamp_type_foundation(&mut sim, &rules, 2);
     super::initialize_factory_primary(&mut sim, 1, &rules);
@@ -1236,7 +1246,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1341,7 +1351,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1417,7 +1427,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     sim.session.map_width = 40;
     sim.session.map_height = 40;
 
-    spawn_structure(&mut sim, 1, "Americans", "GAYARD", 10, 10);
+    spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 10, 10);
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
@@ -1516,7 +1526,7 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
     let harvester_sid = sim
         .spawn_object("HARV", "Americans", 10, 10, 64, &rules)
         .expect("spawn harvester");
-    spawn_structure(&mut sim, 2, "Americans", "GAREFN", 8, 10);
+    spawn_structure(&mut sim, &rules, 2, "Americans", "GAREFN", 8, 10);
     // Whole-multiple of the ore base (120) so the cell drains cleanly. The
     // production overlay seeder always stores `(frame+1) * base`, so cells
     // in real maps never carry a sub-density-level leftover.

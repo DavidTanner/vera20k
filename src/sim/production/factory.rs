@@ -22,9 +22,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::rules::object_type::ObjectType;
+use crate::rules::object_type::{ObjectCategory, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::economy::Economy;
+use crate::sim::house_tracking::FactorySlot;
 use crate::sim::intern::InternedId;
 use crate::sim::production::production_tech::production_category_for_object;
 use crate::sim::production::production_types::ProductionCategory;
@@ -422,14 +423,15 @@ pub fn time_to_build(inputs: &TimeToBuildInputs) -> i32 {
     time
 }
 
-/// Resolve [`time_to_build`]'s inputs for `owner` building `obj` in `category`:
-/// the rules and type fields, the owner's country multiplier (`0x0050C0A0`),
-/// power (House `+0x53A4`/`+0x53A8`) and factory count (`0x00500910`).
+/// Resolve [`time_to_build`]'s inputs for `owner` building `obj`: the rules
+/// and type fields, the owner's country multiplier (`0x0050C0A0`), power
+/// (House `+0x53A4`/`+0x53A8`) and factory count (`GetFactoryCount @
+/// 0x00500910`, called at `0x006F48CF` with the object's class and, for a
+/// unit, its type's `Naval=`).
 pub(super) fn time_to_build_inputs(
     sim: &crate::sim::world::Simulation,
     rules: &RuleSet,
     owner: InternedId,
-    category: ProductionCategory,
     obj: &ObjectType,
 ) -> TimeToBuildInputs {
     let country_multiplier = sim.houses.get(&owner).map_or(NativeF32Bits::ONE, |house| {
@@ -439,13 +441,17 @@ pub(super) fn time_to_build_inputs(
         .power_states
         .get(&owner)
         .map_or((0, 0), |power| (power.total_output, power.total_drain));
-    let factory_count = crate::sim::production::production_tech::matching_factory_count_for_owner(
-        &sim.substrate.entities,
-        rules,
-        sim.interner.resolve(owner),
-        category,
-        &sim.interner,
-    );
+    let slot = match obj.category {
+        ObjectCategory::Building => FactorySlot::Building,
+        ObjectCategory::Infantry => FactorySlot::Infantry,
+        ObjectCategory::Aircraft => FactorySlot::Aircraft,
+        ObjectCategory::Vehicle if obj.naval => FactorySlot::Naval,
+        ObjectCategory::Vehicle => FactorySlot::Vehicle,
+    };
+    let factory_count = sim
+        .houses
+        .get(&owner)
+        .map_or(0, |house| house.tracking.factory_count(slot));
     TimeToBuildInputs {
         cost: obj.cost,
         build_speed: rules.production.build_speed,
@@ -456,9 +462,9 @@ pub(super) fn time_to_build_inputs(
         low_power_penalty: rules.production.low_power_penalty_modifier,
         min_low_power_speed: rules.production.min_low_power_production_speed,
         max_low_power_speed: rules.production.max_low_power_production_speed,
-        factory_count: i32::try_from(factory_count).unwrap_or(i32::MAX),
+        factory_count,
         multiple_factory: rules.production.multiple_factory,
-        wall: obj.category == crate::rules::object_type::ObjectCategory::Building && obj.wall,
+        wall: obj.category == ObjectCategory::Building && obj.wall,
         wall_coefficient: rules.production.wall_build_speed_coefficient,
     }
 }
@@ -1267,13 +1273,7 @@ impl FactoryRegistry {
                 .as_ref()
                 .and_then(|object| sim.object_type(object.type_id, rules))
                 .map_or(1, |object| {
-                    time_to_build(&time_to_build_inputs(
-                        sim,
-                        rules,
-                        owner,
-                        factory.category,
-                        object,
-                    ))
+                    time_to_build(&time_to_build_inputs(sim, rules, owner, object))
                 });
             factory.set_rate(rate);
         }
@@ -1591,19 +1591,23 @@ mod tests {
                 false,
             );
             producer.lifecycle.in_limbo = false;
+            producer.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
+                EntityCategory::Structure,
+                rules.object("PRODUCER"),
+                Some(&rules),
+            );
             sim.substrate.entities.insert(producer);
+            sim.update_house_tracking(
+                1,
+                crate::sim::house_tracking::HouseTracking::increment_factory_count,
+            );
             let mut power = PowerState::default();
             power.total_output = input["power_output"].as_i64().unwrap() as i32;
             power.total_drain = input["power_drain"].as_i64().unwrap() as i32;
             sim.power_states.insert(owner, power);
             let type_id = sim.interner.intern("PENDING");
-            let inputs = time_to_build_inputs(
-                &sim,
-                &rules,
-                owner,
-                ProductionCategory::Vehicle,
-                rules.object("PENDING").unwrap(),
-            );
+            let inputs =
+                time_to_build_inputs(&sim, &rules, owner, rules.object("PENDING").unwrap());
             // Pin inputs independently of the resulting rate. The shared
             // numeric owner is already compared by time_to_build.json.
             let supplied = native_time_to_build_inputs(input);

@@ -63,8 +63,7 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
         if !held {
             return false;
         }
-        let time_to_build =
-            time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+        let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, obj));
         let frame = sim.session.binary_frame;
         sim.production
             .factories
@@ -139,11 +138,11 @@ pub(super) fn start_active_production(
     holder: FactoryHolder,
     type_id: InternedId,
 ) -> Option<u64> {
-    let (owner_id, category) = sim
+    let owner_id = sim
         .production
         .factories
         .factory(holder)
-        .map(|factory| (factory.owner, factory.category))?;
+        .map(|factory| factory.owner)?;
     let obj = sim.object_type(type_id, rules)?;
     let owner = sim.interner.resolve(owner_id).to_string();
     let type_name = sim.interner.resolve(type_id).to_string();
@@ -159,7 +158,7 @@ pub(super) fn start_active_production(
         let _ = sim.discard_constructed_limbo(stable_id, Some(rules));
         return None;
     }
-    let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, category, obj));
+    let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, obj));
     let frame = sim.session.binary_frame;
     sim.production
         .factories

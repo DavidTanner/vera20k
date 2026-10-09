@@ -1,8 +1,8 @@
-//! A house's object counts, as its multiplayer defeat gate and the computer's
-//! AI triggers read them.
+//! A house's object counts, as its multiplayer defeat gate, the computer's AI
+//! triggers, production times and EVA read them.
 //!
-//! Native owner: `HouseClass`. Two independent sets of counters, each with its
-//! own writers:
+//! Native owner: `HouseClass`. Independent sets of counters, each with its own
+//! writers:
 //! - Tracking (`HouseClass::Add_Tracking @ 0x004FF700`, `Remove_Tracking @
 //!   0x004FF550`): added when the Techno is constructed (the class
 //!   constructors and InitFromType, `0x007355EA`, `0x00517CD4`, `0x00414068`,
@@ -59,6 +59,20 @@
 //! functions write (`+0x2E8`, `+0x2EC`, `+0x2F4`, `+0x2F8`, the owned-type
 //! sets) have no reader in this mechanism and are not kept.
 //!
+//! Factory counters (`+0x5378` aircraft, `+0x537C` infantry, `+0x5380`
+//! vehicle, `+0x5384` building, `+0x5388` naval): a building whose type has
+//! `Factory=` joins the counter its `Factory=` and `Naval=` choose
+//! (`HouseClass::IncrementFactoryCount @ 0x004FFA50`) when BuildingClass::
+//! Unlimbo places it (`0x00440D13`) and ChangeOwner gives it to a house
+//! (`0x00448CDD`), and leaves it (`HouseClass::Recount @ 0x004FF980`, a plain
+//! decrement) at its first Limbo (`0x00445D8E`) and when ChangeOwner takes it
+//! from a house (`0x0044870E`). An ordinary building death limbos it at once:
+//! `BuildingClass::ReceiveDamage` UnInits it in its death arm (`0x0044269A`);
+//! an `Explodes=` building or one killed while selling waits for its Update
+//! (`0x004400D4`), which VERA does not (`crate::sim::crew_survival`).
+//! Time_To_Build reads one counter (`HouseClass::GetFactoryCount @
+//! 0x00500910`); the EVA funds nag sums four.
+//!
 //! Evidence: `tools/spatial_oracle/house_tracking.py` runs the original
 //! Add_Tracking and Remove_Tracking (36 cases);
 //! `tools/spatial_oracle/house_defeat_gate.py` runs the gate block with the
@@ -79,13 +93,19 @@
 //! objects stand (the house is defeated and they are blown up) or stay
 //! negative when nothing is left (the house is never defeated); VERA does
 //! neither.
+//!
+//! RESIDUAL: Limbo skips Recount while the game is not active
+//! (`0x00445AC6`, `[0x00A8E9A0]`); VERA has no such flag and always counts
+//! the Limbo. Trigger: a placed building limboed before the game starts or
+//! after it ends. Effect: the native counter keeps that building. Frequency:
+//! scenario load and teardown only, when no reader runs.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
-use crate::rules::object_type::ObjectType;
+use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::{HouseCostFactors, RuleSet};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
@@ -107,6 +127,10 @@ pub struct TrackingFacts {
     /// The value arm of the on-map writers; none for a building.
     #[serde(default)]
     force_value: Option<ForceValueFacts>,
+    /// A building's factory counter, from its type's `Factory=` and
+    /// `Naval=`.
+    #[serde(default)]
+    factory: Option<FactorySlot>,
 }
 
 impl TrackingFacts {
@@ -136,6 +160,9 @@ impl TrackingFacts {
             resource_gatherer: ty.resource_gatherer,
             resource_destination: ty.resource_destination,
             force_value: ForceValueFacts::of(category, ty),
+            factory: (category == EntityCategory::Structure)
+                .then(|| ty.factory.map(|factory| FactorySlot::of(factory, ty.naval)))
+                .flatten(),
         }
     }
 
@@ -145,6 +172,31 @@ impl TrackingFacts {
         Self {
             insignificant: true,
             ..Self::default()
+        }
+    }
+}
+
+/// One of a house's factory counters, in their order from `+0x5378`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FactorySlot {
+    Aircraft,
+    Infantry,
+    Vehicle,
+    Building,
+    Naval,
+}
+
+impl FactorySlot {
+    /// The counter of a building with `Factory=factory`: the switch on Type
+    /// `+0xEB8` in IncrementFactoryCount and Recount, where a `UnitType`
+    /// factory whose type is `Naval=` (`+0xCCE`) is a shipyard.
+    pub(crate) const fn of(factory: FactoryType, naval: bool) -> Self {
+        match factory {
+            FactoryType::AircraftType => Self::Aircraft,
+            FactoryType::InfantryType => Self::Infantry,
+            FactoryType::UnitType if naval => Self::Naval,
+            FactoryType::UnitType => Self::Vehicle,
+            FactoryType::BuildingType => Self::Building,
         }
     }
 }
@@ -251,6 +303,9 @@ pub struct HouseTracking {
     /// ([`HouseTracking::airport_docks`]).
     #[serde(default)]
     airport_docks: i32,
+    /// `HouseClass+0x5378..+0x5388`, in [`FactorySlot`] order.
+    #[serde(default)]
+    factories: [i32; 5],
 }
 
 impl HouseTracking {
@@ -319,6 +374,50 @@ impl HouseTracking {
     /// `docks`, then raise a negative count to zero.
     pub(crate) fn limbo_airport_docks(&mut self, docks: i32) {
         self.airport_docks = self.airport_docks.wrapping_sub(docks).max(0);
+    }
+
+    /// `HouseClass::IncrementFactoryCount @ 0x004FFA50`: a building with
+    /// `Factory=` joins its counter.
+    pub(crate) fn increment_factory_count(&mut self, entity: &GameEntity) {
+        self.count_factory(entity, 1);
+    }
+
+    /// `HouseClass::Recount @ 0x004FF980`: a building with `Factory=` leaves
+    /// its counter.
+    pub(crate) fn recount(&mut self, entity: &GameEntity) {
+        self.count_factory(entity, -1);
+    }
+
+    /// Both test What_Am_I for a building first (`0x004FF98B`,
+    /// `0x004FFA5B`).
+    fn count_factory(&mut self, entity: &GameEntity, delta: i32) {
+        if entity.category != EntityCategory::Structure {
+            return;
+        }
+        if let Some(slot) = entity.tracking_facts.factory {
+            let count = &mut self.factories[slot as usize];
+            *count = count.wrapping_add(delta);
+        }
+    }
+
+    /// `HouseClass::GetFactoryCount @ 0x00500910`: one factory counter.
+    pub(crate) const fn factory_count(&self, slot: FactorySlot) -> i32 {
+        self.factories[slot as usize]
+    }
+
+    /// The EVA funds nag's factory sum (`0x004F8B74..0x004F8B92`): infantry,
+    /// vehicle, building and naval, without aircraft.
+    pub(crate) const fn funds_nag_factories(&self) -> i32 {
+        let [_, infantry, vehicle, building, naval] = self.factories;
+        naval
+            .wrapping_add(building)
+            .wrapping_add(vehicle)
+            .wrapping_add(infantry)
+    }
+
+    /// The factory counters, for the world hash.
+    pub(crate) const fn factories(&self) -> [i32; 5] {
+        self.factories
     }
 
     pub(crate) fn owned_count(&self, category: EntityCategory, type_id: InternedId) -> i32 {
