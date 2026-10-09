@@ -1348,7 +1348,7 @@ fn a_house_builds_only_up_to_its_own_tech_level() {
     let americans = sim.interner.intern("Americans");
     spawn_structure(&mut sim, 1, "Americans", "GAPILE", 10, 10);
     let e1 = sim.interner.intern("E1");
-    // An UnbuildableTechLevel option is hidden from the sidebar list.
+    // CanBuild refuses a type above the house's TechLevel: off the sidebar.
     for (house_tech_level, listed_enabled) in [(0, None), (1, Some(true))] {
         sim.houses.get_mut(&americans).unwrap().tech_level = house_tech_level;
         let options = build_options_for_owner(&sim, &rules, "Americans");
