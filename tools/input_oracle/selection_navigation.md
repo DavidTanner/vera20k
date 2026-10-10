@@ -1,15 +1,23 @@
-# Next/Previous object selection
+# Keyboard selection navigation
 
 Run from the checkout with the supported retail executable selected:
 
 ```sh
-VERA20K_GAMEMD_EXE=/path/to/gamemd.exe python -m tools.input_oracle.selection_navigation --check
+VERA20K_GAMEMD_EXE=/path/to/gamemd.exe \
+VERA20K_COMBATANT_INPUTS=/path/to/physical/selection/layers \
+python -m tools.input_oracle.selection_navigation --check
 ```
 
 Explicit `--write` regenerates the JSON and identity/coverage sidecar. The shared
 native runner verifies executable identity, checked return boundaries and unchanged
 original code. No executable is distributed. Inputs are initialized memory, not a
 native scenario load or whole constructor/lifecycle proof.
+
+The physical selection directory contains `RULESMD.INI`, `MPBATTLEMD.INI` and
+`XMP03T4.MAP`, plus `LANGRULE.INI` when present. Filename case may follow the
+existing extraction tool. Extract these bytes through the production asset owner;
+the appended corpus records their SHA-256 identities. The older three groups
+retain their original inputs, fields and outputs.
 
 The fixture reuses `KeyboardFixture` to execute ordinary command registration,
 the input oracle's scalar/sink helpers, `NativeCallTrace` for nested return
@@ -104,3 +112,104 @@ exact fixture state does not establish whole-engine determinism. No action-line
 timer start or Detach is traversed in this
 bounded untagged path. Arbitrary Tag actions and later audio/renderer consumers
 remain separate behavior.
+
+## CombatantSelect P and retained selection modes
+
+`combatant_histories` executes the originally registered CombatantSelect
+`5367F0`, TypeSelect `5368B0` (press and release), and HealthNav `536950`.
+P and Health pass `!(key >> 8) & 1`; ordinary P clears selection, Shift+P adds.
+TypeSelect uses its actual key-edge/tap receiver, with a supplied 100 ms
+`timeGetTime` interval. No command, filter, selection, comparator or RNG algorithm
+is implemented in Python.
+
+P `732280` first rejects the nonzero command guard `A8B538`, then invokes
+`6DA770` to drop a lone nonowned selection. Outside campaign, owner admission is
+exact current-house identity through `50B6F0`; campaign uses owner `+1ED` directly.
+Human `+1EC` alone does not pass that campaign branch. `Deselect5F44A0` clears
+follow where appropriate and retains the current selection mode; dropping a
+lone nonlocal selection therefore retains an existing P map scope.
+The `shift_P_lone_nonlocal_campaign0_human0` and
+`shift_P_lone_nonlocal_campaign1_human1` histories start with mode1/maptrue,
+selected/follow20 and Shift held. Both remove the nonlocal20, clear follow,
+retain map scope and end with only local40 selected. Shift's retained selection
+policy therefore still requires this explicit deselection to reach committed
+membership; the campaign control has human1EC true and player-control1ED false.
+
+The source gate `732580` tests pointer, Alive `+90` and that owner admission.
+It does not use the stricter N/M health/limbo/in-playfield/discovered gate
+`6F32D0`. The supplied undisguised controls distinguish those inputs. P screen
+collection executes `6DC420/6DC430` on initialized Tactical selectable records,
+then `7342C0` checks only nonnull and abstract flag `+14 & 1`. Map collection
+walks the supplied native Techno vector in stored order and applies `732580`.
+
+Escalation checks the collected screen candidates for non-Building, type `+DBC`,
+dynamic virtual `+13C`, and not already selected. With none, or all already
+selected, it expands to the map **in the same call**, before clearing selection.
+P mode `1` with map byte `B0FE64` already true starts directly from the map.
+Final predicate `7325C0` repeats class/type/dynamic admission, then calls original
+Select `+14C`, whose additional refusals remain authoritative. Thus limbo,
+mission-only, warp and pending placement can produce NothingSelected while P
+still has screen scope; the preflight did find an unselected dynamic candidate.
+
+ObjectSelect `5F4520` prepends positive-Primary type `+C9C` objects and appends
+others. Every history records source order, Select/voice call order and resulting
+CurrentObjects order independently. P voices every eligible newly selected
+object while the global voice allowance stays enabled. Replacement reselects
+and voices again; Shift's already-selected refusals spend no draw. Empty and
+minus-one voice controls preserve the native distinction between list draw and
+queue admission. Every step replays the observed Main draws through the original
+RNG owner, checks all Scenario/MapGen bytes, and preserves full history boundary
+states plus the next four original Main draws.
+
+P finishes with mode `1`, T with mode `2`, and Health with mode `3` when its
+snapshot is nonempty or mode `0` when empty. These modes share **one** `B0FE64`
+scope byte. Original Health leaves that byte unchanged; a later P or T restarts
+scope according to its mode check. The `T_map_P_restarts_screen` history exposes
+T map selection followed by P screen selection. Direct ordinary TechnoSelect
+and UnselectAll witnesses execute actual mode reset, retain the map byte, then
+show the next P restarting the screen preflight. They do not execute a mouse
+gesture or a full native scenario replacement.
+`ordinary_deselect_retains_P_map_scope` separately executes Deselect5F44A0 on
+local20 and then P. Deselect clears membership/follow but preserves mode1/maptrue,
+so the following P selects the map candidates. This direct boundary distinguishes
+Deselect from successful Select and UnselectAll mode reset. The older output field
+`selection_across_map` remains its historical `B0FE58` submode observation;
+the new `across_map` and `submode` fields separately name `B0FE64/B0FE58`.
+
+P preserves armed repair/sell/power/planning state, makes no camera/redraw request,
+and does not start the action-line timer or enter observed world/abstract Detach.
+Timer bytes and writes are observed for active and inactive timers. Follow
+clears through actual Deselect during replacement and remains for retained
+Shift selection, except the lone-nonowned cleanup described above. MessageList
+is a declared UI sink after original copying or
+formatting; the fixture supplies actual strings from physical
+`langmd.mix/ra2md.csf` through the existing CSF reader and records the original
+seven message arguments. It does not execute rendering, device playback or
+message timer scheduling.
+
+The fixture supplies slave/offline/bunker/dock/locomotor-swap bits to execute
+refusal controls. Their full lifecycle, robot power/voice transitions, Tag
+Selected actions, disguise, display membership production, world replacement,
+saved streams and held mouse/movement/Fly paths remain outside this corpus.
+
+## IsSelectableCombatant type inputs
+
+`combatant_type_histories` composes the existing BulletReader/type/INI owners.
+Full InfantryType `5236A0`, UnitType `7470D0`, BuildingType `45DD90` and base
+TechnoType `710AF0` constructors overwrite an `A5`-poisoned allocation. The
+observed field writer `71164B` sets `+DBC` to false for each selected type.
+
+For every physical layer, original AbstractType section admission `410A60` runs.
+An admitted section then executes the unchanged field block
+`71574E..71576F`: current-field default, type-name accessor `524EC0`, exact
+literal `IsSelectableCombatant` at `843414`, ReadBool `5295F0`, and final store.
+The physical RULESMD/LANGRULE/mode/map history and explicit missing-section,
+missing-key, wrong-case, empty, malformed, numeric and retained-value histories
+pin native outputs. There is no clamp or independent reset between retained
+passes. Physical E1/E2/MTNK/ROBO become true; ENGINEER/HARV/CMIN/GACNST remain
+false for the selected stock layers.
+
+These controls execute whole constructors and the original selected field
+reader. They do not execute unrelated intervening type reads, full Rules
+scenario processing, physical INI file loading, asset binding or actor
+constructors. All original `.text` bytes are checked after the type history.

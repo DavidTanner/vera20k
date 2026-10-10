@@ -7,7 +7,7 @@
     1,
     33621247
   ],
-  "scope": "Original N/M search, selection lifecycle and VoiceSelect RNG controls.\n\nInitialized actors/layers are fixture inputs, not a constructor or scenario-load\nclaim. Search and selection predicates execute unchanged. See the adjacent md.\n",
+  "scope": "Original N/M/P, retained T/Health selection and VoiceSelect RNG controls.\n\nInitialized actors/layers are fixture inputs, not a constructor or scenario-load\nclaim. Search and selection predicates execute unchanged. See the adjacent md.\n",
   "assumptions": [
     "Actors, types, owners, layers and selection storage are initialized fixture inputs, not original constructor/scenario-load proof. No retail E1/MTNK INI inputs or actual airborne/layer producer are claimed.",
     "Real Unit/Infantry vtables and candidate/selection bodies execute; a Building vtable supplies the RTTI6 exclusion and dock occupier controls only. Tag is NULL, disguise byte1D8 is zero, planning propagationAC4CF4 is disabled and selected-control-group metadata is empty.",
@@ -19,11 +19,23 @@
     "Main886B88, Scenario+218 and MapGenABE890 are initialized with original65C6D0 via sharedgen_rng_vectors.seeded_struct. Complete3F4-byte states bracket voice histories; actual raw draw outputs/continuation are independently replayed with the same original65C780 helper. Scenario and MapGen must remain byte-identical.",
     "The appended unit_multiple_seed1_after248_main_raw history executes 248 original65C780 calls on the same Main886B88 before four708EB0 calls. Prefix draws and full before/after state are observed; no reseeding or cursor replacement occurs between prefix and voices. This supplies an earlier-consumer boundary, not execution of terrain loading, MoveSound, Gattling or death consumers.",
     "Cursor-mode controls execute original power/planning/repair/sell bodies. Planning's saved cursor pointer11BC is null, so its nonempty cursor restoration callback and active planning-group propagation are outside these controls.",
-    "Camera4AE290 executes through its singleton/empty reduction; final rendering and full camera bounds/projection are outside the declared6D6070 boundary. Original.text integrity is checked after each invocation."
+    "Camera4AE290 executes through its singleton/empty reduction; final rendering and full camera bounds/projection are outside the declared6D6070 boundary. Original.text integrity is checked after each invocation.",
+    "The appended CombatantSelect histories execute registered5367F0 over original732280, supplied Tactical screen recordsB0CEC8/count+DB0 and retained native Techno vectorA8EC7C/countA8EC88. Screen7342C0, Alive/owner732580, dynamic13C and final7325C0/Select14C execute unchanged. Map/display membership producers, selected Tag actions, disguise and robot power/voice lifecycle are not claimed.",
+    "P mode1 and T mode2 share the single across-map byteB0FE64; Health mode3 and the empty-snapshot mode0 retain that byte. The next differing command performs its own native mode-based scope reset. The prior selection_across_map output keeps its historical B0FE58 submode meaning; appended across_map and submode expose both actual bytes separately.",
+    "Real ObjectSelect5F4520 prepends positive-PrimaryC9C objects and appends others. Scan/Select/voice order and final CurrentObjects order are separately observed. InvertedShift is passed by the registered P/Health wrappers; direct ordinary_select invokes the existing TechnoSelect body, not a mouse gesture.",
+    "The two Shift+P lone-nonlocal histories start mode1/maptrue, selected/follow20. Original6DA770 removes20 even with Shift, leaves map scope, clears follow and selects40 only; campaign human1EC/control1EDfalse and noncampaign controls both require the same final CurrentObjects membership.",
+    "The direct ordinary_deselect step invokes original5F44A0 on local20 from selected/follow20, mode1/maptrue. Deselect clears selected membership/follow but retains mode1 and B0FE64; following P therefore starts across-map. OrdinarySelect and UnselectAll remain distinct mode-reset witnesses.",
+    "P success invokes VoiceSelect for every eligible newly selected object while822CF2 remains enabled. Shift's already-selected refusals consume no draw. Empty and-minus1 voice lists and global disabled controls distinguish gate/admission. Every step checks original Main draw continuation and byte-identical Scenario/MapGen; full RNG bytes and next4 original Main draws bracket each new history.",
+    "P armed power/planning/repair/sell modes, placement, follow and all12B0EA80 action-timer bytes are observed. Timer-write hooks and known action-timer/Detach entries stay empty in this untagged P path. OrdinarySelect and UnselectAll histories are reached original selection-reset witnesses, not a full native scenario replacement or save/load execution.",
+    "Full original InfantryType5236A0, UnitType7470D0, BuildingType45DD90 and TechnoType710AF0 constructors overwrite A5-poisoned+DBC with0 at71164B. Physical RULESMD, optional LANGRULE, MPBATTLEMD and XMP03T4 layers are supplied through existing BulletReader lexical/cache owners; original410A60 section admission and71574E..71576F current-default Bool read/store execute. Full unrelated type reader/Rules scenario chronology and physical file IO are not claimed.",
+    "Appended type fields use original524EC0 string accessor, exact IsSelectableCombatant843414 and ReadBool5295F0. Physical layer hashes and authored missing/empty/wrongcase/malformed/numeric retained-default histories are native outputs. All original.text bytes stay unchanged."
   ],
   "substitutions": [
     "Inherited KeyboardFixture allocator7C8E17 returns bounded scratch storage during original registration and the empty planning-slot allocation. Registration stops before533D20 INI file loading. No allocator failure/CRT exit registration claims.",
-    "Mouse cursor presentation5BDA80/5BDAA0, Tactical camera application6D6070 and redraw4F42F0 record calls then return."
+    "Mouse cursor presentation5BDA80/5BDAA0, Tactical camera application6D6070 and redraw4F42F0 record calls then return.",
+    "Appended command vectors reuse bounded allocator transport7C8E17; destructor CRT free7C8B3D returns without reclaiming fixture storage. Gameplay/vector/destructor/selection bodies execute original instructions.",
+    "Appended T edges use supplied timeGetTime via original import7E1530 and100ms tap duration. StringTable734E60 returns actual UTF16 strings from physical langmd.mix/ra2md.csf via existing stock_csf; native wcscpy/swprintf execute. Final MessageList5D3BA0 records seven original arguments/text then returns; no GUI paint/timer scheduling is claimed.",
+    "Appended type constructor/reader setup inherits existing BulletReader bounded heap, CRT TLS and asset-platform seams. Selected IsSelectableCombatant field readers invoke original INI/string/Bool code; no scalar/gate/field result is substituted."
   ],
   "entry_points": {
     "next": "0x004AA2B0",
@@ -37,16 +49,54 @@
     "voice_select": "0x00708EB0",
     "queue_voice": "0x00708D90",
     "rng_raw": "0x0065C780",
-    "rng_seed": "0x0065C6D0"
+    "rng_seed": "0x0065C6D0",
+    "execute_combatant": "0x005367F0",
+    "combatant": "0x00732280",
+    "alive_owner": "0x00732580",
+    "screen_techno": "0x007342C0",
+    "combatant_final": "0x007325C0",
+    "unselect_if_not_owned": "0x006DA770",
+    "execute_type": "0x005368B0",
+    "type_tap": "0x00732950",
+    "execute_health": "0x00536950",
+    "health": "0x00733380",
+    "reset_mode": "0x00731D00",
+    "techno_type_constructor": "0x00710AF0",
+    "infantry_type_constructor": "0x005236A0",
+    "unit_type_constructor": "0x007470D0",
+    "building_type_constructor": "0x0045DD90",
+    "section_admission": "0x00410A60",
+    "combatant_type_reader": "0x0071574E",
+    "bool_reader": "0x005295F0"
   },
-  "command": "python -m tools.input_oracle.selection_navigation --check",
+  "command": "VERA20K_COMBATANT_INPUTS=/path/to/extracted/selection/layers python -m tools.input_oracle.selection_navigation --check",
   "coverage_counts": {
     "search_cases": 94,
     "command_histories": 20,
     "command_calls": 31,
     "voice_histories": 29,
     "voice_calls": 112,
-    "prefix_raw_calls": 248
+    "prefix_raw_calls": 248,
+    "combatant_histories": 71,
+    "combatant_steps": 92,
+    "combatant_registered_execute_calls": 93,
+    "combatant_type_constructors": 9,
+    "combatant_retail_type_histories": 8,
+    "combatant_authored_reader_steps": 16
   },
-  "payload_sha256": "3b708b549be1dfea8ddee416b9abc45930a5af0e4f4bf8985a9a87799ccb5667"
+  "csf_sha256": "f3382231d7eb3bd713bf3908ecdba175a1b2e20d9d80fa2702e9ab84c3a79deb",
+  "source_normalized_lf_sha256": {
+    "selection_navigation": "f94ba4cc23ce0abf6a9d7b97d318135de53a443cad701fe53fb7380b8611e04f",
+    "native_oracle": "67a69b8e446a8134fbff1128c1fe15025350f329fc25585af29ea725746f2ceb",
+    "keyboard_bindings": "ff8adcd19783380b90adb4816a0e2b56a8caa63bd3a44f45317ed805c5d03e0b",
+    "fast_scroll": "fc23d236ec33e0e60168e7c9174d8c52b7970dafee4ea071d018f780d2aeadc4",
+    "rng": "c1e75b4eade453c1331ddc140365eb687a70e06d64852a9b786856fd5bb530ad",
+    "stock": "62b855dba1836bf484bb6c112b9249003ff4427c3004a1ef3d95c3aac985ba9b",
+    "type_fixture": "2f05d2e7e917aef585553502830947ea8ca121eab2d886d2c9ba4df7c935727d",
+    "ini_cache": "fc0d267d9c8453ba3090bfacd056af5207f47cb1170651cce5b0c41c80e90a2e",
+    "heap": "2a7a96ea1e24f1129161e8fe5608c0ab69ac584ee6ad78fa91c43bd3ad072045",
+    "ini_fixture": "4c01dd452ccf63c0058e8b58cb751c1e13933fcc25b9ef639cb57c628f4e8643",
+    "key_crc": "2f663fbb2b8c88925dd8aa46e8be9216d580ec033bac3e08a138bcd0b272b7c6"
+  },
+  "payload_sha256": "435e83fa0510bc8691ccb8ce73871521744b0e99f81970c0793aa5f82b67fa7c"
 }
