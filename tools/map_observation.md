@@ -10,6 +10,14 @@ target handle or `null`. This read-only field is independent of NavCom, mission
 and admitted radio contacts. Older sealed v6 receipts remain accepted without
 the field; its absence supplies no evidence about pending entry.
 
+Actor `object_alive`, when present, reads `GameEntity::is_object_alive()` from
+the existing ObjectClass lifecycle owner. It is independent of Health and the
+transitional `active` projection (`object_alive && !dying`); retained Die1/Die2
+infantry can have Health0, `dying=true`, `active=false` and `object_alive=true`.
+Observing it sends no selection or lifecycle mutation. Historical sealed
+receipts may omit it, and omission supplies no observed Alive value. The fixed
+boolean remains part of the existing one-sample actor row.
+
 Actor `retask` reads the existing `suspended_target` and `suspended_nav`
 references alongside current `target`, `archive`, `nav` and mission fields.
 References retain their distinct tagged target/navigation representations;
@@ -524,8 +532,11 @@ keyboard edge owner used by `WindowEvent::KeyboardInput`:
 }
 ```
 
-Keys are one ASCII letter or digit, or `Escape`. They carry no modifiers and
-are not command names. The loaded `KEYBOARDMD.INI` bindings and registered
+Keys are one ASCII letter or digit, or `Escape`. They are not command names.
+An optional unique `modifiers` list contains literal `Ctrl`, `Shift`, `Alt`,
+and/or `Super` edges, for example `{"kind":"key","key":"P","modifiers":["Shift"]}`.
+The shared modifier owner presses them before the key and releases them in
+reverse order before rendering. The loaded `KEYBOARDMD.INI` bindings and registered
 startup defaults resolve them in production. Each keyboard receipt reports the
 production `encoded_key`, resolved registered `binding_command` (or `null`),
 and observed held-key press/release state. The capture never dispatches a
@@ -555,14 +566,25 @@ before/after values can witness immediate Main stream draws during an input
 gesture; they do not establish equality of the whole RNG state. These values
 come from the existing input/sidebar/simulation/audio owners. Voice requests
 are observed without draining the queue and do not prove audible playback.
-They count toward the retained-sample budget. Ordered `selected_ids` and
+The optional `selection_scope` projection reads the shared TypeSelect scope
+owner: `mode` (`ordinary`, `combatant`, `type`, or `health`), `across_map`, and
+`last_outcome_key` (the retained HUD outcome's CSF key or `null`). CombatantSelect
+and TypeSelect have distinct modes while retaining the shared map-scope byte.
+`hud_messages` reads actual
+localized message text rows in insertion order through `MessageList.messages()`;
+it neither posts nor expires a message and does not invent source keys for rows.
+New keyboard captures include both projections. Older sealed receipts may omit
+either; omission supplies no evidence about that state. One scope projection,
+each HUD row and each voice request count toward the retained-sample budget.
+Ordered `selected_ids` and
 `selection_pending` continue to report the existing optimistic input selection,
 separately from commands queued for the next simulation step.
 
 Mouse-only profiles retain their previous policies and receipt shapes. Keyboard
 and sidebar/tactical gestures may share one profile; all its input observations
 then include the extended local state. No save/load state replacement is added
-to this harness.
+by these observations. The admitted literal quicksave/quickload route above
+can replace the world through its existing production owner.
 
 The selection-navigation profiles use authored clear-ground maps with unchanged
 retail type rules and assets. They disable starting MCVs and starting units, place

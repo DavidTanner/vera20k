@@ -16,8 +16,9 @@ native scenario load or whole constructor/lifecycle proof.
 The physical selection directory contains `RULESMD.INI`, `MPBATTLEMD.INI` and
 `XMP03T4.MAP`, plus `LANGRULE.INI` when present. Filename case may follow the
 existing extraction tool. Extract these bytes through the production asset owner;
-the appended corpus records their SHA-256 identities. The older three groups
-retain their original inputs, fields and outputs.
+the appended corpus records their SHA-256 identities. The existing search,
+N/M command, voice, P and type-reader groups retain their inputs and outputs;
+cleanup controls are a separate family.
 
 The fixture reuses `KeyboardFixture` to execute ordinary command registration,
 the input oracle's scalar/sink helpers, `NativeCallTrace` for nested return
@@ -191,6 +192,92 @@ The fixture supplies slave/offline/bunker/dock/locomotor-swap bits to execute
 refusal controls. Their full lifecycle, robot power/voice transitions, Tag
 Selected actions, disguise, display membership production, world replacement,
 saved streams and held mouse/movement/Fly paths remain outside this corpus.
+
+## Cleanup retention and local keyboard ordering
+
+`combatant_cleanup_histories` contains six completed histories, fifteen semantic
+steps, six registered P executions and eight direct cleanup boundaries. Each row
+uses the existing flattened actor/layer/house/seed inputs plus `screen_order`,
+`map_order`, `selected`, `follow`, `selection_mode`, `across_map`, `submode`,
+`retained_navigation`, `action_timer`, `setup_cleanup` and `cleanup_world_size`.
+Every row starts selected/follow20, mode1/maptrue/submode1, screen40 and map
+order50/40/20; all three streams use original seed1. Actor inputs explicitly
+declare unmarked state and native display layer2. Only40 is onscreen, so50
+distinguishes retained map scope from a fresh screen preflight.
+
+| History | Original cleanup before P | Following P order |
+| --- | --- | --- |
+| `direct_deselect_then_P` | Deselect5F44A0 | [20,40,50] |
+| `alivefalse_deselect_expiry_then_P` | Alivefalse20; Deselect then733160 | [40,50] |
+| `absent_registry_after_deselect_expiry_then_P` | Same leaves; explicit registry omission20 | [40,50] |
+| `initialized_object_detach_all_true_then_P` | WholeObjectDetach5F5280(true) | [20,40,50] |
+| `initialized_alivefalse_object_detach_all_then_P` | Alivefalse20; wholeObjectDetach(true) | [40,50] |
+| `initialized_object_conceal_then_P` | WholeObjectConceal5F4D30 | [40,50] |
+
+The existing `combatant_history` executor handles `ordinary_deselect`,
+`pointer_expiry`, `object_detach_all`, `object_conceal`, `supply_selection_sources`
+and the registered `combatant` command. Registry changes name their new layer,
+screen and map inputs explicitly; mapped retired storage remains available.
+Original732050 constructs the retained selected snapshot before its pointer is
+assigned toB0FE6C as an earlier Health/Y prestate surviving while P owns mode1.
+This does not execute VeterancyNav or introduce another selection owner.
+
+Cleanup steps record both the existing selection snapshot and `actor_state`,
+`retained_navigation`, actual layer/screen/map order, full `native_calls` with
+mapped actor IDs, `scope_writes`, all three full RNG states and the next four
+original Main draws. Existing `detach_calls` now includes actual Object/Foot
+Detach entries. The previously unreached7258D0 trace declaration is corrected
+to its actual register-based arguments and zero stack purge. It executes its
+original body; no native return is substituted.
+
+Deselect removes CurrentObjects membership and clears matching Follow, retaining
+mode/scope. Direct733160 removes a matching retained pointer, retaining mode/scope.
+WholeObjectDetach(true) reaches Deselect, AnnounceExpiredPointer7258D0, Bomb439150,
+Temporal54E590,733160, Tactical6DA560 and Logic55B880. WholeConceal reaches
+FootDetach4D9720, empty-slot Radio65ACB0, ObjectDetach and actual DisplayRemove4A9770;
+its original tail sets Limbo true and display layer-1 while Alive remains true.
+Type+234 is false, so this control does not enter Conceal's LogicRemove branch.
+
+Every completed cleanup boundary leaves mode1/maptrue, makes zero writes to
+B0FE54..B0FE67, spends zero draws from every RNG stream and preserves all action
+timer bytes. No70D4A0 world-detach is reached. Subsequent P includes offscreen50
+and emits physical-CSF "Selected across MAP". Two additions draw Main
+2025287381/660436142; three also draw3663968561. Scenario/MapGen remain unchanged.
+Successful P still traverses its actual UnselectAll/Select mode reset;731D00
+writes modeB0FE54 and submodeB0FE58, leaving map byteB0FE64 unchanged.
+
+Whole-producer setup reuses `ifv_impact.initialize_effect_world` for the original
+40B540..40B5AB,725850..725886 and4E6D60..4E6D96 startup regions, with explicit
+64x64 dimensions and seed1. Original4A8630..4A8672 initializes display vectors;
+65A758..65A798 runs the Radio constructor's vector allocation/empty-slot region
+over supplied actors. These regions stop before CRT atexit registration or
+unrelated base-constructor state. Tactical's original6D1D54 vptr literal7F4348
+is supplied and its actual+28 expiry body executes. Services/listeners,
+Bomb/Temporal/Team, linked radio contacts, Tags and spawner state are empty.
+
+These are initialized unmarked Unit controls. Alivefalse is an input, rather
+than an executed death writer; absence is supplied post-retirement registry
+membership. No fatal AI, marked-cell removal, whole concrete-class Limbo/UnInit,
+destructor/free/deferred-drain,
+nonempty ancillary cleanup or scenario load is demonstrated. Rust's pending
+selection bookkeeping has no corresponding native flag. Its membership and
+scope reconciliation must be tested separately against these native boundaries.
+
+Original local keyboard ordering supplies another boundary: MainTick55D360 calls
+GScreenInput4F4320 at55D8AB, then ProcessCommand55DEE0 at55D8B4, before
+Logic55AFB0 at55DC9E. ProcessCommand's Execute+20 call at55E015 reaches registered
+P5367F0, whose5367FC call enters732280 synchronously. P's Select+14C call at7324A4
+reaches6FBFA0/5F4520; ObjectSelect commits selected+83 at5F46AE/5F4718 before return.
+Thus a later live Logic cleanup occurs after the actual local selection command;
+there is no delayed second Select in this native Execute-to-Select chain.
+This is instruction/caller/data evidence, not executed full fatal-frame parity
+or an assertion about EventClass's separate dispatch phase.
+
+Original executable bytes for Infantry vtable7EB058 pin +DC/+14C/+150 to
+4D9720/6FBFA0/5F44A0, and registered P's Execute slot7EB9AC to5367F0. These source
+identities and ordering addresses use the sidecar's original gamemd.exe identity;
+Ghidra reads explicitly select `gamemd.exe`. No Ghidra annotation is the source of
+the expected selection/RNG values: those come from the unchanged original bodies.
 
 ## IsSelectableCombatant type inputs
 

@@ -7,6 +7,7 @@ claim. Search and selection predicates execute unchanged. See the adjacent md.
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 import hashlib
 import os
 import struct
@@ -63,7 +64,18 @@ SELECTION_SPECS = {
     0x733380: ("health_command", 0, 0),
     0x70D150: ("action_timer_start", 0, 0),
     0x70D4A0: ("world_detach", 2, 8),
-    0x7258D0: ("abstract_detach", 2, 8),
+    0x733160: ("navigation_pointer_expired", 0, 0),
+    0x7258D0: ("pointer_expired_dispatch", 0, 0),
+    0x5F5280: ("object_detach_all", 1, 4),
+    0x5F4D30: ("object_conceal", 0, 0),
+    0x4D9720: ("foot_detach_all", 1, 4),
+    0x4A9770: ("display_remove", 1, 4),
+    0x55BAE0: ("logic_remove", 1, 4),
+    0x439150: ("bomb_pointer_expiry", 1, 4),
+    0x54E590: ("temporal_pointer_expiry", 1, 4),
+    0x6DA560: ("tactical_pointer_expiry", 2, 8),
+    0x55B880: ("logic_pointer_expiry", 2, 8),
+    0x65ACB0: ("radio_transmit_first", 1, 4),
 }
 ACTION_TIMER = 0xB0EA80
 
@@ -137,6 +149,8 @@ class SelectionFixture(KeyboardFixture):
             self.put(pointer + 0x2E4, self.houses["other"] if value["bunker"] else 0)
             for field, offset in ACTOR_BYTES.items():
                 put8(self.uc, pointer + offset, value[field])
+            put8(self.uc, pointer + 0x74, value.get("marked", False))
+            self.put(pointer + 0x94, value.get("native_layer", 0))
             self.uc.mem_write(pointer + 0x9C, struct.pack("<3i", *value["coord"]))
             self.put(pointer + 0x4F0, value["queued_voice"] & 0xFFFFFFFF)
             put8(self.uc, typ + 0x230, value["selectable"])
@@ -380,6 +394,54 @@ class SelectionFixture(KeyboardFixture):
         self.put(0xA8EC7C, items)
         self.put(0xA8EC88, len(map_order))
 
+    def initialize_cleanup_inputs(self, layers, world_size):
+        """Run original startup/empty-Radio regions over supplied actor state.
+
+        The shared effect-world owner executes40B540..40B5AB,
+        725850..725886 and4E6D60..4E6D96, stopping before CRT atexit.
+        This is initialization, not a full constructor or fatal-world witness.
+        """
+        from tools.projectile_oracle.ifv_impact import initialize_effect_world
+        initialize_effect_world(SimpleNamespace(u=self.uc, read32=self.get), {},
+                                seed=self.seed, map_size=world_size, clear_terrain=False)
+        self.uc.reg_write(UC_X86_REG_ESP, self.stack)
+        run_checked(self.uc, 0x4A8630, 0x4A8672, required_addresses=[0x4A8630])
+        self.set_layers(layers)
+        # Original Tactical ctor6D1D54 supplies this vptr; actual expiry+28
+        # 6DA560 executes on the initialized screen records, without a sink.
+        self.put(self.tactical, 0x7F4348)
+        for pointer in self.actors.values():
+            # Only the original Radio65A750 vector allocation/empty-slot
+            # region is run. Calling its whole base ctor over an already
+            # supplied Unit would incorrectly overwrite the actor's prestate.
+            self.uc.reg_write(UC_X86_REG_ESI, pointer)
+            self.uc.reg_write(UC_X86_REG_ESP, self.stack)
+            run_checked(self.uc, 0x65A758, 0x65A798, required_addresses=[0x65A758])
+        if self.text_hash() != self.code_hash:
+            raise RuntimeError("Original .text changed during cleanup initialization")
+
+    def cleanup_snapshot(self):
+        pointer = self.get(0xB0FE6C)
+        retained = [] if not pointer else [
+            self.identities[self.get(self.get(pointer + 4) + 4 * index)]
+            for index in range(self.get(pointer + 16))]
+        return dict(**self.selection_snapshot(), retained_navigation=retained,
+                    actor_state={str(identity): dict(
+                        alive=bool(byte(self.uc, actor_pointer + 0x90)),
+                        selected=bool(byte(self.uc, actor_pointer + 0x83)),
+                        limbo=bool(byte(self.uc, actor_pointer + 0x81)),
+                        marked=bool(byte(self.uc, actor_pointer + 0x74)),
+                        native_layer=i32(self.uc, actor_pointer + 0x94))
+                        for identity, actor_pointer in self.actors.items()},
+                    layer_order=[[
+                        self.identities[self.get(self.get(vector + 4) + 4 * index)]
+                        for index in range(self.get(vector + 16))]
+                        for vector in range(0x8A0360, 0x8A03D8, 24)],
+                    screen_order=[self.identities[self.get(0xB0CEC8 + 12 * index)]
+                                  for index in range(self.get(self.tactical + 0xDB0))],
+                    map_order=[self.identities[self.get(self.get(0xA8EC7C) + 4 * index)]
+                               for index in range(self.get(0xA8EC88))])
+
     def selection_snapshot(self):
         return dict(**self.snapshot(), across_map=bool(byte(self.uc, 0xB0FE64)),
                     submode=byte(self.uc, 0xB0FE58),
@@ -395,7 +457,8 @@ class SelectionFixture(KeyboardFixture):
                     message_keys=self.message_keys, messages=self.messages,
                     timer_writes=self.timer_writes,
                     detach_calls=[name for name in self.call_order
-                                  if name in ("world_detach", "abstract_detach")])
+                                  if name in ("world_detach", "abstract_detach",
+                                              "object_detach_all", "foot_detach_all")])
 
 
 def search_case(spec):
@@ -473,6 +536,9 @@ def combatant_history(spec):
                                selection_commands=True,
                                voice_enabled=spec.get("voice_enabled", True),
                                seed=spec.get("seed", 1), **spec.get("house", {}))
+    cleanup = "retained_navigation" in spec
+    if spec.get("setup_cleanup", False):
+        fixture.initialize_cleanup_inputs(spec["layers"], spec["cleanup_world_size"])
     fixture.set_selection_sources(spec["screen_order"], spec["map_order"])
     fixture.set_selection(spec["selected"])
     fixture.set_display(follow=spec.get("follow"), modes=spec.get("modes"),
@@ -483,12 +549,27 @@ def combatant_history(spec):
     fixture.put(0xA8B538, spec.get("command_guard", 0))
     if "action_timer" in spec:
         fixture.uc.mem_write(ACTION_TIMER, struct.pack("<3i", *spec["action_timer"]))
+    scope_writes = []
+    if cleanup:
+        # Actual732050 constructs the selected snapshot. AssignmentB0FE6C
+        # supplies an earlier Health/Y snapshot surviving while P owns mode1.
+        fixture.put(0xB0FE6C, fixture.invoke(0x732050, 0))
+        if fixture.cleanup_snapshot()["retained_navigation"] != spec["retained_navigation"]:
+            raise RuntimeError("Native selected snapshot differs from supplied cleanup prestate")
+
+        def observe_scope(u, _access, address, size, value, _data):
+            scope_writes.append(dict(pc=hex(u.reg_read(UC_X86_REG_EIP)),
+                                     address=hex(address), bytes=size, value=value))
+        fixture.uc.hook_add(UC_HOOK_MEM_WRITE, observe_scope,
+                            begin=0xB0FE54, end=0xB0FE67)
+    snapshot = fixture.cleanup_snapshot if cleanup else fixture.selection_snapshot
     initial = fixture.rng_bytes()
     steps = []
     for command in spec["commands"]:
         fixture.reset_observations()
+        scope_writes.clear()
         before = fixture.rng_bytes()
-        prior = fixture.selection_snapshot()
+        prior = snapshot()
         name, key_word = command["command"], command.get("key_word", 0)
         if name == "ordinary_select":
             fixture.invoke(0x6FBFA0, fixture.actors[command["id"]])
@@ -496,6 +577,17 @@ def combatant_history(spec):
             fixture.invoke(0x5F44A0, fixture.actors[command["id"]])
         elif name == "unselect_all":
             fixture.invoke(0x6DA740, fixture.tactical)
+        elif name == "pointer_expiry":
+            fixture.invoke(0x733160, fixture.actors[command["id"]])
+        elif name == "object_detach_all":
+            fixture.invoke(0x5F5280, fixture.actors[command["id"]], [int(command["all"])])
+        elif name == "object_conceal":
+            fixture.invoke(0x5F4D30, fixture.actors[command["id"]])
+        elif name == "supply_selection_sources":
+            # Post-retirement registry membership is an explicit input seam;
+            # mapped storage remains. No destructor/free is claimed here.
+            fixture.set_selection_sources(command["screen_order"], command["map_order"])
+            fixture.set_layers(command["layers"])
         else:
             obj = fixture.objects[dict(combatant="CombatantSelect", type="TypeSelect",
                                        health="HealthNav", next="NextObject",
@@ -507,15 +599,58 @@ def combatant_history(spec):
                 fixture.invoke(entry, obj, [key_word | 0x800])
             else:
                 fixture.invoke(entry, obj, [key_word])
-        steps.append({**command, "key_word": key_word, "before": prior,
-                      **fixture.selection_snapshot(),
-                      **fixture.selection_observations(before)})
+        step = {**command, "key_word": key_word, "before": prior,
+                **snapshot(), **fixture.selection_observations(before)}
+        if cleanup:
+            after = fixture.rng_bytes()
+            continuation, _ = draws(after["main"], 4)
+            step.update(native_calls=[dict(**row, id=fixture.identities.get(int(row["ecx"], 16)))
+                                      for row in fixture.trace.calls],
+                        scope_writes=list(scope_writes),
+                        rng_before_hex={name: raw.hex() for name, raw in before.items()},
+                        rng_after_hex={name: raw.hex() for name, raw in after.items()},
+                        main_next_four=continuation)
+        steps.append(step)
     after = fixture.rng_bytes()
     continuation, _ = draws(after["main"], 4)
     return {**spec, "steps": steps, "csf_sha256": fixture.csf_sha256,
             "rng_before_hex": {name: raw.hex() for name, raw in initial.items()},
             "rng_after_hex": {name: raw.hex() for name, raw in after.items()},
             "main_next_four": continuation}
+
+
+def combatant_cleanup_inputs():
+    """Six completed cleanup-to-P controls; initialized memory, not fatal AI."""
+    for name, alive, setup, commands in (
+        ("direct_deselect_then_P", True, False,
+         [dict(command="ordinary_deselect", id=20), dict(command="combatant")]),
+        ("alivefalse_deselect_expiry_then_P", False, False,
+         [dict(command="ordinary_deselect", id=20), dict(command="pointer_expiry", id=20),
+          dict(command="combatant")]),
+        ("absent_registry_after_deselect_expiry_then_P", False, False,
+         [dict(command="ordinary_deselect", id=20), dict(command="pointer_expiry", id=20),
+          dict(command="supply_selection_sources", screen_order=[40], map_order=[50, 40],
+               layers=[[], [], [40, 50], [], []]), dict(command="combatant")]),
+        ("initialized_object_detach_all_true_then_P", True, True,
+         [dict(command="object_detach_all", id=20, all=True), dict(command="combatant")]),
+        ("initialized_alivefalse_object_detach_all_then_P", False, True,
+         [dict(command="object_detach_all", id=20, all=True), dict(command="combatant")]),
+        ("initialized_object_conceal_then_P", True, True,
+         [dict(command="object_conceal", id=20), dict(command="combatant")]),
+    ):
+        actors = [actor(20, alive=alive, is_selectable_combatant=True,
+                        positive_primary_damage=True, marked=False, native_layer=2),
+                  actor(40, "infantry", is_selectable_combatant=True,
+                        positive_primary_damage=True, marked=False, native_layer=2),
+                  actor(50, is_selectable_combatant=True,
+                        positive_primary_damage=True, marked=False, native_layer=2)]
+        yield dict(id=name, actors=actors, layers=[[], [], [20, 40, 50], [], []],
+                   house=dict(campaign=False, other_human=False, other_control=False),
+                   seed=1, screen_order=[40], map_order=[50, 40, 20], selected=[20],
+                   follow=20, modes={name: False for name in MODE_FIELDS}, placement=False,
+                   selection_mode=1, across_map=True, submode=1, retained_navigation=[20],
+                   action_timer=[995, 0, 25], voice_enabled=True, setup_cleanup=setup,
+                   cleanup_world_size=[64, 64], commands=commands)
 
 
 def combatant_inputs():
@@ -830,6 +965,8 @@ def generate():
                 command_histories=[command_history(spec) for spec in command_inputs()],
                 voice_histories=[voice_history(spec) for spec in voice_inputs()],
                 combatant_histories=[combatant_history(spec) for spec in combatant_inputs()],
+                combatant_cleanup_histories=[combatant_history(spec)
+                                            for spec in combatant_cleanup_inputs()],
                 combatant_type_histories=combatant_type_histories())
 
 
@@ -855,6 +992,11 @@ def metadata():
         "P armed power/planning/repair/sell modes, placement, follow and all12B0EA80 action-timer bytes are observed. Timer-write hooks and known action-timer/Detach entries stay empty in this untagged P path. OrdinarySelect and UnselectAll histories are reached original selection-reset witnesses, not a full native scenario replacement or save/load execution.",
         "Full original InfantryType5236A0, UnitType7470D0, BuildingType45DD90 and TechnoType710AF0 constructors overwrite A5-poisoned+DBC with0 at71164B. Physical RULESMD, optional LANGRULE, MPBATTLEMD and XMP03T4 layers are supplied through existing BulletReader lexical/cache owners; original410A60 section admission and71574E..71576F current-default Bool read/store execute. Full unrelated type reader/Rules scenario chronology and physical file IO are not claimed.",
         "Appended type fields use original524EC0 string accessor, exact IsSelectableCombatant843414 and ReadBool5295F0. Physical layer hashes and authored missing/empty/wrongcase/malformed/numeric retained-default histories are native outputs. All original.text bytes stay unchanged.",
+        "The six combatant_cleanup_histories retain mode1/B0FE64true across actual Deselect5F44A0, direct pointer-expiry733160 and bounded whole ObjectDetach5F5280(true)/ObjectConceal5F4D30, then execute registered5367F0. Present Alivefalse/selectedfalse and supplied registry omission are separate explicit inputs. Subsequent P includes offscreen50 despite available unselected screen40. Rust pending membership has no native flag counterpart.",
+        "Cleanup retainedB0FE6C input is constructed by original732050 from selected20 then assigned as supplied prior Health/Y state while P owns mode1. Full per-step RNG bytes/next4, actor state, actual layer/screen/map membership, scope/action-timer writes and original native nested calls are recorded; no Python mutation/comparator/RNG algorithm supplies reference outputs.",
+        "Whole cleanup controls reuse ifv_impact.initialize_effect_world's original startup regions40B540..40B5AB,725850..725886,4E6D60..4E6D96 with supplied64x64 dimensions and seed1. Original4A8630..4A8672 initializes display vectors and65A758..65A798 allocates empty Radio slots over supplied actors. Tactical ctor6D1D54 vptr7F4348 is supplied; actual6DA560 executes. CRT atexit registrations are outside setup regions.",
+        "Cleanup services/listeners, Bomb/Temporal/Team, Tags/spawner and radio contacts are empty. Units are unmarked, Type234false excludes Conceal LogicRemove, actual DisplayRemove executes. Alivefalse is prestate, not an executed death writer; absent membership is supplied, mapped object storage remains. Full fatal AI, UnInit/Limbo/Mark, destructor/free/deferred-drain and nonempty ancillary cleanup are not demonstrated.",
+        "Original MainTick55D360 calls GScreenInput4F4320 at55D8AB and ProcessCommand55DEE0 at55D8B4 before Logic55AFB0 at55DC9E. Registered Execute+20 at55E015 reaches P5367F0/732280 and synchronous Select+14C at7324A4. Infantry vtable7EB058+DC/+14C/+150 original bytes are4D9720/6FBFA0/5F44A0; registeredPslot7EB9AC is5367F0. This is original body/caller/data evidence, not a whole fatal-frame execution or an EventClass phase claim.",
     ], substitutions=[
         "Inherited KeyboardFixture allocator7C8E17 returns bounded scratch storage during original registration and the empty planning-slot allocation. Registration stops before533D20 INI file loading. No allocator failure/CRT exit registration claims.",
         "Mouse cursor presentation5BDA80/5BDAA0, Tactical camera application6D6070 and redraw4F42F0 record calls then return.",
@@ -877,7 +1019,13 @@ def metadata():
                      "unit_type_constructor": 0x7470D0,
                      "building_type_constructor": 0x45DD90,
                      "section_admission": 0x410A60,
-                     "combatant_type_reader": 0x71574E, "bool_reader": 0x5295F0})
+                     "combatant_type_reader": 0x71574E, "bool_reader": 0x5295F0,
+                     "navigation_pointer_expired": 0x733160,
+                     "pointer_expired_dispatch": 0x7258D0,
+                     "object_detach_all": 0x5F5280, "object_conceal": 0x5F4D30,
+                     "foot_detach_all": 0x4D9720, "display_remove": 0x4A9770,
+                     "main_tick": 0x55D360, "screen_input": 0x4F4320,
+                     "process_command": 0x55DEE0, "logic": 0x55AFB0})
     result["command"] = "python -m tools.input_oracle.selection_navigation --check"
     result["coverage_counts"] = dict(search_cases=94, command_histories=20,
                                     command_calls=31, voice_histories=29,
@@ -891,6 +1039,17 @@ def metadata():
             for spec in inputs for command in spec["commands"]),
         combatant_type_constructors=9, combatant_retail_type_histories=8,
         combatant_authored_reader_steps=16)
+    cleanup_inputs = list(combatant_cleanup_inputs())
+    result["coverage_counts"].update(
+        combatant_cleanup_histories=len(cleanup_inputs),
+        combatant_cleanup_steps=sum(len(spec["commands"]) for spec in cleanup_inputs),
+        combatant_cleanup_registered_execute_calls=sum(
+            command["command"] == "combatant"
+            for spec in cleanup_inputs for command in spec["commands"]),
+        combatant_cleanup_direct_boundaries=sum(
+            command["command"] in ("ordinary_deselect", "pointer_expiry",
+                                   "object_detach_all", "object_conceal")
+            for spec in cleanup_inputs for command in spec["commands"]))
     result["command"] = ("VERA20K_COMBATANT_INPUTS=/path/to/extracted/selection/layers "
                          "python -m tools.input_oracle.selection_navigation --check")
     result["csf_sha256"] = stock_csf()[1]
@@ -911,4 +1070,5 @@ if __name__ == "__main__":
                        "heap": HERE.parent / "rules_oracle/bridge_anim_lists.py",
                        "ini_fixture": HERE.parent / "spatial_oracle/building_body_rules.py",
                        "key_crc": HERE.parent / "projectile_oracle/flat_art.py",
+                       "cleanup_startup": HERE.parent / "projectile_oracle/ifv_impact.py",
                    })

@@ -1,16 +1,19 @@
-//! Original-executed Next/Previous4AA2B0/4AA380 and Execute536610/536A80.
+//! Original-executed Next/Previous4AA2B0/4AA380 and P5367F0 ->732280.
 //! Inputs, native results and execution boundaries are retained together in
 //! tools/input_oracle/selection_navigation.{py,json,meta.json,md}.
 //!
 //! These fixtures supply existing objects and retained display order. They do
 //! not establish object construction, display registration, RobotOffline,
 //! power/planning mode lifecycle, window redraw or final camera raster parity.
-//! Voice/RNG comparisons live with the audio owners.
+//! P compares successful-add voices through the existing Main/voice owner.
 
-use super::super::{SelectionMutation, resolve_selection_mutation, selected_stable_ids_in_order};
-use super::{ObjectDirection, next_object};
+use super::super::{
+    SelectionMutation, reconcile_selection_order_for_sim, resolve_selection_mutation,
+    selected_stable_ids_in_order,
+};
+use super::{ObjectDirection, combatant_selection, combatant_selection_allowed, next_object};
 use crate::app::input::{camera, entity_pick};
-use crate::app::types::TypeSelectInputState;
+use crate::app::types::{TypeSelectInputState, TypeSelectOutcome};
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::command::Command;
@@ -29,6 +32,8 @@ struct Corpus {
     schema: u32,
     search_cases: Vec<SearchCase>,
     command_histories: Vec<CommandHistory>,
+    combatant_histories: Vec<CombatantHistory>,
+    combatant_cleanup_histories: Vec<CombatantHistory>,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +46,12 @@ struct Actor {
     in_playfield: bool,
     discovered: bool,
     selectable: bool,
+    #[serde(default)]
+    is_selectable_combatant: bool,
+    #[serde(default = "positive_primary_default")]
+    positive_primary_damage: bool,
+    #[serde(default = "single_voice_default")]
+    voice_list: Vec<i64>,
     owner: String,
     slave: bool,
     robot_offline: bool,
@@ -52,6 +63,14 @@ struct Actor {
     mission_only: bool,
     techno_cast: bool,
     coord: [i32; 3],
+}
+
+fn positive_primary_default() -> bool {
+    true
+}
+
+fn single_voice_default() -> Vec<i64> {
+    vec![101]
 }
 
 #[derive(Default, Deserialize)]
@@ -67,6 +86,12 @@ struct Inputs {
     layers: [Vec<Option<u64>>; 5],
     #[serde(default)]
     house: HouseControls,
+    #[serde(default = "fixture_seed_default")]
+    seed: u64,
+}
+
+fn fixture_seed_default() -> u64 {
+    1
 }
 
 #[derive(Deserialize)]
@@ -128,6 +153,24 @@ struct CommandStep {
     call_order: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct CombatantHistory {
+    id: String,
+    #[serde(flatten)]
+    inputs: Inputs,
+    screen_order: Vec<Option<u64>>,
+    map_order: Vec<u64>,
+    selected: Vec<u64>,
+    #[serde(default = "positive_primary_default")]
+    voice_enabled: bool,
+    #[serde(default)]
+    command_guard: u32,
+    steps: Vec<serde_json::Value>,
+    rng_before_hex: BTreeMap<String, String>,
+    rng_after_hex: BTreeMap<String, String>,
+    main_next_four: Vec<u32>,
+}
+
 fn corpus() -> Corpus {
     let corpus: Corpus = serde_json::from_str(crate::test_fixture::text(
         "tools/input_oracle/selection_navigation.json",
@@ -135,6 +178,580 @@ fn corpus() -> Corpus {
     .expect("checked original selection-navigation corpus");
     assert_eq!(corpus.schema, 1);
     corpus
+}
+
+fn boundary_ids(boundary: &serde_json::Value) -> Vec<u64> {
+    serde_json::from_value(boundary["selected"].clone()).unwrap()
+}
+
+/// Supply original mode/scope inputs through the existing input owner.
+fn boundary_mode(boundary: &serde_json::Value) -> TypeSelectInputState {
+    let mut input = TypeSelectInputState::default();
+    match boundary["selection_mode"].as_u64().unwrap() {
+        0 => {}
+        1 => input.finish_combatant_selection(TypeSelectOutcome::Empty, false),
+        2 => input.finish_tap(TypeSelectOutcome::Empty, false),
+        3 => input.finish_health_navigation(true),
+        mode => panic!("unexpected original selection mode {mode}"),
+    }
+    input.across_map = boundary["across_map"].as_bool().unwrap();
+    input
+}
+
+#[test]
+fn combatant_native_cleanup_boundaries_reconcile_without_resetting_map_scope() {
+    let corpus = corpus();
+    assert_eq!(corpus.combatant_cleanup_histories.len(), 6);
+    let mut compared = 0;
+    for history in &corpus.combatant_cleanup_histories {
+        let native_p = history.steps.last().unwrap();
+        assert_eq!(native_p["command"], "combatant");
+        let cleanup = &native_p["before"];
+        for pending in [false, true] {
+            let label = format!("{} pending={pending}", history.id);
+            let (mut sim, rules) = fixture(&history.inputs, &history.selected);
+            let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+            input.selection_order = history.selected.clone();
+            input.selection_order_pending = pending;
+            input.type_select = boundary_mode(&history.steps[0]["before"]);
+            // Supply the executed native lifecycle boundary, not a second
+            // Detach/Conceal implementation. The separate phase regression
+            // executes Rust's actual Destroy owner and command transport.
+            let native_map: Vec<u64> =
+                serde_json::from_value(cleanup["map_order"].clone()).unwrap();
+            for actor in &history.inputs.actors {
+                if !native_map.contains(&actor.id) {
+                    sim.entities_mut().remove(actor.id);
+                    continue;
+                }
+                let boundary = &cleanup["actor_state"][actor.id.to_string()];
+                let entity = sim.entities_mut().get_mut(actor.id).unwrap();
+                entity.lifecycle.object_alive = boundary["alive"].as_bool().unwrap();
+                entity.lifecycle.in_limbo = boundary["limbo"].as_bool().unwrap();
+                entity.selected = boundary["selected"].as_bool().unwrap();
+            }
+            // A consumed input can leave a different committed selection
+            // after lifecycle/refusal. Matching selected bits alone must not
+            // keep that provisional ledger alive once its queue is empty.
+            assert!(sim.pending_command_snapshot().is_empty());
+            reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+            assert_eq!(
+                input.selection_order,
+                boundary_ids(cleanup),
+                "{label}: cleanup membership"
+            );
+            assert!(
+                !input.selection_order_pending,
+                "{label}: consumed transport"
+            );
+            assert_eq!(
+                input.type_select.selection_scope_view().0,
+                "combatant",
+                "{label}: Deselect/expiry retain mode1"
+            );
+            assert_eq!(
+                input.type_select.across_map,
+                cleanup["across_map"].as_bool().unwrap(),
+                "{label}: cleanup retains map scope"
+            );
+            let screen: Vec<u64> = serde_json::from_value(cleanup["screen_order"].clone()).unwrap();
+            input.type_select.prepare_combatant_scope();
+            let result = combatant_selection(
+                &sim,
+                &rules,
+                &screen,
+                &native_map,
+                &input.selection_order,
+                true,
+                input.type_select.across_map,
+            );
+            let effects = resolve_selection_mutation(
+                &sim,
+                Some(&rules),
+                input.selection_order,
+                None,
+                false,
+                &result.mutation,
+            );
+            assert_eq!(
+                effects.ordered,
+                boundary_ids(native_p),
+                "{label}: next P membership/order"
+            );
+            assert!(result.across_map, "{label}: next P scans the retained map");
+            let native_adds: Vec<_> = native_p["selection_calls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|call| call["name"] == "select" && call["accepted"] == true)
+                .map(|call| call["id"].as_u64().unwrap())
+                .collect();
+            assert_eq!(
+                effects.successful_adds, native_adds,
+                "{label}: next P admission order"
+            );
+            for &id in &effects.successful_adds {
+                assert!(sim.selection_voice_request(&rules, id, true).is_some());
+            }
+            assert_eq!(
+                sim.main_rng.native_state_hex(),
+                history.rng_after_hex["main"],
+                "{label}: Main continuation"
+            );
+            for native_draw in &history.main_next_four {
+                assert_eq!(
+                    sim.main_rng.next_u32(),
+                    *native_draw,
+                    "{label}: next raw Main"
+                );
+            }
+            assert_eq!(
+                sim.scenario_rng.native_state_hex(),
+                history.rng_after_hex["scenario"],
+                "{label}: Scenario unchanged"
+            );
+            assert_eq!(
+                sim.mapgen_rng.native_state_hex(),
+                history.rng_after_hex["mapgen"],
+                "{label}: MapGen unchanged"
+            );
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 12);
+}
+
+#[test]
+fn combatant_pending_transport_uses_selection_queue_and_keeps_native_cleanup_scope() {
+    use crate::sim::command::CommandEnvelope;
+    let corpus = corpus();
+    let history = corpus
+        .combatant_cleanup_histories
+        .iter()
+        .find(|row| row.id == "initialized_object_conceal_then_P")
+        .unwrap();
+    for queued_selection in [false, true] {
+        let (mut sim, rules) = fixture(&history.inputs, &[]);
+        let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+        input.type_select = boundary_mode(&history.steps[0]["before"]);
+        input.selection_order = history.selected.clone();
+        input.selection_order_pending = true;
+        let actor = sim.entities_mut().get_mut(20).unwrap();
+        actor.lifecycle.in_limbo = true;
+        let owner = sim.session.current_house.unwrap();
+        let command = if queued_selection {
+            Command::Select {
+                entity_ids: vec![20],
+                additive: false,
+            }
+        } else {
+            Command::Stop { entity_id: 40 }
+        };
+        sim.queue_command(CommandEnvelope::new(owner, 2, command));
+        reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+        assert_eq!(input.selection_order_pending, queued_selection);
+        assert_eq!(
+            input.selection_order,
+            if queued_selection { vec![20] } else { vec![] }
+        );
+        assert_eq!(input.type_select.selection_scope_view().0, "combatant");
+        assert!(input.type_select.across_map);
+        assert_eq!(
+            sim.pending_command_snapshot().len(),
+            1,
+            "reconciliation is read-only on queued work"
+        );
+
+        // Future selection retains the provisional ledger until its existing
+        // queue owner drains it. A refused Select after Conceal then closes
+        // pending state instead of waiting for impossible bit equality.
+        sim.session.tick = 1;
+        let due = sim.take_due_commands();
+        for command in due {
+            let _ = sim.apply_command("local", &command.payload, Some(&rules));
+        }
+        reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+        assert!(!input.selection_order_pending);
+        assert!(input.selection_order.is_empty());
+        assert_eq!(input.type_select.selection_scope_view().0, "combatant");
+        assert!(input.type_select.across_map);
+    }
+}
+
+#[test]
+fn combatant_histories_match_native_membership_scope_follow_and_voice_continuation() {
+    use crate::sim::rng::trace_draws;
+    use serde_json::json;
+
+    let corpus = corpus();
+    assert_eq!(corpus.combatant_histories.len(), 71);
+    let mut excluded = BTreeSet::new();
+    let mut p_steps = 0;
+    for history in &corpus.combatant_histories {
+        if history.inputs.actors.iter().any(|actor| {
+            actor.robot_offline || !actor.techno_cast || actor.voice_list.contains(&-1)
+        }) || history.command_guard != 0
+        {
+            excluded.insert(history.id.as_str());
+            continue;
+        }
+        let label = &history.id;
+        let (mut sim, rules) = fixture(&history.inputs, &history.selected);
+        let mut ordered = history.selected.clone();
+        let mut input = boundary_mode(&history.steps[0]["before"]);
+        let mut follow: Option<u64> =
+            serde_json::from_value(history.steps[0]["before"]["follow"].clone()).unwrap();
+        assert_eq!(
+            sim.main_rng.native_state_hex(),
+            history.rng_before_hex["main"],
+            "{label}"
+        );
+        let scenario_before = sim.scenario_rng.logical_state();
+        let mapgen_before = sim.mapgen_rng.logical_state();
+        for (index, step) in history.steps.iter().enumerate() {
+            if step["command"] != "combatant" {
+                if step["command"] == "ordinary_deselect" {
+                    let effects = resolve_selection_mutation(
+                        &sim,
+                        Some(&rules),
+                        ordered,
+                        follow,
+                        false,
+                        &SelectionMutation {
+                            deselect: vec![step["id"].as_u64().unwrap()],
+                            ..Default::default()
+                        },
+                    );
+                    if effects.native_selection_mode_reset {
+                        input.note_successful_selection_mutation(false);
+                    }
+                    ordered = effects.ordered;
+                    follow = effects.follow_target;
+                    assert_eq!(
+                        ordered,
+                        boundary_ids(step),
+                        "{label}: direct Deselect membership"
+                    );
+                    assert_eq!(
+                        follow,
+                        serde_json::from_value::<Option<u64>>(step["follow"].clone()).unwrap(),
+                        "{label}: direct Deselect Follow"
+                    );
+                    assert_eq!(
+                        input.selection_scope_view().0,
+                        "combatant",
+                        "{label}: direct Deselect retains mode1"
+                    );
+                    assert_eq!(
+                        input.across_map,
+                        step["across_map"].as_bool().unwrap(),
+                        "{label}: direct Deselect retains map latch"
+                    );
+                    continue;
+                }
+                // Interleaved commands supply observed original boundary state.
+                // Their algorithms are covered by their own corpora/captures;
+                // this does not assert their Rust implementation from replaying
+                // original draws. Consecutive P steps retain Rust's own result.
+                ordered = boundary_ids(step);
+                follow = serde_json::from_value(step["follow"].clone()).unwrap();
+                input = boundary_mode(step);
+                for draw in step["main_draws"].as_array().unwrap() {
+                    assert_eq!(
+                        u64::from(sim.main_rng.next_u32()),
+                        draw.as_u64().unwrap(),
+                        "{label} step {index}"
+                    );
+                }
+                continue;
+            }
+            let before = &step["before"];
+            assert_eq!(
+                ordered,
+                boundary_ids(before),
+                "{label} step {index}: retained ledger"
+            );
+            assert_eq!(
+                follow,
+                serde_json::from_value::<Option<u64>>(before["follow"].clone()).unwrap(),
+                "{label} step {index}: retained Follow"
+            );
+            input.prepare_combatant_scope();
+            let rng_before = sim.rng_state();
+            let screen: Vec<_> = history.screen_order.iter().flatten().copied().collect();
+            let result = combatant_selection(
+                &sim,
+                &rules,
+                &screen,
+                &history.map_order,
+                &ordered,
+                step["key_word"].as_u64().unwrap() & 0x100 == 0,
+                input.across_map,
+            );
+            let effects = resolve_selection_mutation(
+                &sim,
+                Some(&rules),
+                ordered,
+                follow,
+                before["placement"].as_bool().unwrap(),
+                &result.mutation,
+            );
+            assert_eq!(
+                sim.rng_state(),
+                rng_before,
+                "{label} step {index}: selection scan/admission draws no RNG"
+            );
+            let native_adds: Vec<_> = step["selection_calls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|call| call["name"] == "select" && call["accepted"] == true)
+                .map(|call| call["id"].as_u64().unwrap())
+                .collect();
+            assert_eq!(
+                effects.successful_adds, native_adds,
+                "{label} step {index}: actual Select order"
+            );
+            ordered = effects.ordered;
+            follow = effects.follow_target;
+            assert_eq!(
+                ordered,
+                boundary_ids(step),
+                "{label} step {index}: immediate membership/order"
+            );
+            assert_eq!(
+                follow,
+                serde_json::from_value::<Option<u64>>(step["follow"].clone()).unwrap(),
+                "{label} step {index}: Follow cleanup"
+            );
+            assert_eq!(
+                follow.is_some(),
+                step["follow_enabled"].as_bool().unwrap(),
+                "{label} step {index}"
+            );
+            for actor in &history.inputs.actors {
+                assert_eq!(
+                    ordered.contains(&actor.id),
+                    step["selected_flags"][actor.id.to_string()]
+                        .as_bool()
+                        .unwrap(),
+                    "{label} step {index}: bit{}",
+                    actor.id
+                );
+            }
+            let outcome = if ordered.is_empty() {
+                TypeSelectOutcome::Empty
+            } else if result.across_map {
+                TypeSelectOutcome::Map
+            } else {
+                TypeSelectOutcome::Screen
+            };
+            input.finish_combatant_selection(outcome, result.across_map);
+            assert_eq!(
+                step["selection_mode"], 1,
+                "{label} step {index}: original P mode"
+            );
+            assert_eq!(
+                input.selection_scope_view(),
+                (
+                    "combatant",
+                    step["across_map"].as_bool().unwrap(),
+                    Some(step["message_keys"][0].as_str().unwrap())
+                ),
+                "{label} step {index}: mode/scope/feedback"
+            );
+            let (requests, draws) = trace_draws(|| {
+                effects.successful_adds.iter().filter_map(|&id| {
+                    sim.selection_voice_request(&rules, id, history.voice_enabled).map(|sound| {
+                        json!({"id": id, "sound_id": sound.strip_prefix("Sound").unwrap().parse::<i64>().unwrap()})
+                    })
+                }).collect::<Vec<_>>()
+            });
+            assert_eq!(
+                requests,
+                *step["voice_requests"].as_array().unwrap(),
+                "{label} step {index}: queued voices in admission order"
+            );
+            assert_eq!(
+                draws
+                    .iter()
+                    .map(|draw| draw["value"].clone())
+                    .collect::<Vec<_>>(),
+                *step["main_draws"].as_array().unwrap(),
+                "{label} step {index}: raw Main draws"
+            );
+            assert_eq!(
+                sim.scenario_rng.logical_state(),
+                scenario_before,
+                "{label}: Scenario"
+            );
+            assert_eq!(
+                sim.mapgen_rng.logical_state(),
+                mapgen_before,
+                "{label}: MapGen"
+            );
+            assert_eq!(
+                step["modes"], before["modes"],
+                "{label}: no mode cancellation"
+            );
+            assert_eq!(
+                step["placement"], before["placement"],
+                "{label}: placement retained"
+            );
+            assert_eq!(
+                step["action_timer"], before["action_timer"],
+                "{label}: selected-action timer retained"
+            );
+            for key in ["redraw", "cursor_calls", "timer_writes", "detach_calls"] {
+                assert!(
+                    step[key].as_array().unwrap().is_empty(),
+                    "{label}: no {key}"
+                );
+            }
+            assert!(
+                step["center_coord"].is_null(),
+                "{label}: no camera centering"
+            );
+            // The app sends this complete ledger to the existing snapshot
+            // receiver, which preserves requested old members and removes
+            // omitted ones regardless of the gesture's additive marker.
+            assert!(sim.apply_command(
+                "local",
+                &Command::Select {
+                    entity_ids: ordered.clone(),
+                    additive: !result.mutation.clear,
+                },
+                Some(&rules)
+            ));
+            for actor in &history.inputs.actors {
+                assert_eq!(
+                    sim.entities().get(actor.id).unwrap().selected,
+                    step["selected_flags"][actor.id.to_string()]
+                        .as_bool()
+                        .unwrap(),
+                    "{label} step {index}: committed bit{}",
+                    actor.id
+                );
+            }
+            p_steps += 1;
+        }
+        assert_eq!(
+            sim.main_rng.native_state_hex(),
+            history.rng_after_hex["main"],
+            "{label}: complete Main continuation"
+        );
+        assert_eq!(
+            sim.scenario_rng.native_state_hex(),
+            history.rng_after_hex["scenario"],
+            "{label}"
+        );
+        assert_eq!(
+            sim.mapgen_rng.native_state_hex(),
+            history.rng_after_hex["mapgen"],
+            "{label}"
+        );
+        for &expected in &history.main_next_four {
+            assert_eq!(
+                sim.main_rng.next_u32(),
+                expected,
+                "{label}: following raw draw"
+            );
+        }
+    }
+    assert_eq!(p_steps, 76);
+    // These are declared bounds, not silent mappings to convenient Rust bits.
+    // RobotOffline has no lifecycle owner; a typed GameEntity has a Techno
+    // identity. GuardA8B538 belongs to the wider keyboard/session lifecycle.
+    // Raw numeric sound-1 is not a bound production SOUNDMD name; the voice
+    // owner's existing direct corpus covers its spent-draw/rejected-queue tail.
+    assert_eq!(
+        excluded,
+        BTreeSet::from([
+            "screen_null_and_nontechno",
+            "map_alive_gate_accepts_nontechno",
+            "infantry_robot_offline_distinguishes_escalation_and_final_select",
+            "unit_robot_offline_distinguishes_escalation_and_final_select",
+            "guarded_P_preserves_all",
+            "voice_minus_one_already_spent_draw",
+        ])
+    );
+}
+
+#[test]
+fn combatant_shared_mode_health_retains_native_map_latch() {
+    let mut compared = 0;
+    for history in &corpus().combatant_histories {
+        for step in &history.steps {
+            if step["command"] != "health" {
+                continue;
+            }
+            // The three controls contain either an empty world/snapshot or
+            // ordinary on-screen actors. Health's first category may select
+            // none even while its retained snapshot is nonempty.
+            let mut input = boundary_mode(&step["before"]);
+            input.finish_health_navigation(!history.inputs.actors.is_empty());
+            assert_eq!(
+                input.health_navigation_continues(),
+                step["selection_mode"] == 3,
+                "{}: Health mode",
+                history.id
+            );
+            assert_eq!(
+                input.across_map,
+                step["across_map"].as_bool().unwrap(),
+                "{}: Health retains the shared map latch",
+                history.id
+            );
+            compared += 1;
+        }
+    }
+    assert_eq!(compared, 3);
+}
+
+#[test]
+fn combatant_defeat_admission_matches_original_early_guard() {
+    let corpus = corpus();
+    let row = corpus
+        .combatant_histories
+        .iter()
+        .find(|history| history.id == "guarded_P_preserves_all")
+        .unwrap();
+    let (mut sim, _) = fixture(&row.inputs, &row.selected);
+    assert!(combatant_selection_allowed(&sim));
+    let local = sim.session.current_house.unwrap();
+    sim.houses.get_mut(&local).unwrap().is_defeated = true;
+    assert!(!combatant_selection_allowed(&sim));
+    let step = &row.steps[0];
+    for key in [
+        "selected",
+        "selected_flags",
+        "follow",
+        "follow_enabled",
+        "modes",
+        "placement",
+        "selection_mode",
+        "across_map",
+        "action_timer",
+    ] {
+        assert_eq!(
+            step[key], step["before"][key],
+            "original early guard preserves {key}"
+        );
+    }
+    for key in [
+        "selection_calls",
+        "voice_requests",
+        "main_draws",
+        "message_keys",
+        "timer_writes",
+        "detach_calls",
+    ] {
+        assert!(
+            step[key].as_array().unwrap().is_empty(),
+            "original early guard has no {key}"
+        );
+    }
+    assert_eq!(row.rng_before_hex, row.rng_after_hex);
 }
 
 fn direction(value: &str) -> ObjectDirection {
@@ -166,15 +783,20 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
     for actor in &inputs.actors {
         writeln!(
             ini,
-            "[ACTOR{}]\nStrength=100\nSelectable={}\nPrimary=GUN",
+            "[ACTOR{}]\nStrength=100\nSelectable={}\nIsSelectableCombatant={}\nPrimary={}\nVoiceSelect={}",
             actor.id,
-            if actor.selectable { "yes" } else { "no" }
+            if actor.selectable { "yes" } else { "no" },
+            if actor.is_selectable_combatant { "yes" } else { "no" },
+            if actor.positive_primary_damage { "GUN" } else { "QUIETGUN" },
+            actor.voice_list.iter().map(|id| format!("Sound{id}")).collect::<Vec<_>>().join(","),
         )
         .unwrap();
     }
-    ini.push_str("[DOCKBUILDING]\nStrength=100\nFoundation=1x1\n[GUN]\nDamage=10\n");
+    ini.push_str(
+        "[DOCKBUILDING]\nStrength=100\nFoundation=1x1\n[GUN]\nDamage=10\n[QUIETGUN]\nDamage=0\n",
+    );
     let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).expect("native control types");
-    let mut sim = Simulation::new();
+    let mut sim = Simulation::with_seed(inputs.seed);
     let local = sim.interner.intern("local");
     let other = sim.interner.intern("other");
     sim.session.current_house = Some(local);
@@ -270,7 +892,14 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
         .map(|ids| ids.iter().flatten().copied().collect::<Vec<_>>());
     let mut state = serde_json::to_value(&sim).expect("serialize selection fixture");
     state["substrate"]["display"] = serde_json::to_value(&layers).unwrap();
-    let sim: Simulation = serde_json::from_value(state).expect("retained display state");
+    let mut sim: Simulation = serde_json::from_value(state).expect("retained display state");
+    // Installing retained display through serde invokes the intentional native
+    // load resets for Scenario/Main. This is a supplied fresh-object fixture,
+    // not a load history: restore its declared seed through the existing test
+    // pair owner. SelectionFixture177..182 also seeds MapGen identically;
+    // that explicit input differs from production's fresh MapGen Seed(0).
+    sim.reseed_scenario_and_main(inputs.seed);
+    sim.mapgen_rng = crate::sim::rng::SimRng::new(inputs.seed);
     for (index, ids) in layers.iter().enumerate() {
         assert_eq!(
             sim.display_layers()
