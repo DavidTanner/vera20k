@@ -2,6 +2,7 @@
 //! feed the shared DSurface raster/ordered RGB565 destination owner.
 //! Native execution: tools/spatial_oracle/building_prism.json::laser_draw.
 
+use super::surface_line::{SurfaceLine, SurfaceLineBlend};
 use crate::sim::projectile::ProjectileCoord;
 use crate::util::native_x87::{NativeF32Bits, X87Chop53 as X};
 
@@ -15,22 +16,6 @@ pub(crate) struct LaserDraw {
     pub rgb: [u8; 3],
     pub age: i32,
     pub duration: i32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LaserBlend {
-    /// 4BDF00 pre-scales its RGB by the retained float then admits any >7.
-    Add([u8; 3]),
-    /// 4BFD30 receives an already packed surface word.
-    Replace(u16),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LaserLine {
-    pub from: [i32; 2],
-    pub to: [i32; 2],
-    pub z_adjust: [i32; 2],
-    pub blend: LaserBlend,
 }
 
 impl LaserDraw {
@@ -49,7 +34,7 @@ impl LaserDraw {
         self,
         camera: [i32; 2],
         high_detail: bool,
-        mut emit: impl FnMut(LaserLine),
+        mut emit: impl FnMut(SurfaceLine),
     ) {
         // Draw550268 skips nonpositive duration. Expiry belongs to Update;
         // a prepared age == duration object still reaches this draw leaf.
@@ -79,16 +64,18 @@ impl LaserDraw {
                 if scaled.iter().all(|&v| v <= 7) {
                     return;
                 }
-                LaserBlend::Add(scaled)
+                SurfaceLineBlend::Add(scaled)
             } else {
                 // RGBClass6612C0: signed division toward zero, low byte of
                 // interpolation argument. Here the destination is white.
                 let rgb = rgb.map(|v| {
                     (i32::from(v) + (255 - i32::from(v)) * i32::from(toward_white) / 256) as u8
                 });
-                LaserBlend::Replace(crate::render::native_surface_format::RGB565.pack_rgb8(rgb))
+                SurfaceLineBlend::Replace(
+                    crate::render::native_surface_format::RGB565.pack_rgb8(rgb),
+                )
             };
-            emit(LaserLine {
+            emit(SurfaceLine {
                 from,
                 to,
                 z_adjust,

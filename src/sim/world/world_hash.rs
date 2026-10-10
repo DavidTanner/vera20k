@@ -747,6 +747,7 @@ impl Simulation {
         self.particle_systems().len().hash(hasher);
         for (id, sys) in self.particle_systems().iter() {
             id.hash(hasher);
+            sys.native_unique_id().hash(hasher);
             sys.type_id.0.hash(hasher);
             sys.coords.x.hash(hasher);
             sys.coords.y.hash(hasher);
@@ -765,6 +766,7 @@ impl Simulation {
             sys.owner_house.hash(hasher);
             sys.particles.len().hash(hasher);
             for p in &sys.particles {
+                p.native_unique_id().hash(hasher);
                 p.type_id.0.hash(hasher);
                 p.coords.x.hash(hasher);
                 p.coords.y.hash(hasher);
@@ -3195,23 +3197,7 @@ mod particle_hash_tests {
     use glam::IVec3;
 
     fn fake_system(coords: IVec3) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 0,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        ParticleSystem::test_fixture(0, ParticleSystemTypeId(0), coords)
     }
 
     fn insert_system(sim: &mut Simulation, mut system: ParticleSystem) -> u64 {
@@ -3244,24 +3230,13 @@ mod particle_hash_tests {
         let mut sim_b = Simulation::new();
         let mut sys_a = fake_system(IVec3::ZERO);
         let mut sys_b = fake_system(IVec3::ZERO);
-        let make_p = |counter: u8| Particle {
-            type_id: ParticleTypeId(0),
-            coords: IVec3::ZERO,
-            origin: IVec3::ZERO,
-            direction: [SimFixed::from_num(0); 3],
-            velocity: SimFixed::from_num(0),
-            lifetime_remaining: 100,
-            damage_counter: 0,
-            state_ai_advance: 4,
-            animation_state: 0,
-            translucency: 0,
-            marked_for_deletion: false,
-            drift_x: 0,
-            drift_y: 0,
-            drift_z: 0,
-            spark: None,
-            prev_delta: [SimFixed::from_num(0); 3],
-            state_advance_counter: counter,
+        let make_p = |counter: u8| {
+            let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::ZERO);
+            particle.origin = IVec3::ZERO;
+            particle.lifetime_remaining = 100;
+            particle.state_ai_advance = 4;
+            particle.state_advance_counter = counter;
+            particle
         };
         sys_a.particles.push(make_p(0));
         sys_b.particles.push(make_p(3));
@@ -3275,25 +3250,11 @@ mod particle_hash_tests {
     }
 
     fn particle_with_spark(spark: Option<SparkRuntimeState>) -> Particle {
-        Particle {
-            type_id: ParticleTypeId(0),
-            coords: IVec3::new(-1, 2, 3),
-            origin: IVec3::ZERO,
-            direction: [SimFixed::from_num(0); 3],
-            velocity: SimFixed::from_num(0),
-            lifetime_remaining: 9,
-            damage_counter: 0,
-            state_ai_advance: 0,
-            animation_state: 0,
-            translucency: 0,
-            marked_for_deletion: false,
-            drift_x: 0,
-            drift_y: 0,
-            drift_z: 0,
-            spark,
-            prev_delta: [SimFixed::from_num(0); 3],
-            state_advance_counter: 0,
-        }
+        let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::new(-1, 2, 3));
+        particle.origin = IVec3::ZERO;
+        particle.lifetime_remaining = 9;
+        particle.spark = spark;
+        particle
     }
 
     fn hash_with_particle(particle: Particle) -> u64 {

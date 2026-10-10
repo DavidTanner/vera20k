@@ -2,7 +2,8 @@
 //! production GPU destination blending and immutable native depth.
 use super::*;
 use crate::render::batch::BatchRenderer;
-use crate::render::laser::{LaserBlend, LaserDraw, LaserLine};
+use crate::render::laser::LaserDraw;
+use crate::render::surface_line::{SurfaceLine, SurfaceLineBlend};
 use crate::render::terrain_draw_gpu_tests::{Gpu, camera, clear, encoded, seed_depth_grid};
 use crate::sim::projectile::ProjectileCoord;
 use serde_json::Value;
@@ -107,11 +108,11 @@ fn laser_geometry_color_and_fade_match_original_draw_arguments() {
                     if rgb.iter().all(|&v| v <= 7) {
                         return None;
                     }
-                    LaserBlend::Add(rgb)
+                    SurfaceLineBlend::Add(rgb)
                 } else {
-                    LaserBlend::Replace(line["color"].as_u64().unwrap() as u16)
+                    SurfaceLineBlend::Replace(line["color"].as_u64().unwrap() as u16)
                 };
-                Some(LaserLine {
+                Some(SurfaceLine {
                     from: array(&line["from_point"]),
                     to: array(&line["to_point"]),
                     z_adjust: [integer(&line["z_start"]), integer(&line["z_end"])],
@@ -174,6 +175,7 @@ fn production_laser_pixels_match_original_software_surface() {
                     &gpu.device,
                     &gpu.queue,
                     draws(row),
+                    &[],
                     &[],
                     viewport(input),
                     || high_detail(input),

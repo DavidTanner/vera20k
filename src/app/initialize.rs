@@ -551,6 +551,7 @@ impl App {
                     combat_lights: Default::default(),
                     line_trails: Default::default(),
                     lasers: Default::default(),
+                    electric_bolts: Default::default(),
                     detail: Default::default(),
                     hidden_super_anims: Default::default(),
                     super_timer_blinks: Default::default(),

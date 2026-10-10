@@ -2120,18 +2120,20 @@ fn emit_detonation_anim(
         let flags = (u32::from(warhead.cl_disable_red) << 1)
             | (u32::from(warhead.cl_disable_green) << 2)
             | (u32::from(warhead.cl_disable_blue) << 3);
-        out.effects.combat_light_requests.push(CombatLightRequest {
-            target_id: None,
-            damage: detonation.payload.base_damage,
-            warhead_ref: detonation.payload.warhead,
-            coord: ProjectileCoord::new(
-                i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-                i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-                world_z_leptons,
-            ),
-            force_create: true,
-            flags,
-        });
+        out.effects
+            .combat_light_requests
+            .push(CombatLightRequest::Impact {
+                target_id: None,
+                damage: detonation.payload.base_damage,
+                warhead_ref: detonation.payload.warhead,
+                coord: ProjectileCoord::new(
+                    i32::from(rx) * 256 + sub_x.to_num::<i32>(),
+                    i32::from(ry) * 256 + sub_y.to_num::<i32>(),
+                    world_z_leptons,
+                ),
+                force_create: true,
+                flags,
+            });
     }
     let effect = if area_result == Some(AreaDamageResult::IronCurtain) {
         (!rules.general.weapon_nullify_anim.is_empty()).then(|| {
@@ -3814,6 +3816,7 @@ pub(super) fn emit_admitted_fire(
         weapon,
         prism_support_count,
     );
+    super::electric_bolt::fired(world, rules, snap.stable_id, snap.target, weapon);
     // Aircraft ammo deduction: one ammo per burst completion (not per shot).
     if !mid_burst
         && !world
@@ -3889,19 +3892,17 @@ fn shot_target(
     }
 }
 
-/// The firer's TarCom (`+0x2B4`) as FireAt reads it: a building's FireAt runs
-/// inside the visit whose TarCom its request carries; any other firer's is
-/// its live target.
+/// FireAt6FE268 GetFLH reads the source's live TarCom, independently of
+/// the explicit FireAt target argument (which SprayAttack may replace at
+///6FE245). Building calls are synchronous, so no deferred target override is
+/// needed. Executed retained/cleared controls: electric_bolt.json.
 fn fireat_tarcom(world: &Simulation, snap: &AttackerSnapshot) -> Option<TargetKind> {
-    match snap.building_shot {
-        Some(shot) => Some(shot.target()),
-        None => world
-            .substrate
-            .entities
-            .get(snap.stable_id)
-            .and_then(|firer| firer.attack_target.as_ref())
-            .map(|attack| attack.target),
-    }
+    world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .and_then(|firer| firer.attack_target.as_ref())
+        .map(|attack| attack.target)
 }
 
 /// `TechnoClass::FireAt 0x006FE582..0x006FE622`, right after the bullet is
@@ -4082,8 +4083,10 @@ fn deduct_fire_ammo(world: &mut Simulation, firers: &[u64]) {
     }
 }
 
-/// Call-local native trigger; neither variant stores a future shot.
+/// Call-local native trigger; no variant stores a future shot.
 pub(crate) enum FireVisit {
+    /// Building44B6D0/450492 already admitted the exact target and slot.
+    Building { id: u64, shot: super::BuildingShot },
     /// Unit7365E1 Fire_At_Target then7365E8 Facing_Update.
     UnitTarget(u64),
     /// Infantry51BF59 dispatches Fire_At_Target5206B0, including Stage admission.
@@ -4120,6 +4123,34 @@ pub(crate) fn visit_fire(
         .as_ref()
         .is_none_or(|f| f.fog_enabled);
     match visit {
+        FireVisit::Building { id, shot } => {
+            let snapshot = world.substrate.entities.get(id).map(|actor| {
+                let garrison = rules
+                    .object(world.interner.resolve(actor.type_ref()))
+                    .filter(|obj| combat_weapon::is_occupied(actor, obj))
+                    .and_then(|_| actor.passenger_role.cargo())
+                    .map(|cargo| GarrisonSnapshot {
+                        fire_index: cargo.garrison_fire_index,
+                        occupant_count: cargo.count() as u8,
+                    });
+                AttackerSnapshot {
+                    building_shot: Some(shot),
+                    ..build_attacker_snapshot(actor, shot.target(), garrison)
+                }
+            });
+            if let Some(snapshot) = snapshot {
+                resolve_attacker_fire(
+                    world,
+                    rules,
+                    overlay_registry,
+                    &snapshot,
+                    fog_enabled,
+                    world.session.binary_frame,
+                    world.active_wave_links.contains_key(&id),
+                    emit,
+                );
+            }
+        }
         FireVisit::UnitTarget(id) => {
             if unit_reaches_fire_update(world, id)
                 && let Some(actor) = world.substrate.entities.get(id)
@@ -4349,11 +4380,11 @@ pub(crate) fn tick_combat(
             Some(e) => e,
             None => continue,
         };
-        // Units and Infantry already fired in their own live Logic slots.
+        // Buildings, Units and Infantry already fired in their live Logic slots.
         // Component fixtures below invoke that same slot without a world pass.
         if matches!(
             entity.category,
-            EntityCategory::Unit | EntityCategory::Infantry
+            EntityCategory::Structure | EntityCategory::Unit | EntityCategory::Infantry
         ) {
             continue;
         }
@@ -4380,38 +4411,13 @@ pub(crate) fn tick_combat(
         }
         // Skip snapshot for entities blocked by locomotor state.
         let blocked = !requested && fire_blocked.contains(&id);
-        // A building shoots only the FireAt its own visit asked for this
-        // frame: Mission_Attack's FireAt arm or ProcessDelayedFire's expiry
-        // (`techno_ai::building_missions`).
-        let building_shot = fire_requests.buildings.get(&id).copied();
-        if entity.category == EntityCategory::Structure && building_shot.is_none() {
-            continue;
-        }
-        // A missing target does not acquire or drop another target.
-        let Some(attack_target) = shot_target(entity, building_shot) else {
+        let Some(attack_target) = shot_target(entity, None) else {
             continue;
         };
         if blocked {
             continue;
         }
-
-        // An occupied building's fire state ([`combat_weapon::is_occupied`]),
-        // then the snapshot through the shared `build_attacker_snapshot` so
-        // the field-reads stay byte-identical to the per-object Fire→Facing
-        // host.
-        let garrison = rules
-            .object(world.interner.resolve(entity.type_ref()))
-            .filter(|obj| combat_weapon::is_occupied(entity, obj))
-            .and_then(|_| entity.passenger_role.cargo())
-            .map(|cargo| GarrisonSnapshot {
-                fire_index: cargo.garrison_fire_index,
-                occupant_count: cargo.count() as u8,
-            });
-
-        snapshots.push(AttackerSnapshot {
-            building_shot,
-            ..build_attacker_snapshot(entity, attack_target, garrison)
-        });
+        snapshots.push(build_attacker_snapshot(entity, attack_target, None));
     }
     // The remaining class hosts retain their existing phase order. Foot firers
     // have no production entry here: their complete slot ran in the live pass.

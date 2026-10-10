@@ -305,6 +305,7 @@ pub(crate) enum LifecycleOutput {
     },
     /// Copied LaserDraw54FE60 birth; no source/target pointer to detach.
     LaserCreated(crate::sim::combat::laser::LaserBirth),
+    ElectricBoltCreated(crate::sim::combat::electric_bolt::ElectricBoltBirth),
     /// ObjectUnlimbo5F517A/5F5207 constructs and attaches a presentation trail.
     LineTrailConstructed {
         stable_id: u64,

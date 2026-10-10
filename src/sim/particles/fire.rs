@@ -170,13 +170,7 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
     if !sys.done_spawning && pst.spawns {
         let frames = (pst.spawn_frames as u64).max(1);
         if tick % frames == 0 && sys.particles.len() < cap {
-            let _ = spawn_particle_with_insert(
-                sys,
-                sys.coords,
-                FIRE_INSERT_RANGE,
-                rules,
-                sim.particle_rng(),
-            );
+            let _ = spawn_particle_with_insert(sys, sys.coords, FIRE_INSERT_RANGE, rules, sim);
         }
     }
 }
@@ -186,27 +180,13 @@ mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::particle_system_type::ParticleSystemTypeId;
-    use crate::sim::particles::{ParticleSystem, make_particle};
+    use crate::sim::particles::ParticleSystem;
     use glam::IVec3;
 
     fn fake_system(type_id: ParticleSystemTypeId) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 0,
-            in_logic_vector: false,
-            type_id,
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(1),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        let mut system = ParticleSystem::test_fixture(0, type_id, IVec3::ZERO);
+        system.spawn_timer = SimFixed::from_num(1);
+        system
     }
 
     fn parse(ini_text: &str) -> RuleSet {
@@ -225,7 +205,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::ZERO, pt, &mut sim);
         p.velocity = SIM_ZERO;
         tick_particle(&mut p, pt, 0, sim.particle_rng());
         assert!(p.marked_for_deletion, "zero-velocity fire dies immediately");
@@ -250,8 +230,8 @@ mod tests {
 
         // Build the particle with a throwaway stream so the jitter draw below is
         // exactly the crafted stream's next draw.
-        let mut throwaway = SimRng::new(7);
-        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, &mut throwaway);
+        let mut throwaway = Simulation::with_seed(7);
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::ZERO, pt, &mut throwaway);
         p.direction = [SimFixed::from_num(1), SIM_ZERO, SIM_ZERO];
         p.velocity = SimFixed::from_num(100);
 
@@ -291,7 +271,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::ZERO, pt, &mut sim);
         // Force animation_state past final_damage_state (default 14).
         p.animation_state = 20;
         // Drive damage_counter to zero — must NOT reset to MaxDC.
@@ -320,12 +300,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::new(100, 100, 0),
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::new(100, 100, 0), pt, &mut sim);
         p.prev_delta = [SimFixed::from_num(5), SIM_ZERO, SIM_ZERO];
         // old_ground=0, new_ground=10 → terrain rises.
         move_fire(&mut p, 0, 10);
@@ -347,12 +322,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::new(100, 100, 0),
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::new(100, 100, 0), pt, &mut sim);
         p.prev_delta = [SimFixed::from_num(5), SIM_ZERO, SIM_ZERO];
         move_fire(&mut p, 0, 0);
         assert!(!p.marked_for_deletion);

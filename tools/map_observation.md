@@ -97,6 +97,19 @@ firing events or proof that a beam reached the GPU. One detail row and each live
 beam count toward the shared sample budget. False/absent adds no fields; v1
 rejects the option, and present null/nonboolean values are invalid.
 
+Optional v2 `observe_electric_bolts: true` adds immutable bolt, Spotlight and
+particle snapshots at L0, each committed frame, and after every tactical
+composite, including repeated draws during an audio completion tail. It retains
+native particle IDs, the Scenario identity cursor and all three complete logical
+RNG states. Each observed actor also receives the `prism` firing-state fields
+described above. Counts include one detail row, three RNG streams, every bolt,
+light, particle system and particle toward the existing sample budget.
+These observations consume no RNG and create no effects. Compare observer-off
+captures to establish that diagnostics leave production output unchanged. Draw
+rows describe the post-composite registry: the last submitted geometry of an
+expiring bolt is absent from its retained live vector. False/absent adds no
+fields; v1 and present null/nonboolean values are rejected.
+
 Optional v2 `observe_audio` records device-mixer queue pulls from requested ordinary
 SFX Players. For example:
 

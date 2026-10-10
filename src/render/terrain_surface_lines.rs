@@ -1,11 +1,11 @@
-//! LaserDraw and LineTrail destination edits on TerrainDrawRenderer's existing snapshot/Z.
+//! LaserDraw, EBolt and LineTrail edits on TerrainDrawRenderer's existing snapshot/Z.
 //! Different pixels are independent; every repeated operation for one pixel
 //! retains the original registry/segment/raster order. One snapshot and resolve
 //! per bounded chunk avoid a render pass per line or pixel.
 
 use super::TerrainDrawRenderer;
 use crate::render::line_trail::{LineTrailSegment, rasterize};
-use crate::render::surface_line::SurfaceLineViewport;
+use crate::render::surface_line::{SurfaceLine, SurfaceLineBlend, SurfaceLineViewport};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -226,6 +226,7 @@ impl TerrainDrawRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         lasers: impl IntoIterator<Item = crate::render::laser::LaserDraw>,
+        bolt_lines: &[SurfaceLine],
         segments: &[LineTrailSegment],
         viewport: SurfaceLineViewport,
         mut high_detail: impl FnMut() -> bool,
@@ -247,57 +248,61 @@ impl TerrainDrawRenderer {
             .unwrap_or(limit)
             .clamp(1, limit);
         assert!(limit > 0);
-        // Tactical6D4669 draws LaserDraw before LineTrail6D4673. They read
-        // the same immutable Z and completed destination, so one ordered
-        // operation stream preserves both stages without another snapshot.
+        // Tactical6D4669..6D4673 draws LaserDraw, EBolt, then LineTrail.
+        // They read the same immutable Z and completed destination. Bolt
+        // subdivision has already consumed Main once for this composite;
+        // rasterization, upload chunks and readback cannot request more draws.
+        let mut surface_line = |line: SurfaceLine| {
+            let (rgb, mode) = match line.blend {
+                SurfaceLineBlend::Add(rgb) => (
+                    u32::from(rgb[0]) | (u32::from(rgb[1]) << 8) | (u32::from(rgb[2]) << 16),
+                    1,
+                ),
+                SurfaceLineBlend::Replace(word) => (u32::from(word), 2),
+            };
+            crate::render::surface_line::rasterize_z_clipped(
+                line.from,
+                line.to,
+                line.z_adjust,
+                viewport.clip,
+                viewport.z_origin_y,
+                |pixel| {
+                    // Original additive4BDF00 advances the A pointer
+                    // only on Y changes (4BE6FA), never on X (4BE769).
+                    // Packed4BFD30 advances both axes like LineTrail.
+                    let sample = if mode == 1 {
+                        [pixel.clipped_start_x, pixel.point[1]]
+                    } else {
+                        pixel.point
+                    };
+                    let a = alpha(sample);
+                    if a == 0 {
+                        return;
+                    }
+                    self.surface_lines.work.push((
+                        pixel.point,
+                        Operation {
+                            z: u32::from(pixel.z),
+                            strength: 0,
+                            rgb,
+                            alpha: u32::from(a),
+                            mode,
+                        },
+                    ));
+                    if self.surface_lines.work.len() == limit {
+                        self.surface_lines
+                            .upload(device, queue, viewport.zoom, size);
+                    }
+                },
+            );
+        };
         for laser in lasers {
-            if laser.duration <= 0 {
-                continue;
+            if laser.duration > 0 {
+                laser.lines(viewport.camera, high_detail(), &mut surface_line);
             }
-            laser.lines(viewport.camera, high_detail(), |line| {
-                let (rgb, mode) = match line.blend {
-                    crate::render::laser::LaserBlend::Add(rgb) => (
-                        u32::from(rgb[0]) | (u32::from(rgb[1]) << 8) | (u32::from(rgb[2]) << 16),
-                        1,
-                    ),
-                    crate::render::laser::LaserBlend::Replace(word) => (u32::from(word), 2),
-                };
-                crate::render::surface_line::rasterize_z_clipped(
-                    line.from,
-                    line.to,
-                    line.z_adjust,
-                    viewport.clip,
-                    viewport.z_origin_y,
-                    |pixel| {
-                        // Original additive4BDF00 advances the A pointer
-                        // only on Y changes (4BE6FA), never on X (4BE769).
-                        // Packed4BFD30 advances both axes like LineTrail.
-                        let sample = if mode == 1 {
-                            [pixel.clipped_start_x, pixel.point[1]]
-                        } else {
-                            pixel.point
-                        };
-                        let a = alpha(sample);
-                        if a == 0 {
-                            return;
-                        }
-                        self.surface_lines.work.push((
-                            pixel.point,
-                            Operation {
-                                z: u32::from(pixel.z),
-                                strength: 0,
-                                rgb,
-                                alpha: u32::from(a),
-                                mode,
-                            },
-                        ));
-                        if self.surface_lines.work.len() == limit {
-                            self.surface_lines
-                                .upload(device, queue, viewport.zoom, size);
-                        }
-                    },
-                );
-            });
+        }
+        for &line in bolt_lines {
+            surface_line(line);
         }
         for &segment in segments {
             let projected = segment.project(viewport.camera);
@@ -396,3 +401,7 @@ mod tests;
 #[cfg(test)]
 #[path = "laser_tests.rs"]
 mod laser_tests;
+
+#[cfg(test)]
+#[path = "electric_bolt_tests.rs"]
+mod electric_bolt_tests;

@@ -1773,7 +1773,12 @@ mod tests {
                 effects
                     .combat_light_requests
                     .iter()
-                    .filter_map(|effect| effect.target_id)
+                    .filter_map(|effect| match effect {
+                        crate::sim::combat::CombatLightRequest::Impact { target_id, .. } => {
+                            *target_id
+                        }
+                        crate::sim::combat::CombatLightRequest::Spark { .. } => None,
+                    })
                     .collect(),
             )
         }

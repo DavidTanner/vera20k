@@ -51,6 +51,7 @@ class MapObservationTests(unittest.TestCase):
         self.terrain_frames = {}
         self.effect_frames = {}
         self.laser_frames = {}
+        self.electric_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
         self.keyboard_bindings = []
@@ -134,6 +135,8 @@ class MapObservationTests(unittest.TestCase):
                 frames[-1]['effects'] = deepcopy(self.effect_frames.get(step, effects))
             if self.profile.get('observe_lasers', False):
                 frames[-1]['lasers'] = deepcopy(self.laser_frames.get(step, self.laser_snapshot()))
+            if self.profile.get('observe_electric_bolts', False):
+                frames[-1]['electric_bolts'] = deepcopy(self.electric_frames.get(step, self.electric_snapshot()))
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
             'rule_types': deepcopy(self.rule_types),
@@ -144,6 +147,13 @@ class MapObservationTests(unittest.TestCase):
                          for index, request in enumerate(self.profile.get('commands', []))],
             'frames': frames,
         }
+        if self.profile.get('observe_electric_bolts', False):
+            manifest['observations']['electric_bolt_draws'] = {
+                'policy': 'electric-bolt-after-each-tactical-composite-v1',
+                'frames': [{'ordinal': index, 'completed_steps': min(index + 1, ticks),
+                            'simulation_tick': min(index + 1, ticks), 'binary_frame': min(index + 1, ticks),
+                            'effects': deepcopy(self.electric_frames.get(min(index + 1, ticks), self.electric_snapshot()))}
+                           for index in range(max(1, ticks))]}
         if 'observe_types' in self.profile:
             manifest['observations']['type_filter'] = deepcopy(self.profile['observe_types'])
         if 'gestures' in self.profile:
@@ -1368,6 +1378,79 @@ class MapObservationTests(unittest.TestCase):
                 'z_adjust': -58, 'width': 5, 'supported': True, 'house_color': True,
                 'rgb': [0, 0, 255], 'duration': 15, 'age': 1,
                 'timer_start': 38, 'timer_duration': 1}
+
+    @staticmethod
+    def electric_snapshot():
+        # Protocol fixture only; numeric parity comes from electric_bolt.json.
+        return {'detail': MapObservationTests.laser_snapshot()['detail'],
+                'live': [], 'lights': [], 'particle_systems': [], 'native_id_cursor': 1000,
+                'rng': {name: {'disabled': 0, 'index_a': 0, 'index_b': 103, 'words': [0] * 250}
+                        for name in ('main', 'scenario', 'mapgen')}}
+
+    def test_electric_observations_preserve_owner_ids_and_all_rng_words(self):
+        self.scripted_profile()
+        self.profile['observe_electric_bolts'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        snapshot = self.electric_snapshot()
+        snapshot['live'] = [{'birth_frame': 1, 'from': [1, 2, 300], 'to': [30, 40, 0],
+                             'z_adjust': -41, 'alternate_color': False, 'phase': 256, 'decay': 65536}]
+        snapshot['lights'] = [{'coord': [30, 40, 0], 'stage': 8, 'base_size': 65536,
+                               'flags': 0, 'surface_index': 46080}]
+        snapshot['particle_systems'] = [{'stable_id': 10, 'native_id': -2147483648, 'type_id': 'SparkSys',
+            'coord': [30, 40, 0], 'lifetime': -1, 'spawn_frames': -1, 'done_spawning': True,
+            'in_logic_vector': True, 'owner_entity': None, 'attached_entity': None,
+            'particles': [{'native_id': -2147483647, 'type_id': 'Spark', 'coord': [30, 40, 0],
+                           'lifetime': 2, 'damage_counter': 0, 'marked_for_deletion': False}]}]
+        snapshot['rng']['main']['words'][249] = 0xffffffff
+        self.electric_frames[2] = snapshot
+        for actors in self.actor_frames.values():
+            for actor in actors:
+                actor['prism'] = ({'support_count': 0, 'pending': None,
+                                   'rearm': {'start': -1, 'duration': 0, 'remaining': 0}}
+                                  if actor['category'] == 'Structure' else None)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        observed = report['capture']['observations']
+        self.assertEqual(observed['frames'][2]['electric_bolts'], snapshot)
+        self.assertEqual(observed['electric_bolt_draws']['frames'][1]['effects'], snapshot)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_electric_profiles_and_rng_schema_reject_malformed_evidence(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_electric_bolts=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_electric_bolts=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_electric_bolts=value))
+        for field, value in (('words', [0] * 249), ('words', [-1] * 250), ('index_a', 250), ('disabled', True)):
+            snapshot = self.electric_snapshot()
+            snapshot['rng']['main'][field] = value
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                observation._electric_bolts(snapshot, 'electric')
+        snapshot = self.electric_snapshot()
+        snapshot['native_id_cursor'] = 1 << 32
+        with self.assertRaises(ValidationError):
+            observation._electric_bolts(snapshot, 'electric')
+
+    def test_electric_draws_include_same_frame_tail_and_charge_sample_budget(self):
+        self.profile.update(schema_version=observation.PROFILE_V2, observe_electric_bolts=True, ticks=0)
+        self.profile_path.write_text(json.dumps(self.profile))
+        value = {'policy': 'electric-bolt-after-each-tactical-composite-v1', 'frames': [
+            {'ordinal': index, 'completed_steps': 0, 'simulation_tick': 0, 'binary_frame': 0,
+             'effects': self.electric_snapshot()} for index in range(3)]}
+        self.assertEqual(observation._electric_bolt_draws(value, self.profile, [], 2), 12)
+        with self.assertRaises(ValidationError):
+            observation._electric_bolt_draws(value, self.profile, [], 0)
+        value['frames'][2]['simulation_tick'] = 1
+        with self.assertRaises(ValidationError):
+            observation._electric_bolt_draws(value, self.profile, [], 2)
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 7):
+            report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('sample budget' in error for error in report['errors']), report['errors'])
 
     def test_lasers_round_trip_live_beams_detail_and_prism_with_explicit_opt_in(self):
         self.scripted_profile()

@@ -1915,22 +1915,14 @@ fn insert_anim(sim: &mut Simulation, stable_id: u64, inactive: bool) {
 }
 
 fn insert_particle_system(sim: &mut Simulation, stable_id: u64) {
-    sim.substrate.particle_systems.insert(ParticleSystem {
-        stable_id,
-        in_logic_vector: false,
-        type_id: crate::rules::particle_system_type::ParticleSystemTypeId(0),
-        coords: IVec3::ZERO,
-        offset: IVec3::ZERO,
-        particles: Vec::new(),
-        spawn_timer: SimFixed::from_num(0),
-        lifetime: -1,
-        spark_spawn_frames: 0,
-        facing: 0,
-        attached_entity: None,
-        owner_entity: None,
-        target_coords: IVec3::ZERO,
-        owner_house: None,
-        done_spawning: false,
+    sim.substrate.particle_systems.insert({
+        let mut system = ParticleSystem::test_fixture(
+            stable_id,
+            crate::rules::particle_system_type::ParticleSystemTypeId(0),
+            IVec3::ZERO,
+        );
+        system.facing = 0;
+        system
     });
 }
 

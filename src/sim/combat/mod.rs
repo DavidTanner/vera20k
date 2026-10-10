@@ -47,10 +47,13 @@ pub(crate) use receiver_fixture::{
     commit_damage_events, emit_projectile_detonations, handle_entity_deaths, resolve_attacker_fire,
     tick_combat, tick_combat_with_fog, tick_combat_with_fog_and_main_rng,
 };
-pub(crate) mod line_of_fire;
+pub(crate) mod electric_bolt;
+#[cfg(test)]
+mod electric_bolt_tests;
 pub(crate) mod laser;
 #[cfg(test)]
 mod laser_tests;
+pub(crate) mod line_of_fire;
 pub(crate) mod parasite;
 pub(crate) mod rof;
 pub mod smudge_dispatch;
@@ -1511,30 +1514,25 @@ pub struct ExplosionEffect {
     pub death: Option<destruction_effects::DeathAnimSpawn>,
 }
 
-/// One transient combat-light request, the inputs of one `FUN_0048A620` call.
-/// It creates an unowned screen-space light, not an AnimClass/ParticleSystem,
-/// so this record keeps the exact call inputs without inventing an attachment
-/// or house. Callers:
-/// - an active IronCurtain or ForceShield rejecting a positive receiver call
-///   (the damage shifted left once; flags IC=1, ForceShield=6);
-/// - a `Bright=` bullet's detonation (`BulletClass::DetonateAtCoord
-///   0x00469BD6..0x00469C41`: the bullet's damage `+0x6C`, flags from the
-///   warhead's `CLDisableRed/Green/Blue=` as 2/4/8);
-/// - every rocket impact (`RocketLocomotion::Detonate 0x006632AF`, not forced)
-///   and a bouncing chunk's dry landing (`AnimClass::AI 0x00423EF8`, not
-///   forced).
+/// Inputs from the two existing Spotlight5FF250 producer families. These
+/// are ordered presentation facts, never simulation objects or attachments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CombatLightRequest {
-    /// Receiver provenance only; this is not native effect ownership.
-    pub target_id: Option<u64>,
-    /// The damage the helper sizes the light from.
-    pub damage: i32,
-    pub warhead_ref: InternedId,
-    pub coord: ProjectileCoord,
-    /// Native helper force/create argument (literal true on both callsites).
-    pub force_create: bool,
-    /// Native raw draw flags.
-    pub flags: u32,
+pub enum CombatLightRequest {
+    /// Damage helper48A620: IC/ForceShield, Bright bullets and other impacts.
+    Impact {
+        target_id: Option<u64>,
+        damage: i32,
+        warhead_ref: InternedId,
+        coord: ProjectileCoord,
+        force_create: bool,
+        flags: u32,
+    },
+    /// SparkAI62EC53 directly constructs a persistent flags0 Spotlight. The
+    /// app applies the client Options Detail gate; simulation never reads it.
+    Spark {
+        coord: ProjectileCoord,
+        base_size: i32,
+    },
 }
 
 /// One smudge producer payload. Production commits it synchronously through
@@ -1604,33 +1602,21 @@ pub struct TiberiumReductionRequest {
     pub amount: i32,
 }
 
-/// The shots an object's own mission asked the combat phase for this frame,
-/// where VERA's FireAt lives. Filled by the live object pass, drained by
-/// combat in the same frame; never a permission carried to a later frame.
+/// Aircraft retain their existing phased Mission_Attack delivery. Other
+/// class FireAt callers enter the live receiver inside their own Logic visit.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct FireRequests {
-    /// Aircraft whose Mission_Attack strike state (4..9) asked for its visit.
     pub aircraft: std::collections::BTreeSet<u64>,
-    /// Buildings whose Update asked for a FireAt: GetFireError answered OK in
-    /// that visit, so combat emits the shot without asking again.
-    pub buildings: std::collections::BTreeMap<u64, BuildingShot>,
 }
 
-/// Which FireAt of `BuildingClass::Update` a building's request stands for.
-/// Both FireAts shoot the `TarCom` (`+0x2B4`) of the visit that asked, so the
-/// request carries it: the combat phase fires at it, and FireAt's own TarCom
-/// reads see it, whatever retargets the building later in the frame.
+/// Call-local arguments of Building Update's two native FireAt sites.
+/// This value is delivered immediately; no future-shot queue retains it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuildingShot {
-    /// Mission_Attack's FireAt arm (`0x0044B6D0`), with the weapon index
-    /// SelectWeapon answered in that visit (`0x0044AFF2`). The visit's
-    /// Gattling charge after the FireAt (`0x0044B6EF`) may step the stage
-    /// before the combat phase fires, so the index is not asked again.
+    /// Mission_Attack44B6D0, before its Gattling charge44B6EF.
     Mission { weapon: i32, target: TargetKind },
-    /// ProcessDelayedFire's mode-1 FireAt (`0x00450492`), with the weapon
-    /// Mission_Attack saved when it armed the shot (`+0x708`). A launched
-    /// bullet takes the building's support bonus
-    /// (`Simulation::take_support_bonus`).
+    /// ProcessDelayedFire450492 uses the slot saved at admission. A
+    /// successfully launched bullet consumes the master's support bonus.
     Delayed {
         slot: combat_weapon::WeaponSlot,
         target: TargetKind,
@@ -1638,7 +1624,6 @@ pub(crate) enum BuildingShot {
 }
 
 impl BuildingShot {
-    /// The visit's TarCom the shot goes at.
     pub(crate) fn target(self) -> TargetKind {
         match self {
             Self::Mission { target, .. } | Self::Delayed { target, .. } => target,
@@ -2455,7 +2440,7 @@ fn resolve_receive_damage(
             crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain => 1,
             crate::sim::superweapon::invulnerability::InvulnKind::ForceShield => 6,
         };
-        CombatLightRequest {
+        CombatLightRequest::Impact {
             target_id: Some(target.stable_id()),
             damage,
             warhead_ref: event.warhead_ref,

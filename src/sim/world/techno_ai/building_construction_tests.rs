@@ -167,7 +167,13 @@ fn construction_matches_the_original_mission_visits() {
             let now = origin + frame["frame"].as_i64().unwrap() as i32;
             sim.session.binary_frame = now as u32;
             update_animation(&mut sim, id, Some(&rules));
-            dispatch(&mut sim, id, Some(&rules), ObjectAiCtx::default());
+            dispatch(
+                &mut sim,
+                id,
+                Some(&rules),
+                ObjectAiCtx::default(),
+                &mut false,
+            );
             let entity = sim.substrate.entities.get(id).unwrap();
             let context = format!("{} frame{now}", input["name"]);
             assert_eq!(

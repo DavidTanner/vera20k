@@ -150,14 +150,17 @@ fn ordinary_lethal_fire_commits_debris_animations_and_sparks_once() {
     assert!(sim.substrate.entities.get(victim).is_none());
     // Rust regression, not a gamemd-derived golden. Fingerprint includes the
     // complete debris body. Re-captured when the debris and Explosion= draws
-    // moved to the Scenario stream (`0x007022C8`, `0x007386A7`); only the
-    // death sound stays on the main stream.
+    // moved to the Scenario stream (`0x007022C8`, `0x007386A7`); the
+    // death sound stays on the main stream. Electric birth now also spends
+    // its Main RandomRanged(0,256) before that sound (Init4C2AA3; original
+    // draw/state controls in procedural_drawing_oracle/electric_bolt.json).
     assert_eq!(sim.scenario_rng.state(), 3954386809370758752);
-    assert_eq!(sim.main_rng.state(), 6706932826526710953);
+    assert_eq!(sim.main_rng.state(), 8272706873942388551);
     // FireAt now admits the spark in its own live slot, before the Bullet's
     // fatal receiver allocates debris. Only this body's stable id shifts;
     // normalizing that id reproduced the old F1AD17BB92AA72D9 fingerprint,
-    // and both complete RNG stream fingerprints above remain unchanged.
+    // and the Scenario fingerprint remains unchanged. The Main fingerprint
+    // includes the newly modeled electric phase draw before the death sound.
     assert_eq!(debris_fingerprint(&sim, ids[0]), 1748609705070689488);
     let next_id = sim.allocate_stable_id();
     assert_eq!(next_id, ids[2] + 1);

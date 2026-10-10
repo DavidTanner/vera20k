@@ -10,16 +10,15 @@
 //! Particles never enter global storage or the active-object vector: they are
 //! owned by their parent system.
 //!
-//! Tier 2 implements Smoke / Gas / Fire via the existing SHP render pipeline.
-//! Spark compatibility state and pure kernels exist, but public Spark/Railgun
-//! spawn and production dispatch remain unavailable until their activation gates close.
+//! Smoke / Gas / Fire use the existing SHP render pipeline. Spark enters the
+//! shared live-object dispatch; Railgun admission remains unavailable.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/ and util/ only.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::rules::particle_system_type::ParticleSystemTypeId;
-use crate::rules::particle_type::{ParticleType, ParticleTypeId};
+use crate::rules::particle_type::{ParticleBehavesLike, ParticleType, ParticleTypeId};
 use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
@@ -38,9 +37,15 @@ pub mod spawn;
 pub mod system_ai;
 pub mod wind;
 
+#[cfg(test)]
+mod native_identity_tests;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParticleSystem {
     pub stable_id: u64,
+    /// AbstractClass+10, independent of the Rust handle. Original630100 calls
+    /// Object5F6250 -> Abstract410410 to checksum it;630090 ->410320 saves it.
+    native_unique_id: i32,
     /// LogicClass active-vector membership. The serialized vector is
     /// authoritative across load, so this object-local guard is rebuilt.
     #[serde(skip)]
@@ -91,6 +96,9 @@ pub struct SparkRuntimeState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Particle {
+    /// Original630100 reads each owned Particle's GetUniqueID for its CRC;
+    /// ParticleSave62D810 -> AbstractSave410320 also retains this signed word.
+    native_unique_id: i32,
     pub type_id: ParticleTypeId,
     #[serde(with = "ivec3_serde")]
     pub coords: IVec3,
@@ -125,16 +133,32 @@ pub struct Particle {
 }
 
 impl Particle {
+    pub fn native_unique_id(&self) -> i32 {
+        self.native_unique_id
+    }
+
     /// Constructor state shared by every particle spawn: the type's velocity,
     /// damage counter, state-AI advance, start state and translucency, with
-    /// no direction, drift or spark runtime.
+    /// no direction, drift or spark runtime. Original Particle62B5E0 reaches
+    /// Abstract410230 -> Scenario68BCB0 before its lifetime draw. Spark, Fire,
+    /// Smoke and Gas all use this boundary; children never join global Logic.
+    /// Executed constructor/CRC controls: tools/procedural_drawing_oracle/electric_bolt.
     pub(super) fn new(
         type_id: ParticleTypeId,
         coords: IVec3,
         pt: &ParticleType,
-        lifetime_remaining: i16,
+        sim: &mut Simulation,
     ) -> Self {
+        let native_unique_id = sim.next_native_runtime_id();
+        let divisor = if pt.behaves_like == ParticleBehavesLike::Railgun {
+            10
+        } else {
+            (pt.max_ec as u32).max(1)
+        };
+        let lifetime_extra = sim.particle_rng().next_raw_abs_modulo(divisor) as i16;
+        let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
         Particle {
+            native_unique_id,
             type_id,
             coords,
             origin: coords,
@@ -156,18 +180,65 @@ impl Particle {
     }
 }
 
-/// A Smoke/Gas/Fire particle: lifetime `MaxEC + |raw| % max(MaxEC, 1)`
-/// (one raw draw), everything else from [`Particle::new`].
-pub(super) fn make_particle(
-    type_id: ParticleTypeId,
-    coords: IVec3,
-    pt: &ParticleType,
-    rng: &mut crate::sim::rng::SimRng,
-) -> Particle {
-    let base = (pt.max_ec as u32).max(1);
-    let lifetime_extra = rng.next_raw_abs_modulo(base) as i16;
-    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
-    Particle::new(type_id, coords, pt, lifetime_remaining)
+impl ParticleSystem {
+    pub fn native_unique_id(&self) -> i32 {
+        self.native_unique_id
+    }
+
+    /// Declared synthetic state for tests that exercise storage or AI directly.
+    /// Runtime construction always goes through `Simulation::spawn_particle_system`.
+    #[cfg(test)]
+    pub(crate) fn test_fixture(
+        stable_id: u64,
+        type_id: ParticleSystemTypeId,
+        coords: IVec3,
+    ) -> Self {
+        Self {
+            stable_id,
+            native_unique_id: 0,
+            in_logic_vector: false,
+            type_id,
+            coords,
+            offset: IVec3::ZERO,
+            particles: Vec::new(),
+            spawn_timer: SIM_ZERO,
+            lifetime: -1,
+            spark_spawn_frames: 0,
+            facing: 0x1D,
+            attached_entity: None,
+            owner_entity: None,
+            target_coords: IVec3::ZERO,
+            owner_house: None,
+            done_spawning: false,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Particle {
+    /// Synthetic particle state without allocating a runtime identity or RNG draw.
+    pub(crate) fn test_fixture(type_id: ParticleTypeId, coords: IVec3) -> Self {
+        Self {
+            native_unique_id: 0,
+            type_id,
+            coords,
+            origin: coords,
+            direction: [SIM_ZERO; 3],
+            velocity: SIM_ZERO,
+            lifetime_remaining: 0,
+            damage_counter: 0,
+            state_ai_advance: 0,
+            animation_state: 0,
+            translucency: 0,
+            marked_for_deletion: false,
+            drift_x: 0,
+            drift_y: 0,
+            drift_z: 0,
+            spark: None,
+            prev_delta: [SIM_ZERO; 3],
+            state_advance_counter: 0,
+        }
+    }
 }
 
 mod ivec3_serde {
@@ -275,23 +346,7 @@ mod tests {
     use super::*;
 
     fn fake_system(stable_id: u64) -> ParticleSystem {
-        ParticleSystem {
-            stable_id,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        ParticleSystem::test_fixture(stable_id, ParticleSystemTypeId(0), IVec3::ZERO)
     }
 
     #[test]
@@ -332,24 +387,22 @@ mod tests {
         system.in_logic_vector = true;
         system.coords = IVec3::new(-17, 29, 43);
         system.target_coords = IVec3::new(101, -202, 303);
-        system.particles.push(Particle {
-            type_id: ParticleTypeId(4),
-            coords: IVec3::new(1, 2, 3),
-            origin: IVec3::new(7, 8, 9),
-            direction: [SimFixed::from_num(1); 3],
-            velocity: SimFixed::from_num(2),
-            lifetime_remaining: 31,
-            damage_counter: 5,
-            state_ai_advance: 2,
-            animation_state: 3,
-            translucency: 4,
-            marked_for_deletion: false,
-            drift_x: -1,
-            drift_y: 2,
-            drift_z: -3,
-            spark: None,
-            prev_delta: [SimFixed::from_num(4); 3],
-            state_advance_counter: 7,
+        system.particles.push({
+            let mut particle = Particle::test_fixture(ParticleTypeId(4), IVec3::new(1, 2, 3));
+            particle.origin = IVec3::new(7, 8, 9);
+            particle.direction = [SimFixed::from_num(1); 3];
+            particle.velocity = SimFixed::from_num(2);
+            particle.lifetime_remaining = 31;
+            particle.damage_counter = 5;
+            particle.state_ai_advance = 2;
+            particle.animation_state = 3;
+            particle.translucency = 4;
+            particle.drift_x = -1;
+            particle.drift_y = 2;
+            particle.drift_z = -3;
+            particle.prev_delta = [SimFixed::from_num(4); 3];
+            particle.state_advance_counter = 7;
+            particle
         });
         store.insert(system);
 
