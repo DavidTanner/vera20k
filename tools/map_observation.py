@@ -993,6 +993,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
                               *(('cloak',) if 'cloak' in actor else ()),
                               *(('retask',) if 'retask' in actor else ()),
+                              *(('cell_marked', 'in_logic_vector')
+                                if 'cell_marked' in actor or 'in_logic_vector' in actor else ()),
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('disguise_inputs',) if disguise_inputs else ()),
                               *(('prism',) if lasers else ()),
@@ -1033,6 +1035,11 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     _bounded_int(actor['health'], f'{label}.health', -(1 << 31), (1 << 31) - 1)
     for key in ('on_bridge', 'active', 'in_limbo', 'dying'):
         if type(actor[key]) is not bool:
+            raise ValidationError(f'{label}.{key} must be a boolean')
+    # Additive immutable lifecycle projection. Historical omission makes no
+    # claim about membership; new receipts provide both independent booleans.
+    for key in ('cell_marked', 'in_logic_vector'):
+        if key in actor and type(actor[key]) is not bool:
             raise ValidationError(f'{label}.{key} must be a boolean')
     mission = require_object(actor['mission'], f'{label}.mission')
     require_exact_keys(mission, ('current', 'queued', 'suspended', 'effective', 'handler_state',
@@ -1123,7 +1130,16 @@ def _terrain(value: Any, expected_cell: Any, label: str) -> None:
               'raw_bridge_flags', 'bridge_state', 'has_deck', 'deck_level', 'walkable', 'transition')
     extension = ('overlay', 'terrain_object') if 'overlay' in cell or 'terrain_object' in cell else ()
     visibility_extension = ('local_visibility',) if 'local_visibility' in cell else ()
-    require_exact_keys(cell, ('cell', 'allocated', *fields, *extension, *visibility_extension), label)
+    path_extension = ('path_grid',) if 'path_grid' in cell else ()
+    require_exact_keys(cell, ('cell', 'allocated', *fields, *extension, *visibility_extension, *path_extension), label)
+    # PathGrid is a separate current projection. Null means no current grid or
+    # no cell at this coordinate; it must not be inferred from bridge terrain.
+    if path_extension and cell['path_grid'] is not None:
+        path = require_object(cell['path_grid'], f'{label}.path_grid')
+        require_exact_keys(path, ('ground_walkable', 'bridge_walkable'), f'{label}.path_grid')
+        for key in ('ground_walkable', 'bridge_walkable'):
+            if type(path[key]) is not bool:
+                raise ValidationError(f'{label}.path_grid.{key} must be a boolean')
     if visibility_extension and cell['local_visibility'] is not None:
         visibility = require_object(cell['local_visibility'], f'{label}.local_visibility')
         require_exact_keys(visibility, ('owner', 'revealed', 'visible', 'gap_covered'),

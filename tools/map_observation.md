@@ -18,6 +18,15 @@ or destination callback. Historical receipts may omit `retask`; omission supplie
 no evidence about either suspended reference. These fixed fields remain part of
 the existing one-sample actor row.
 
+Actor `cell_marked` and `in_logic_vector` are independent read-only lifecycle
+facts; neither is inferred from health, limbo or the other flag. Requested
+terrain rows include nullable `path_grid`: `{ground_walkable, bridge_walkable}`
+from the current simulation navigation projection, or `null` when no grid/cell
+exists. The existing terrain `walkable` field describes resolved bridge terrain,
+not dynamic structure passability. Historical receipts may omit these additions;
+omission supplies no evidence. Post-Logic observations cannot prove ordering
+between objects within a Logic pass.
+
 Requested terrain cells also report `local_visibility`: the current viewer's
 owner name and retained `revealed`, `visible` and `gap_covered` queries. It is
 `null` when no local viewer resolves. These read-only observations let a GPU

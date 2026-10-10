@@ -396,6 +396,72 @@ fn retail_with_bound_animation_assets() -> Option<(
     Some((retail, assets))
 }
 
+/// Building fatal UnInit -> Conceal5F4D30 -> Mark(REMOVE) releases its
+/// occupied cells before the next Logic object can query navigation. This
+/// regression checks the derived path view, not a new native damage golden.
+#[test]
+fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
+    let Some((retail, _assets)) = retail_with_bound_animation_assets() else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (mut sim, source, target) = scene(rules, &ordinary_birth()["input"]);
+    // Match production loading: native death can create a crew type that was
+    // not present among this small fixture's initial buildings.
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
+    let victim = sim.substrate.entities.get_mut(target).unwrap();
+    victim.health.current = 1;
+    let anchor = (victim.position.rx, victim.position.ry);
+    assert!(sim.rebuild_dynamic_navigation(rules));
+    let blocked_before = sim.path_grid_snapshot().unwrap();
+    let cells: Vec<_> = crate::sim::production::building_base_foundation_cells(
+        anchor.0,
+        anchor.1,
+        &rules.object("GAPOWR").unwrap().foundation,
+    )
+    .into_iter()
+    .filter(|&(x, y)| !blocked_before.is_walkable(x, y))
+    .collect();
+    assert!(!cells.is_empty(), "the live GAPOWR blocks its foundation");
+    sim.commit_fire_visit(
+        super::world_receiver::FireVisit::Building {
+            id: source,
+            shot: super::BuildingShot::Mission {
+                weapon: 0,
+                target: TargetKind::Entity(target),
+            },
+        },
+        rules,
+        None,
+    );
+    let bullet = *sim.projectiles.iter().next().unwrap().0;
+    assert!(sim.object_ai_visit_one(bullet, Some(rules), Default::default()));
+    let victim = sim.substrate.entities.get(target).unwrap();
+    assert!(
+        !victim.lifecycle.cell_marked,
+        "fatal receiver already unmarked"
+    );
+    assert!(!victim.in_logic_vector, "fatal receiver already left Logic");
+    for &(x, y) in &cells {
+        assert!(
+            sim.path_grid().unwrap().is_walkable(x, y),
+            "next same-frame path reader still sees destroyed GAPOWR at {x},{y}"
+        );
+        assert!(
+            !blocked_before.is_walkable(x, y),
+            "old borrowed view is immutable"
+        );
+    }
+    for _ in 0..2 {
+        sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+            .unwrap();
+        for &(x, y) in &cells {
+            assert!(sim.path_grid().unwrap().is_walkable(x, y));
+        }
+    }
+}
+
 #[test]
 fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass() {
     let Some((retail, assets)) = retail_with_bound_animation_assets() else {

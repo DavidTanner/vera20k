@@ -2873,6 +2873,9 @@ impl TacticalCaptureSession {
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
                     "health": entity.health.current, "active": entity.is_active(),
                     "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
+                    // Mark and Logic membership are independent retained facts.
+                    "cell_marked": entity.lifecycle.cell_marked,
+                    "in_logic_vector": entity.in_logic_vector,
                     "mission": {"current": entity.mission.current().raw(),
                         "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
                         "effective": entity.mission.effective().raw(), "handler_state": entity.mission.handler_state(),
@@ -2984,7 +2987,15 @@ impl TacticalCaptureSession {
                 "visible": sim.fog.is_cell_visible(id, rx, ry),
                 "gap_covered": sim.fog.is_cell_gap_covered(id, rx, ry),
             }));
+            // Borrow the current simulation projection at the point of use.
+            // The existing `walkable` field below describes bridge terrain,
+            // not this dynamic structure-blocking navigation grid.
+            let path_cell = sim.path_grid().and_then(|path| path.cell(rx, ry));
             json!({"cell": [rx, ry], "allocated": cell.is_some(),
+                "path_grid": path_cell.map(|path| json!({
+                    "ground_walkable": path.ground_walkable,
+                    "bridge_walkable": path.bridge_walkable,
+                })),
                 "local_visibility": local_visibility,
                 "overlay": overlay.map(|overlay| json!({"id": overlay.overlay_id, "density": overlay.overlay_data})),
                 "terrain_object": terrain_object.map(|object| json!({"name": sim.interner.resolve(object.type_ref),

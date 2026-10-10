@@ -1232,6 +1232,61 @@ class MapObservationTests(unittest.TestCase):
                 actor['foot']['pending_entry_500'] = value
                 observation._actor(actor, 'actor')
 
+    def test_lifecycle_projection_preserves_independent_bits_and_legacy_omission(self):
+        actor = self.actor(category='Structure')
+        observation._actor(actor, 'actor')
+        for marked in (False, True):
+            for logic in (False, True):
+                observation._actor(dict(actor, cell_marked=marked, in_logic_vector=logic), 'actor')
+        for extra in ({'cell_marked': True}, {'in_logic_vector': False},
+                      {'cell_marked': 1, 'in_logic_vector': True},
+                      {'cell_marked': True, 'in_logic_vector': None},
+                      {'cell_marked': False, 'in_logic_vector': 'false'}):
+            with self.subTest(extra=extra), self.assertRaises(ValidationError):
+                observation._actor(dict(actor, **extra), 'actor')
+
+    def test_path_grid_projection_accepts_missing_grid_and_rejects_partial_or_inferred_states(self):
+        cell = self.unallocated_cell([87, 53])
+        observation._terrain(cell, [87, 53], 'terrain')
+        observation._terrain(dict(cell, path_grid=None), [87, 53], 'terrain')
+        for ground in (False, True):
+            for bridge in (False, True):
+                observation._terrain(dict(cell, path_grid={
+                    'ground_walkable': ground, 'bridge_walkable': bridge}), [87, 53], 'terrain')
+        for path in ({}, {'ground_walkable': True}, {'bridge_walkable': False},
+                     {'ground_walkable': 1, 'bridge_walkable': False},
+                     {'ground_walkable': True, 'bridge_walkable': None},
+                     {'ground_walkable': True, 'bridge_walkable': False, 'derived': True}, []):
+            with self.subTest(path=path), self.assertRaises(ValidationError):
+                observation._terrain(dict(cell, path_grid=path), [87, 53], 'terrain')
+
+    def test_lifecycle_and_path_grid_are_retained_and_compared_in_sealed_receipts(self):
+        self.production_profile()
+        for actors in self.actor_frames.values():
+            actors[0].update(cell_marked=True, in_logic_vector=True)
+        for step in range(4):
+            self.terrain_frames[step] = [dict(self.unallocated_cell([87, 53]),
+                path_grid={'ground_walkable': False, 'bridge_walkable': False})]
+        before = self.valid_capture('marked-blocked-before')
+        def change(manifest):
+            frame = manifest['observations']['frames'][1]
+            frame['actors'][0].update(cell_marked=False, in_logic_vector=False)
+            frame['terrain'][0]['path_grid']['ground_walkable'] = True
+        self.change = change
+        after = self.valid_capture('unmarked-open-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual({row['field'] for row in report['differences']}, {
+            'observations.frames[1].actors[0].cell_marked',
+            'observations.frames[1].actors[0].in_logic_vector',
+            'observations.frames[1].terrain[0].path_grid.ground_walkable'})
+        checked = observation.validate_run(after)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        row = checked['capture']['observations']['frames'][1]
+        self.assertFalse(row['actors'][0]['cell_marked'])
+        self.assertFalse(row['actors'][0]['in_logic_vector'])
+        self.assertTrue(row['terrain'][0]['path_grid']['ground_walkable'])
+
     def test_retask_projection_round_trips_tagged_references_and_historical_omission(self):
         self.scripted_profile()
         for step, actors in self.actor_frames.items():
