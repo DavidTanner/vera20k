@@ -272,7 +272,7 @@ fn assert_live_projectile_restore_continuation(
     for frame in 1..=300 {
         let first_output = scenario
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("first restored Bullet continuation frame");
         assert!(first_output.tick.frame_committed);
         if let Some(shell) = scenario.sim().projectiles.get(projectile_id) {
@@ -281,7 +281,7 @@ fn assert_live_projectile_restore_continuation(
         std::mem::swap(&mut scenario.runtime.simulation, &mut second);
         let second_output = scenario
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("second restored Bullet continuation frame");
         assert!(second_output.tick.frame_committed);
         assert_eq!(
@@ -361,7 +361,7 @@ fn assert_debris_restore_continuation(
             .collect::<Vec<_>>();
         scenario
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("first restored continuation frame");
         for (id, coord) in before {
             observed_motion |= scenario
@@ -372,7 +372,7 @@ fn assert_debris_restore_continuation(
         std::mem::swap(&mut scenario.runtime.simulation, &mut second);
         scenario
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("second restored continuation frame");
         assert_eq!(
             scenario.sim().state_hash(),
@@ -522,7 +522,7 @@ fn retail_bridge_forcefire_chain(vehicle_name: &str, weapon_name: &str, projecti
         };
         let output = scenario
             .runtime
-            .advance_frame(&commands, SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(&commands, SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("ordinary production frame");
         assert!(
             output.tick.frame_committed,

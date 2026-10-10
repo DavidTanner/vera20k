@@ -424,6 +424,7 @@ fn move_retail_fv(
                 },
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         let entity = runtime.simulation.substrate.entities.get(id).unwrap();
@@ -655,6 +656,7 @@ pub(super) fn retail_hills_collapsed_scene(
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         std::mem::swap(&mut runtime.simulation, &mut first);
@@ -663,6 +665,7 @@ pub(super) fn retail_hills_collapsed_scene(
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         assert_eq!(
@@ -712,7 +715,7 @@ fn collapse_retail_scene(
     };
     let mut collapsed = false;
     for _ in 0..8 {
-        collapsed|=crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(&mut runtime.simulation,&runtime.resources.rules,&[event],Some(&runtime.resources.overlay_registry));
+        collapsed|=crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(&mut runtime.simulation,&runtime.resources.rules,&[event],Some(&runtime.resources.overlay_registry), crate::sim::world::FrameEffects::default());
         if !runtime
             .simulation
             .resolved_terrain
@@ -770,6 +773,7 @@ fn collapse_retail_scene(
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         std::mem::swap(&mut runtime.simulation, &mut first);
@@ -778,6 +782,7 @@ fn collapse_retail_scene(
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         assert_eq!(

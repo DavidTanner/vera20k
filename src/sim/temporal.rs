@@ -158,7 +158,7 @@ use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::game_entity::GameEntity;
-use crate::sim::world::{Simulation, UninitContext};
+use crate::sim::world::{FrameEffects, Simulation, UninitContext};
 
 /// `SumChainDamage @ 0x0071AB10` recurses while the depth is at most this
 /// (`0x0071AB22 CMP EAX,0x32; JG`).
@@ -357,6 +357,7 @@ impl Simulation {
         target: TemporalShotTarget,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         if !self.substrate.entities.contains(firer) {
             return;
@@ -405,7 +406,7 @@ impl Simulation {
         if self.temporal_link(firer).is_none() {
             return;
         }
-        self.temporal_initiate_warp(firer, victim, rules, registry);
+        self.temporal_initiate_warp(firer, victim, rules, registry, effects);
     }
 
     /// `TemporalClass::InitiateWarp @ 0x0071AF20`.
@@ -415,6 +416,7 @@ impl Simulation {
         target: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         if let Some(target) = target {
             // 0x0071AF2F..0x0071AF48: the target's spawns die and its captives
@@ -428,7 +430,7 @@ impl Simulation {
                 crate::sim::spawn_manager::kill_all_spawns_with_context(
                     self,
                     target,
-                    UninitContext::new(Some(rules), registry),
+                    UninitContext::new(Some(rules), registry).with_effects(effects),
                 );
             }
             if self
@@ -437,7 +439,7 @@ impl Simulation {
                 .get(target)
                 .is_some_and(|entity| entity.capture_manager.is_some())
             {
-                self.free_all_captures(target, rules, registry);
+                self.free_all_captures(target, rules, registry, effects);
             }
         }
         // 0x0071AF4D..0x0071AF61: the attacker drops its previous victim.
@@ -506,7 +508,7 @@ impl Simulation {
             .and_then(|entity| self.object_type(entity.type_ref(), rules))
             .is_some_and(|object| object.is_gattling)
         {
-            self.gattling_update(target, rules, 1);
+            self.gattling_update(target, rules, 1, effects);
         }
         // 0x0071B14E..0x0071B162: a victim that was itself warping lets go.
         if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
@@ -615,6 +617,7 @@ impl Simulation {
         head: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(link) = self.temporal_link(head).cloned() else {
             return;
@@ -629,7 +632,7 @@ impl Simulation {
                 .is_some_and(|entity| entity.temporal.head == Some(head))
         {
             self.set_temporal_head(target, None);
-            self.temporal_clear_linked_list(head, rules);
+            self.temporal_clear_linked_list(head, rules, effects);
             return;
         }
         // 0x0071A79D..0x0071A846: from an open transport, a target beyond
@@ -666,7 +669,7 @@ impl Simulation {
         if remaining > 0 {
             return;
         }
-        self.temporal_erase(head, link.target, rules, registry);
+        self.temporal_erase(head, link.target, rules, registry, effects);
     }
 
     /// `SumChainDamage @ 0x0071AB10`: this attacker's damage plus the chain
@@ -717,15 +720,16 @@ impl Simulation {
         target: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(target) = target.filter(|&target| self.substrate.entities.contains(target)) else {
             // 0x0071A895..0x0071A8B5: no target — clear and idle; then the
             // `0x0071A90E` retest jumps to the common tail, which clears and
             // idles again (`0x0071AAE7..0x0071AB02`).
             self.temporal_clear_fields(head);
-            self.temporal_owner_idle(head, rules);
+            self.temporal_owner_idle(head, rules, effects);
             self.temporal_clear_fields(head);
-            self.temporal_owner_idle(head, rules);
+            self.temporal_owner_idle(head, rules, effects);
             return;
         };
         // 0x0071A8BD..0x0071A909: WarpAway at the target's Location.
@@ -750,12 +754,12 @@ impl Simulation {
             // 0x0071A9EE..0x0071AA15: a Tank Bunker releases its occupant
             // (`0x004593A0`). Garrison occupants and absorbed passengers go
             // in the UnInit below (module residual).
-            crate::sim::docking::bunker_link::release_sell_destroy(self, target);
+            crate::sim::docking::bunker_link::release_sell_destroy(self, target, effects);
         }
         // 0x0071AA95..0x0071AAA7: an erased master's slaves pass to the
         // attacker's house (FreeSlaves, no supplied house). Its UnInit and
         // owner-change callbacks share this object turn's map inputs.
-        self.free_slaves(target, Some(head), None, rules, registry);
+        self.free_slaves(target, Some(head), None, rules, registry, effects);
         if category != EntityCategory::Structure
             && let Some(entity) = self.substrate.entities.get(target)
             && let Some(object) = self.object_type(entity.type_ref(), rules)
@@ -782,7 +786,10 @@ impl Simulation {
         );
         let target_owner = self.substrate.entities.get(target).map(GameEntity::owner);
         // vtable +0xF8 UnInit: no death effects, no survivors.
-        self.uninit_with_context(target, UninitContext::new(Some(rules), registry));
+        self.uninit_with_context(
+            target,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
         // 0x0071AA5A..0x0071AA60: a building's erase sets its owner's
         // `+0x1FC`, whose House update runs the Super passes, and the
         // building's destructor runs the revoke pass (`0x0043BEF0`): a Super
@@ -795,9 +802,9 @@ impl Simulation {
         }
         // 0x0071AAD5..0x0071AB02: idle, clear, idle again (the UnInit's
         // pointer expiry already cleared the link and idled once).
-        self.temporal_owner_idle(head, rules);
+        self.temporal_owner_idle(head, rules, effects);
         self.temporal_clear_fields(head);
-        self.temporal_owner_idle(head, rules);
+        self.temporal_owner_idle(head, rules, effects);
     }
 
     /// `VeterancyStruct::Add(OwnerType cost, TargetType cost)` for a
@@ -839,7 +846,7 @@ impl Simulation {
     /// `Enter_Idle_Mode(0, 1)` (vtable `+0x484`) on an attacker. Every stock
     /// Temporal firer is a Foot; a building or aircraft firer has no VERA
     /// idle selector.
-    fn temporal_owner_idle(&mut self, attacker: u64, rules: &RuleSet) {
+    fn temporal_owner_idle(&mut self, attacker: u64, rules: &RuleSet, effects: FrameEffects<'_>) {
         #[cfg(test)]
         IDLE_TRACE.with(|trace| trace.borrow_mut().push(attacker));
         if self.substrate.entities.get(attacker).is_some_and(|entity| {
@@ -848,7 +855,7 @@ impl Simulation {
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
-            crate::sim::world::enter_idle_mode(self, attacker, rules, None);
+            crate::sim::world::enter_idle_mode(self, attacker, rules, None, effects);
         }
     }
 
@@ -922,7 +929,12 @@ impl Simulation {
     /// `ClearLinkedList @ 0x0071ADE0`: frees the target, then walks Next and
     /// Prev, unlinking a neighbour's back-link only where it points here
     /// (`0x0071AE02`, `0x0071AE19`), and idles each attacker last.
-    fn temporal_clear_linked_list(&mut self, attacker: u64, rules: &RuleSet) {
+    fn temporal_clear_linked_list(
+        &mut self,
+        attacker: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         // A link without a target faults natively (`0x0071ADE9` writes
         // through it); VERA stops, which also ends any walk of a cycle.
         let Some(target) = self.temporal_link(attacker).and_then(|link| link.target) else {
@@ -943,7 +955,7 @@ impl Simulation {
             {
                 next_link.prev = None;
             }
-            self.temporal_clear_linked_list(next, rules);
+            self.temporal_clear_linked_list(next, rules, effects);
         }
         // Prev is read again after the Next walk (`0x0071AE12`).
         if let Some(prev) = self.temporal_link(attacker).and_then(|link| link.prev) {
@@ -952,17 +964,22 @@ impl Simulation {
             {
                 prev_link.next = None;
             }
-            self.temporal_clear_linked_list(prev, rules);
+            self.temporal_clear_linked_list(prev, rules, effects);
         }
         self.temporal_clear_fields(attacker);
-        self.temporal_owner_idle(attacker, rules);
+        self.temporal_owner_idle(attacker, rules, effects);
     }
 
     /// `0x0071AD40`, the house blow-up's release of the chain warping one of
     /// its objects (`HouseClass::Blowup_All @ 0x004FC6D0`, at `0x004FC742`),
     /// run on the head: frees the target, then walks Next and Prev through
     /// ClearLinkedList, which idles those attackers, but never idles its own.
-    pub(crate) fn temporal_release_chain_no_idle(&mut self, attacker: u64, rules: &RuleSet) {
+    pub(crate) fn temporal_release_chain_no_idle(
+        &mut self,
+        attacker: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let Some(target) = self.temporal_link(attacker).map(|link| link.target) else {
             return;
         };
@@ -983,7 +1000,7 @@ impl Simulation {
             {
                 next_link.prev = None;
             }
-            self.temporal_clear_linked_list(next, rules);
+            self.temporal_clear_linked_list(next, rules, effects);
         }
         if let Some(prev) = self.temporal_link(attacker).and_then(|link| link.prev) {
             if let Some(prev_link) = self.temporal_link_mut(prev)
@@ -991,7 +1008,7 @@ impl Simulation {
             {
                 prev_link.next = None;
             }
-            self.temporal_clear_linked_list(prev, rules);
+            self.temporal_clear_linked_list(prev, rules, effects);
         }
         self.temporal_clear_fields(attacker);
     }
@@ -1007,6 +1024,7 @@ impl Simulation {
         listener: u64,
         expired: u64,
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(target) = self.temporal_link(listener).map(|link| link.target) else {
             return;
@@ -1016,7 +1034,7 @@ impl Simulation {
         } else if target == Some(expired) {
             self.temporal_clear_fields(listener);
             if let Some(rules) = rules {
-                self.temporal_owner_idle(listener, rules);
+                self.temporal_owner_idle(listener, rules, effects);
             }
         }
     }
@@ -1158,7 +1176,7 @@ impl Simulation {
             .get(id)
             .and_then(|entity| entity.temporal.head)
         {
-            self.temporal_update_head(head, rules, registry);
+            self.temporal_update_head(head, rules, registry, ctx.effects);
         }
         if matches!(category, EntityCategory::Unit | EntityCategory::Aircraft) {
             self.warp_foot_sparkle(id, rules);
@@ -1213,7 +1231,7 @@ impl Simulation {
                 && (entity.navigation.nav_com.is_some() || entity.movement_target.is_some());
         }
         if clears_destination {
-            self.assign_null_destination(id, Some(rules), registry);
+            self.assign_null_destination(id, Some(rules), registry, ctx.effects);
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.movement_target = None;
             }

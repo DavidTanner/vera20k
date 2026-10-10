@@ -551,6 +551,7 @@ mod tests {
                 warhead_ref,
                 near_center_ic_isolation_eligible: false,
             },
+            crate::sim::world::FrameEffects::default(),
         );
         let terrain = &sim.production.terrain_objects[&stable_id];
         assert_eq!(terrain.health, 0);
@@ -584,6 +585,7 @@ mod tests {
                     warhead_ref,
                     near_center_ic_isolation_eligible: false,
                 },
+                crate::sim::world::FrameEffects::default(),
             );
             assert_eq!(sim.production.terrain_objects[&stable_id].health, health);
             assert!(sim.production.terrain_objects[&stable_id].is_live());
@@ -616,6 +618,7 @@ mod tests {
                 warhead_ref,
                 near_center_ic_isolation_eligible: false,
             },
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(sim.production.terrain_objects[&stable_id].health, 0);
         assert!(

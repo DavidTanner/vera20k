@@ -488,7 +488,8 @@ fn single_wallet_charged_once_no_double_debit() {
         &mut sim,
         &rules,
         "Americans",
-        "GRIZZLY"
+        "GRIZZLY",
+        crate::sim::world::FrameEffects::default()
     ));
     let full_cost = sim
         .object_type(ty, &rules)
@@ -535,7 +536,8 @@ fn stall_on_no_funds_holds() {
         &mut sim,
         &rules,
         "Americans",
-        "GRIZZLY"
+        "GRIZZLY",
+        crate::sim::world::FrameEffects::default()
     ));
     for _ in 0..200 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
@@ -568,7 +570,8 @@ fn cancel_one_partial_refund_to_house_credits() {
         &mut sim,
         &rules,
         "Americans",
-        "GRIZZLY"
+        "GRIZZLY",
+        crate::sim::world::FrameEffects::default()
     ));
     let full_cost = sim
         .object_type(ty, &rules)
@@ -590,6 +593,7 @@ fn cancel_one_partial_refund_to_house_credits() {
         "Americans",
         "GRIZZLY",
         false,
+        crate::sim::world::FrameEffects::default(),
     );
     assert!(ok, "the active build is cancellable");
     let refunded = sim.houses[&owner].economy.credits() - credits_before;
@@ -642,6 +646,7 @@ fn factory_flip_determinism_over_scripted_commands() {
                         "Americans",
                         "BEAG",
                         false,
+                        crate::sim::world::FrameEffects::default(),
                     );
                 }
                 sim.advance_tick(&[], Some(&rules), None, None, 67);

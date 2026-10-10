@@ -5,6 +5,7 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeSet;
 
 use super::{GroundMove, SimSoundEvent, Simulation};
@@ -327,7 +328,12 @@ impl Simulation {
     #[cfg(test)]
     pub(crate) fn tick_order_intents_post_combat(&mut self, rules: Option<&RuleSet>) {
         // This compatibility fixture has no live overlay registry.
-        self.tick_order_intents_post_combat_except(rules, &BTreeSet::new(), None);
+        self.tick_order_intents_post_combat_except(
+            rules,
+            &BTreeSet::new(),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
 
     pub(crate) fn tick_order_intents_post_combat_except(
@@ -335,6 +341,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         turn_suppressed: &BTreeSet<u64>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         // Without a published grid no order resumes (air resumes included).
         if self.path_grid().is_none() {
@@ -391,8 +398,13 @@ impl Simulation {
                 .unwrap_or((ra2_speed_to_leptons_per_second(4), false));
 
             if is_air {
-                let _ =
-                    self.issue_air_cell_destination(stable_id, (goal_rx, goal_ry), speed, rules);
+                let _ = self.issue_air_cell_destination(
+                    stable_id,
+                    (goal_rx, goal_ry),
+                    speed,
+                    rules,
+                    frame_effects,
+                );
             } else {
                 let _ = self.issue_ground_move(
                     GroundMove {
@@ -406,6 +418,7 @@ impl Simulation {
                     },
                     rules,
                     overlay_registry,
+                    frame_effects,
                 );
             }
         }
@@ -542,6 +555,7 @@ impl Simulation {
         engineer_id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<EngineerEntryResult, super::FrameAdvanceError> {
         let Some(engineer) = self.substrate.entities.get(engineer_id) else {
             return Ok(EngineerEntryResult::default());
@@ -602,13 +616,14 @@ impl Simulation {
                     building,
                     self.resolved_terrain.as_ref(),
                 );
-                self.assign_null_destination(engineer_id, Some(rules), None);
+                self.assign_null_destination(engineer_id, Some(rules), None, frame_effects);
                 self.infantry_scatter_from(
                     engineer_id,
                     (coord.x, coord.y),
                     crate::sim::movement::ScatterFlags::new(true, true),
                     rules,
                     registry,
+                    frame_effects,
                 )
                 .map_err(|cause| {
                     super::FrameAdvanceError::bridge_repair(
@@ -636,17 +651,18 @@ impl Simulation {
                     old_house.notify_building_capture(); //519F4F, Trigger event3 latch
                 }
                 self.announce_engineer_capture(building_id, owner, rules);
-                self.change_owner_with_rules(building_id, owner, rules, registry);
+                self.change_owner_with_rules(building_id, owner, rules, registry, frame_effects);
                 if let Some(building) = self.substrate.entities.get_mut(building_id) {
                     building.record_infantry_capture_type(native_type_index);
                 }
-                changed = self.scatter_building_infantry(building_id, rules, registry)?;
+                changed =
+                    self.scatter_building_infantry(building_id, rules, registry, frame_effects)?;
             }
             //519EAACapturable=false consumes too.519FF0 repair and519F9A
             //capture join Tag event48 then virtualUnInit, with no Foot tail.
             self.uninit_with_context(
                 engineer_id,
-                super::UninitContext::new(Some(rules), registry),
+                super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
             );
             return Ok(EngineerEntryResult {
                 bridge_state_changed: changed,
@@ -662,6 +678,7 @@ impl Simulation {
             rules,
             registry,
             engineer_id,
+            frame_effects,
         )
         .map_err(|cause| {
             super::FrameAdvanceError::bridge_repair(
@@ -673,12 +690,12 @@ impl Simulation {
         })?;
         //519D17..519D36 descends Infantry's registry with +28(hut,false).
         //Clearing NavCom does not stop a retained Walk head/destination.
-        self.expire_infantry_bridge_hut_targets(building_id, rules, registry);
-        changed |= self.scatter_building_infantry(building_id, rules, registry)?;
+        self.expire_infantry_bridge_hut_targets(building_id, rules, registry, frame_effects);
+        changed |= self.scatter_building_infantry(building_id, rules, registry, frame_effects)?;
         // Attached Tag6E53A0 remains a separate synchronous receiver boundary.
         self.uninit_with_context(
             engineer_id,
-            super::UninitContext::new(Some(rules), registry),
+            super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
         );
         Ok(EngineerEntryResult {
             bridge_state_changed: changed,
@@ -712,6 +729,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
+        frame_effects: FrameEffects<'_>,
     ) -> C4TickOutcome {
         use crate::sim::components::PendingC4Detonation;
         let mut destroyed_structure = false;
@@ -883,6 +901,7 @@ impl Simulation {
                 attacker_for_credit,
                 rules,
                 overlay_registry,
+                frame_effects,
             );
             bridge_state_changed |= outcome.bridge_state_changed;
             if outcome.killed_building {
@@ -923,6 +942,7 @@ impl Simulation {
         building_id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some((pending, health, bridge_hut)) = self
             .substrate
@@ -965,7 +985,7 @@ impl Simulation {
                 arg6: false,
             },
         );
-        self.commit_noncombat_aoe_hits(rules, overlay_registry, &[event]);
+        self.commit_noncombat_aoe_hits(rules, overlay_registry, &[event], frame_effects);
     }
 
     fn building_entry_target_footprint(
@@ -1059,6 +1079,7 @@ impl Simulation {
         attacker_id: Option<u64>,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> C4DamageOutcome {
         // BridgeRepairHut target: reroute the explosion into the bridge
         // collapse cascade and leave the hut at full HP. The hut never
@@ -1088,7 +1109,7 @@ impl Simulation {
                         rules,
                         center,
                         overlay_registry,
-                    )
+                     frame_effects,)
                 }
                 None => false,
             };
@@ -1112,7 +1133,7 @@ impl Simulation {
                 arg6: false,
             },
         );
-        self.commit_noncombat_aoe_hits(rules, overlay_registry, &[event]);
+        self.commit_noncombat_aoe_hits(rules, overlay_registry, &[event], frame_effects);
         if self
             .substrate
             .entities
@@ -1156,7 +1177,12 @@ impl Simulation {
     /// these units home because they have no `OrderIntent` to resume.
     #[cfg(test)]
     pub(crate) fn tick_attack_pursuit(&mut self, rules: &RuleSet) {
-        self.tick_attack_pursuit_with_overlay_registry(rules, None, &BTreeSet::new());
+        self.tick_attack_pursuit_with_overlay_registry(
+            rules,
+            None,
+            &BTreeSet::new(),
+            crate::sim::world::FrameEffects::default(),
+        );
     }
 
     pub(crate) fn tick_attack_pursuit_with_overlay_registry(
@@ -1164,6 +1190,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         turn_suppressed: &BTreeSet<u64>,
+        frame_effects: FrameEffects<'_>,
     ) {
         // Without a published grid pursuit decides nothing this tick.
         if self.path_grid().is_none() {
@@ -1387,6 +1414,7 @@ impl Simulation {
                         },
                         Some(rules),
                         overlay_registry,
+                        frame_effects,
                     );
                     // No-op if A* fails — pursuit retries next tick.
                 }
@@ -1436,9 +1464,15 @@ impl Simulation {
                                 entity_id,
                                 Some(rules),
                                 None,
+                                frame_effects,
                             );
                         } else {
-                            self.set_unit_null_destination(entity_id, Some(rules), None);
+                            self.set_unit_null_destination(
+                                entity_id,
+                                Some(rules),
+                                None,
+                                frame_effects,
+                            );
                         }
                     }
                 }
@@ -1446,7 +1480,7 @@ impl Simulation {
                     // Foot4D5730 dispatches virtual+3C8 on Sticky refusal,
                     // then the class NULL destination (0x004D573E).
                     let _ = self.assign_target_represented(entity_id, None, Some(rules));
-                    self.assign_null_destination(entity_id, Some(rules), None);
+                    self.assign_null_destination(entity_id, Some(rules), None, frame_effects);
                     if let Some(e) = self.substrate.entities.get_mut(entity_id) {
                         e.movement_target = None;
                     }

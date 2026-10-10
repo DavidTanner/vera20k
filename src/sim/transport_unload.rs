@@ -33,7 +33,7 @@ use crate::sim::passenger::{
     DepartureFailure, DepartureRoute, depart_cargo_head, reveal_unloaded_passenger,
 };
 use crate::sim::pathfinding::passability::LandType;
-use crate::sim::world::{GroundMove, SimSoundEvent, Simulation};
+use crate::sim::world::{FrameEffects, GroundMove, SimSoundEvent, Simulation};
 use crate::util::direction_tables::CELL_DELTAS;
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::lepton::CELL_CENTER_LEPTON;
@@ -354,6 +354,7 @@ fn issue_ground_destination(
     id: u64,
     dest: (u16, u16),
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(info) = sim.resolve_move_info(id, Some(rules)) else {
         return;
@@ -370,6 +371,7 @@ fn issue_ground_destination(
         },
         Some(rules),
         overlay_registry,
+        effects,
     );
 }
 
@@ -435,6 +437,7 @@ fn eject_head_passenger(
     rules: &RuleSet,
     transport_id: u64,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> EjectOutcome {
     match depart_cargo_head(
         sim,
@@ -565,6 +568,7 @@ fn eject_head_passenger(
                 place_cell.0,
                 place_cell.1,
                 z,
+                effects,
             )?;
 
             // OpenTopped: `TechnoClass::ClearInOpenTransport` (`0x007104A0`) drops the
@@ -578,7 +582,7 @@ fn eject_head_passenger(
             // Unit73DBDB queues the passenger's Move directly, before
             // class destination73DC06; it does not execute a player event.
             sim.queue_order_mission(pax_id, MissionType::Move);
-            issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
+            issue_ground_destination(sim, rules, pax_id, dest, overlay_registry, effects);
 
             if let Some(sound) = leave_sound {
                 let sound_id = sim.interner.intern(&sound);
@@ -590,6 +594,7 @@ fn eject_head_passenger(
             }
             Ok(())
         },
+        effects,
     ) {
         Ok(()) => EjectOutcome::Placed,
         Err(_) => EjectOutcome::Failed,
@@ -604,6 +609,7 @@ pub(crate) fn unit_mission_unload(
     rules: &RuleSet,
     id: u64,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
@@ -636,7 +642,7 @@ pub(crate) fn unit_mission_unload(
                 {
                     // `Set_Destination` only — the committed selector stays
                     // Unload and state 0 re-runs once the drive has ended.
-                    issue_ground_destination(sim, rules, id, cell, overlay_registry);
+                    issue_ground_destination(sim, rules, id, cell, overlay_registry, effects);
                 }
                 return WAIT_MOVING_FRAMES;
             }
@@ -674,7 +680,7 @@ pub(crate) fn unit_mission_unload(
         }
         STATE_EJECT => {
             if cargo_count(entity) > entity.transport_unload_keep_count {
-                let _ = eject_head_passenger(sim, rules, id, overlay_registry);
+                let _ = eject_head_passenger(sim, rules, id, overlay_registry, effects);
             } else if let Some(entity) = sim.substrate.entities.get_mut(id) {
                 entity.mission.set_handler_state(STATE_DONE);
             }
@@ -774,6 +780,7 @@ pub(crate) fn mission_unload(
     id: u64,
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     let entity = sim.substrate.entities.get(id).expect("dispatched aircraft");
     match entity.mission.handler_state() {
@@ -809,9 +816,15 @@ pub(crate) fn mission_unload(
         }
         AIR_STATE_EJECT => {
             if cargo_count(entity) == 0 {
-                crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, overlay_registry);
+                crate::sim::aircraft::enter_idle_mode_for(
+                    sim,
+                    id,
+                    rules,
+                    overlay_registry,
+                    effects,
+                );
             } else {
-                let ejected = eject_from_aircraft(sim, rules, overlay_registry, id);
+                let ejected = eject_from_aircraft(sim, rules, overlay_registry, id, effects);
                 let hold_empty = sim
                     .substrate
                     .entities
@@ -823,7 +836,13 @@ pub(crate) fn mission_unload(
                 // and the mission leaves through the same empty-hold exit, so
                 // this dispatch's epilogue draw is the last one.
                 if hold_empty || !ejected {
-                    crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, overlay_registry);
+                    crate::sim::aircraft::enter_idle_mode_for(
+                        sim,
+                        id,
+                        rules,
+                        overlay_registry,
+                        effects,
+                    );
                 }
             }
             unload_epilogue(sim, rules, id)
@@ -881,6 +900,7 @@ fn eject_from_aircraft(
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     aircraft_id: u64,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let mut picked_up = false;
     let ejected = depart_cargo_head(
@@ -951,7 +971,7 @@ fn eject_from_aircraft(
                     loco.layer = MovementLayer::Ground;
                 }
             }
-            reveal_unloaded_passenger(sim, rules, aircraft_id, pax_id, cell.0, cell.1, z)?;
+            reveal_unloaded_passenger(sim, rules, aircraft_id, pax_id, cell.0, cell.1, z, effects)?;
             if let Some(passenger) = sim.substrate.entities.get_mut(pax_id) {
                 passenger.attack_target = None;
                 passenger.passively_acquired_target = false;
@@ -961,10 +981,11 @@ fn eject_from_aircraft(
             // followed by its radio callbacks. No Event Archive clear.
             sim.queue_order_mission(pax_id, MissionType::Move);
             if let Some(dest) = scan_cell {
-                issue_ground_destination(sim, rules, pax_id, dest, overlay_registry);
+                issue_ground_destination(sim, rules, pax_id, dest, overlay_registry, effects);
             }
             Ok(())
         },
+        effects,
     )
     .is_ok();
     // `0x00415565`: and goes back once the ejector returns.

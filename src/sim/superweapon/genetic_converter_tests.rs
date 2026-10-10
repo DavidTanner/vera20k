@@ -199,7 +199,16 @@ fn the_launch_matches_native() {
         sim.sound_events.clear();
         let cell = (target.0 as u16, target.1 as u16);
         OBSERVED.set(Some(Vec::new()));
-        let launched = launch(&mut sim, &rules, owner, cell.0, cell.1, sw_type, None);
+        let launched = launch(
+            &mut sim,
+            &rules,
+            owner,
+            cell.0,
+            cell.1,
+            sw_type,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let observed = OBSERVED.take().unwrap();
         assert_eq!(launched, charged, "{row}");
 
@@ -317,7 +326,16 @@ fn a_walk_damages_only_the_infantry_of_the_block() {
         .unwrap();
     let sw_type = charge_super(&mut sim, owner, MUTATOR);
     OBSERVED.set(Some(Vec::new()));
-    assert!(launch(&mut sim, &rules, owner, 40, 40, sw_type, None));
+    assert!(launch(
+        &mut sim,
+        &rules,
+        owner,
+        40,
+        40,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let observed = OBSERVED.take().unwrap();
     let damaged: Vec<u64> = observed
         .iter()
@@ -436,7 +454,12 @@ fn the_mutation_arm_matches_native() {
                 arg6: false,
             },
         );
-        sim.commit_direct_damage_receiver(&rules, None, event);
+        sim.commit_direct_damage_receiver(
+            &rules,
+            None,
+            event,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let mutants = anims_of(&sim, "GENDEATH");
         let entity = sim.substrate.entities.get(victim);
@@ -584,7 +607,13 @@ fn the_make_infantry_end_matches_native() {
             .current_frame = int(&row["stage"]);
         let before: BTreeSet<u64> = sim.substrate.entities.keys_sorted().into_iter().collect();
 
-        let ends = sim.anim_make_infantry(anim, make_infantry, &rules, None);
+        let ends = sim.anim_make_infantry(
+            anim,
+            make_infantry,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_eq!(ends, row["end"] == "uninit", "{row}");
         if !ends {
@@ -647,7 +676,16 @@ fn a_dog_dies_with_die1_instead_of_mutating() {
     let (rules, mut sim, owner) = world_with(rules, 64, &[]);
     let dog = place(&mut sim, &rules, "DOG", (40, 40), 0, false, false);
     let sw_type = charge_super(&mut sim, owner, MUTATOR);
-    assert!(launch(&mut sim, &rules, owner, 40, 40, sw_type, None));
+    assert!(launch(
+        &mut sim,
+        &rules,
+        owner,
+        40,
+        40,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let dog = sim.substrate.entities.get(dog).unwrap();
     assert!(dog.dying && dog.lifecycle.object_alive);
     assert_eq!(
@@ -793,7 +831,13 @@ fn retail_computer_mutator_leaves_hunting_brutes() {
     }
     let sw_type = charge_super(&mut sim, russians, MUTATOR);
 
-    super::super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    super::super::ai_fire::try_fire(
+        &mut sim,
+        &rules,
+        russians,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(!sim.super_weapons[&russians][&sw_type].is_ready);
     assert!(!anims_of(&sim, "GENDEATH").is_empty());
@@ -831,7 +875,16 @@ fn an_infantryman_above_the_ground_is_not_mutated() {
         );
     }
     let sw_type = charge_super(&mut sim, owner, MUTATOR);
-    assert!(launch(&mut sim, &rules, owner, 40, 40, sw_type, None));
+    assert!(launch(
+        &mut sim,
+        &rules,
+        owner,
+        40,
+        40,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let entity = sim.substrate.entities.get(raised).unwrap();
     assert!(entity.lifecycle.object_alive && !entity.dying);

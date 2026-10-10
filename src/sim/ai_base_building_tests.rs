@@ -464,7 +464,14 @@ fn a_computer_yard_places_its_building_on_the_node_cell() {
     house.economy.set_credits_for_test(100);
     house.ai_production.set_for_test(0, plain, true);
 
-    let exit = exit_building(&mut sim, &rules, yard, product, None);
+    let exit = exit_building(
+        &mut sim,
+        &rules,
+        yard,
+        product,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(exit, BuildingExit::Placed);
     let building = sim.substrate.entities.get(product).unwrap();
@@ -487,7 +494,14 @@ fn a_unit_of_the_house_on_the_site_makes_the_yard_try_later() {
         .unwrap();
 
     for count in 1..=2 {
-        let exit = exit_building(&mut sim, &rules, yard, product, None);
+        let exit = exit_building(
+            &mut sim,
+            &rules,
+            yard,
+            product,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(exit, BuildingExit::TryLater);
         assert!(
             sim.substrate
@@ -502,7 +516,14 @@ fn a_unit_of_the_house_on_the_site_makes_the_yard_try_later() {
     assert!(sim.substrate.entities.get(tank).is_some());
     // The third failure passes MaximumBuildingPlacementFailures=2: the node
     // goes.
-    let exit = exit_building(&mut sim, &rules, yard, product, None);
+    let exit = exit_building(
+        &mut sim,
+        &rules,
+        yard,
+        product,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(exit, BuildingExit::TryLater);
     assert!(node_state(&sim, owner).is_empty());
 }
@@ -517,7 +538,14 @@ fn an_enemy_on_the_site_fails_the_exit_and_the_node_forgets_its_cell() {
     sim.spawn_object("TANK", "Enemy", 16, 16, 0, &rules)
         .unwrap();
 
-    let exit = exit_building(&mut sim, &rules, yard, product, None);
+    let exit = exit_building(
+        &mut sim,
+        &rules,
+        yard,
+        product,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(exit, BuildingExit::Failed);
     assert!(
@@ -536,7 +564,14 @@ fn a_human_yard_places_nothing() {
     let (mut sim, rules, owner, yard, product) = exit_fixture();
     sim.houses.get_mut(&owner).unwrap().is_human = true;
 
-    let exit = exit_building(&mut sim, &rules, yard, product, None);
+    let exit = exit_building(
+        &mut sim,
+        &rules,
+        yard,
+        product,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(exit, BuildingExit::Failed);
     assert!(

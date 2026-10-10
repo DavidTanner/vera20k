@@ -159,7 +159,7 @@ fn scene(golden: &Value, row: &Value) -> (Simulation, RuleSet, u64, u64) {
     sim.native_unique_ids =
         Some(crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(0));
     sim.main_rng =
-        SimRng::from_native_state_hex_for_test(row["rng_before"]["main"].as_str().unwrap());
+        SimRng::from_native_state_hex_for_test(row["rng_before"]["main"].as_str().unwrap()).into();
     sim.scenario_rng =
         SimRng::from_native_state_hex_for_test(row["rng_before"]["scenario"].as_str().unwrap());
     let building = case["building"].as_str().unwrap();
@@ -355,7 +355,12 @@ fn original_64_slot_expiry_controls_and_actual_sprite_frame_histories() {
             }
             for frame in row["frames"].as_array().unwrap() {
                 sim.session.binary_frame = integer(&frame["frame"]) as u32;
-                sim.visit_anim(expired, &rules, None);
+                sim.visit_anim(
+                    expired,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 let anim = sim.anim(expired).unwrap();
                 assert_eq!(
                     anim.runtime.current_frame,

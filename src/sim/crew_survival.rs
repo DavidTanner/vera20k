@@ -147,7 +147,8 @@ use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::RawCellKey;
 use crate::sim::world::{
-    PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation, UninitContext,
+    FrameEffects, PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation,
+    UninitContext,
 };
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering, NativeF64Bits};
@@ -343,6 +344,7 @@ impl Simulation {
         building_id: u64,
         no_survivor: bool,
         mut commit_cell_smudge: impl FnMut(&mut Simulation, (u16, u16)),
+        effects: FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(building_id) else {
             return;
@@ -364,8 +366,14 @@ impl Simulation {
 
         // Phase A (0x00442DF2..0x00443011): every absorbed passenger advances
         // the foundation cursor that Phase B then continues from.
-        let cursor =
-            self.eject_absorbed_passengers(rules, registry, building_id, &cells, no_survivor);
+        let cursor = self.eject_absorbed_passengers(
+            rules,
+            registry,
+            building_id,
+            &cells,
+            no_survivor,
+            effects,
+        );
 
         // Phase B (0x00443017..0x004433F4): nothing at all, smudges
         // included, when no survivor is owed.
@@ -376,7 +384,9 @@ impl Simulation {
             if count > 0
                 && self.scenario_rng.next_range_u32_inclusive(0, chance_max) == 1
                 && let Some(crew) = self.building_crew_type(rules, building_id)
-                && self.spawn_building_survivor(rules, registry, &crew, owner, cell, c4_source)
+                && self.spawn_building_survivor(
+                    rules, registry, &crew, owner, cell, c4_source, effects,
+                )
             {
                 count -= 1;
             }
@@ -396,6 +406,7 @@ impl Simulation {
         owner: InternedId,
         cell: (u16, u16),
         c4_source: Option<u64>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let unlimbo = self.survivor_unlimbo(cell);
         let (_, _, z) = unlimbo.cell_level();
@@ -406,14 +417,14 @@ impl Simulation {
         //ordinary481180. It remains raised through Scatter/Walk and the
         //mission queue, and is decremented at443288, including failed exits.
         self.with_object_placement_scope(|sim| {
-            if !sim.unlimbo_crew(rules, id, unlimbo, None, registry) {
-                sim.discard_constructed_limbo(id, Some(rules));
+            if !sim.unlimbo_crew(rules, id, unlimbo, None, registry, effects) {
+                sim.discard_constructed_limbo(id, Some(rules), effects);
                 return false;
             }
             let strength = rules.object(crew).map_or(0, |object| object.strength);
             let health = sim.scenario_rng.next_range_i32_inclusive(5, strength);
             sim.set_crew_health(id, health);
-            sim.scatter_crew(rules, registry, id);
+            sim.scatter_crew(rules, registry, id, effects);
 
             // `HouseClass::IsAlliedWith(object) @ 0x004F9AF0` on the building owner.
             let owner_name = sim.interner.resolve(owner);
@@ -467,6 +478,7 @@ impl Simulation {
         building_id: u64,
         cells: &[(u16, u16)],
         no_survivor: bool,
+        effects: FrameEffects<'_>,
     ) -> usize {
         let absorbs = self
             .substrate
@@ -494,6 +506,7 @@ impl Simulation {
                 passenger,
                 cell,
                 no_survivor,
+                effects,
             );
         }
         cursor
@@ -513,6 +526,7 @@ impl Simulation {
         passenger: u64,
         cell: Option<(u16, u16)>,
         no_survivor: bool,
+        effects: FrameEffects<'_>,
     ) {
         let Some(infantry) = self
             .substrate
@@ -578,17 +592,21 @@ impl Simulation {
                                 logic_eligible: true,
                             },
                             UninitContext::new(Some(rules), registry)
+                                .with_effects(effects)
                                 .with_unlimbo_facing(Some(facing)),
                         ),
                         RevealOutcome::Revealed { .. }
                     )
                 });
             if !revealed {
-                sim.uninit_with_context(passenger, UninitContext::new(Some(rules), registry));
+                sim.uninit_with_context(
+                    passenger,
+                    UninitContext::new(Some(rules), registry).with_effects(effects),
+                );
                 return;
             }
             if infantry {
-                sim.scatter_crew(rules, registry, passenger);
+                sim.scatter_crew(rules, registry, passenger, effects);
             }
             if !sim.owner_is_human(owner) {
                 sim.queue_crew_mission(passenger, MissionType::Hunt);
@@ -610,6 +628,7 @@ impl Simulation {
         unit_id: u64,
         prevent_escape: bool,
         selected_by_player: bool,
+        effects: FrameEffects<'_>,
     ) {
         if prevent_escape {
             return;
@@ -674,14 +693,14 @@ impl Simulation {
         let Some(crew) = self.techno_crew_type(rules, side, armed) else {
             return;
         };
-        let Some(id) = self.construct_crew(rules, &crew, owner, unlimbo, registry) else {
+        let Some(id) = self.construct_crew(rules, &crew, owner, unlimbo, registry, effects) else {
             return;
         };
         // Signed Strength/2 (CDQ; SUB; SAR).
         let strength = rules.object(&crew).map_or(0, |object| object.strength);
         let health = self.scenario_rng.next_range_i32_inclusive(5, strength / 2);
         self.set_crew_health(id, health);
-        self.scatter_crew(rules, registry, id);
+        self.scatter_crew(rules, registry, id, effects);
         let mission = if self.owner_is_human(owner) {
             MissionType::Guard
         } else {
@@ -708,6 +727,7 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
         unit_id: u64,
         dying: DyingTransport,
+        effects: FrameEffects<'_>,
     ) {
         let Some(unit) = self.substrate.entities.get(unit_id) else {
             return;
@@ -720,7 +740,7 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
         ) > 0xD0
         {
-            self.kill_passengers(unit_id, dying.attacker, rules, registry);
+            self.kill_passengers(unit_id, dying.attacker, rules, registry, effects);
         }
         if crashable {
             return;
@@ -734,9 +754,10 @@ impl Simulation {
             unit_id,
             crate::sim::passenger::DepartureRoute::DeathEscape,
             |sim, passenger| {
-                sim.escape_dying_unit(rules, registry, unit_id, passenger, dying);
+                sim.escape_dying_unit(rules, registry, unit_id, passenger, dying, effects);
                 Ok(())
             },
+            effects,
         )
         .is_ok()
         {}
@@ -758,6 +779,7 @@ impl Simulation {
         unit_id: u64,
         passenger: u64,
         dying: DyingTransport,
+        effects: FrameEffects<'_>,
     ) {
         use crate::sim::movement::ground_pose::{ground_surface_z_at, position_world_coord};
         // The transporter link (`+0x11C`) is cleared after a successful
@@ -820,7 +842,7 @@ impl Simulation {
         // `0x007380A3..0x007380BF`. The unit's IsABomb (`+0x8F`) kills too;
         // VERA has no such byte (module residuals).
         if dying.ignore_defenses || !admitted {
-            self.record_kill_and_uninit(passenger, dying.attacker, rules, registry);
+            self.record_kill_and_uninit(passenger, dying.attacker, rules, registry, effects);
             return;
         }
 
@@ -870,8 +892,8 @@ impl Simulation {
                 locomotor.layer = MovementLayer::Ground;
             }
             // `0x007380EC..0x007380F4`: a refused Unlimbo kills.
-            if !sim.unlimbo_crew(rules, passenger, unlimbo, Some(facing), registry) {
-                sim.record_kill_and_uninit(passenger, dying.attacker, rules, registry);
+            if !sim.unlimbo_crew(rules, passenger, unlimbo, Some(facing), registry, effects) {
+                sim.record_kill_and_uninit(passenger, dying.attacker, rules, registry, effects);
                 return;
             }
 
@@ -884,14 +906,14 @@ impl Simulation {
             }
             // `0x00738130..0x0073813D`: Scatter(&EmptyCoord, 1, 0).
             if infantry {
-                sim.scatter_crew(rules, registry, passenger);
+                sim.scatter_crew(rules, registry, passenger, effects);
             }
             // `0x00738143..0x0073816E`: a computer passenger joins the unit's Team
             // (`TeamClass::Add_Member @ 0x006EA500`), or Hunts without one.
             if !sim.owner_is_human(passenger_owner) {
                 match sim.team_script_vm.team_for_member(unit_id) {
                     Some((team_id, _)) => {
-                        sim.team_add_member(team_id, passenger, false, rules, registry);
+                        sim.team_add_member(team_id, passenger, false, rules, registry, effects);
                     }
                     None => sim.queue_crew_mission(passenger, MissionType::Hunt),
                 }
@@ -915,11 +937,12 @@ impl Simulation {
         owner: InternedId,
         unlimbo: CrewUnlimbo,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Option<u64> {
         let (rx, ry, z) = unlimbo.cell_level();
         let id = self.construct_crew_limbo(rules, crew, owner, (rx, ry), z)?;
-        if !self.unlimbo_crew(rules, id, unlimbo, None, registry) {
-            self.discard_constructed_limbo(id, Some(rules));
+        if !self.unlimbo_crew(rules, id, unlimbo, None, registry, effects) {
+            self.discard_constructed_limbo(id, Some(rules), effects);
             return None;
         }
         Some(id)
@@ -952,6 +975,7 @@ impl Simulation {
         unlimbo: CrewUnlimbo,
         facing: Option<u8>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let infantry = self
             .substrate
@@ -1046,7 +1070,9 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::new(Some(rules), registry).with_unlimbo_facing(facing),
+            UninitContext::new(Some(rules), registry)
+                .with_effects(effects)
+                .with_unlimbo_facing(facing),
         );
         matches!(outcome, RevealOutcome::Revealed { .. })
     }
@@ -1085,6 +1111,7 @@ impl Simulation {
         building_id: u64,
         count: i32,
         cells: &[(u16, u16)],
+        effects: FrameEffects<'_>,
     ) -> bool {
         let Some(owner) = self
             .substrate
@@ -1128,14 +1155,21 @@ impl Simulation {
             let escaped = self.with_object_placement_scope(|sim| {
                 let pick = sim.scenario_rng.next_range_i32_inclusive(0, last);
                 let cell = cells[pick as usize];
-                if !sim.unlimbo_crew(rules, id, sim.survivor_unlimbo(cell), None, registry) {
-                    sim.discard_constructed_limbo(id, Some(rules));
+                if !sim.unlimbo_crew(
+                    rules,
+                    id,
+                    sim.survivor_unlimbo(cell),
+                    None,
+                    registry,
+                    effects,
+                ) {
+                    sim.discard_constructed_limbo(id, Some(rules), effects);
                     return false;
                 }
                 true
             });
             if escaped {
-                self.scatter_crew(rules, registry, id);
+                self.scatter_crew(rules, registry, id, effects);
                 self.with_object_placement_scope(|sim| {
                     sim.queue_crew_mission(id, MissionType::Move)
                 });
@@ -1155,12 +1189,19 @@ impl Simulation {
     /// the crewman where it landed. The immediate Process's bridge-state
     /// flag, which the hut caller propagates, is dropped: a crewman's first
     /// walk step does not change bridge state.
-    fn scatter_crew(&mut self, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>, id: u64) {
+    fn scatter_crew(
+        &mut self,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+        id: u64,
+        effects: FrameEffects<'_>,
+    ) {
         if let Err(cause) = self.scatter_null(
             id,
             crate::sim::movement::ScatterFlags::new(true, false),
             rules,
             registry,
+            effects,
         ) {
             log::debug!("crew {id} did not scatter: {cause}");
         }

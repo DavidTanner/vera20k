@@ -2184,7 +2184,7 @@ fn append_selected_death_sounds(
     category: EntityCategory,
     building_die_sound: Option<&str>,
     owner_is_human: bool,
-    main_rng: &mut SimRng,
+    main_rng: &crate::sim::rng::MainRng,
     rx: u16,
     ry: u16,
     death_sounds: &mut Vec<(String, u16, u16)>,

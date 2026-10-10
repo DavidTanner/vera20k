@@ -181,8 +181,13 @@ fn updater_flags_stage_and_signed_boundaries_match_native_lifecycle() {
         let (mut sim, rules, id) = native_fixture(&row["input"], &row["before"]);
         let rng = sim.rng_state();
         let deploying = row["input"]["entry"].as_u64().unwrap_or(0x739ac0) != 0x739cd0;
-        sim.update_unit_simple_deploy(id, deploying, &rules)
-            .unwrap();
+        sim.update_unit_simple_deploy(
+            id,
+            deploying,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .unwrap();
         let context = format!("lifecycle[{index}] {}", row["input"]);
         assert_native_state(&sim, id, &row["after"], &context);
         if !allocated(&row["events"]) {
@@ -205,7 +210,13 @@ fn mission_then_shared_stage_matches_original_frame_timelines() {
                 let context = format!("{} frame {now}", row["name"]);
                 assert_native_state(&sim, id, &frame["before"], &context);
                 let rng = sim.rng_state();
-                let result = sim.unit_simple_mission_unload(id, &rules).unwrap();
+                let result = sim
+                    .unit_simple_mission_unload(
+                        id,
+                        &rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
+                    .unwrap();
                 assert_eq!(
                     result,
                     frame["return_value"].as_i64().unwrap() as i32,
@@ -226,7 +237,9 @@ fn mission_then_shared_stage_matches_original_frame_timelines() {
             let result = &row["result"];
             let (mut sim, rules, id) = native_fixture(&row["input"], &result["before"]);
             let rng = sim.rng_state();
-            let actual = sim.unit_simple_mission_unload(id, &rules).unwrap();
+            let actual = sim
+                .unit_simple_mission_unload(id, &rules, crate::sim::world::FrameEffects::default())
+                .unwrap();
             assert_eq!(
                 actual,
                 result["return_value"].as_i64().unwrap() as i32,

@@ -217,10 +217,10 @@ pub(crate) fn load_with_launch(
     let shared_cell_dummy = crate::map::resolved_terrain::SharedCellDummy::fresh();
     shared_cell_dummy.reconstruct_for_map_resize();
     sim.bind_shared_cell_dummy(shared_cell_dummy.clone());
-    let (mut scenario_fill_rng, mut variant_main_rng) = sim.terrain_load_draws();
+    let (mut scenario_fill_rng, variant_main_rng) = sim.terrain_load_draws();
     let mut scenario_fill_ranged =
         |low, high| scenario_fill_rng.next_range_u32_inclusive(low, high);
-    let mut variant_draw = || variant_main_rng.next_u32();
+    let mut variant_draw = move || variant_main_rng.next_u32();
     let mut variant_selector_cache = TileVariantSelectorCache::default();
     let mut variant_selector = variant_selector_cache.begin_load(&mut variant_draw);
     let terrain_fill =
@@ -239,7 +239,6 @@ pub(crate) fn load_with_launch(
     drop(variant_selector);
     drop(variant_draw);
     drop(scenario_fill_ranged);
-    drop(variant_main_rng);
     drop(scenario_fill_rng);
 
     // Pending authored Fill has no eager Tile##Anim list. Bind damage-fire
@@ -380,7 +379,7 @@ impl HeadlessScenario {
     pub fn tick(&mut self) {
         let _ = self
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("simulation frame failed; prior world mutations remain");
     }
 }
@@ -425,10 +424,10 @@ mod retail_construction_tests {
         sim.native_unique_ids =
             Some(crate::sim::native_identity::NativeUniqueIdCursor::for_synthetic_simulation());
         let resolved = {
-            let (mut scenario_fill_rng, mut variant_main_rng) = sim.terrain_load_draws();
+            let (mut scenario_fill_rng, variant_main_rng) = sim.terrain_load_draws();
             let mut scenario_fill_ranged =
                 |low, high| scenario_fill_rng.next_range_u32_inclusive(low, high);
-            let mut variant_draw = || variant_main_rng.next_u32();
+            let mut variant_draw = move || variant_main_rng.next_u32();
             let mut variant_selector_cache = TileVariantSelectorCache::default();
             let mut variant_selector = variant_selector_cache.begin_load(&mut variant_draw);
             let shared_cell_dummy = crate::map::resolved_terrain::SharedCellDummy::fresh();

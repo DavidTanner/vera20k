@@ -429,7 +429,13 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
             target_ry: ry,
             queue: false,
         };
-        assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+        assert!(sim.apply_command_with_overlays(
+            "Americans",
+            &command,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
     };
     order(&mut sim, (30, 20));
     step(&mut sim, &rules);
@@ -505,7 +511,13 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
         target_ry: 20,
         queue: false,
     };
-    assert!(sim.apply_command_with_overlays("Americans", &command, Some(&rules), None));
+    assert!(sim.apply_command_with_overlays(
+        "Americans",
+        &command,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     charge_chronosphere(&mut sim, americans);
     click(&mut sim, &rules, americans, "ChronoSphereSpecial", SOURCE);
     step(&mut sim, &rules);
@@ -628,7 +640,13 @@ fn retail_destination_while_warping_in_is_refused_by_the_drive() {
     }
     assert!(warping_in(&sim));
     let next = NavTargetRef::cell(TARGET.0 + 4, TARGET.1);
-    sim.set_unit_destination(miner, next, &rules, true);
+    sim.set_unit_destination(
+        miner,
+        next,
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(chain(&sim, miner), [Drive, Teleport, Teleport]);
     assert!(warping_in(&sim));
     let entity = sim.substrate.entities.get(miner).unwrap();
@@ -937,7 +955,14 @@ fn retail_chrono_update_position_matches_native_rows() {
             runtime.set_resolved_destination(coord(&row["marked"]));
         }
 
-        let answer = sim.chrono_update_position(owner, target, place, &rules, None);
+        let answer = sim.chrono_update_position(
+            owner,
+            target,
+            place,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_eq!(u8::from(answer), int(&row["result"]) as u8, "{row}");
         let killed: Vec<&str> = row["events"]

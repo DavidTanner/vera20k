@@ -273,7 +273,8 @@ fn production_drive_reaim_reads_retained_target_head() {
         sim.begin_track_end_continuation(
             1,
             crate::sim::movement::track_process::TrackFamily::Drive,
-            None
+            None,
+            crate::sim::world::FrameEffects::default()
         )
         .unwrap()
     );
@@ -336,7 +337,12 @@ fn flight_queries_follow_live_altitude_producers_and_keep_jumpjet_exact_z() {
         .retain_destination(DriveCoord::cell(12, 6, 0), None, || 0);
     sim.substrate.entities.insert(fly);
     sim.resolved_terrain = Some(terrain);
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(1).unwrap();
     let altitude = e.locomotor.as_ref().unwrap().altitude;
     assert!(altitude > SimFixed::from_num(0));

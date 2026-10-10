@@ -40,7 +40,7 @@ fn normal_voice_requests_match_native_rejections_draws_and_complete_main_state()
                 history["main_prefix"]["before_state_hex"].as_str().unwrap(),
                 "{label}"
             );
-            let (_, mut main) = sim.terrain_load_draws();
+            let (_, main) = sim.terrain_load_draws();
             for expected in prefix {
                 assert_eq!(u64::from(main.next_u32()), expected.as_u64().unwrap());
             }
@@ -199,7 +199,8 @@ fn area_guard_default_voice_matches_native_pre_gate_post_gate_and_main_continuat
                 .as_str()
                 .unwrap()
         };
-        sim.main_rng = SimRng::from_native_state_hex_for_test(state(first, "rng_before", "main"));
+        sim.main_rng =
+            SimRng::from_native_state_hex_for_test(state(first, "rng_before", "main")).into();
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(state(first, "rng_before", "scenario"));
         sim.mapgen_rng =
@@ -219,12 +220,12 @@ fn area_guard_default_voice_matches_native_pre_gate_post_gate_and_main_continuat
                 receipt["queued_before"]["name"].as_str()
             );
             for (stream, rng) in [
-                ("main", &sim.main_rng),
-                ("scenario", &sim.scenario_rng),
-                ("mapgen", &sim.mapgen_rng),
+                ("main", sim.main_rng.native_state_hex()),
+                ("scenario", sim.scenario_rng.native_state_hex()),
+                ("mapgen", sim.mapgen_rng.native_state_hex()),
             ] {
                 assert_eq!(
-                    rng.native_state_hex(),
+                    rng,
                     state(receipt, "rng_before", stream),
                     "{} before {name} {stream}",
                     row["name"]
@@ -256,12 +257,12 @@ fn area_guard_default_voice_matches_native_pre_gate_post_gate_and_main_continuat
                 row["name"]
             );
             for (stream, rng) in [
-                ("main", &sim.main_rng),
-                ("scenario", &sim.scenario_rng),
-                ("mapgen", &sim.mapgen_rng),
+                ("main", sim.main_rng.native_state_hex()),
+                ("scenario", sim.scenario_rng.native_state_hex()),
+                ("mapgen", sim.mapgen_rng.native_state_hex()),
             ] {
                 assert_eq!(
-                    rng.native_state_hex(),
+                    rng,
                     state(receipt, "rng_after", stream),
                     "{} after {name} {stream}",
                     row["name"]

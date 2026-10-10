@@ -99,6 +99,7 @@ fn begin_native_aim_motion(duel: &mut Duel, target_id: u64) {
         crate::sim::components::NavTargetRef::Cell { rx: 87, ry: 53 },
         &duel.rules,
         true,
+        crate::sim::world::FrameEffects::default(),
     ));
     let target = duel.sim.substrate.entities.get_mut(target_id).unwrap();
     target
@@ -239,6 +240,7 @@ fn original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim() {
         },
         &duel.rules,
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     let bullets: Vec<_> = duel
         .sim
@@ -308,6 +310,7 @@ fn original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim() {
         },
         &duel.rules,
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(
         duel.sim
@@ -334,14 +337,14 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
     let expiry = attack_aim_row(&corpus, "steps", "supplied_dead_target_expiry_active_scan");
     let assert_rng = |sim: &Simulation, native: &serde_json::Value, boundary: &str| {
         for (name, actual) in [
-            ("scenario", &sim.scenario_rng),
-            ("main", &sim.main_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("scenario", sim.scenario_rng.logical_state()),
+            ("main", sim.main_rng.logical_state()),
+            ("mapgen", sim.mapgen_rng.logical_state()),
         ] {
             let expected: SimRng = serde_json::from_value(native[name].clone()).unwrap();
             assert_eq!(
-                actual.logical_view(),
-                expected.logical_view(),
+                actual,
+                expected.logical_state(),
                 "{boundary}: full {name} table, disabled flag and both indexes"
             );
         }
@@ -376,7 +379,7 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
     for _ in 0..3 {
         duel.sim.scenario_rng.next_u32();
     }
-    duel.sim.main_rng = SimRng::new(0);
+    duel.sim.main_rng = SimRng::new(0).into();
     duel.sim.mapgen_rng = SimRng::new(0);
     assert_rng(&duel.sim, &expiry["rng_before"], "before UnInit");
     assert_timer(&duel.sim, before_timer);
@@ -417,8 +420,11 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
     );
     let expected = attack_aim_row(&corpus, "aim_cases", "expired_target_aim");
     assert_read_only_native_aim(&duel, source, expected);
-    duel.sim
-        .process_pending_delete_with(Some(&duel.rules), None);
+    duel.sim.process_pending_delete_with(
+        Some(&duel.rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(duel.sim.substrate.entities.get(target).is_none());
     assert_read_only_native_aim(&duel, source, expected);
     assert_rng(&duel.sim, &expiry["rng_after"], "after deferred removal");

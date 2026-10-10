@@ -53,7 +53,16 @@ fn mission_only_aircraft_reveal_matches_original_flag_histories() {
             PlacementEvidence::MarkFailed
         };
         let rng = sim.scenario_rng.logical_state();
-        let result = sim.reveal_constructed_object_at_height(id, 10, 10, 0, 0, placement, &rules);
+        let result = sim.reveal_constructed_object_at_height(
+            id,
+            10,
+            10,
+            0,
+            0,
+            placement,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(result.is_some(), flag("success"), "{row}");
         assert_eq!(
             sim.substrate.entities.get(id).unwrap().is_mission_only(),
@@ -93,7 +102,8 @@ fn mission_only_survives_snapshot_limbo_and_ordinary_type_reveal() {
                     0,
                     0,
                     PlacementEvidence::MarkSucceeded,
-                    &normal
+                    &normal,
+                    crate::sim::world::FrameEffects::default()
                 )
                 .is_some()
         );
@@ -212,8 +222,16 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
         } else {
             PlacementEvidence::MarkFailed
         };
-        let revealed = sim
-            .reveal_constructed_object_at_height(id, cell.0, cell.1, 0, level, placement, &rules);
+        let revealed = sim.reveal_constructed_object_at_height(
+            id,
+            cell.0,
+            cell.1,
+            0,
+            level,
+            placement,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(revealed.is_some(), flag("success"), "{row}");
         let entity = sim.substrate.entities.get(id).unwrap();
         if !flag("success") {

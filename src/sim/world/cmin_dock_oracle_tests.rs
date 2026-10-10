@@ -417,11 +417,16 @@ fn unit_setter_teleporter_arm_matches_the_original_assign_destination() {
                     },
                     &s.rules,
                     true,
+                    crate::sim::world::FrameEffects::default(),
                 );
             }
             None => {
-                s.sim
-                    .set_unit_null_destination(s.miner, Some(&s.rules), None);
+                s.sim.set_unit_null_destination(
+                    s.miner,
+                    Some(&s.rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
         }
         compare_swap(before, &s, row["events"].as_array().unwrap(), &context);
@@ -453,7 +458,14 @@ fn teleport_move_to_guards_match_the_original_refusals() {
         let mut s = cmin_scene(input);
         assert!(
             !s.sim
-                .teleport_move_to(s.miner, cell(&input["dest"]), &s.rules, true, None,)
+                .teleport_move_to(
+                    s.miner,
+                    cell(&input["dest"]),
+                    &s.rules,
+                    true,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap(),
             "{context}: refused"
         );
@@ -482,7 +494,14 @@ fn teleport_warp_matches_the_original_process() {
         let dest = cell(&input["dest"]);
         assert!(
             s.sim
-                .teleport_move_to(s.miner, dest, &s.rules, harvester, None)
+                .teleport_move_to(
+                    s.miner,
+                    dest,
+                    &s.rules,
+                    harvester,
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                )
                 .unwrap()
         );
         {
@@ -685,7 +704,12 @@ fn mission_enter_teleporter_arms_match_the_original_dispatch() {
         radio::take_transmit_log();
         let before = active(&s);
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::mission::enter::mission_enter(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::mission::enter::mission_enter(
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_swap(before, &s, row["events"].as_array().unwrap(), &context);
@@ -710,7 +734,12 @@ fn mission_unload_turns_a_teleporter_like_the_original() {
         let mut s = cmin_scene(input);
         radio::take_transmit_log();
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::miner::mission_unload(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::miner::mission_unload(
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_cmin(&s, &row["state"], &context);
@@ -725,7 +754,12 @@ fn per_cell_dock_now_waits_for_the_tether_after_a_warp() {
         let context = input["name"].as_str().unwrap().to_string();
         let mut s = cmin_scene(input);
         radio::take_transmit_log();
-        s.sim.unit_dock_now(s.miner, &s.rules, None);
+        s.sim.unit_dock_now(
+            s.miner,
+            &s.rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_cmin(&s, &row["state"], &context);
     }

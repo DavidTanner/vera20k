@@ -189,7 +189,7 @@ fn presentation_main_service_cannot_change_later_projectile_identity() {
             },
             &rules,
             None,
-        );
+         crate::sim::world::FrameEffects::default(),);
         assert_eq!(
             sim.projectiles.iter().count(),
             1,

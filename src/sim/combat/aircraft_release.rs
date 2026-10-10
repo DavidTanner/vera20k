@@ -156,9 +156,9 @@ pub(super) fn visit(
 }
 
 /// The combat phase's side of a strike visit.
-struct CombatStrike<'w, 'r> {
+struct CombatStrike<'w, 'r, 'f> {
     world: &'w mut Simulation,
-    run: &'w mut ReceiverRun,
+    run: &'w mut ReceiverRun<'f>,
     rules: &'r RuleSet,
     overlay_registry: Option<&'w OverlayTypeRegistry>,
     fog: Option<&'w FogState>,
@@ -169,7 +169,7 @@ struct CombatStrike<'w, 'r> {
     snap: AttackerSnapshot,
 }
 
-impl CombatStrike<'_, '_> {
+impl CombatStrike<'_, '_, '_> {
     fn id(&self) -> u64 {
         self.snap.stable_id
     }
@@ -247,21 +247,21 @@ impl CombatStrike<'_, '_> {
 }
 
 /// The combat phase's side of one `AircraftClass::Fire_At`.
-struct AircraftFireAt<'s, 'w, 'r> {
-    strike: &'s mut CombatStrike<'w, 'r>,
+struct AircraftFireAt<'s, 'w, 'r, 'f> {
+    strike: &'s mut CombatStrike<'w, 'r, 'f>,
     /// Fire_At's target, Mission_Attack's Target as the shot read it.
     target: Option<TargetKind>,
     /// The bullet TechnoClass::FireAt answered.
     bullet: Option<u64>,
 }
 
-impl AircraftFireAt<'_, '_, '_> {
+impl AircraftFireAt<'_, '_, '_, '_> {
     fn entity(&self) -> Option<&GameEntity> {
         self.strike.world.substrate.entities.get(self.strike.id())
     }
 }
 
-impl FireAtHost for AircraftFireAt<'_, '_, '_> {
+impl FireAtHost for AircraftFireAt<'_, '_, '_, '_> {
     fn carries_passenger(&mut self) -> bool {
         self.entity()
             .and_then(|entity| entity.passenger_role.cargo())
@@ -275,6 +275,7 @@ impl FireAtHost for AircraftFireAt<'_, '_, '_> {
             strike.snap.stable_id,
             strike.rules,
             strike.overlay_registry,
+            strike.run.effects(),
         );
     }
 
@@ -294,6 +295,7 @@ impl FireAtHost for AircraftFireAt<'_, '_, '_> {
                 strike.binary_frame,
                 strike.out,
                 strike.overlay_registry,
+                strike.run.effects(),
             )
             .map(|bullet| (bullet, rot));
         }
@@ -481,12 +483,13 @@ impl FireAtHost for AircraftFireAt<'_, '_, '_> {
         let strike = &mut *self.strike;
         strike.world.uninit_with_context(
             strike.snap.stable_id,
-            crate::sim::world::UninitContext::new(Some(strike.rules), strike.overlay_registry),
+            crate::sim::world::UninitContext::new(Some(strike.rules), strike.overlay_registry)
+                .with_effects(strike.run.effects()),
         );
     }
 }
 
-impl StrikeHost for CombatStrike<'_, '_> {
+impl StrikeHost for CombatStrike<'_, '_, '_> {
     fn fire_error(&mut self) -> fire_error::FireError {
         self.with_subject(|subject| subject.fire_error(true))
             .unwrap_or(fire_error::FireError::Illegal)
@@ -566,8 +569,12 @@ impl StrikeHost for CombatStrike<'_, '_> {
                 TargetKind::Entity(id) => crate::sim::components::NavTargetRef::Entity { id },
                 TargetKind::Cell(rx, ry) => crate::sim::components::NavTargetRef::cell(rx, ry),
             };
-            self.world
-                .assign_aircraft_destination(id, Some(destination), self.rules);
+            self.world.assign_aircraft_destination(
+                id,
+                Some(destination),
+                self.rules,
+                self.run.effects(),
+            );
         }
     }
 

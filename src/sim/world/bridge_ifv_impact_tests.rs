@@ -173,6 +173,7 @@ fn native_ifv_bridge_impact_orders_live_selection_debris_ids_and_rng() {
                 Some(&overlays),
                 (10, 20),
                 Family::High,
+                crate::sim::world::FrameEffects::default(),
             );
             let body: Value = serde_json::from_str(crate::test_fixture::text(
                 "tools/spatial_oracle/bridge_rim_body.json",

@@ -419,7 +419,12 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
     );
 
     for missing in [None, Some(&unregistered)] {
-        let result = sim.mission_restore_represented(1, Some(&rules), missing);
+        let result = sim.mission_restore_represented(
+            1,
+            Some(&rules),
+            missing,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(matches!(
             result,
             Err(MissionAuthorityError::AuthorityUnavailable(_))
@@ -435,7 +440,12 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
         );
     }
 
-    let result = sim.mission_restore_represented(1, Some(&rules), Some(&registry));
+    let result = sim.mission_restore_represented(
+        1,
+        Some(&rules),
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(result.unwrap());
     let mover = sim.substrate.entities.get(1).unwrap();
     assert_eq!(mover.mission.current().known(), Some(MissionType::Move));
@@ -476,6 +486,7 @@ fn a_ground_order_arms_the_warp() {
         },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     );
 
     assert!(accepted);

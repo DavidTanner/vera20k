@@ -20,6 +20,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::movement::rocket_movement::{self, RocketHost};
 use crate::sim::projectile::ProjectileCoord;
+use crate::sim::world::FrameEffects;
 
 struct RocketProcessHost<'a> {
     sim: &'a mut Simulation,
@@ -29,6 +30,7 @@ struct RocketProcessHost<'a> {
     id: u64,
     frame: u32,
     bridge_state_changed: bool,
+    frame_effects: FrameEffects<'a>,
 }
 
 impl<'a> RocketProcessHost<'a> {
@@ -83,6 +85,7 @@ impl RocketHost for RocketProcessHost<'_> {
             DriveCoord { x, y, z },
             Some(self.rules),
             self.registry,
+            self.frame_effects,
         );
     }
     fn height(&self) -> i32 {
@@ -105,10 +108,10 @@ impl RocketHost for RocketProcessHost<'_> {
     fn mark(&mut self, put: bool) {
         if put {
             self.sim
-                .foot_mark_put(self.id, Some(self.rules), self.registry);
+                .foot_mark_put(self.id, Some(self.rules), self.registry, self.frame_effects);
         } else {
             self.sim
-                .foot_mark_remove(self.id, Some(self.rules), self.registry);
+                .foot_mark_remove(self.id, Some(self.rules), self.registry, self.frame_effects);
         }
     }
     fn submit_display(&mut self) {
@@ -216,11 +219,14 @@ impl RocketHost for RocketProcessHost<'_> {
             damage,
             warhead_type,
             (self.id, None, warhead_ref),
+            self.frame_effects,
         );
     }
     fn uninit(&mut self) {
-        self.sim
-            .uninit_with_context(self.id, UninitContext::new(Some(self.rules), self.registry));
+        self.sim.uninit_with_context(
+            self.id,
+            UninitContext::new(Some(self.rules), self.registry).with_effects(self.frame_effects),
+        );
     }
 }
 
@@ -258,6 +264,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> RocketProcessOutcome {
         let Some(entity) = self.substrate.entities.get(id) else {
             return RocketProcessOutcome::default();
@@ -283,6 +290,7 @@ impl Simulation {
             id,
             frame,
             bridge_state_changed: false,
+            frame_effects,
         };
         rocket_movement::process(&mut rocket, block, cmisl, &mut host);
         let outcome = RocketProcessOutcome {

@@ -97,19 +97,19 @@ fn facing_fields(facing: FacingClass) -> Value {
 }
 
 fn import_rng(sim: &mut Simulation, native: &Value) {
-    sim.main_rng = SimRng::from_native_state_hex_for_test(native["main"].as_str().unwrap());
+    sim.main_rng = SimRng::from_native_state_hex_for_test(native["main"].as_str().unwrap()).into();
     sim.scenario_rng = SimRng::from_native_state_hex_for_test(native["scenario"].as_str().unwrap());
     sim.mapgen_rng = SimRng::from_native_state_hex_for_test(native["mapgen"].as_str().unwrap());
 }
 
 fn assert_rng(sim: &Simulation, native: &Value, label: &str) {
     for (stream, actual) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert_eq!(
-            actual.native_state_hex(),
+            actual,
             native[stream].as_str().unwrap(),
             "{label}: complete {stream} Random2Class",
         );
@@ -304,9 +304,19 @@ fn supplied_world(
         );
         *runtime = runtime.clone().with_flight_for_test(flight);
     }
-    assert!(sim.foot_mark_put(id, Some(rules), Some(registry)));
+    assert!(sim.foot_mark_put(
+        id,
+        Some(rules),
+        Some(registry),
+        crate::sim::world::FrameEffects::default()
+    ));
     if state["marked"] == 0 {
-        assert!(sim.foot_mark_remove(id, Some(rules), Some(registry)));
+        assert!(sim.foot_mark_remove(
+            id,
+            Some(rules),
+            Some(registry),
+            crate::sim::world::FrameEffects::default()
+        ));
     } else {
         assert_eq!(state["marked"], 1);
     }
@@ -692,10 +702,21 @@ fn execute_step(
     match label {
         "cell_order" => {
             let at = cell(&control["output"]["input_world"]["initial_cell_order"]);
-            let _ = sim.set_unit_destination(actor, NavTargetRef::cell(at.0, at.1), rules, true);
+            let _ = sim.set_unit_destination(
+                actor,
+                NavTargetRef::cell(at.0, at.1),
+                rules,
+                true,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         "unit_stop" => {
-            let _ = sim.set_unit_null_destination(actor, Some(rules), Some(registry));
+            let _ = sim.set_unit_null_destination(
+                actor,
+                Some(rules),
+                Some(registry),
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         "scenario_load_seed0" => {
             // Scenario Load689470 -> PostRead683560 reseeds Scenario+218.
@@ -745,6 +766,7 @@ fn execute_step(
             let (trig, _) = required_math_tables();
             sim.with_jumpjet_process(actor, |runtime, sim| {
                 let mut host = super::CruiseHost {
+                    frame_effects: crate::sim::world::FrameEffects::default(),
                     sim,
                     frame,
                     trig,
@@ -766,8 +788,13 @@ fn execute_step(
             .unwrap();
         }
         process if process.starts_with("process_") => {
-            sim.tick_jumpjet_cruise_one(actor, Some(rules), Some(registry))
-                .unwrap();
+            sim.tick_jumpjet_cruise_one(
+                actor,
+                Some(rules),
+                Some(registry),
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap();
         }
         unknown => panic!("unrepresented native command {unknown}"),
     }
@@ -830,11 +857,17 @@ fn stock_shad_state1_scatter_publishes_before_following_translate() {
                 NavTargetRef::cell(initial_cell.0, initial_cell.1),
                 &retail.rules,
                 true,
+                crate::sim::world::FrameEffects::default(),
             );
         } else {
             assert!(
-                sim.tick_jumpjet_cruise_one(id, Some(&retail.rules), Some(&registry))
-                    .is_some()
+                sim.tick_jumpjet_cruise_one(
+                    id,
+                    Some(&retail.rules),
+                    Some(&registry),
+                    crate::sim::world::FrameEffects::default()
+                )
+                .is_some()
             );
         }
         assert_motion_boundary(&sim, id, control, after);

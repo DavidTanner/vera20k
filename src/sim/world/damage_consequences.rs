@@ -4,7 +4,7 @@
 //! live-object or remaining global delivery timing; this module does not choose
 //! damage callbacks, radiation targets, death sounds, or shared object IDs.
 
-use super::{SimFireEvent, SimSoundEvent, Simulation};
+use super::{FrameEffects, SimFireEvent, SimSoundEvent, Simulation, UninitContext};
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -122,6 +122,7 @@ impl DamageConsequences {
         world: &mut Simulation,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> DamageCommitReceipt {
         let Self {
             mut effects,
@@ -151,9 +152,16 @@ impl DamageConsequences {
                 .and_then(|building| building.bunker_occupant)
                 .is_some()
             {
-                crate::sim::docking::bunker_link::release_sell_destroy(world, dead_id);
+                crate::sim::docking::bunker_link::release_sell_destroy(
+                    world,
+                    dead_id,
+                    frame_effects,
+                );
             }
-            world.uninit_with_rules(dead_id, rules);
+            world.uninit_with_context(
+                dead_id,
+                UninitContext::new(Some(rules), overlay_registry).with_effects(frame_effects),
+            );
         }
 
         // Apply_area_damage already completed its bridge callbacks before

@@ -142,24 +142,29 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     // old header.
     crate::app::match_runtime::sim_tick::close_replay_segment_for_new_timeline(state);
     let match_rules = result.scenario.rules;
-    state.match_state.sim_runtime =
-        result
-            .scenario
-            .simulation
-            .zip(match_rules)
-            .map(|(simulation, rules)| crate::sim::runtime::SimRuntime {
-                simulation,
-                resources: crate::sim::runtime::SimResources {
-                    overlay_registry: result.scenario.overlay_registry,
-                    terrain_template: result.scenario.resolved_terrain,
-                    rules,
-                    trigger_graph: result.scenario.trigger_graph,
-                    triggers: result.scenario.triggers,
-                    events: result.scenario.events,
-                    actions: result.scenario.actions,
-                    waypoints: result.scenario.waypoints,
-                },
-            });
+    let incoming = result.scenario.simulation.zip(match_rules);
+    if let Some(sfx) = state.audio.sfx_player.as_mut() {
+        // Every committed replacement retires outgoing sources, including a
+        // generic fallback with no incoming world. Cancellation precedes both
+        // dropping the world and installing a fresh Main continuation.
+        sfx.stop_all();
+    }
+    state.match_state.sim_runtime = incoming.map(|(mut simulation, rules)| {
+        simulation.install_fresh_process_main(&state.frontend.frontend_main_rng);
+        crate::sim::runtime::SimRuntime {
+            simulation,
+            resources: crate::sim::runtime::SimResources {
+                overlay_registry: result.scenario.overlay_registry,
+                terrain_template: result.scenario.resolved_terrain,
+                rules,
+                trigger_graph: result.scenario.trigger_graph,
+                triggers: result.scenario.triggers,
+                events: result.scenario.events,
+                actions: result.scenario.actions,
+                waypoints: result.scenario.waypoints,
+            },
+        }
+    });
     state.match_state.match_presentation.combat_lights.clear();
     state.match_state.match_presentation.lasers.clear_on_load();
     state

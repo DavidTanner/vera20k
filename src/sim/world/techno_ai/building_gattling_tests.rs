@@ -157,16 +157,20 @@ fn report_name(index: u64) -> String {
 }
 
 /// The loop events a native call list leaves in VERA's model: a stage-up
-/// stops the loop before the next one plays (StopAndClear `0x0070DF74` runs
-/// natively and is not recorded), a play starts one, and a release matters
-/// only for a live loop (the latch was set).
-fn expected_sounds(events: &[Value], latch_before: bool, stage_up: bool) -> Vec<Sound> {
+/// stops the loop before the next one plays. This older oracle does not
+/// record Stop405D40's early exits:70DF74 is the stage stop and70DF9C the
+/// report-entry stop. Their order is executed in gattling_loop.json's hard
+/// transition. Recorded Releases are reached even with a cleared latch.
+fn expected_sounds(events: &[Value], stage_up: bool) -> Vec<Sound> {
     let mut sounds = Vec::new();
     for event in events {
         match event[0].as_str().unwrap() {
             "stage_call" if event[1] == "increase" && stage_up => sounds.push(Sound::Stop),
-            "play_at" => sounds.push(Sound::Loop(report_name(event[1].as_u64().unwrap()))),
-            "release" if latch_before => sounds.push(Sound::Release),
+            "play_at" => {
+                sounds.push(Sound::Stop);
+                sounds.push(Sound::Loop(report_name(event[1].as_u64().unwrap())));
+            }
+            "release" => sounds.push(Sound::Release),
             _ => {}
         }
     }
@@ -201,7 +205,7 @@ fn count(events: &[Value], name: &str, stream: Option<&str>) -> usize {
 fn with_draws(sim: &mut Simulation, row: &Value, call: impl FnOnce(&mut Simulation) -> i32) -> i32 {
     let name = &row["input"]["name"];
     let events = row["events"].as_array().unwrap();
-    let mut main = sim.main_rng.clone();
+    let mut main = sim.main_rng.snapshot_for_test();
     for _ in 0..count(events, "rng", Some("main")) {
         main.next_u32();
     }
@@ -225,7 +229,7 @@ fn with_draws(sim: &mut Simulation, row: &Value, call: impl FnOnce(&mut Simulati
 
 /// The row's recorded Gattling state, `+0xC4` and `+0x148`, and the loop
 /// events the calls made.
-fn assert_gattling(sim: &Simulation, id: u64, row: &Value, latch_before: bool, stage_before: i32) {
+fn assert_gattling(sim: &Simulation, id: u64, row: &Value, stage_before: i32) {
     let name = &row["input"]["name"];
     let native = &row["gattling"];
     let entity = sim.substrate.entities.get(id).unwrap();
@@ -257,11 +261,7 @@ fn assert_gattling(sim: &Simulation, id: u64, row: &Value, latch_before: bool, s
     );
     assert_eq!(
         sounds(sim, id),
-        expected_sounds(
-            row["events"].as_array().unwrap(),
-            latch_before,
-            stage > stage_before
-        ),
+        expected_sounds(row["events"].as_array().unwrap(), stage > stage_before),
         "{name} loop"
     );
 }
@@ -288,10 +288,13 @@ fn gattling_attack_matches_the_original() {
         if input["target"] == true {
             aim_at(&mut sim, building, target);
         }
-        let (latch_before, stage_before) = {
-            let entity = sim.substrate.entities.get(building).unwrap();
-            (entity.gattling.report_latch(), entity.gattling.stage())
-        };
+        let stage_before = sim
+            .substrate
+            .entities
+            .get(building)
+            .unwrap()
+            .gattling
+            .stage();
         let events = row["events"].as_array().unwrap();
         let (returns, fire_calls) = with_building_fire_stub(None, || {
             with_draws(&mut sim, row, |sim| {
@@ -353,7 +356,7 @@ fn gattling_attack_matches_the_original() {
             }),
             "{name} FireAt"
         );
-        assert_gattling(&sim, building, row, latch_before, stage_before);
+        assert_gattling(&sim, building, row, stage_before);
         if let Some(event) = fire_at {
             let elite = state_is_elite(input);
             // A second run uses the complete live receiver (no boundary
@@ -505,11 +508,21 @@ fn gattling_guard_matches_the_original() {
         // An unseeded oracle row draws from the fixture's state, whose first
         // draw is 1 like seed 1's.
         sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
-        let (latch_before, stage_before) = {
-            let entity = sim.substrate.entities.get(building).unwrap();
-            (entity.gattling.report_latch(), entity.gattling.stage())
-        };
-        let returns = with_draws(&mut sim, row, |sim| mission_guard(sim, building, &rules));
+        let stage_before = sim
+            .substrate
+            .entities
+            .get(building)
+            .unwrap()
+            .gattling
+            .stage();
+        let returns = with_draws(&mut sim, row, |sim| {
+            mission_guard(
+                sim,
+                building,
+                &rules,
+                crate::sim::world::ObjectAiCtx::default(),
+            )
+        });
         assert_eq!(
             i64::from(returns),
             row["returns"].as_i64().unwrap(),
@@ -526,7 +539,7 @@ fn gattling_guard_matches_the_original() {
             row["status"].as_u64().unwrap(),
             "{name} status"
         );
-        assert_gattling(&sim, building, row, latch_before, stage_before);
+        assert_gattling(&sim, building, row, stage_before);
     }
 }
 
@@ -554,13 +567,12 @@ fn gattling_idle_decay_matches_the_original() {
         }
         let dead = row["ended"].as_u64().unwrap() == 0x0044_0573;
         assert_eq!(dead, input["dead"] == true, "{name}");
-        let latch_before = entity.gattling.report_latch();
         let stage_before = entity.gattling.stage();
         with_draws(&mut sim, row, |sim| {
             gattling_idle(sim, building, &rules);
             0
         });
-        assert_gattling(&sim, building, row, latch_before, stage_before);
+        assert_gattling(&sim, building, row, stage_before);
     }
 }
 
@@ -632,13 +644,12 @@ fn gattling_cadence_matches_the_original() {
                 (event[0].as_u64().unwrap(), kind)
             })
             .collect();
-        sim.main_rng = SimRng::new(input["main_seed"].as_u64().unwrap_or(1));
+        sim.main_rng = SimRng::new(input["main_seed"].as_u64().unwrap_or(1)).into();
         let mut scenario_draws = 0;
         // The object pass of the frame `advance_tick` commits as `start + k`
         // runs at `base + k`, the frame its timers record.
         let start = sim.session.binary_frame;
         let base = i64::from(start) - 1;
-        let mut latch_before = false;
         let mut stage_before = 0;
         for frame in row["frames"].as_array().unwrap() {
             let k = frame["frame"].as_u64().unwrap();
@@ -657,7 +668,12 @@ fn gattling_cadence_matches_the_original() {
                         .unwrap();
                 }
                 Some(Event::Override) => {
-                    assert!(sim.override_mission_on_damage_response(building, target, &rules));
+                    assert!(sim.override_mission_on_damage_response(
+                        building,
+                        target,
+                        &rules,
+                        crate::sim::world::FrameEffects::default()
+                    ));
                 }
                 Some(Event::OutOfRange) => aim_at(&mut sim, building, far),
                 None => {}
@@ -669,7 +685,7 @@ fn gattling_cadence_matches_the_original() {
             sim.scenario_rng = scenario;
             let native_events = frame["events"].as_array().unwrap();
             scenario_draws += count(native_events, "rng", Some("scenario_ranged"));
-            let mut main = sim.main_rng.clone();
+            let mut main = sim.main_rng.snapshot_for_test();
             for _ in 0..count(native_events, "rng", Some("main")) {
                 main.next_u32();
             }
@@ -732,8 +748,7 @@ fn gattling_cadence_matches_the_original() {
                 "gattling": native,
                 "events": native_events,
             });
-            assert_gattling(&sim, building, &frame_row, latch_before, stage_before);
-            latch_before = native["latch"] == 1;
+            assert_gattling(&sim, building, &frame_row, stage_before);
             stage_before = native["stage"].as_i64().unwrap() as i32;
         }
     }
@@ -887,11 +902,17 @@ fn retail_dustbowl_gattling_cannon_spins_up_and_winds_down() {
     assert_eq!(stage_ups.len(), 2, "two stage-ups");
     assert!(shots.iter().all(|&count| count > 0), "{shots:?}");
     assert_eq!(
-        sounds,
+        sounds
+            .into_iter()
+            .skip_while(|sound| *sound == Sound::Release)
+            .collect::<Vec<_>>(),
         [
+            Sound::Stop,
             Sound::Loop("GattlingGunAttackLoop1".to_string()),
             Sound::Stop,
+            Sound::Stop,
             Sound::Loop("GattlingGunAttackLoop2".to_string()),
+            Sound::Stop,
             Sound::Stop,
             Sound::Loop("GattlingGunAttackLoop3".to_string()),
         ]
@@ -931,5 +952,9 @@ fn retail_dustbowl_gattling_cannon_spins_up_and_winds_down() {
         mission == Some(MissionType::Guard) && (stage, value) == (0, 0)
     });
     assert!(wound_down.is_some(), "stage and value back to 0 on Guard");
-    assert_eq!(sounds, [Sound::Release], "one release, the loop's");
+    assert!(!sounds.is_empty(), "the no-target path reaches Release");
+    assert!(
+        sounds.iter().all(|sound| *sound == Sound::Release),
+        "wind-down only releases"
+    );
 }

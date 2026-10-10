@@ -94,7 +94,7 @@ use crate::sim::movement::infantry_entry::{EntryQueryMode, InfantryEntryArgs};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::movement::teleport_movement::{ChronoWarp, WarpSound};
 use crate::sim::occupancy::CellObjectMember;
-use crate::sim::world::{FrameAdvanceError, ObjectAiCtx, Simulation};
+use crate::sim::world::{FrameAdvanceError, FrameEffects, ObjectAiCtx, Simulation};
 
 /// State 0's timer (`0x007197DF`, `MOV ECX,0x3C`).
 const CHRONO_WARP_OUT_FRAMES: i32 = 0x3C;
@@ -163,7 +163,7 @@ impl Simulation {
             1 | 6 => self.chrono_timer_check(id, rules, ctx),
             2 => {
                 self.teleport_warp_out(id, rules);
-                self.foot_mark_remove(id, Some(rules), registry);
+                self.foot_mark_remove(id, Some(rules), registry, ctx.effects);
                 self.teleport_warp_sound(id, WarpSound::Out, rules);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     entity.on_bridge = false;
@@ -174,15 +174,27 @@ impl Simulation {
                 if let Some(warp) = self.chrono_warp_mut(id) {
                     warp.set_bytes(false, false, true);
                 }
-                let landed =
-                    self.chrono_update_position(id, warp.destination(), false, rules, registry);
+                let landed = self.chrono_update_position(
+                    id,
+                    warp.destination(),
+                    false,
+                    rules,
+                    registry,
+                    ctx.effects,
+                );
                 if let Some(warp) = self.chrono_warp_mut(id) {
                     warp.set_state(if landed { 4 } else { 3 });
                 }
             }
             3 => {
-                let landed =
-                    self.chrono_update_position(id, warp.destination(), false, rules, registry);
+                let landed = self.chrono_update_position(
+                    id,
+                    warp.destination(),
+                    false,
+                    rules,
+                    registry,
+                    ctx.effects,
+                );
                 if landed && let Some(warp) = self.chrono_warp_mut(id) {
                     warp.set_state(4);
                 }
@@ -191,17 +203,24 @@ impl Simulation {
                 }
             }
             4 => {
-                self.chrono_update_position(id, warp.destination(), true, rules, registry);
-                self.chrono_settle(id, rules, registry);
+                self.chrono_update_position(
+                    id,
+                    warp.destination(),
+                    true,
+                    rules,
+                    registry,
+                    ctx.effects,
+                );
+                self.chrono_settle(id, rules, registry, ctx.effects);
                 if let Some(warp) = self.chrono_warp_mut(id) {
                     warp.set_state(5);
                 }
             }
             5 => {
-                let marked = self.chrono_settle(id, rules, registry);
+                let marked = self.chrono_settle(id, rules, registry, ctx.effects);
                 self.teleport_warp_sound(id, WarpSound::In, rules);
                 self.chrono_playfield_check(id);
-                self.chrono_post_warp_validation(id, marked, rules, registry);
+                self.chrono_post_warp_validation(id, marked, rules, registry, ctx.effects);
                 if !self.chrono_owner_alive(id) {
                     return Ok(bridge_state_changed);
                 }
@@ -210,6 +229,7 @@ impl Simulation {
                     super::PerCellReason::Arrival,
                     Some(rules),
                     registry,
+                    ctx.effects,
                 )?;
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     super::teleport_movement::teleport_stop_moving(entity);
@@ -218,7 +238,7 @@ impl Simulation {
                 if let Some(warp) = self.chrono_warp_mut(id) {
                     warp.clear_house();
                 }
-                self.assign_null_destination(id, Some(rules), registry);
+                self.assign_null_destination(id, Some(rules), registry, ctx.effects);
                 let delay = self
                     .substrate
                     .entities
@@ -239,7 +259,7 @@ impl Simulation {
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     entity.set_archive_target(None);
                 }
-                self.assign_null_destination(id, Some(rules), registry);
+                self.assign_null_destination(id, Some(rules), registry, ctx.effects);
                 if let Some(runtime) = self
                     .substrate
                     .entities
@@ -263,6 +283,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> DriveCoord {
         let marked = self
             .substrate
@@ -272,9 +293,9 @@ impl Simulation {
             .and_then(|locomotor| locomotor.teleport_runtime())
             .and_then(|runtime| runtime.resolved_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
-        self.foot_set_location_marked(id, marked, Some(rules), registry);
-        self.set_object_height(id, 0, Some(rules), registry);
-        self.foot_mark_put(id, Some(rules), registry);
+        self.foot_set_location_marked(id, marked, Some(rules), registry, effects);
+        self.set_object_height(id, 0, Some(rules), registry, effects);
+        self.foot_mark_put(id, Some(rules), registry, effects);
         marked
     }
 
@@ -323,7 +344,7 @@ impl Simulation {
         {
             self.shorten_passive_scan_timer(id);
             if !crate::sim::world::passive_target_acquire(self, id, rules, ctx) {
-                crate::sim::world::enter_idle_mode(self, id, rules, None);
+                crate::sim::world::enter_idle_mode(self, id, rules, None, ctx.effects);
             }
         }
         if let Some(warp) = self.chrono_warp_mut(id)
@@ -369,6 +390,7 @@ impl Simulation {
         place: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -439,6 +461,7 @@ impl Simulation {
                     &mut blocked,
                     rules,
                     registry,
+                    effects,
                 );
                 next = self.next_cell_object(member);
             }
@@ -469,6 +492,7 @@ impl Simulation {
         blocked: &mut bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let CellObjectMember::Entity(other) = member else {
             // A TerrainClass is no Foot and never under the Iron Curtain.
@@ -486,12 +510,12 @@ impl Simulation {
         if !iron_curtained && entity.category == EntityCategory::Infantry && owner_infantry {
             let at = super::ground_pose::object_get_coords(entity, self.resolved_terrain.as_ref());
             if at == coord {
-                self.chrono_c4_kill(other, rules, registry);
+                self.chrono_c4_kill(other, rules, registry, effects);
             }
         } else if !iron_curtained && foot(entity.category) {
-            self.chrono_c4_kill(other, rules, registry);
+            self.chrono_c4_kill(other, rules, registry, effects);
         } else if iron_curtained {
-            self.chrono_c4_kill(id, rules, registry);
+            self.chrono_c4_kill(id, rules, registry, effects);
         } else {
             *blocked = true;
         }
@@ -505,6 +529,7 @@ impl Simulation {
         victim: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(strength) = self
             .substrate
@@ -527,7 +552,7 @@ impl Simulation {
                 arg6: false,
             },
         );
-        self.commit_direct_damage_receiver(rules, registry, event);
+        self.commit_direct_damage_receiver(rules, registry, event, effects);
     }
 
     /// Update_Position's blocked arm (`0x007184FA..0x00718658`): `+0x288`
@@ -620,6 +645,7 @@ impl Simulation {
         coord: DriveCoord,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return;
@@ -644,7 +670,7 @@ impl Simulation {
                         )
                     })
                 {
-                    self.chrono_c4_kill(id, rules, registry);
+                    self.chrono_c4_kill(id, rules, registry, effects);
                 }
                 next = self.next_cell_object(member);
             }
@@ -665,7 +691,7 @@ impl Simulation {
         let naval_out_of_place = naval && (bridge || road);
         let infantry = category == EntityCategory::Infantry;
         if land == LandType::Water.as_index() as i32 && !hover && !naval && !infantry && !bridge {
-            self.chrono_warp_sink(id, rules, registry);
+            self.chrono_warp_sink(id, rules, registry, effects);
             let house = self
                 .substrate
                 .entities
@@ -706,9 +732,9 @@ impl Simulation {
             return;
         }
         if water_tile && !infantry {
-            self.chrono_warp_sink(id, rules, registry);
+            self.chrono_warp_sink(id, rules, registry, effects);
         } else {
-            self.chrono_c4_kill(id, rules, registry);
+            self.chrono_c4_kill(id, rules, registry, effects);
         }
     }
 
@@ -720,14 +746,15 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
-        self.begin_warp_sinking(id, rules);
+        self.begin_warp_sinking(id, rules, effects);
         let house = self
             .substrate
             .entities
             .get(id)
             .and_then(|entity| entity.chrono_warp())
             .and_then(ChronoWarp::house);
-        self.free_slaves(id, None, house, rules, registry);
+        self.free_slaves(id, None, house, rules, registry, effects);
     }
 }

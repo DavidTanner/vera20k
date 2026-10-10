@@ -177,7 +177,7 @@ fn prefixed_selection_fixture() -> (Simulation, RuleSet, serde_json::Value) {
     let mut sim = simulation("TANK", EntityCategory::Unit, "Local", false);
     sim.reseed_scenario_and_main(history["seed"].as_u64().unwrap());
     {
-        let (_, mut main) = sim.terrain_load_draws();
+        let (_, main) = sim.terrain_load_draws();
         for expected in history["main_prefix"]["draws"].as_array().unwrap() {
             assert_eq!(u64::from(main.next_u32()), expected.as_u64().unwrap());
         }

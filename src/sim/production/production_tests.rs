@@ -707,7 +707,11 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
         .expect("unrelated tank should spawn");
 
     assert!(mark_war_factory_spawn_contact(
-        &mut sim, &rules, 10, produced,
+        &mut sim,
+        &rules,
+        10,
+        produced,
+        crate::sim::world::FrameEffects::default(),
     ));
     assert!(
         sim.substrate
@@ -768,7 +772,14 @@ fn naval_factory_spawn_uses_water_exit_cells() {
         .construct_object_limbo_at_height("DEST", "Americans", 0, 0, 0, 0, &rules)
         .expect("construct the original ExitObject receiver");
     assert_eq!(
-        super::production_queue::exit_produced_object(&mut sim, &rules, 1, produced, None),
+        super::production_queue::exit_produced_object(
+            &mut sim,
+            &rules,
+            1,
+            produced,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ),
         crate::sim::ai_base_building::BuildingExit::Placed,
         "naval factory delivers its actual held Unit through shared ExitObject"
     );

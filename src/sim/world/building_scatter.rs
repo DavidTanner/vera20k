@@ -10,6 +10,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::movement::{ScatterFlags, locomotor::MovementLayer};
+use crate::sim::world::FrameEffects;
 
 impl Simulation {
     fn building_scatter_error(&self, id: u64, cause: String) -> FrameAdvanceError {
@@ -21,6 +22,7 @@ impl Simulation {
         building: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, FrameAdvanceError> {
         let mut index = 0;
         let mut changed = false;
@@ -65,7 +67,13 @@ impl Simulation {
                 continue;
             }
             changed |= self
-                .scatter_null(id, ScatterFlags::new(true, true), rules, registry)
+                .scatter_null(
+                    id,
+                    ScatterFlags::new(true, true),
+                    rules,
+                    registry,
+                    frame_effects,
+                )
                 .map_err(|cause| self.building_scatter_error(id, cause))?;
         }
         Ok(changed)

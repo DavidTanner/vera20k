@@ -180,6 +180,7 @@ fn plane_at(sim: &mut Simulation, rules: &RuleSet, at: (u16, u16), passengers: u
             0,
             PlacementEvidence::MarkSucceeded,
             rules,
+            crate::sim::world::FrameEffects::default(),
         )
     })
     .unwrap();
@@ -325,7 +326,16 @@ fn launch_cases_five_and_six_match_native() {
         };
 
         assert_eq!(
-            launch(&mut sim, &rules, americans, cell.0, cell.1, kind, sw_type),
+            launch(
+                &mut sim,
+                &rules,
+                americans,
+                cell.0,
+                cell.1,
+                kind,
+                sw_type,
+                crate::sim::world::FrameEffects::default()
+            ),
             charged,
             "{row}"
         );
@@ -451,7 +461,8 @@ fn a_water_click_sends_the_plane_to_land_beside_it() {
         TARGET.0,
         TARGET.1,
         ParaDropKind::Generic,
-        sw_type
+        sw_type,
+        crate::sim::world::FrameEffects::default()
     ));
 
     let [plane] = planes(&sim)[..] else {
@@ -565,6 +576,7 @@ fn send_paradrop_planes_matches_native() {
             MissionType::ParadropApproach,
             TARGET,
             Some((infantry, num)),
+            crate::sim::world::FrameEffects::default(),
         ));
 
         let [plane] = planes(&sim)[..] else {
@@ -625,7 +637,12 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value, target: (u1
     let id = plane_at(sim, rules, target, u32::from(flag(row, "passengers")));
     if flag(row, "nav_com") {
         let nav = NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1);
-        sim.assign_aircraft_destination(id, Some(nav), rules);
+        sim.assign_aircraft_destination(
+            id,
+            Some(nav),
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     let distance = int(&row["distance"]);
     let goal = TargetKind::Cell(target.0, target.1);
@@ -806,8 +823,15 @@ fn drop_payload_matches_native() {
         sim.sound_events.clear();
 
         let can_enter = int(&row["can_enter"]) as u8;
-        let (observed, records) =
-            observe(can_enter, || drop_payload(&mut sim, plane, &rules, None));
+        let (observed, records) = observe(can_enter, || {
+            drop_payload(
+                &mut sim,
+                plane,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
+        });
 
         let observed: Vec<Observed> = observed
             .into_iter()
@@ -955,7 +979,15 @@ fn spawn_parachuted_matches_native() {
             sim.playfield_bounds = Some(NO_DROP_PLAYFIELD);
         }
 
-        let (observed, _) = observe(0, || drop_payload(&mut sim, plane, &rules, None));
+        let (observed, _) = observe(0, || {
+            drop_payload(
+                &mut sim,
+                plane,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
+        });
 
         let spawned = observed
             .iter()
@@ -1130,7 +1162,13 @@ fn retail_computer_paradrops_conscripts_past_the_enemy_base() {
     sim.houses.get_mut(&americans).unwrap().base_center = Some(TARGET);
     let sw_type = charge_super(&mut sim, russians, PARADROP);
 
-    super::super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    super::super::ai_fire::try_fire(
+        &mut sim,
+        &rules,
+        russians,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(!sim.super_weapons[&russians][&sw_type].is_ready);
     let [plane] = planes(&sim)[..] else {

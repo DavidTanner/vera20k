@@ -6,6 +6,7 @@
 //! remains on Simulation for persistence and replay.
 
 use super::Simulation;
+use crate::sim::world::FrameEffects;
 
 use crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
 use crate::map::cell_index::NativeCellIdentity;
@@ -183,10 +184,16 @@ impl Simulation {
         cmd: &CommandEnvelope,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> (bool, bool) {
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
-        let applied =
-            self.apply_command_with_overlays(&cmd_owner_str, &cmd.payload, rules, overlay_registry);
+        let applied = self.apply_command_with_overlays(
+            &cmd_owner_str,
+            &cmd.payload,
+            rules,
+            overlay_registry,
+            frame_effects,
+        );
         let placed_building_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
         let synchronous_deploy = applied
             && matches!(cmd.payload, Command::DeployMcv { entity_id }
@@ -514,6 +521,7 @@ impl Simulation {
         commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         execute_tick: u64,
+        frame_effects: FrameEffects<'_>,
     ) -> usize {
         let mut executed_commands = 0usize;
         for owner in self.due_command_house_order(commands, execute_tick) {
@@ -529,7 +537,7 @@ impl Simulation {
                         }
                     }
                     Command::Select { .. } => {
-                        let _ = self.apply_one_due_command(command, rules, None);
+                        let _ = self.apply_one_due_command(command, rules, None, frame_effects);
                     }
                     _ => unreachable!("frame-ingress predicate admitted a tail command"),
                 }
@@ -553,6 +561,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         execute_tick: u64,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> (usize, bool) {
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
@@ -564,7 +573,8 @@ impl Simulation {
                     && !Self::command_uses_frame_ingress(&command.payload)
                     && !Self::command_uses_megamission(&command.payload)
             }) {
-                let (_, spawned) = self.apply_one_due_command(command, rules, overlay_registry);
+                let (_, spawned) =
+                    self.apply_one_due_command(command, rules, overlay_registry, frame_effects);
                 spawned_entities |= spawned;
                 executed_commands += 1;
             }
@@ -580,7 +590,8 @@ impl Simulation {
                 .collect::<Vec<_>>();
             self.adjust_staged_megamission_destinations(&mut staged, rules, overlay_registry);
             for command in &staged {
-                let (_, spawned) = self.apply_one_due_command(command, rules, overlay_registry);
+                let (_, spawned) =
+                    self.apply_one_due_command(command, rules, overlay_registry, frame_effects);
                 spawned_entities |= spawned;
                 executed_commands += 1;
             }

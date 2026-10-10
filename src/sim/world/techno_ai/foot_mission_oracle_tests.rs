@@ -378,16 +378,16 @@ fn assert_weapon_reader_projection(rules: &RuleSet, expected: &Value, family: &s
 
 pub(super) fn assert_rng(sim: &Simulation, expected: &Value, name: &str) {
     for (stream, rng) in [
-        ("scenario", &sim.scenario_rng),
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("scenario", serde_json::to_value(&sim.scenario_rng).unwrap()),
+        ("main", serde_json::to_value(&sim.main_rng).unwrap()),
+        ("mapgen", serde_json::to_value(&sim.mapgen_rng).unwrap()),
     ] {
-        assert_eq!(rng.logical_view().words.len(), 250, "{name}: {stream}");
         assert_eq!(
-            serde_json::to_value(rng).unwrap(),
-            expected[stream],
-            "{name}: full {stream} RNG"
+            rng["state"].as_array().unwrap().len(),
+            250,
+            "{name}: {stream}"
         );
+        assert_eq!(rng, expected[stream], "{name}: full {stream} RNG");
     }
 }
 
@@ -527,7 +527,9 @@ impl SuppliedFootFixture {
         // cursor, including pre-fixture Main/MapGen history; no seed fitting.
         sim.scenario_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["scenario"].clone()).unwrap();
-        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone())
+            .unwrap()
+            .into();
         sim.mapgen_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["mapgen"].clone()).unwrap();
         let friendly = sim.interner.intern("SuppliedFriendlyHouse");
@@ -2008,7 +2010,11 @@ fn original_initial_stationary_e1_action_enters_ready_without_rng() {
     assert_eq!(receipt["constructor"]["doing"], -1);
     assert_eq!(receipt["entry"], "0x00520AE0");
     assert_eq!(receipt["before"]["walk_moving"], 0);
-    assert!(!fixture.sim.infantry_sequencer(fixture.actor, &rules));
+    assert!(!fixture.sim.infantry_sequencer(
+        fixture.actor,
+        &rules,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert_foot_projection(&fixture, &row);
 }
 
@@ -2059,7 +2065,13 @@ fn original_ground_fireup_stage_uses_absolute_native_frames() {
         assert!(
             fixture
                 .sim
-                .infantry_do_action(fixture.actor, 4, false, &rules)
+                .infantry_do_action(
+                    fixture.actor,
+                    4,
+                    false,
+                    &rules,
+                    crate::sim::world::FrameEffects::default()
+                )
                 .unwrap()
         );
         for (index, frame) in frames.iter().enumerate() {
@@ -2114,7 +2126,11 @@ fn original_idle_completion_releases_doing_at_existing_completion_owner() {
         );
         // The supplied native +F8/Doing enter the production sequencer.
         // It owns completion admission, facing and the new action together.
-        assert!(!fixture.sim.infantry_sequencer(fixture.actor, &rules));
+        assert!(!fixture.sim.infantry_sequencer(
+            fixture.actor,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        ));
         assert_foot_projection(&fixture, row);
         compared += 1;
     }
@@ -2208,6 +2224,7 @@ fn dying_infantry_visits_shared_native_clock() {
         fixture.actor,
         crate::sim::world::infantry_terminal::InfantryDeathSequence::Die1,
         &rules,
+        crate::sim::world::FrameEffects::default(),
     );
     let actor = fixture
         .sim
@@ -2327,7 +2344,13 @@ fn original_do_action_restart_preserves_independent_stage_fields() {
         assert_eq!(args[2], 0, "{name}: original random-first-stage argument");
         let accepted = fixture
             .sim
-            .infantry_do_action(fixture.actor, signed(&args[0]), args[1] != 0, &rules)
+            .infantry_do_action(
+                fixture.actor,
+                signed(&args[0]),
+                args[1] != 0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_eq!(
             u8::from(accepted),

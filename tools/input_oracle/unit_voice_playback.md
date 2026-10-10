@@ -63,11 +63,12 @@ hardware concurrency, ambient/high-delay loops and invalid/empty sample
 admission are outside this comparison.
 
 The one-shot GI controls load one middle sample. They do not cover random
-multi-sample playlist preparation: original start calls PreparePlayout at
-`4045D1` and `404673`, and both calls can draw at `4047EA`; the Rust cached
-start prepares once. Affected retail frequency is not established. This
-missing first-selection draw and the existing queued-loop lookahead can
-change subsequent process Main choices outside the compared GI route.
+multi-sample playlist preparation or sustaining loops. Original start calls
+PreparePlayout at `4045D1` and `404673`; initial attack and flags8 reallocation
+take different branches. The additive [stock YTNK comparison](gattling_loop.md)
+executes both, native ring lookahead, release/decay and retirement, including a
+Loop1/GIMove service-order control. Its corpus extends these shared owners;
+these GI goldens and their original coverage remain unchanged.
 
 Use the exact physical input directory named by the payload's `physical`
 manifest. The existing joined-input preparation owns archive extraction; this

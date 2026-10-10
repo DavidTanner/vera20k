@@ -34,12 +34,14 @@ pub use self::factory::{
     PendingObject, STEP_RATE_MAX, STEP_RATE_MIN, StepOutcome, TimeToBuildInputs,
     category_for_object, time_to_build,
 };
+pub use self::factory_lifecycle::suspend_production;
 pub(crate) use self::factory_lifecycle::{FactoryRestoreError, validate_restored_factory_state};
-pub use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type, suspend_production};
+pub(crate) use self::factory_lifecycle::{cancel_by_type_for_owner, enqueue_by_type};
 pub use self::production_economy::is_harvester_type;
+pub(crate) use self::production_placement::place_production_with_overlays;
 pub use self::production_placement::{
     active_producer_for_owner_category, cycle_active_producer_for_owner_category,
-    place_production_with_overlays, placement_preview_for_owner_with_overlays,
+    placement_preview_for_owner_with_overlays,
 };
 #[cfg(test)]
 pub(crate) use self::production_queue::dispatch_production_changes_for_tests;
@@ -55,7 +57,8 @@ pub use self::production_repair::{RepairControl, toggle_repair};
 pub(crate) use self::production_repair::{
     can_repair_building, engineer_repair, repair_step_cost, update_repair_and_power,
 };
-pub use self::production_sell::{SellOrder, can_sell_building, sell_back};
+pub(crate) use self::production_sell::sell_back;
+pub use self::production_sell::{SellOrder, can_sell_building};
 pub(crate) use self::production_sell::{
     archive_less_sale, begin_selling, eject_destruction_garrison_with_context,
     sell_building_occupants, sell_complete, sell_stage_one, sell_stage_zero, type_refund,
@@ -63,11 +66,11 @@ pub(crate) use self::production_sell::{
 };
 #[cfg(test)]
 pub(crate) use self::production_sell::{eject_destruction_garrison, sell_building_now_for_test};
+pub(crate) use self::production_tech::all_build_options_for_owner;
 pub use self::production_tech::{
     building_base_foundation_cells, building_movement_blocking_cells, is_matching_factory,
     producer_candidates_for_owner_category,
 };
-pub(crate) use self::production_tech::all_build_options_for_owner;
 pub use self::production_types::*;
 
 // Re-exports for external consumers (files outside production/ that previously

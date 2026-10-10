@@ -313,7 +313,8 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
                         seal,
                         NavTargetRef::cell(seal_at.0, seal_at.1 + 5),
                         &rules,
-                        Some(&registry)
+                        Some(&registry),
+                        crate::sim::world::FrameEffects::default()
                     )
                     .unwrap()
                 );
@@ -402,6 +403,7 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
                 },
                 Some(&rules),
                 Some(&registry),
+                crate::sim::world::FrameEffects::default(),
             ),
             "relation={relation}"
         );
@@ -506,6 +508,7 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
                 },
                 Some(&rules),
                 Some(&registry),
+                crate::sim::world::FrameEffects::default(),
             ),
             "target_owner={target_owner}"
         );
@@ -598,6 +601,7 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
                 &due[0].payload,
                 Some(&rules),
                 Some(&registry),
+                crate::sim::world::FrameEffects::default(),
             ),
             "relation={relation}"
         );
@@ -1110,6 +1114,7 @@ fn ordinary_engineer_repair_consumes_mapgen_only_and_preserves_overlay_metadata(
             &rules,
             Some(&registry),
             engineer,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("live repair must complete its Recalc and navigation callbacks")
     );
@@ -1151,6 +1156,7 @@ fn generated_map_bridge_repair_continues_post_rmg_mapgen_stream() {
             &rules,
             Some(&registry),
             engineer,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("live repair must retain the installed MapGen continuation")
     );
@@ -1175,6 +1181,7 @@ fn two_identical_sims_repair_with_identical_hash_and_streams() {
                 rules,
                 Some(registry),
                 engineer,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("live repair must complete")
         );

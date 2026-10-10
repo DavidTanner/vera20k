@@ -4,7 +4,10 @@
 use super::ground_pose;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::{components::DriveCoord, world::Simulation};
+use crate::sim::{
+    components::DriveCoord,
+    world::{FrameEffects, Simulation},
+};
 
 #[cfg(test)]
 #[path = "walk_completion_tests.rs"]
@@ -18,6 +21,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(());
@@ -45,7 +49,7 @@ impl Simulation {
             true
         };
         if arrived {
-            self.assign_null_destination(id, rules, None);
+            self.assign_null_destination(id, rules, None, effects);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 //75BF38 invokes Foot4D3710(0.0), independently of setter admission.
                 actor
@@ -55,7 +59,7 @@ impl Simulation {
                     loco.set_step_head(None);
                 }
             }
-            self.walk_stop_moving(id, rules)?;
+            self.walk_stop_moving(id, rules, effects)?;
         }
         Ok(())
     }
@@ -68,6 +72,7 @@ impl Simulation {
         coord: DriveCoord,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(old_cell) = self
             .substrate
@@ -77,7 +82,7 @@ impl Simulation {
         else {
             return;
         };
-        self.foot_mark_remove(id, rules, registry);
+        self.foot_mark_remove(id, rules, registry, effects);
         //75C12E: SetLocation (vt+0x1B4).
         ground_pose::foot_set_location(
             &mut self.substrate.entities,
@@ -120,7 +125,7 @@ impl Simulation {
             },
         ));
         e.navigation.path_runtime.path_blocked = false;
-        self.foot_mark_put(id, rules, registry);
+        self.foot_mark_put(id, rules, registry, effects);
         //75C1EA: the boundary placement tail clears +68A after Mark(PUT).
         //This is not the post-PerCell dead/limbo/falling exit at75C1F1.
         if let Some(e) = self.substrate.entities.get_mut(id) {
@@ -134,8 +139,9 @@ impl Simulation {
         head: DriveCoord,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, crate::sim::world::FrameAdvanceError> {
-        self.foot_mark_remove(id, rules, registry);
+        self.foot_mark_remove(id, rules, registry, effects);
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return Ok(false);
         };
@@ -199,20 +205,24 @@ impl Simulation {
         );
         //75BE3C: Per_Cell_Process(2); 75BE42..75BE69 then leaves at 75C1F1
         //for a dead, limboed or falling owner.
-        let changed =
-            self.per_cell_process(id, super::per_cell::PerCellReason::Arrival, rules, registry)?;
+        let changed = self.per_cell_process(
+            id,
+            super::per_cell::PerCellReason::Arrival,
+            rules,
+            registry,
+            effects,
+        )?;
         if !self.track_survives(id) {
             return Ok(changed);
         }
-        self.finish_walk_navigation(id, rules).map_err(|cause| {
-            crate::sim::world::FrameAdvanceError {
+        self.finish_walk_navigation(id, rules, effects)
+            .map_err(|cause| crate::sim::world::FrameAdvanceError {
                 tick: self.session.tick,
                 binary_frame: self.session.binary_frame,
                 entity_id: id,
                 cause,
-            }
-        })?;
-        self.foot_mark_put(id, rules, registry);
+            })?;
+        self.foot_mark_put(id, rules, registry, effects);
         //75BF77 follows the final Mark(PUT). The earlier post-PerCell exits
         //jump to75C1F1 and must retain the byte on a surviving object.
         if let Some(e) = self.substrate.entities.get_mut(id) {

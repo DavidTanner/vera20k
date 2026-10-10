@@ -10,7 +10,7 @@ use crate::sim::components::{AnimClassSpawnDescriptor, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 pub(crate) fn is_simple_deployer(sim: &Simulation, entity: &GameEntity, rules: &RuleSet) -> bool {
     entity.category == EntityCategory::Unit
@@ -51,6 +51,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<i32, String> {
         let deployed = self
             .substrate
@@ -58,7 +59,7 @@ impl Simulation {
             .get(id)
             .ok_or("simple deploy receiver retired")?
             .is_fully_deployed();
-        self.update_unit_simple_deploy(id, !deployed, rules)?;
+        self.update_unit_simple_deploy(id, !deployed, rules, effects)?;
         let entity = self
             .substrate
             .entities
@@ -88,6 +89,7 @@ impl Simulation {
         id: u64,
         deploying: bool,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let entity = self
             .substrate
@@ -157,6 +159,7 @@ impl Simulation {
                             Some(NavTargetRef::cell(rx as u16, ry as u16)),
                             Some(rules),
                             None,
+                            effects,
                         )
                         .map_err(|error| error.to_string())?;
                     }

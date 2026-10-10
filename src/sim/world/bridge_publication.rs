@@ -12,6 +12,7 @@ use crate::map::resolved_terrain::DynamicTerrainCellState;
 use crate::sim::bridge_state::Phase;
 use crate::sim::bridge_state::publication::{self, BridgePublicationHost, CellCoord};
 use crate::sim::bridge_state::ramp_repair::Family;
+use crate::sim::world::FrameEffects;
 
 #[path = "bridge_rim_publication.rs"]
 mod rim_publication;
@@ -73,6 +74,7 @@ pub(super) fn run_state_machine(
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
+    frame_effects: FrameEffects<'_>,
 ) -> BodyResult {
     let terrain = sim
         .resolved_terrain
@@ -85,6 +87,7 @@ pub(super) fn run_state_machine(
             rules,
             registry,
             collapsed: false,
+            frame_effects,
         };
         let returned = publication::advance_bridgehead(&mut host, input, family);
         return BodyResult {
@@ -121,6 +124,7 @@ pub(super) fn run_state_machine(
         rules,
         registry,
         collapsed: false,
+        frame_effects,
     };
     let returned = publication::advance_body_at_anchor(&mut host, input, anchor, family);
     BodyResult {
@@ -138,12 +142,14 @@ pub(super) fn update_adjacent_bridges(
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let mut host = LivePublication {
         sim,
         rules,
         registry,
         collapsed: false,
+        frame_effects,
     };
     rim_publication::update(&mut host, input, family);
     host.collapsed
@@ -154,6 +160,7 @@ struct LivePublication<'a> {
     rules: &'a RuleSet,
     registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     collapsed: bool,
+    frame_effects: FrameEffects<'a>,
 }
 
 impl LivePublication<'_> {
@@ -258,7 +265,14 @@ impl BridgePublicationHost for LivePublication<'_> {
     fn fallout(&mut self, cell: Cell) {
         self.collapsed = true;
         let (x, y) = self.coord(cell);
-        blow_up_bridge_cell_fallout(self.sim, self.rules, x as u16, y as u16, self.registry);
+        blow_up_bridge_cell_fallout(
+            self.sim,
+            self.rules,
+            x as u16,
+            y as u16,
+            self.registry,
+            self.frame_effects,
+        );
     }
     fn radar(&mut self, cell: Cell) {
         let (x, y) = self.coord(cell);

@@ -178,7 +178,7 @@ pub(super) fn dispatch(
     }
     if current == Some(MissionType::Selling) {
         // Sell shares the same dispatch timer and Health gate as Construction.
-        sim.visit_building_down(id, rules, ctx.overlay_registry);
+        sim.visit_building_down(id, rules, ctx.overlay_registry, ctx.effects);
         return;
     }
     let Some(rules) = rules else {
@@ -186,7 +186,7 @@ pub(super) fn dispatch(
     };
     let delay = match current {
         Some(MissionType::Guard | MissionType::Sticky | MissionType::AreaGuard) => {
-            mission_guard(sim, id, rules)
+            mission_guard(sim, id, rules, ctx)
         }
         Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx, bridge_state_changed),
         Some(MissionType::Construction) => mission_construction(sim, id, rules, ctx),
@@ -202,6 +202,7 @@ pub(super) fn dispatch(
             rules,
             id,
             ctx.overlay_registry,
+            ctx.effects,
         ) {
             Some(delay) => delay,
             None => return,
@@ -237,7 +238,13 @@ fn mission_construction(
             .get_mut(id)
             .unwrap()
             .begin_building_body(BuildingBodyMode::Construction, now as i32);
-        transmit_to_contact(sim, id, RadioMessage::DockApproach, Some(rules));
+        transmit_to_contact(
+            sim,
+            id,
+            RadioMessage::DockApproach,
+            Some(rules),
+            ctx.effects,
+        );
         let sound = sim
             .substrate
             .entities
@@ -260,12 +267,12 @@ fn mission_construction(
             entity.mission.set_handler_state(1);
         }
     } else if status == 1 && entity.building_ready_latch() != 0 {
-        transmit_to_contact(sim, id, RadioMessage::DockArrived, Some(rules));
-        transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
+        transmit_to_contact(sim, id, RadioMessage::DockArrived, Some(rules), ctx.effects);
+        transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), ctx.effects);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.begin_building_body(BuildingBodyMode::Idle, now as i32);
         }
-        sim.grand_opening(id, false, false, rules, ctx.overlay_registry);
+        sim.grand_opening(id, false, false, rules, ctx.overlay_registry, ctx.effects);
         let facing = sim
             .substrate
             .entities
@@ -310,7 +317,13 @@ fn mission_unload(
     rules: &RuleSet,
     ctx: ObjectAiCtx<'_>,
 ) -> Option<i32> {
-    crate::sim::production::sell_building_occupants(sim, rules, ctx.overlay_registry, id);
+    crate::sim::production::sell_building_occupants(
+        sim,
+        rules,
+        ctx.overlay_registry,
+        id,
+        ctx.effects,
+    );
     let entity = sim.substrate.entities.get(id)?;
     let object = sim.object_type(entity.type_ref(), rules)?;
     let holds_passengers = entity
@@ -411,7 +424,14 @@ fn mission_factory_unload(
                         loco.kind == crate::rules::locomotor_type::LocomotorKind::Drive
                     });
                 if drive {
-                    sim.force_track(product, 0x42, track, Some(rules), ctx.overlay_registry);
+                    sim.force_track(
+                        product,
+                        0x42,
+                        track,
+                        Some(rules),
+                        ctx.overlay_registry,
+                        ctx.effects,
+                    );
                 } else {
                     //44DF1C's normal non-Drive cell setter is represented.
                     //Teleport (and the dormant TS Tunnel) take 44DFAD's
@@ -426,6 +446,7 @@ fn mission_factory_unload(
                         crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
                         rules,
                         true,
+                        ctx.effects,
                     );
                 }
                 if let Some(product) = sim.substrate.entities.get_mut(product) {
@@ -486,6 +507,7 @@ fn clear_factory_exit_bib(
         crate::sim::movement::ScatterFlags::new(true, true),
         rules,
         ctx.overlay_registry,
+        ctx.effects,
     ) {
         log::warn!("factory {producer} bib Scatter failed: {error}");
     }
@@ -522,10 +544,10 @@ fn rate_delay(sim: &mut Simulation, frames: i32, multiplier: i32) -> i32 {
 }
 
 /// `BuildingClass::Mission_Guard` (`0x004496B0`).
-fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: ObjectAiCtx<'_>) -> i32 {
     // The head (`0x004496C1..0x004496DF`), armed or not, before anything else
     // the handler reads or draws.
-    gattling_step(sim, id, rules, StageCall::Update);
+    gattling_step(sim, id, rules, StageCall::Update, ctx.effects);
     let Some(entity) = sim.substrate.entities.get(id) else {
         return 0;
     };
@@ -611,6 +633,7 @@ fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
                 crate::sim::radio::RadioMessage::NeedToMove,
                 crate::sim::radio::RadioPayload::default(),
                 Some(rules),
+                ctx.effects,
             ) == crate::sim::radio::RadioResponse::Roger
             {
                 let _ = sim.mission_queue_exact(
@@ -694,7 +717,7 @@ fn attack_arm(
         FireError::Ok => {
             fire_arm(sim, id, rules, target, weapon, ctx, bridge_state_changed);
             // The tail every OK arm reaches (`0x0044B6D6..0x0044B724`).
-            if !gattling_step(sim, id, rules, StageCall::Increase) {
+            if !gattling_step(sim, id, rules, StageCall::Increase, ctx.effects) {
                 advance_turret_anim(sim, id);
             }
             1
@@ -707,7 +730,7 @@ fn attack_arm(
                 return 1;
             }
             // `0x0044B113..0x0044B131`, before Commence zeroes the count.
-            gattling_step(sim, id, rules, StageCall::Update);
+            gattling_step(sim, id, rules, StageCall::Update, ctx.effects);
             queue_and_commence(sim, id, MissionType::Guard, rules);
             clear_ai_counter(sim, id);
             1
@@ -717,7 +740,9 @@ fn attack_arm(
         // on REARM advances `+0x148` (`0x0044B235..0x0044B23C`).
         FireError::Facing | FireError::Rearm => {
             aim_turret(sim, id, rules, target);
-            if !gattling_step(sim, id, rules, StageCall::Increase) && code == FireError::Rearm {
+            if !gattling_step(sim, id, rules, StageCall::Increase, ctx.effects)
+                && code == FireError::Rearm
+            {
                 advance_turret_anim(sim, id);
             }
             2
@@ -726,7 +751,7 @@ fn attack_arm(
         // the `0x0044B14E` tail.
         FireError::Cloaked => {
             crate::sim::combat::world_receiver::start_uncloaking_to_fire(sim, rules, id);
-            gattling_step(sim, id, rules, StageCall::Update);
+            gattling_step(sim, id, rules, StageCall::Update, ctx.effects);
             aim_turret(sim, id, rules, target);
             clear_ai_counter(sim, id);
             1
@@ -734,7 +759,7 @@ fn attack_arm(
         // `0x0044B24F`: a Gattling type decays (`0x0044B26C`); any other
         // keeps the count.
         FireError::Busy => {
-            gattling_step(sim, id, rules, StageCall::Update);
+            gattling_step(sim, id, rules, StageCall::Update, ctx.effects);
             1
         }
         // Codes 4, 7 and above 10 (`0x0044B14E`).
@@ -781,7 +806,13 @@ fn is_gattling(sim: &Simulation, id: u64, rules: &RuleSet) -> bool {
 /// A Gattling type's stage call with the mission's `+0xC4` count, then
 /// `+0xC4 = 0`, as both handlers make it. Answers whether the type is a
 /// Gattling one; any other makes no call and keeps the count.
-fn gattling_step(sim: &mut Simulation, id: u64, rules: &RuleSet, call: StageCall) -> bool {
+fn gattling_step(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    call: StageCall,
+    effects: crate::sim::world::FrameEffects<'_>,
+) -> bool {
     if !is_gattling(sim, id, rules) {
         return false;
     }
@@ -794,8 +825,8 @@ fn gattling_step(sim: &mut Simulation, id: u64, rules: &RuleSet, call: StageCall
         return false;
     };
     match call {
-        StageCall::Increase => sim.gattling_increase(id, rules, ticks),
-        StageCall::Update => sim.gattling_update(id, rules, ticks),
+        StageCall::Increase => sim.gattling_increase(id, rules, ticks, effects),
+        StageCall::Update => sim.gattling_update(id, rules, ticks, effects),
     }
     clear_ai_counter(sim, id);
     true
@@ -907,6 +938,7 @@ fn fire_arm(
                     },
                     rules,
                     ctx.overlay_registry,
+                    ctx.effects,
                 )
                 .bridge_state_changed;
         }
@@ -1132,6 +1164,7 @@ pub(super) fn process_delayed_fire(
                         },
                         rules,
                         ctx.overlay_registry,
+                        ctx.effects,
                     )
                     .bridge_state_changed;
             }

@@ -78,6 +78,7 @@ use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::direction::TUBE_STEP_DIRECTION;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -112,6 +113,7 @@ struct FreshCall<'a> {
     args: ProcessMovementArgs,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'a>,
 }
 
 fn path_word(entity: &GameEntity, index: usize) -> Option<u8> {
@@ -138,6 +140,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let call = FreshCall {
             id,
@@ -145,6 +148,7 @@ impl Simulation {
             args,
             rules,
             registry,
+            frame_effects,
         };
         self.track_process_movement(&call, held)
     }
@@ -173,7 +177,12 @@ impl Simulation {
                 .expect("same Process_Movement owner");
             clear_track_head(actor);
             if mission == Some(MissionType::Move) {
-                return Ok(self.unit_enter_idle_mode(id, Some(call.rules), false));
+                return Ok(self.unit_enter_idle_mode(
+                    id,
+                    Some(call.rules),
+                    false,
+                    call.frame_effects,
+                ));
             }
             return Ok(false);
         }
@@ -289,6 +298,7 @@ impl Simulation {
             held.as_deref_mut(),
             Some(call.rules),
             call.registry,
+            call.frame_effects,
         )? {
             FootPathOutcome::Deleted => Ok(true),
             FootPathOutcome::Returned => Ok(false),
@@ -387,9 +397,9 @@ impl Simulation {
             return Ok(false);
         }
         //4B345B..4B34D1: Mark0, Unit+1AC(cell, dir, height, 0, 1), Mark1.
-        self.foot_mark_remove(id, Some(rules), call.registry);
+        self.foot_mark_remove(id, Some(rules), call.registry, call.frame_effects);
         let code = self.track_can_enter(call, cell, direction, height)?;
-        self.foot_mark_put(id, Some(rules), call.registry);
+        self.foot_mark_put(id, Some(rules), call.registry, call.frame_effects);
         let object = self.track_object(id, rules)?;
         let overlay = self.track_overlay(cell);
         //4B34D7..4B351D: the train and crusher coercions.
@@ -431,7 +441,7 @@ impl Simulation {
                 }
                 //4B398E..4B39CC then 4B31FC: clear the head, stop or take
                 //the next waypoint.
-                self.stop_or_take_next_waypoint(id, rules);
+                self.stop_or_take_next_waypoint(id, rules, call.frame_effects);
                 Ok(false)
             }
             FreshDispatch::BlockedDelay => self.track_blocked_delay(call, held),
@@ -458,7 +468,13 @@ impl Simulation {
                 }
                 //4B3B03..4B3BE9: attack the non-allied blocking object, or
                 //the wall cell when the cell holds none.
-                self.override_movement_blocker_at(call.id, cell, call.rules, call.registry);
+                self.override_movement_blocker_at(
+                    call.id,
+                    cell,
+                    call.rules,
+                    call.registry,
+                    call.frame_effects,
+                );
                 //4B3C67..4B3C81: code != 7 retires the selector.
                 if let Some(actor) = self.substrate.entities.get_mut(id) {
                     actor.navigation.path_runtime.clear_scold_latch();
@@ -477,13 +493,19 @@ impl Simulation {
                 //4B3742..4B38A1: close enough to the destination, level and
                 //off a Tunnel: stop or take the next waypoint.
                 if self.track_close_enough_stop(id, rules)? {
-                    if self.stop_or_take_next_waypoint(id, rules) {
+                    if self.stop_or_take_next_waypoint(id, rules, call.frame_effects) {
                         //4B38A7: an entered idle mode returns at once.
                         return Ok(false);
                     }
                 } else {
                     //4B38B3..4B393A: Scatter_Objects(Null, 1, 1, deck).
-                    self.scatter_blocked_track_cell(id, cell, rules, call.registry)?;
+                    self.scatter_blocked_track_cell(
+                        id,
+                        cell,
+                        rules,
+                        call.registry,
+                        call.frame_effects,
+                    )?;
                 }
                 self.track_first_rejected_tail(id);
                 Ok(false)
@@ -501,7 +523,7 @@ impl Simulation {
                         .track_process_movement(&call.with_args(ProcessMovementArgs::RETRY), held);
                 }
                 //4B3C26..4B3C62 then 4B31FC.
-                self.stop_or_take_next_waypoint(id, rules);
+                self.stop_or_take_next_waypoint(id, rules, call.frame_effects);
                 Ok(false)
             }
             FreshDispatch::OwnerNotAlive
@@ -560,7 +582,8 @@ impl Simulation {
         let destination =
             track_destination(actor).ok_or("Drive/Ship code-2 ladder without destination")?;
         let request = self.track_path_request(call, destination, urgency)?;
-        let found = self.foot_find_path(&request, held, rules, call.registry)?;
+        let found =
+            self.foot_find_path(&request, held, rules, call.registry, call.frame_effects)?;
         //4B3A13..4B3A2A: a vanished Foot sets the out byte.
         if self.substrate.entities.get(id).is_none() {
             return Ok(true);
@@ -580,7 +603,7 @@ impl Simulation {
             return Ok(false);
         }
         //4B3A3E..4B3A56: SetDestination(NULL, 1).
-        self.set_unit_null_destination(id, Some(rules), None);
+        self.set_unit_null_destination(id, Some(rules), None, call.frame_effects);
         Ok(false)
     }
 
@@ -627,8 +650,13 @@ impl Simulation {
             if distance > 0x200 {
                 //Find_Path(cell(destination), IsTrain, 0); see the train residual.
                 let request = self.track_path_request(call, destination, 0)?;
-                let found =
-                    self.foot_find_path(&request, held.as_deref_mut(), rules, call.registry)?;
+                let found = self.foot_find_path(
+                    &request,
+                    held.as_deref_mut(),
+                    rules,
+                    call.registry,
+                    call.frame_effects,
+                )?;
                 if found == FindPathResult::Failed {
                     //4B3F40..4B3F55: a vanished Foot sets the out byte.
                     if self.substrate.entities.get(id).is_none() {
@@ -636,7 +664,7 @@ impl Simulation {
                     }
                     //4B3F58..4B3F6E: an unreachable live destination clears.
                     if !self.foot_path_zone_precheck(id, self.live_track_destination(id), rules)? {
-                        self.set_unit_null_destination(id, Some(rules), None);
+                        self.set_unit_null_destination(id, Some(rules), None, call.frame_effects);
                     }
                 }
                 second = self
@@ -698,8 +726,13 @@ impl Simulation {
             return self.track_fresh_finalize(call, Some(candidate), 1, turn_index);
         }
         //4B404B..4B4062: the crate question on the first cell.
-        let picked =
-            self.pickup_crate_at(id, coord_cell(candidate), Some(call.rules), call.registry);
+        let picked = self.pickup_crate_at(
+            id,
+            coord_cell(candidate),
+            Some(call.rules),
+            call.registry,
+            call.frame_effects,
+        );
         //4B4066..4B4089: a false answer (a placed free vehicle): an owner in
         //limbo rejoins the ordinary path, a dead one ends the Process, and a
         //live one skips the second query and takes code 7 at 4B4179.
@@ -794,12 +827,18 @@ impl Simulation {
                 }
                 //4B4273..4B43BE: the CloseEnough stop.
                 if self.track_close_enough_stop(id, rules)? {
-                    if self.stop_or_take_next_waypoint(id, rules) {
+                    if self.stop_or_take_next_waypoint(id, rules, call.frame_effects) {
                         return Ok(false);
                     }
                 } else {
                     //4B43D0..4B4437: Scatter_Objects on the second cell.
-                    self.scatter_blocked_track_cell(id, second_cell, rules, call.registry)?;
+                    self.scatter_blocked_track_cell(
+                        id,
+                        second_cell,
+                        rules,
+                        call.registry,
+                        call.frame_effects,
+                    )?;
                 }
                 self.track_second_refused(call)
             }
@@ -812,7 +851,7 @@ impl Simulation {
                         .track_process_movement(&call.with_args(ProcessMovementArgs::RETRY), held);
                 }
                 //4B448F..4B450D.
-                self.stop_or_take_next_waypoint(id, rules);
+                self.stop_or_take_next_waypoint(id, rules, call.frame_effects);
                 Ok(false)
             }
             FreshDispatch::SecondRetryOrStop { retry } => {
@@ -824,7 +863,7 @@ impl Simulation {
                         .track_process_movement(&call.with_args(ProcessMovementArgs::RETRY), held);
                 }
                 //4B4561..4B45C8.
-                self.stop_or_take_next_waypoint(id, rules);
+                self.stop_or_take_next_waypoint(id, rules, call.frame_effects);
                 Ok(false)
             }
             FreshDispatch::BlockedDelay
@@ -878,7 +917,13 @@ impl Simulation {
             loco.store_track_head(call.family, Some(candidate));
         }
         //4B46DF..4B46FA: the crate question on the head, then limbo.
-        let picked = self.pickup_crate_at(id, reference, Some(call.rules), call.registry);
+        let picked = self.pickup_crate_at(
+            id,
+            reference,
+            Some(call.rules),
+            call.registry,
+            call.frame_effects,
+        );
         let actor = self
             .substrate
             .entities
@@ -1151,6 +1196,7 @@ impl Simulation {
         cell: (i16, i16),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return Ok(());
@@ -1164,7 +1210,7 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let deck = cells.flags(native) & 0x100 != 0
             && (location.z / GROUND_LEVEL_HEIGHT_LEPTONS - level).abs() > 2;
-        self.scatter_cell_contacts(cell, deck, true, rules, registry)
+        self.scatter_cell_contacts(cell, deck, true, rules, registry, frame_effects)
     }
 
     /// `CellClass::Scatter_Objects(null, 1, no_kidding, deck)` on `cell`
@@ -1180,6 +1226,7 @@ impl Simulation {
         no_kidding: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
@@ -1204,6 +1251,7 @@ impl Simulation {
             super::ScatterFlags::new(true, no_kidding),
             rules,
             registry,
+            frame_effects,
         )?;
         Ok(())
     }
@@ -1253,7 +1301,14 @@ impl Simulation {
         ) & 0x1F
             != 0;
         if infantry {
-            self.scatter_cell_contacts(cell, deck, false, call.rules, call.registry)?;
+            self.scatter_cell_contacts(
+                cell,
+                deck,
+                false,
+                call.rules,
+                call.registry,
+                call.frame_effects,
+            )?;
         }
         Ok(())
     }
@@ -1267,6 +1322,7 @@ impl Simulation {
         cell: (i16, i16),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if cell.0 < 0 || cell.1 < 0 {
             return;
@@ -1288,7 +1344,7 @@ impl Simulation {
                 ) {
                     return;
                 }
-                self.track_override(id, TargetKind::Entity(blocker), rules);
+                self.track_override(id, TargetKind::Entity(blocker), rules, frame_effects);
             }
             Some(BlockingObject::Terrain) => {
                 //See the terrain-blocker residual: no terrain target exists.
@@ -1300,21 +1356,27 @@ impl Simulation {
                     .and_then(|overlay| self.overlay_flags(registry, overlay))
                     .is_some_and(|(_, wall)| wall);
                 if wall {
-                    self.track_override(id, TargetKind::Cell(key.0, key.1), rules);
+                    self.track_override(id, TargetKind::Cell(key.0, key.1), rules, frame_effects);
                 }
             }
         }
     }
 
     /// Foot::Override_Mission(Attack, target, NULL) at 0x4B3BE9.
-    fn track_override(&mut self, id: u64, target: TargetKind, rules: &RuleSet) {
+    fn track_override(
+        &mut self,
+        id: u64,
+        target: TargetKind,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         #[cfg(test)]
         if super::fresh_oracle_seam::substitute(
             super::fresh_oracle_seam::FreshCallRecord::Override { target },
         ) {
             return;
         }
-        self.mission_override_movement_blocker(id, target, rules);
+        self.mission_override_movement_blocker(id, target, rules, frame_effects);
     }
 
     /// `CellClass::Find_Blocking_Object 0x47C5A0` with the zero point: the

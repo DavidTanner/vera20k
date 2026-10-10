@@ -270,6 +270,7 @@ fn signed_bridge_strength_survives_reader_runtime_dispatch_and_snapshot() {
 
 fn host<'a>(sim: &'a mut Simulation, rules: &'a RuleSet) -> LivePublication<'a> {
     LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim,
         rules,
         registry: None,
@@ -326,7 +327,8 @@ fn bridge_publication_production_nonanchor_collapse_keeps_other_overlay_and_runs
         &mut sim,
         &rules,
         &[hit],
-        None
+        None,
+        crate::sim::world::FrameEffects::default()
     ));
     assert!(
         sim.substrate
@@ -386,6 +388,7 @@ fn bridge_publication_retained_anchor_reads_live_overlay_identity() {
         &rules,
         &[hit],
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     let host = host(&mut sim, &rules);
     let anchor = host.terrain().native_cell_identity((4, 4));
@@ -477,6 +480,7 @@ impl BridgePublicationHost for ReenteringHost<'_> {
                 self.live.rules,
                 &[event],
                 None,
+                crate::sim::world::FrameEffects::default(),
             );
             assert!(!changed);
             assert_eq!(

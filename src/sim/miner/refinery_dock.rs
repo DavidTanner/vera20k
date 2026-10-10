@@ -53,6 +53,7 @@ use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::radio::{self, RadioMessage};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::ResourceType;
@@ -66,14 +67,19 @@ const UNLOAD_FINISHING: u32 = 4;
 
 /// `UnitClass::Mission_Unload @ 0x0073D630`, harvester branch `0x0073DEE0`.
 /// Returns the dispatch delay.
-pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
+pub(crate) fn mission_unload(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return 1;
     };
     // A 0x0073DEE0: without any radio contact the unload is abandoned.
     if entity.radio_contacts.is_empty() {
-        sim.unit_enter_idle_mode(id, Some(rules), false);
+        sim.unit_enter_idle_mode(id, Some(rules), false, effects);
         set_unload_latch(sim, rules, id, false);
         stop_if_moving(sim, id);
         commence_if_ready(sim, rules, id);
@@ -107,19 +113,24 @@ pub(crate) fn mission_unload(sim: &mut Simulation, rules: &RuleSet, id: u64) -> 
         return epilogue(sim, rules, id);
     }
     match entity.mission.handler_state() {
-        UNLOAD_DUMPING => unload_dumping(sim, rules, id),
-        UNLOAD_FINISHING => unload_finishing(sim, rules, id),
+        UNLOAD_DUMPING => unload_dumping(sim, rules, id, effects),
+        UNLOAD_FINISHING => unload_finishing(sim, rules, id, effects),
         _ => epilogue(sim, rules, id),
     }
 }
 
 /// E 0x0073E2BF: the dump state, re-reading the building west of the miner
 /// on every dispatch.
-fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
+fn unload_dumping(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) -> i32 {
     let now = sim.session.binary_frame;
     let Some(building) = unload_building(sim, id) else {
         // 0x0073E311..0x0073E350: no building → OVER_OUT, Queue(Harvest, 1).
-        radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
+        radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), effects);
         let _ = sim.mission_queue_exact(
             id,
             MissionId::from_known(MissionType::Harvest),
@@ -179,7 +190,12 @@ fn unload_dumping(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
 
 /// F 0x0073E17F: wait out the refinery's ProductionAnim, drop the latch and
 /// hand back to Harvest (or to the new order).
-fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
+fn unload_finishing(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) -> i32 {
     let now = sim.session.binary_frame;
     if let Some(building) = unload_building(sim, id)
         && let Some(building) = sim.substrate.entities.get(building)
@@ -208,7 +224,7 @@ fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
         // Teleport (the Unit setter's Teleporter arm) and warps, and the
         // warp's Per_Cell release drops the contact. Native reading; no row.
         if sim.mission_ready_to_commence(id, rules) {
-            radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
+            radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), effects);
             let _ = sim.mission_commence_exact(id, now);
         }
     }
@@ -226,7 +242,12 @@ fn unload_finishing(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
 /// state 2) loses that contact at the next track end unless state 3 has
 /// queued Enter first. Evidence: tools/spatial_oracle/refinery_dock.json
 /// `per_cell_release` rows.
-pub(crate) fn per_cell_release_dock_contact(sim: &mut Simulation, rules: &RuleSet, id: u64) {
+pub(crate) fn per_cell_release_dock_contact(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) {
     let unload = MissionId::from_known(MissionType::Unload);
     let enter = MissionId::from_known(MissionType::Enter);
     // The Harvester arm, then the Weeder arm; each reads Contacts[0] afresh.
@@ -265,7 +286,7 @@ pub(crate) fn per_cell_release_dock_contact(sim: &mut Simulation, rules: &RuleSe
                     }
                 });
         if dock {
-            radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
+            radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), effects);
         }
     }
 }

@@ -271,7 +271,14 @@ fn original_pickup_rows_match_through_the_dispatcher() {
             "{name}"
         );
 
-        let answer = pickup_crate(&mut sim, &rules, &registry, cell, actor);
+        let answer = pickup_crate(
+            &mut sim,
+            &rules,
+            &registry,
+            cell,
+            actor,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_eq!(u64::from(answer), returned, "{name}: AL");
         assert_eq!(
@@ -330,7 +337,14 @@ fn money_crate_draws_once_pays_the_owner_and_sounds() {
     let expected = probe.next_range_i32_inclusive(2000, 2900);
     assert!((2000..=2900).contains(&expected));
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     assert_eq!(sim.houses[&owner].economy.credits(), expected);
     assert_eq!(
@@ -358,7 +372,14 @@ fn multiplayer_pickup_places_one_replacement_crate() {
         cell_y: CELL.1,
     };
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let cells = crate_cells(&sim, &registry);
     assert_eq!(cells.len(), 1, "one replacement crate: {cells:?}");
@@ -395,7 +416,14 @@ fn veteran_crate_promotes_trainable_technos_within_the_radius() {
     let civilian = place_actor(&mut sim, owner, (10, 10), EntityCategory::Infantry, "CIV");
     let distant = place_actor(&mut sim, owner, (20, 20), EntityCategory::Infantry, "E1");
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let raw =
         |id: u64| f32::from_bits(sim.substrate.entities.get(id).unwrap().veterancy_raw.bits());
@@ -419,7 +447,14 @@ fn armor_and_firepower_crates_multiply_once_and_announce() {
     sim.houses.get_mut(&owner).unwrap().player_control = true;
     let distant = place_actor(&mut sim, owner, (20, 20), EntityCategory::Infantry, "E1");
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
     let armor =
         |sim: &Simulation, id: u64| sim.substrate.entities.get(id).unwrap().armor_multiplier;
     assert_eq!(armor(&sim, actor).bits(), 1.5_f64.to_bits());
@@ -434,7 +469,14 @@ fn armor_and_firepower_crates_multiply_once_and_announce() {
     // and falls back to Money, so nothing stacks.
     place_registered_crate(&mut sim, &registry, CELL, POWERUP_ARMOR as u8);
     let credits = sim.houses[&owner].economy.credits();
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert_eq!(armor(&sim, actor).bits(), 1.5_f64.to_bits());
     assert!(
         sim.houses[&owner].economy.credits() > credits,
@@ -442,7 +484,14 @@ fn armor_and_firepower_crates_multiply_once_and_announce() {
     );
 
     place_registered_crate(&mut sim, &registry, CELL, POWERUP_FIREPOWER as u8);
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
     let firepower = sim
         .substrate
         .entities
@@ -470,7 +519,14 @@ fn reveal_crate_reveals_the_whole_map_for_the_owner() {
     sim.fog.height = sim.session.map_height;
     assert!(!sim.fog.whole_map_revealed_owners.contains(&owner));
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     assert!(sim.fog.whole_map_revealed_owners.contains(&owner));
     // `0x0048202D..0x0048203C`: the one arm without the local-player test.
@@ -484,12 +540,33 @@ fn guards_leave_the_crate_and_the_rng_alone() {
     let (mut sim, rules, registry, owner, actor) = multiplayer_fixture(10);
     let before = sim.scenario_rng.native_state_hex();
     sim.houses.get_mut(&owner).unwrap().multiplay_passive = true;
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(overlay_at(&sim, CELL).is_some());
     sim.houses.get_mut(&owner).unwrap().multiplay_passive = false;
-    assert!(pickup_crate(&mut sim, &rules, &registry, CELL, 99));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        CELL,
+        99,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(overlay_at(&sim, CELL).is_some());
-    assert!(pickup_crate(&mut sim, &rules, &registry, (11, 11), actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        (11, 11),
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert_eq!(sim.scenario_rng.native_state_hex(), before);
     assert!(sim.sound_events.is_empty());
 }
@@ -583,7 +660,14 @@ fn unit_crate_places_a_goodie_vehicle_and_returns_false() {
     };
     assert_eq!(tanks(&sim), 1);
 
-    assert!(!pickup_crate(&mut sim, &rules, &registry, (21, 22), actor));
+    assert!(!pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        (21, 22),
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     assert_eq!(tanks(&sim), 2);
     let free = sim
@@ -614,7 +698,14 @@ fn mcv_preempt_grants_the_base_unit_with_bases_on() {
     sim.session.game_options.bases = true;
     place_registered_crate(&mut sim, &registry, (21, 22), POWERUP_MONEY as u8);
 
-    assert!(!pickup_crate(&mut sim, &rules, &registry, (21, 22), actor));
+    assert!(!pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        (21, 22),
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let mcv = sim
         .substrate
@@ -648,7 +739,14 @@ fn heal_base_crate_restores_the_owners_buildings() {
     }
     place_registered_crate(&mut sim, &registry, (21, 22), POWERUP_HEAL_BASE as u8);
 
-    assert!(pickup_crate(&mut sim, &rules, &registry, (21, 22), actor));
+    assert!(pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        (21, 22),
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     assert_eq!(
         sim.substrate.entities.get(own).unwrap().health.current,
@@ -678,7 +776,8 @@ fn force_track_onto_a_crate_cell_picks_it_up() {
         -1,
         DriveCoord::cell(21, 22, 0),
         Some(&rules),
-        Some(&registry)
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
     ));
 
     assert_eq!(overlay_at(&sim, (21, 22)), None);
@@ -732,7 +831,8 @@ fn force_track_onto_a_unit_crate_drops_the_head() {
         -1,
         DriveCoord::cell(21, 22, 0),
         Some(&rules),
-        Some(&registry)
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
     ));
 
     let tank = sim.substrate.entities.get(actor).unwrap();

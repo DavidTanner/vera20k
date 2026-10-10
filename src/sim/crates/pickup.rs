@@ -50,6 +50,7 @@ use crate::sim::components::{DriveCoord, Position};
 use crate::sim::intern::InternedId;
 use crate::sim::movement::ground_pose;
 use crate::sim::rng::SimRng;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::NativeF64Bits;
@@ -309,6 +310,7 @@ pub(crate) fn pickup_crate(
     registry: &OverlayTypeRegistry,
     cell: (i16, i16),
     actor_id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let Some(actor) = sim.substrate.entities.get(actor_id) else {
         return true;
@@ -396,7 +398,16 @@ pub(crate) fn pickup_crate(
             let Some(type_id) = chosen else {
                 return spawn_pickup_anim(sim, rules, anim_slot, cell, center);
             };
-            match effects::place_unit_crate(sim, rules, registry, owner, &type_id, cell, center) {
+            match effects::place_unit_crate(
+                sim,
+                rules,
+                registry,
+                owner,
+                &type_id,
+                cell,
+                center,
+                frame_effects,
+            ) {
                 UnitCrateOutcome::Placed => {
                     play_crate_sound(
                         sim,
@@ -443,7 +454,7 @@ pub(crate) fn pickup_crate(
                     cell,
                     center,
                 );
-                effects::apply_heal_base_crate(sim, rules, Some(registry), owner);
+                effects::apply_heal_base_crate(sim, rules, Some(registry), owner, frame_effects);
             }
             POWERUP_DARKNESS => {
                 // `MapClass::Reset_Shroud @ 0x00577AB0` for the actor's house;

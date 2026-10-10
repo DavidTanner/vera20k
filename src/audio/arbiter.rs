@@ -124,8 +124,9 @@ pub const RAMP_SPAN_MS: u32 = 1000;
 /// the low side.
 ///
 /// - Below the floor (what VERA models): `SoundEvent::PreparePlayout @
-///   0x00404700` builds the whole playlist at `event+0x160` and
-///   `AdvancePlaylist @ 0x004047B0` walks it; all three of that function's
+///   0x00404700` resets the eligible body indices at `event+0x160` and
+///   returns one attack/body buffer. `AdvancePlaylist @ 0x004047B0`
+///   selects each later buffer; all three of that function's
 ///   arms — chain, LOOP restart, DECAY tail — sit inside its opening
 ///   `if (Voc+0x58 < 0x21 || (flags & 0x20))`.
 /// - At or above it: `SoundEvent::LoadSamples @ 0x004048B0` takes a wholly
@@ -140,13 +141,12 @@ pub const RAMP_SPAN_MS: u32 = 1000;
 ///   between them. `LoadSamples` is called only from `UpdateTick`, and
 ///   `SelectNextSample` only from `LoadSamples` (`get_function_callers`).
 ///
-/// VERA instead resolves every entry through the low-side path:
-/// the shared sample loader prepares the whole low-side playlist
-/// into one payload regardless of `Delay`. Trigger: submitting an entry
+/// VERA instead resolves every entry through the low-side cursor and PCM
+/// ring regardless of `Delay`. Trigger: submitting an entry
 /// whose `Delay=` low bound is >= 33 ms. Player effect, both halves: VERA
-/// plays the full chained set back-to-back as one pass where gamemd plays a
+/// plays the loaded chained set back-to-back where gamemd plays a
 /// single sample, waits out the re-drawn pre-delay, then plays the next; and
-/// because [`SoundArbiter::advance_loop`] correctly refuses the
+/// because the low-delay playlist cursor correctly refuses the
 /// `AdvancePlaylist` restart above the floor while VERA models no substitute,
 /// VERA then *stops*, where gamemd sustains the cue under
 /// `SelectNextSample`'s own `Loop=` budget. So an ambient authored to run
@@ -172,7 +172,7 @@ pub const RAMP_SPAN_MS: u32 = 1000;
 /// - **Chaining set — 22 entries**: above the floor, `Control=all`, and more
 ///   than one `Sounds=` name. All three terms are load-bearing. Dropping the
 ///   `Control=` term would give 24, but wrongly: without `all`,
-///   `select_playout_pass` (`src/audio/sfx.rs`) pushes a single index too, so
+///   `LoadedSampleIndices::load` (`src/audio/sfx.rs`) keeps one body too, so
 ///   `CowAmbient` (`random interrupt ambient`) and `MIGMove`
 ///   (`random predelay`) yield one sample from either loader and cannot
 ///   chain. `Control=attack`/`decay` would qualify as well, but that arm is
@@ -190,7 +190,7 @@ pub const RAMP_SPAN_MS: u32 = 1000;
 ///   `Delay=` is commented out so it sits below the floor, and its
 ///   `Control= random` carries no loop bit. So all 24 leave `Voc+0x4C == 0`,
 ///   the second disjunct can never fire, and every one sustains forever
-///   natively while [`SoundArbiter::advance_loop`] refuses it.
+///   natively while the low-delay playlist cursor refuses it.
 ///
 /// The two sets share **21** entries, so their union is 22 + 24 − 21 = **25**.
 /// Four entries break a naive reading of one criterion or the other, and they
@@ -250,8 +250,8 @@ mod event_flags {
     /// `0x20` — no-replay: suppresses the body and loop branches of
     /// `SoundEvent::AdvancePlaylist @ 0x004047B0`.
     pub const NO_REPLAY: u32 = 0x20;
-    /// `0x40` — set beside NO_REPLAY by `SoundEvent::Release @ 0x00406060`.
-    /// VERA reads nothing from it.
+    /// `0x40` — a pending release consumed by state3 at40589E. The current
+    /// buffer stops and unused decay may replace it; NO_REPLAY remains set.
     pub const RELEASED: u32 = 0x40;
 }
 
@@ -365,6 +365,13 @@ impl VolumeInterp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EventId(pub u32);
 
+/// A delayed output belongs to this allocation, never to a reused pool slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EventToken {
+    pub event: EventId,
+    pub serial: u32,
+}
+
 /// Separate native handles on one object must never alias. Existing positional
 /// owners include the retained animation, Foot, Gattling and bomb identities;
 /// Techno+4DC is a distinct non-positional handle even for the same object ID.
@@ -386,6 +393,14 @@ pub trait PlaybackService {
     /// PreparePlayout404700 in the final start pass. A failed preparation
     /// enters the existing lower-priority retry path.
     fn prepare_playout(&mut self, event: EventId, plays_attack: bool) -> bool;
+    /// StartPlayback4054A0 fills the native ring before the next Ready
+    /// event's Load/Prepare. Deferring its draws until all events prepare
+    /// would reorder the one process Main stream.
+    fn start_playout(&mut self, event: EventId, pan: i32) -> bool;
+    /// DriverStop4025B0 in405B8C/405319 completes before channel reuse,
+    /// later admission draws and sample loading. Cancel retained sources at
+    /// that boundary; collected Stop actions still retire their payloads.
+    fn stop_playout(&mut self, event: EventId);
 }
 
 /// The 16-byte `{ SoundEvent*, serial, VocClass*, &g_AudioIndex }` an owner
@@ -451,9 +466,6 @@ pub enum ArbiterAction {
         event: EventId,
         volume_linear: i32,
         pan: i32,
-        /// `Control=loop` with the loop budget still open — the device layer
-        /// must keep the buffer queue topped up.
-        sustaining: bool,
     },
     /// Live gain update while playing (the `VolumeInterp` glide).
     Gain {
@@ -461,7 +473,10 @@ pub enum ArbiterAction {
         volume_linear: i32,
         pan: i32,
     },
-    /// Release the output. The slot is already free on the arbiter side.
+    /// Released state3 stops its current buffer and selects decay4058E5.
+    Decay { event: EventId },
+    /// Retire the output after the synchronous source cancellation. The
+    /// arbiter owns whether its dead slot has already been reaped.
     Stop { event: EventId },
 }
 
@@ -532,8 +547,6 @@ struct EventRec {
     /// `+0x158`. Non-zero blocks the start pass, freezes the pre-delay and
     /// removes the event from the many-sounds volume sum.
     suspend_depth: i32,
-    /// `+0x1E4`, the completed loop passes.
-    loop_iteration: i32,
     /// The owner that holds this event's `VocHandle` (`+0x278`).
     handle_owner: Option<HandleOwner>,
 }
@@ -669,7 +682,6 @@ impl SoundArbiter {
             predelay_remaining_ms: 0,
             priority_bonus: 0,
             suspend_depth: 0,
-            loop_iteration: 0,
             handle_owner: None,
         });
         self.order.push(id);
@@ -782,19 +794,23 @@ impl SoundArbiter {
     }
 
     /// `SoundEvent::Release @ 0x00406060` on an owner's handle. Release its
-    /// current event before clearing the handle, allowing one-shots and the
-    /// current pass of an uncounted loop to finish after the owner disappears.
+    /// current event before clearing the handle. One-shots finish; uncounted
+    /// loops switch to decay at the next state3 service.
     pub fn release_owner(&mut self, owner: HandleOwner) {
         if let Some(event) = self.validate_loop_handle(owner) {
             self.release(event);
         }
+        // Native406060 clears handle.type but retains stale pointer/serial.
+        // Validate406149..406162 rejects that type0 and clears the pointer;
+        // GetType406170/Update750D60 cannot reallocate it. Removing the
+        // typed Rust handle preserves that authority without stale storage.
         self.clear_loop_handle(owner);
     }
 
     /// FootLimbo's handle405FD0: unlike Release406060, every valid event
-    /// stops repetition, including a counted loop. Native brackets a live
-    /// channel while setting flags|0x60; device servicing stays with SfxPlayer.
-    /// The current playout remains alive, and the handle no longer names it.
+    /// receives flags0x60, including counted loops and one-shots. Native
+    /// brackets a live channel while writing these flags; state3 consumes
+    /// RELEASED on the next service. The handle immediately stops naming it.
     pub fn detach_owner(&mut self, owner: HandleOwner) {
         if let Some(id) = self.validate_loop_handle(owner)
             && let Some(event) = self.event_mut(id)
@@ -806,8 +822,8 @@ impl SoundArbiter {
     }
 
     /// `SoundEvent::Release @ 0x00406060`'s event half: a live looping event
-    /// whose entry has no `Loop=` count and is not already released stops
-    /// repeating (`flags |= 0x60`) and plays out its current pass.
+    /// whose entry has no `Loop=` count and is not already released sets
+    /// flags0x60. The next state3 service replaces its buffer with decay.
     pub fn release(&mut self, id: EventId) {
         let Some(event) = self.event(id) else {
             return;
@@ -842,6 +858,59 @@ impl SoundArbiter {
     pub fn plays_attack_sample(&self, id: EventId) -> bool {
         self.event(id)
             .is_some_and(|event| event.flags & event_flags::STARTED == 0)
+    }
+
+    pub(crate) fn event_token(&self, id: EventId) -> Option<EventToken> {
+        self.event(id)
+            .filter(|event| !event.is_dead() && event.serial != 0)
+            .map(|event| EventToken {
+                event: id,
+                serial: event.serial,
+            })
+    }
+
+    pub(crate) fn is_live_token(&self, token: EventToken) -> bool {
+        self.event_token(token.event) == Some(token)
+    }
+
+    /// A dead record with serial0 remains physically occupied until Reap.
+    /// A different live serial proves that this token was already reaped
+    /// before slot reuse. A reused dead slot waits conservatively for Reap.
+    pub(crate) fn is_token_retired(&self, token: EventToken) -> bool {
+        self.event(token.event)
+            .is_none_or(|event| event.serial != 0 && event.serial != token.serial)
+    }
+
+    pub(crate) fn event_slot_occupied(&self, id: EventId) -> bool {
+        self.event(id).is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn native_event_snapshot(&self, id: EventId) -> Option<serde_json::Value> {
+        // Read-only witness of this owner, not a fixture-supplied decision.
+        // Native4055C0 state numbers and405A00 endpoint fields.
+        let event = self.event(id)?;
+        let state = match event.state {
+            EventState::NeedsChannel => 0,
+            EventState::Ready => 1,
+            EventState::PreDelay => 2,
+            EventState::Playing => 3,
+            EventState::Finished => 4,
+        };
+        Some(serde_json::json!({"state": state, "flags": event.flags, "serial": event.serial}))
+    }
+
+    pub(crate) fn token_has_channel(&self, token: EventToken) -> bool {
+        self.is_live_token(token)
+            && self
+                .event(token.event)
+                .and_then(|event| event.channel)
+                .is_some_and(|index| self.channels[index].event == Some(token.event))
+    }
+
+    pub(crate) fn playout_no_replay(&self, id: EventId) -> bool {
+        self.event(id)
+            .is_some_and(|event| event.flags & event_flags::NO_REPLAY != 0)
     }
 
     /// `SoundEvent::SetVolume @ 0x004061D0`: snap while the event has not
@@ -973,53 +1042,15 @@ impl SoundArbiter {
         }
     }
 
-    /// `AdvancePlaylist @ 0x004047B0` step 2 asked from the device side: may
-    /// this looping event start another pass?
-    ///
-    /// The whole body is gated on `Voc+0x58 < 0x21 || (flags & 0x20)` (first
-    /// line of the decompiled body), and step 2 itself is
-    /// `(Control & LOOP) && !(flags & 0x20) && (Loop == 0 || iteration <
-    /// Loop - 1)`. The two combine to `Delay.min < 0x21 && !(flags & 0x20)
-    /// && ...`: an entry whose `Delay=` low bound is 33 ms or more never
-    /// reaches *this* LOOP branch.
-    ///
-    /// That is a claim about this path only. Such an entry still loops, and
-    /// still plays its whole `Sounds=` set, through a second mechanism VERA
-    /// does not model — see the `Delay >= 0x21` residual on
-    /// [`PREDELAY_FLOOR_MS`]. Do not read this gate as "the entry does not
-    /// loop".
-    ///
-    /// Consumes one iteration when it answers yes.
-    pub fn advance_loop(&mut self, id: EventId) -> bool {
-        let Some(event) = self.event(id) else {
-            return false;
-        };
-        if event.is_dead() || event.flags & event_flags::NO_REPLAY != 0 {
-            return false;
-        }
-        let Some(facts) = self.entries[event.entry as usize].facts else {
-            return false;
-        };
-        if facts.delay_ms.0 >= PREDELAY_FLOOR_MS {
-            return false;
-        }
-        if facts.control & control::LOOP == 0 {
-            return false;
-        }
-        if facts.loop_count != 0 && event.loop_iteration >= facts.loop_count - 1 {
-            return false;
-        }
-        if let Some(event) = self.event_mut(id) {
-            event.loop_iteration += 1;
-        }
-        true
-    }
-
     /// The device reporting that a buffer chain ran dry with nothing left to
     /// play — endpoint405A00..405AB0 clears PLAYING and sets state4. It does
     /// not invalidate the serial or release the channel. Techno6F9EBB can
     /// still validate this handle before the next service reaches405974.
-    pub fn notify_playout_ended(&mut self, id: EventId) {
+    pub(crate) fn notify_playout_ended(&mut self, token: EventToken) {
+        if !self.is_live_token(token) {
+            return;
+        }
+        let id = token.event;
         let Some(event) = self.event_mut(id) else {
             return;
         };
@@ -1121,10 +1152,21 @@ impl SoundArbiter {
     /// [`Self::find_available_channel`] picked, **unless** it is busy and the
     /// newcomer's priority is strictly lower — equal priority still wins the
     /// channel. A failed allocation drops the cue outright.
-    fn allocate_channel(&mut self, id: EventId, priority: i32) -> Option<usize> {
+    fn allocate_channel(
+        &mut self,
+        id: EventId,
+        priority: i32,
+        playback: &mut impl PlaybackService,
+    ) -> Option<usize> {
         let index = self.find_available_channel()?;
         if self.channels[index].busy && priority < self.channels[index].priority {
             return None;
+        }
+        // Original405B8C invokes DriverStop before replacing channel fields
+        // or drawing the new event's shifts. The old allocation remains
+        // logically present until Reap, but its source must stop now.
+        if let Some(old) = self.channels[index].event {
+            playback.stop_playout(old);
         }
         // The dispossessed event is deliberately left pointing at the channel:
         // native never notifies it, and the reaping pass catches it with
@@ -1182,9 +1224,9 @@ impl SoundArbiter {
         let mut actions = Vec::new();
 
         self.limit_epoch = self.limit_epoch.wrapping_add(1);
-        self.enforce_limits(now_ms, &mut actions);
+        self.enforce_limits(now_ms, playback, &mut actions);
         self.run_state_machine(now_ms, playback, &mut actions);
-        self.reap_and_rank(now_ms, &mut actions);
+        self.reap_and_rank(now_ms, playback, &mut actions);
         self.start_pass(now_ms, playback, &mut actions);
         self.emit_live_gains(&mut actions);
         actions
@@ -1197,7 +1239,12 @@ impl SoundArbiter {
     /// `Control=interrupt` the oldest already-started one.
     ///
     /// The new cue is never the victim; the least audible one is.
-    fn enforce_limits(&mut self, now_ms: u64, actions: &mut Vec<ArbiterAction>) {
+    fn enforce_limits(
+        &mut self,
+        now_ms: u64,
+        playback: &mut impl PlaybackService,
+        actions: &mut Vec<ArbiterAction>,
+    ) {
         for id in self.order.clone() {
             let Some(event) = self.event(id) else {
                 continue;
@@ -1261,6 +1308,7 @@ impl SoundArbiter {
                 if self.event(victim).is_some_and(|event| !event.is_dead()) {
                     self.release_channel(victim);
                     self.kill(victim);
+                    playback.stop_playout(victim);
                     actions.push(ArbiterAction::Stop { event: victim });
                 }
                 self.entries[entry_index].count -= 1;
@@ -1297,14 +1345,13 @@ impl SoundArbiter {
             EventState::NeedsChannel => {
                 let priority = self.effective_priority(event);
                 let facts = self.facts_of(event);
-                match self.allocate_channel(id, priority) {
+                match self.allocate_channel(id, priority, playback) {
                     Some(index) => {
                         let predelay_ms = playback.channel_acquired(id);
                         let Some(event) = self.event_mut(id) else {
                             return;
                         };
                         event.channel = Some(index);
-                        event.loop_iteration = 0;
                         event.state = EventState::Ready;
                         // `if ((Voc.Control & 0x88) == 0) return;` — no
                         // `Control=predelay` and no `Control=ambient` means no
@@ -1331,6 +1378,7 @@ impl SoundArbiter {
                         if self.event(id).is_some_and(|event| !event.is_dead()) {
                             self.release_channel(id);
                             self.kill(id);
+                            playback.stop_playout(id);
                             actions.push(ArbiterAction::Stop { event: id });
                         }
                     }
@@ -1354,6 +1402,15 @@ impl SoundArbiter {
             // owner no longer names it dies here, which is what stops a
             // Rocketeer's engine loop when the unit stops or leaves earshot.
             EventState::Playing => {
+                if event.flags & event_flags::RELEASED != 0 {
+                    // Original40589E..4058FC: consume release once, stop the
+                    // current buffer, AdvancePlaylist under NO_REPLAY, then
+                    // start its decay. Channel/serial survive until endpoint
+                    // and the later Finished service; this is not a hard stop.
+                    self.event_mut(id).expect("current event").flags &= !event_flags::RELEASED;
+                    actions.push(ArbiterAction::Decay { event: id });
+                    return;
+                }
                 let facts = self.facts_of(event);
                 let leashed = facts.control & control::LOOP != 0
                     && facts.loop_count == 0
@@ -1376,6 +1433,7 @@ impl SoundArbiter {
                 if self.event(id).is_some_and(|event| !event.is_dead()) {
                     self.release_channel(id);
                     self.kill(id);
+                    playback.stop_playout(id);
                     actions.push(ArbiterAction::Stop { event: id });
                 }
             }
@@ -1384,6 +1442,7 @@ impl SoundArbiter {
             EventState::Finished => {
                 if !event.is_dead() {
                     self.stop(id);
+                    playback.stop_playout(id);
                     actions.push(ArbiterAction::Stop { event: id });
                 }
             }
@@ -1395,7 +1454,12 @@ impl SoundArbiter {
     /// event that lost its channel or is already dead, rank the loudest live
     /// instance of each entry into `bucket[priority][volume / 1638]`, and set
     /// the many-sounds target.
-    fn reap_and_rank(&mut self, now_ms: u64, actions: &mut Vec<ArbiterAction>) {
+    fn reap_and_rank(
+        &mut self,
+        now_ms: u64,
+        playback: &mut impl PlaybackService,
+        actions: &mut Vec<ArbiterAction>,
+    ) {
         for bucket in &mut self.buckets {
             bucket.clear();
         }
@@ -1416,6 +1480,7 @@ impl SoundArbiter {
             if orphaned && !event.is_dead() {
                 self.release_channel(id);
                 self.kill(id);
+                playback.stop_playout(id);
                 actions.push(ArbiterAction::Stop { event: id });
             }
             if self.event(id).is_none_or(EventRec::is_dead) {
@@ -1498,7 +1563,11 @@ impl SoundArbiter {
     /// VERA owns decoded buffers without that budget, so memory-starvation
     /// admission differs under high distinct-sample pressure. This shared
     /// retry owner is live for the represented NO_REPLAY rejection.
-    fn preempt_for_playout(&mut self, priority: i32) -> Vec<EventId> {
+    fn preempt_for_playout(
+        &mut self,
+        priority: i32,
+        playback: &mut impl PlaybackService,
+    ) -> Vec<EventId> {
         let mut stopped = Vec::new();
         let Some(victim_entry) = self.find_lowest_priority(priority) else {
             return stopped;
@@ -1509,6 +1578,7 @@ impl SoundArbiter {
                 .is_some_and(|event| event.entry == victim_entry)
             {
                 self.stop(other);
+                playback.stop_playout(other);
                 self.reap(other);
                 stopped.push(other);
             }
@@ -1540,6 +1610,7 @@ impl SoundArbiter {
             let priority = self.effective_priority(event);
             if event.channel.is_none() {
                 self.kill(id);
+                playback.stop_playout(id);
                 actions.push(ArbiterAction::Stop { event: id });
                 continue;
             }
@@ -1549,7 +1620,7 @@ impl SoundArbiter {
                 && !no_replay
                 && playback.prepare_playout(id, plays_attack);
             while !prepared {
-                let victims = self.preempt_for_playout(priority);
+                let victims = self.preempt_for_playout(priority, playback);
                 if victims.is_empty() {
                     break;
                 }
@@ -1564,19 +1635,23 @@ impl SoundArbiter {
             }
             if !prepared {
                 self.stop(id);
+                playback.stop_playout(id);
                 self.reap(id);
                 actions.push(ArbiterAction::Stop { event: id });
                 continue;
             }
-            let Some(event) = self.event(id) else {
+            // Original404673 unconditionally prepares again after the
+            // first success/retry. Each call resets the one playlist; the
+            // second returned buffer is the StartPlayback input.
+            if !playback.prepare_playout(id, plays_attack) {
+                self.stop(id);
+                playback.stop_playout(id);
+                self.reap(id);
+                actions.push(ArbiterAction::Stop { event: id });
                 continue;
-            };
-
+            }
             // `SoundEvent::StartPlayback @ 0x004054A0`: snap both interps
             // before the buffer starts, set `flags |= 8 | 2`, state 3.
-            let facts = self.facts_of(event);
-            let sustaining = facts.control & control::LOOP != 0
-                && (facts.loop_count == 0 || facts.loop_count > 1);
             let Some(event) = self.event_mut(id) else {
                 continue;
             };
@@ -1593,11 +1668,17 @@ impl SoundArbiter {
             if let Some(index) = event.channel {
                 self.channels[index].playing = true;
             }
+            if !playback.start_playout(id, pan) {
+                self.stop(id);
+                playback.stop_playout(id);
+                self.reap(id);
+                actions.push(ArbiterAction::Stop { event: id });
+                continue;
+            }
             actions.push(ArbiterAction::Start {
                 event: id,
                 volume_linear,
                 pan,
-                sustaining,
             });
         }
     }
@@ -1645,6 +1726,12 @@ impl PlaybackService for TestPlayback {
     fn prepare_playout(&mut self, _: EventId, _: bool) -> bool {
         true
     }
+
+    fn start_playout(&mut self, _: EventId, _: i32) -> bool {
+        true
+    }
+
+    fn stop_playout(&mut self, _: EventId) {}
 }
 
 #[cfg(test)]
@@ -1693,6 +1780,85 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn channel_reuse_and_limit_stop_old_playout_before_next_admission() {
+        struct BoundaryProbe(Vec<(&'static str, EventId)>);
+        impl PlaybackService for BoundaryProbe {
+            fn channel_acquired(&mut self, event: EventId) -> i32 {
+                self.0.push(("admission", event));
+                0
+            }
+            fn load_samples(&mut self, _: EventId) -> bool {
+                true
+            }
+            fn prepare_playout(&mut self, _: EventId, _: bool) -> bool {
+                true
+            }
+            fn start_playout(&mut self, _: EventId, _: i32) -> bool {
+                true
+            }
+            fn stop_playout(&mut self, event: EventId) {
+                self.0.push(("stop", event));
+            }
+        }
+
+        // Original405B8C stops the selected channel before reallocation;
+        // limit enforcement404322 calls Stop4052F0 before the state pass.
+        // The capability boundary must precede new shift/load draws so a
+        // retained old source cannot keep selecting into process Main.
+        for limited in [false, true] {
+            let mut arbiter = SoundArbiter::new(0);
+            let mut playback = BoundaryProbe(Vec::new());
+            let count = if limited { 1 } else { MAX_CHANNELS };
+            let mut old = Vec::new();
+            for index in 0..count {
+                old.push(
+                    arbiter
+                        .submit(
+                            &request(
+                                &format!("OLD{index}"),
+                                facts(2, i32::from(limited)),
+                                VOLUME_SCALE / 2,
+                            ),
+                            0,
+                        )
+                        .unwrap(),
+                );
+            }
+            assert_eq!(
+                arbiter
+                    .update_tick(100, &mut playback)
+                    .iter()
+                    .filter(|action| { matches!(action, ArbiterAction::Start { .. }) })
+                    .count(),
+                count
+            );
+            playback.0.clear();
+            let next = arbiter
+                .submit(
+                    &request(
+                        if limited { "OLD0" } else { "NEW" },
+                        facts(if limited { 2 } else { 3 }, i32::from(limited)),
+                        VOLUME_SCALE,
+                    ),
+                    110,
+                )
+                .unwrap();
+            arbiter.update_tick(150, &mut playback);
+            let stop = playback.0.iter().position(|call| *call == ("stop", old[0]));
+            let admission = playback
+                .0
+                .iter()
+                .position(|call| *call == ("admission", next));
+            assert!(
+                stop.zip(admission)
+                    .is_some_and(|(stop, admission)| stop < admission),
+                "old source must stop before new admission (limited={limited}): {:?}",
+                playback.0
+            );
+        }
     }
 
     #[test]
@@ -1916,17 +2082,13 @@ mod tests {
             actions
                 .iter()
                 .find(|a| matches!(a, ArbiterAction::Start { .. })),
-            Some(ArbiterAction::Start {
-                sustaining: true,
-                ..
-            })
+            Some(ArbiterAction::Start { .. })
         ));
         // Ten more passes with the handle intact: still alive.
         for pass in 1..=10 {
             let actions = arbiter.update_tick(100 + pass * 40, &mut TestPlayback::default());
             assert!(stopped(&actions).is_empty(), "pass {pass} stopped the loop");
         }
-        assert!(arbiter.advance_loop(event));
 
         arbiter.set_loop_handle(HandleOwner::Positional(1234), None, "ROCKETEERMOVELOOP");
         let actions = arbiter.update_tick(1000, &mut TestPlayback::default());
@@ -2028,23 +2190,6 @@ mod tests {
         assert_eq!(stopped(&actions), vec![event]);
     }
 
-    /// `Loop=N` is a finite budget: `AdvancePlaylist` allows another pass
-    /// only while `iteration < Loop - 1`.
-    #[test]
-    fn a_finite_loop_budget_runs_out() {
-        let mut arbiter = SoundArbiter::new(0);
-        let mut loop_facts = facts(2, 0);
-        loop_facts.control = control::LOOP;
-        loop_facts.loop_count = 3;
-        let event = arbiter
-            .submit(&request("THREE", loop_facts, VOLUME_SCALE), 0)
-            .expect("pool slot");
-        arbiter.update_tick(100, &mut TestPlayback::default());
-        assert!(arbiter.advance_loop(event));
-        assert!(arbiter.advance_loop(event));
-        assert!(!arbiter.advance_loop(event));
-    }
-
     /// The pre-delay is a real wait, and the `0x21` ms floor discards a
     /// shorter draw entirely (`if (iVar5 < 0x21) return;`). `[GTNK]
     /// MoveSound=GrizzlyTankMoveStart` is the stock shape: `Control= random
@@ -2138,9 +2283,13 @@ mod tests {
         arbiter.update_tick(100, &mut TestPlayback::default());
 
         // Equal priority is never preempted here (`for p in 0..prio-1`).
-        assert!(arbiter.preempt_for_playout(1).is_empty());
+        assert!(
+            arbiter
+                .preempt_for_playout(1, &mut TestPlayback::default())
+                .is_empty()
+        );
         // A priority-3 caller takes the whole `QUIET` entry, both instances.
-        let mut victims = arbiter.preempt_for_playout(3);
+        let mut victims = arbiter.preempt_for_playout(3, &mut TestPlayback::default());
         victims.sort();
         assert_eq!(victims, vec![a, b]);
         assert!(arbiter.event(peer).is_some_and(|event| !event.is_dead()));
@@ -2258,7 +2407,7 @@ mod tests {
         arbiter.update_tick(1034, &mut TestPlayback::default());
         let serial = arbiter.event(event).unwrap().serial;
         let channel = arbiter.event(event).unwrap().channel;
-        arbiter.notify_playout_ended(event);
+        arbiter.notify_playout_ended(arbiter.event_token(event).unwrap());
         assert_eq!(arbiter.validate_loop_handle(owner), Some(event));
         let ended = arbiter.event(event).unwrap();
         assert_eq!(ended.state, EventState::Finished);
@@ -2270,38 +2419,6 @@ mod tests {
         assert_eq!(arbiter.validate_loop_handle(owner), None);
         assert_eq!(arbiter.live_event_count(), 0);
         assert_eq!(arbiter.busy_channel_count(), 0);
-    }
-
-    /// `AdvancePlaylist @ 0x004047B0` opens with
-    /// `if ((Voc+0x58 < 0x21) || (flags & 0x20))`, so a `Control=loop` entry
-    /// whose `Delay=` low bound is 33 ms or more never reaches the LOOP
-    /// branch: its sustain is the streaming callback re-drawing
-    /// `RandomRanged(Delay.min, Delay.max)` between samples, not a chained
-    /// restart. 24 stock entries have that shape — the sustain set of
-    /// [`PREDELAY_FLOOR_MS`] — and every one is `Control=ambient` (`_Amb_*`,
-    /// `PropagandaTruck`, `CruiseShipAmbience`) except the debug
-    /// `TestRandomLoopDelayAll`.
-    #[test]
-    fn a_loop_entry_with_a_delay_floor_never_reaches_the_loop_branch() {
-        let mut spaced = facts(2, 0);
-        spaced.control = control::LOOP;
-        spaced.delay_ms = (PREDELAY_FLOOR_MS, 5000);
-        let mut arbiter = SoundArbiter::new(0);
-        let event = arbiter
-            .submit(&request("AMB", spaced, VOLUME_SCALE), 0)
-            .expect("pool slot");
-        arbiter.update_tick(100, &mut TestPlayback::default());
-        assert!(!arbiter.advance_loop(event));
-
-        // One millisecond under the floor and the same entry loops.
-        let mut tight = spaced;
-        tight.delay_ms = (PREDELAY_FLOOR_MS - 1, 5000);
-        let mut arbiter = SoundArbiter::new(0);
-        let event = arbiter
-            .submit(&request("AMB", tight, VOLUME_SCALE), 0)
-            .expect("pool slot");
-        arbiter.update_tick(100, &mut TestPlayback::default());
-        assert!(arbiter.advance_loop(event));
     }
 
     /// The ranking insert applies no bound to the volume column
@@ -2337,12 +2454,22 @@ mod tests {
         );
 
         // Rows `[0, 3)` reach row 2, where only the quiet entry sits.
-        assert_eq!(arbiter.preempt_for_playout(3), vec![quiet]);
+        assert_eq!(
+            arbiter.preempt_for_playout(3, &mut TestPlayback::default()),
+            vec![quiet]
+        );
         // Asked again, the same caller finds nothing: the loud entry is out
         // of its reach. Clamping the column to 9 would have put it in row 2
         // and surrendered it here.
-        assert!(arbiter.preempt_for_playout(3).is_empty());
+        assert!(
+            arbiter
+                .preempt_for_playout(3, &mut TestPlayback::default())
+                .is_empty()
+        );
         // It takes a caller one tier higher to reach it.
-        assert_eq!(arbiter.preempt_for_playout(4), vec![loud]);
+        assert_eq!(
+            arbiter.preempt_for_playout(4, &mut TestPlayback::default()),
+            vec![loud]
+        );
     }
 }

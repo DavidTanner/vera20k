@@ -168,6 +168,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                 let i = coord.1 as usize * usize::from(width) + coord.0 as usize;
                 if let Some(value) = change.get("cell_level") {
                     let mut live = LivePublication {
+                        frame_effects: crate::sim::world::FrameEffects::default(),
                         sim: &mut sim,
                         rules: &rules,
                         registry: Some(&registry),
@@ -218,6 +219,7 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
                 .map(batch_coord)
                 .collect();
             let mut live = LivePublication {
+                frame_effects: crate::sim::world::FrameEffects::default(),
                 sim: &mut sim,
                 rules: &rules,
                 registry: Some(&registry),
@@ -343,6 +345,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
     let registry =
         crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     let mut live = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: Some(&registry),
@@ -384,6 +387,7 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
     assert_eq!(base.zone_ids, before.zone_ids);
     assert_eq!(base.raw_zone_ids_by_row, before.raw_zone_ids_by_row);
     let mut live = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: Some(&registry),
@@ -423,6 +427,7 @@ fn live_raw_bridge_height_preserves_native_signed_deck_byte_and_dummy_identity()
     let mut sim = bridge_batch_simulation(case);
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let mut live = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: None,
@@ -502,6 +507,7 @@ fn live_bridge_batch_recovers_rust_append_capacity_without_replacing_base_connec
     let registry =
         crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&IniFile::from_str(""), None);
     LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: Some(&registry),

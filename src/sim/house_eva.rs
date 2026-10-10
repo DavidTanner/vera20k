@@ -303,7 +303,13 @@ mod tests {
         assert_eq!(counts(&sim, owner), [1, 2, 0, 0, 1]);
         assert_eq!(sim.houses[&owner].tracking.funds_nag_factories(), 3);
 
-        sim.change_owner_with_rules(barracks, soviet, &rules, None);
+        sim.change_owner_with_rules(
+            barracks,
+            soviet,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 1]);
         assert_eq!(counts(&sim, soviet), [0, 1, 0, 0, 0]);
 
@@ -316,7 +322,13 @@ mod tests {
         sim.techno_limbo_with_rules(yard, &rules, None);
         sim.techno_limbo_with_rules(yard, &rules, None);
         assert_eq!(counts(&sim, owner), [1, 1, 0, 0, 0]);
-        sim.change_owner_with_rules(yard, soviet, &rules, None);
+        sim.change_owner_with_rules(
+            yard,
+            soviet,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(counts(&sim, owner), [1, 1, 0, 0, -1]);
         assert_eq!(counts(&sim, soviet), [0, 0, 0, 0, 1]);
     }

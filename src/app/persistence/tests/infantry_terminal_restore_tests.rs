@@ -33,7 +33,13 @@ fn infantry_terminal_held_factory_restore_waits_for_release_before_retiring() {
     building.finish_building_construction_for_test();
     building.building_actually_placed = true;
     saved.append_house_base_building_for_test(barracks);
-    assert!(enqueue_by_type(&mut saved, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(
+        &mut saved,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held = saved
         .production
         .factories
@@ -173,6 +179,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert!(!output.tick.frame_committed);
@@ -243,6 +250,7 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     // Exit requests are transient: production load resumes the match and the
@@ -299,7 +307,12 @@ fn infantry_terminal_prepared_load_preserves_policy_progress_and_cleanup_visit()
                     .unwrap()
                     .health
                     .current = 0;
-                saved.begin_infantry_death_sequence(victim, sequence, &rules);
+                saved.begin_infantry_death_sequence(
+                    victim,
+                    sequence,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 // DoAction starts the native one-frame countdown at frame0.
                 // Its frame0 Logic visit holds; frame1 performs the first step.
                 saved.advance_tick(&[], Some(&rules), None, None, 100);

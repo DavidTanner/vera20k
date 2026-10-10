@@ -10,11 +10,17 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// `FootClass::Mission_Enter @ 0x004D9290`, shared by refinery and depot
 /// callers. The MissionClass dispatcher owns the returned delay timer.
-pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i32 {
+pub(crate) fn mission_enter(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) -> i32 {
     let now = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return 1;
@@ -32,7 +38,8 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
             // 4D9425..9466: pending entry may queue Move. Otherwise an
             // object destination to a Unit/Aircraft suppresses idle. Every
             // path commences before sampling the CURRENT mission's Rate.
-            let parked = crate::sim::docking::building_dock::park_pending_entry(sim, rules, id);
+            let parked =
+                crate::sim::docking::building_dock::park_pending_entry(sim, rules, id, effects);
             let nav = sim
                 .substrate
                 .entities
@@ -52,7 +59,7 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
                 _ => false,
             };
             if !parked && !nav_is_mover {
-                sim.unit_enter_idle_mode(id, Some(rules), false);
+                sim.unit_enter_idle_mode(id, Some(rules), false, effects);
             }
             let _ = sim.mission_commence_exact(id, now);
         }
@@ -64,6 +71,7 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
                 RadioMessage::CanDock,
                 RadioPayload::default(),
                 Some(rules),
+                effects,
             );
             let tethered = sim
                 .substrate
@@ -72,10 +80,10 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
                 .is_some_and(|entity| entity.dock_entered_with.is_some());
             if reply != RadioResponse::Roger && !tethered {
                 // 0x004D92CE..0x004D92E8.
-                radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules));
-                sim.unit_enter_idle_mode(id, Some(rules), false);
-            } else if !pop_nav_queue(sim, rules, id) {
-                teleporter_reassign(sim, rules, id);
+                radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), effects);
+                sim.unit_enter_idle_mode(id, Some(rules), false, effects);
+            } else if !pop_nav_queue(sim, rules, id, effects) {
+                teleporter_reassign(sim, rules, id, effects);
             }
         }
     }
@@ -89,7 +97,12 @@ pub(crate) fn mission_enter(sim: &mut Simulation, rules: &RuleSet, id: u64) -> i
 /// no `Is_Piggybacking` test), then the class setter takes `NavQueue[0]` with
 /// the flag 0 (the queue is kept) and the first entry is deleted. Only Cell
 /// waypoints are represented. Returns whether this arm ran.
-fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
+fn pop_nav_queue(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    id: u64,
+    effects: FrameEffects<'_>,
+) -> bool {
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return false;
     };
@@ -104,6 +117,7 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
             crate::sim::components::NavTargetRef::cell(rx, ry),
             rules,
             false,
+            effects,
         );
     }
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -116,7 +130,7 @@ fn pop_nav_queue(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
 /// raw and hands the old NavCom back to the class setter with the flag 1. On
 /// the pad approach that re-runs the Teleporter arm and the Teleport Move_To;
 /// after the warp NavCom is NULL and the setter returns at once (`0x00741A80`).
-fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
+fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64, effects: FrameEffects<'_>) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
@@ -140,10 +154,11 @@ fn teleporter_reassign(sim: &mut Simulation, rules: &RuleSet, id: u64) {
                 crate::sim::components::NavTargetRef::cell(rx, ry),
                 rules,
                 true,
+                effects,
             );
         }
         _ => {
-            sim.set_unit_null_destination(id, Some(rules), None);
+            sim.set_unit_null_destination(id, Some(rules), None, effects);
         }
     }
 }

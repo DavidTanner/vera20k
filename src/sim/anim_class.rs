@@ -46,6 +46,7 @@
 //!   its only source of a terrain-owned anim is `TerrainClass::Catch_Fire @
 //!   0x0071C5B0`, which has no code caller in active YR.
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -1243,6 +1244,7 @@ impl Simulation {
         id: AnimId,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         // HideIfNoOre and the MakeInfantry mark read the stored Location
         // (`+0x9C`, `0x00423BD6..0x00423BFD`), not GetCoords: an owner-attached
@@ -1294,7 +1296,7 @@ impl Simulation {
         // the trailer and the first-AI guard; touching down ends it.
         if self.anim(id).is_some_and(|anim| anim.bounce.is_some())
             && let Some(bridge_state_changed) =
-                self.anim_bounce_step(id, &config, rules, overlay_registry)
+                self.anim_bounce_step(id, &config, rules, overlay_registry, frame_effects)
         {
             return bridge_state_changed;
         }
@@ -1433,7 +1435,13 @@ impl Simulation {
                 self.destroy_anim(id, rules);
             }
             VisitAction::MakeInfantry => {
-                if self.anim_make_infantry(id, config.make_infantry, rules, overlay_registry) {
+                if self.anim_make_infantry(
+                    id,
+                    config.make_infantry,
+                    rules,
+                    overlay_registry,
+                    frame_effects,
+                ) {
                     if let Some(anim) = self.anim_mut_by_id(id) {
                         anim.completed = true;
                     }
@@ -1484,6 +1492,7 @@ impl Simulation {
         make_infantry: i32,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some((location, owner)) = self
             .anim(id)
@@ -1540,6 +1549,7 @@ impl Simulation {
             crate::sim::world::PlacementEvidence::EvaluateMark,
             rules,
             overlay_registry,
+            frame_effects,
         );
         if placed.is_none() {
             if let Some(anim) = self.anim_mut_by_id(id) {
@@ -1565,11 +1575,11 @@ impl Simulation {
                     .z
         });
         if lift {
-            self.foot_mark_remove(infantry, Some(rules), overlay_registry);
+            self.foot_mark_remove(infantry, Some(rules), overlay_registry, frame_effects);
             if let Some(entity) = self.substrate.entities.get_mut(infantry) {
                 entity.on_bridge = true;
             }
-            self.foot_mark_put(infantry, Some(rules), overlay_registry);
+            self.foot_mark_put(infantry, Some(rules), overlay_registry, frame_effects);
         }
         let human = self.houses.get(&owner).is_some_and(|house| house.is_human);
         if !human && let Some(entity) = self.substrate.entities.get_mut(infantry) {
@@ -2234,6 +2244,7 @@ impl Simulation {
         config: &AnimTypeRuntimeConfig,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Option<bool> {
         let mut body = self.anim(id).and_then(|anim| anim.bounce)?;
         let outcome = self.anim_bounce_update(&mut body, rules);
@@ -2245,8 +2256,14 @@ impl Simulation {
         match outcome {
             BounceOutcome::Falling => {}
             BounceOutcome::Bounced => {
-                bridge_state_changed |=
-                    self.anim_bounce_contact(id, config, rules, overlay_registry, position);
+                bridge_state_changed |= self.anim_bounce_contact(
+                    id,
+                    config,
+                    rules,
+                    overlay_registry,
+                    position,
+                    frame_effects,
+                );
             }
             BounceOutcome::Stopped => self.destroy_anim(id, rules),
         }
@@ -2260,7 +2277,8 @@ impl Simulation {
         if outcome == BounceOutcome::Falling {
             return None;
         }
-        bridge_state_changed |= self.anim_bounce_landing(config, rules, overlay_registry, position);
+        bridge_state_changed |=
+            self.anim_bounce_landing(config, rules, overlay_registry, position, frame_effects);
         self.destroy_anim(id, rules);
         Some(bridge_state_changed)
     }
@@ -2277,6 +2295,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if let (Some(bounce_anim), Some(coord)) =
             (config.bounce_anim.as_deref(), self.anim_absolute_coord(id))
@@ -2353,7 +2372,12 @@ impl Simulation {
                         }
                     };
                     bridge_state_changed |= self
-                        .commit_noncombat_aoe_receivers(rules, overlay_registry, &[receiver])
+                        .commit_noncombat_aoe_receivers(
+                            rules,
+                            overlay_registry,
+                            &[receiver],
+                            frame_effects,
+                        )
                         .bridge_state_changed;
                 }
             }
@@ -2374,6 +2398,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         position: glam::IVec3,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let location = AnimWorldCoord {
             x: position.x,
@@ -2432,6 +2457,7 @@ impl Simulation {
             damage,
             warhead,
             (crate::sim::combat::RAD_NO_ATTACKER, None, warhead_ref),
+            frame_effects,
         );
         self.combat_light_requests
             .push(crate::sim::combat::CombatLightRequest::Impact {
@@ -2950,7 +2976,12 @@ mod tests {
                 .unwrap()
                 .damage_fire_anim_ids[slot] = Some(id);
             sim.anim_mut_by_id(id).unwrap().damage_fire_slot = Some((building_id, slot as u8));
-            sim.detach_all_pointer_expired(building_id, &rules, None);
+            sim.detach_all_pointer_expired(
+                building_id,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             for phase in ["owner_expiry", "anim_expiry"] {
                 if phase == "anim_expiry" {
                     sim.destroy_anim(id, &rules);
@@ -3011,8 +3042,14 @@ mod tests {
             .collect();
         sim.sound_events.clear();
         sim.uninit_with_rules(building_id, &rules);
+        // TechnoLimbo6F6C6B reaches Release even on its empty4A4 handle.
+        // Attached-owner expiry still must not destroy any Anim sound.
         assert!(
-            sim.sound_events.is_empty(),
+            matches!(
+                sim.sound_events.as_slice(),
+                [SimSoundEvent::GattlingLoopRelease { owner }]
+                    if *owner == crate::sim::combat::gattling::gattling_sound_owner(building_id)
+            ),
             "owner expiry does not call Anim Destroy"
         );
         assert_eq!(
@@ -3587,7 +3624,12 @@ mod tests {
                     assert_eq!(runtime.simulation.state_hash(), before);
                 }
                 let output = runtime
-                    .advance_frame(&[], 67, TickLane::Ordinary)
+                    .advance_frame(
+                        &[],
+                        67,
+                        TickLane::Ordinary,
+                        crate::sim::world::FrameEffects::default(),
+                    )
                     .expect("fixture frame must complete");
                 assert!(output.tick.frame_committed);
                 if frame < 16 {
@@ -3702,12 +3744,12 @@ mod tests {
         assert!(!sim.anim(id).unwrap().start_sound_active);
 
         // The first AI visit only clears the first-AI guard.
-        sim.visit_anim(id, &rules, None);
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(sim.anim(id).unwrap().runtime.delay_remaining, 1);
         assert_eq!(starts(&sim), 0);
 
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(sim.anim(id).unwrap().runtime.delay_remaining, 0);
         assert_eq!(starts(&sim), 1, "the expiring visit runs Start");
         assert_eq!(
@@ -3716,7 +3758,7 @@ mod tests {
             "and returns before advancing a frame"
         );
 
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(starts(&sim), 1, "Start runs once per delay");
     }
 
@@ -4015,7 +4057,7 @@ mod tests {
         let id = sim.spawn_anim_object(&rules, descriptor).unwrap();
 
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(
             sim.substrate.raw_cell_occupation.ground_bits(3, 4),
             0x04,
@@ -4024,7 +4066,7 @@ mod tests {
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 0);
 
         sim.session.binary_frame = 1;
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
 
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
         assert!(sim.substrate.pending_delete.contains(&id));
@@ -4047,10 +4089,10 @@ mod tests {
         descriptor.sub_y = SimFixed::from_num(192);
         let id = sim.spawn_anim_object(&rules, descriptor).unwrap();
 
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(5, 6), 0x08);
         sim.session.binary_frame = 1;
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
 
         assert_eq!(sim.anim(id).unwrap().type_id, plain);
         assert_eq!(
@@ -4482,7 +4524,12 @@ mod tests {
         let mut landed_at = None;
         for frame in 1..200 {
             sim.session.binary_frame = frame;
-            sim.visit_anim(chunk, &rules, None);
+            sim.visit_anim(
+                chunk,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let anim = sim.anim(chunk).unwrap();
             let body = anim.bounce.unwrap().position_leptons();
             assert_eq!(
@@ -4561,7 +4608,7 @@ mod tests {
         let mut saw_middle = false;
         for frame in 1..40 {
             sim.session.binary_frame = frame;
-            sim.visit_anim(id, &rules, None);
+            sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
             let Some(anim) = sim.anim(id) else {
                 break;
             };
@@ -4586,7 +4633,7 @@ mod tests {
             let id = spawn_mark(&mut sim, &rules, world_z);
             for frame in 1..40 {
                 sim.session.binary_frame = frame;
-                sim.visit_anim(id, &rules, None);
+                sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
             }
             assert_eq!(marks_placed(&sim), expected, "z {world_z}");
         }
@@ -4615,15 +4662,15 @@ mod tests {
             .spawn_anim_object(&rules, runtime_descriptor(type_id, 1))
             .unwrap();
 
-        sim.visit_anim(id, &rules, None); // constructor first-AI guard at frame 0
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // constructor first-AI guard at frame 0
         sim.session.binary_frame = 1;
-        sim.visit_anim(id, &rules, None); // delay 1 -> 0
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // delay 1 -> 0
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 0);
         sim.session.binary_frame = 2;
-        sim.visit_anim(id, &rules, None); // constructor-anchored timer is already due
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // constructor-anchored timer is already due
 
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 1);
-        sim.visit_anim(id, &rules, None); // a second visit in the same frame cannot advance again
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // a second visit in the same frame cannot advance again
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 1);
         assert_eq!(sim.scenario_rng.logical_state(), rng_before);
     }
@@ -4668,12 +4715,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(sim.anim(id).unwrap().runtime.rate_reload, 6);
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         sim.session.binary_frame = 5;
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 0);
         sim.session.binary_frame = 6;
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(sim.anim(id).unwrap().runtime.current_frame, 1);
     }
 
@@ -4695,11 +4742,11 @@ mod tests {
             [SimSoundEvent::AnimationStarted { anim_id, .. }] if *anim_id == id
         ));
 
-        sim.visit_anim(id, &rules, None); // guard
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // guard
         sim.session.binary_frame = 1;
-        sim.visit_anim(id, &rules, None); // frame 1
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // frame 1
         sim.session.binary_frame = 2;
-        sim.visit_anim(id, &rules, None); // frame 2 -> SECOND in place + Middle
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // frame 2 -> SECOND in place + Middle
         let anim = sim.anim(id).unwrap();
         assert_eq!(sim.interner.resolve(anim.type_id), "SECOND");
         assert_eq!(anim.runtime.current_frame, 0);
@@ -4712,9 +4759,9 @@ mod tests {
         );
 
         sim.session.binary_frame = 3;
-        sim.visit_anim(id, &rules, None); // SECOND frame 1 (Next does not restore guard)
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // SECOND frame 1 (Next does not restore guard)
         sim.session.binary_frame = 4;
-        sim.visit_anim(id, &rules, None); // SECOND frame 2 -> destroy
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default()); // SECOND frame 2 -> destroy
         sim.destroy_anim(id, &rules);
         assert!(!sim.anim(id).unwrap().runtime.inactive);
         assert!(sim.substrate.pending_delete.contains(&id));
@@ -4776,7 +4823,7 @@ mod tests {
             .unwrap();
 
         sim.for_each_live_object(|sim, id| {
-            sim.visit_anim(id, &rules, None);
+            sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         });
 
         let order = sim.live_object_order_snapshot();
@@ -4822,7 +4869,12 @@ mod tests {
         assert!(sim.live_object_order_snapshot().contains(&anim_id));
         assert!(!sim.substrate.pending_delete.contains(&anim_id));
 
-        sim.visit_anim(anim_id, &rules, None);
+        sim.visit_anim(
+            anim_id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(
             sim.entities()
                 .get(building_id)
@@ -5292,7 +5344,12 @@ mod tests {
             .damage_fire_anim_ids[0]
             .unwrap();
         let frame = sim.anim(anim_id).unwrap().runtime.current_frame;
-        sim.visit_anim(anim_id, &rules, None);
+        sim.visit_anim(
+            anim_id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let anim = sim.anim(anim_id).unwrap();
         assert_eq!(anim.runtime.current_frame, frame);
         assert!(!anim.runtime.first_ai_guard);

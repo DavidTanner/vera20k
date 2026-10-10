@@ -3,6 +3,7 @@
 //! Strip readiness queues mobile PLACE for its frame's event tail; it retains the
 //! factory-held identity. Factory accounting settles in factory_lifecycle.
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeMap;
 
 use crate::rules::ruleset::RuleSet;
@@ -186,6 +187,7 @@ pub(crate) fn dispatch_production_changes_for_tests(
         Some(rules),
         sim.session.tick.saturating_add(1),
         overlay_registry,
+        crate::sim::world::FrameEffects::default(),
     );
     spawned
 }
@@ -200,6 +202,7 @@ pub(in crate::sim) fn exit_produced_object(
     producer_id: u64,
     stable_id: u64,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> crate::sim::ai_base_building::BuildingExit {
     use crate::sim::ai_base_building::{self, BuildingExit};
     use crate::sim::ai_unit_choice::UnitChoiceKind;
@@ -265,6 +268,7 @@ pub(in crate::sim) fn exit_produced_object(
             stable_id,
             airport_bound,
             overlay_registry,
+            effects,
         );
     }
     let Some(producer) = sim.substrate.entities.get(producer_id) else {
@@ -368,8 +372,14 @@ pub(in crate::sim) fn exit_produced_object(
             {
                 return BuildingExit::Failed;
             }
-            let result =
-                exit_produced_object(sim, rules, alternate_id, stable_id, overlay_registry);
+            let result = exit_produced_object(
+                sim,
+                rules,
+                alternate_id,
+                stable_id,
+                overlay_registry,
+                effects,
+            );
             if attached {
                 assert!(
                     sim.production
@@ -407,10 +417,12 @@ pub(in crate::sim) fn exit_produced_object(
                 crate::sim::world::PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
+                effects,
             )?;
             // The native successful suffix44459F..4445C9 re-marks around the
             // second coordinate write. Use the shared Mark/SetLocation owners.
-            let context = crate::sim::world::UninitContext::new(Some(rules), overlay_registry);
+            let context = crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
+                .with_effects(effects);
             sim.unmark_entity_remove(spawned, context);
             crate::sim::movement::ground_pose::foot_set_location(
                 &mut sim.substrate.entities,
@@ -420,7 +432,7 @@ pub(in crate::sim) fn exit_produced_object(
                 &sim.interner,
             );
             sim.mark_entity_put(spawned, context);
-            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned, effects);
             //4445F0 queues producer Unload16. Its existing Building mission
             //owner opens the shared Door and forces the native exit track.
             let _ = sim.mission_queue_exact(
@@ -437,7 +449,7 @@ pub(in crate::sim) fn exit_produced_object(
     } else {
         let spawned = match selection.delivery {
             ProductionDeliveryKind::NavalUnit => {
-                unlimbo_held_naval_unit(sim, rules, stable_id, (rx, ry), overlay_registry)
+                unlimbo_held_naval_unit(sim, rules, stable_id, (rx, ry), overlay_registry, effects)
             }
             ProductionDeliveryKind::Infantry {
                 coordinate,
@@ -454,6 +466,7 @@ pub(in crate::sim) fn exit_produced_object(
                         crate::sim::world::PlacementEvidence::EvaluateMark,
                         rules,
                         overlay_registry,
+                        effects,
                     )?;
                     let nav = sim
                         .substrate
@@ -483,6 +496,7 @@ pub(in crate::sim) fn exit_produced_object(
                             crate::sim::components::NavTargetRef::cell(exit_cell.0, exit_cell.1),
                             rules,
                             overlay_registry,
+                            effects,
                         ) {
                             log::debug!("Infantry {spawned} factory exit destination: {cause}");
                         }
@@ -496,6 +510,7 @@ pub(in crate::sim) fn exit_produced_object(
                         crate::sim::radio::RadioMessage::Hello,
                         crate::sim::radio::RadioPayload::default(),
                         Some(rules),
+                        effects,
                     ) == crate::sim::radio::RadioResponse::Roger
                     {
                         crate::sim::radio::transmit(
@@ -505,6 +520,7 @@ pub(in crate::sim) fn exit_produced_object(
                             crate::sim::radio::RadioMessage::TetherBack,
                             crate::sim::radio::RadioPayload::default(),
                             Some(rules),
+                            effects,
                         );
                     }
                     Some(spawned)
@@ -521,13 +537,14 @@ pub(in crate::sim) fn exit_produced_object(
                     crate::sim::world::PlacementEvidence::EvaluateMark,
                     rules,
                     overlay_registry,
+                    effects,
                 )
             }
         };
         if let Some(spawned) = spawned
             && !matches!(selection.delivery, ProductionDeliveryKind::Infantry { .. })
         {
-            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned);
+            mark_war_factory_spawn_contact(sim, rules, selection.producer_id, spawned, effects);
         }
         spawned
     };
@@ -538,7 +555,7 @@ pub(in crate::sim) fn exit_produced_object(
     // A Slave Miner leaving its war factory starts its hunt instead of
     // taking the rally point (`sim::slave_manager`).
     let hunting = matches!(selection.delivery, ProductionDeliveryKind::Standard)
-        && sim.slave_master_leaves_factory(stable_id, rules);
+        && sim.slave_master_leaves_factory(stable_id, rules, effects);
     // Auto-move newly produced unit to rally point (if set).
     if !hunting
         && !land_factory
@@ -616,6 +633,7 @@ pub(in crate::sim) fn exit_produced_object(
                 },
                 Some(rules),
                 overlay_registry,
+                effects,
             );
             if naval_rally.is_some()
                 && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
@@ -669,6 +687,7 @@ fn exit_aircraft(
     stable_id: u64,
     airport_bound: bool,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> crate::sim::ai_base_building::BuildingExit {
     use crate::sim::ai_base_building::BuildingExit;
     use crate::sim::radio::{self, RadioMessage, RadioPayload};
@@ -680,7 +699,7 @@ fn exit_aircraft(
     if !linkable {
         return BuildingExit::Failed;
     }
-    sim.set_object_z(stable_id, 0, Some(rules), overlay_registry);
+    sim.set_object_z(stable_id, 0, Some(rules), overlay_registry, effects);
     let dock_coordinate = |sim: &Simulation| {
         crate::sim::movement::building_dock_coordinate(
             &sim.substrate.entities,
@@ -700,6 +719,7 @@ fn exit_aircraft(
             crate::sim::world::PlacementEvidence::EvaluateMark,
             rules,
             overlay_registry,
+            effects,
         )?;
         for message in [RadioMessage::Hello, RadioMessage::Tether] {
             radio::transmit(
@@ -709,10 +729,11 @@ fn exit_aircraft(
                 message,
                 RadioPayload::default(),
                 Some(rules),
+                effects,
             );
         }
         let pad = dock_coordinate(sim);
-        sim.foot_set_location_marked(spawned, pad, Some(rules), overlay_registry);
+        sim.foot_set_location_marked(spawned, pad, Some(rules), overlay_registry, effects);
         sim.set_aircraft_dock(spawned, Some(producer_id));
         let rally = sim
             .substrate
@@ -722,7 +743,7 @@ fn exit_aircraft(
         if let Some(rally) = rally
             && !airport_bound
         {
-            sim.assign_aircraft_destination(spawned, Some(rally.into()), rules);
+            sim.assign_aircraft_destination(spawned, Some(rally.into()), rules, effects);
             let _ = sim.mission_queue_exact(
                 spawned,
                 crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Move),

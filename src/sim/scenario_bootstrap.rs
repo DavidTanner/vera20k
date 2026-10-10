@@ -1766,6 +1766,7 @@ fn place_starting_object_near_base(
                 PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
+                crate::sim::world::FrameEffects::default(),
             )
             .is_some()
         {
@@ -1813,6 +1814,7 @@ fn place_starting_object_near_base(
                         PlacementEvidence::EvaluateMark,
                         rules,
                         overlay_registry,
+                        crate::sim::world::FrameEffects::default(),
                     )
                     .is_some()
                 {
@@ -1822,7 +1824,11 @@ fn place_starting_object_near_base(
         }
     }
 
-    sim.discard_constructed_limbo(stable_id, Some(rules));
+    sim.discard_constructed_limbo(
+        stable_id,
+        Some(rules),
+        crate::sim::world::FrameEffects::default(),
+    );
     None
 }
 
@@ -2343,12 +2349,12 @@ impl Simulation {
     /// No second bootstrap owner can exist after `into_simulation` consumes it.
     pub(crate) fn terrain_load_draws(
         &mut self,
-    ) -> (ScenarioFillRng<'_>, crate::sim::rng::MainRngDraws<'_>) {
+    ) -> (ScenarioFillRng<'_>, crate::sim::rng::MainRngDraws) {
         (
             ScenarioFillRng {
                 rng: &mut self.scenario_rng,
             },
-            crate::sim::rng::MainRngDraws::borrow(&mut self.main_rng),
+            self.main_rng.draws(),
         )
     }
 
@@ -3246,7 +3252,7 @@ mod tests {
         let seed = 0x51C0_1002;
         let mut sim = ScenarioBootstrapRng::new(seed).into_simulation(&descriptor(seed));
         {
-            let (scenario, mut main) = sim.terrain_load_draws();
+            let (scenario, main) = sim.terrain_load_draws();
             let _ = main.next_u32();
             drop(scenario);
         }
@@ -3894,7 +3900,7 @@ mod tests {
         let retained_handle = sim.allocate_stable_id();
 
         {
-            let (mut scenario_fill, mut variant_main) = sim.terrain_load_draws();
+            let (mut scenario_fill, variant_main) = sim.terrain_load_draws();
             assert_eq!(
                 scenario_fill.next_range_u32_inclusive(5, 17),
                 reference.next_range_u32_inclusive(5, 17),

@@ -428,7 +428,13 @@ fn actual_turn_completion_reason_zero_does_not_promote_queued_mission() {
         assert_eq!(sim.substrate.entities.get(1).unwrap().mission, before);
         // Positive control: the same receiver with arrival reason2 must
         // promote this fixture, without dispatching the new mission handler.
-        sim.unit_per_cell_process(1, PerCellReason::Arrival, Some(&rules), None);
+        sim.unit_per_cell_process(
+            1,
+            PerCellReason::Arrival,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let mission = sim.substrate.entities.get(1).unwrap().mission;
         assert_eq!(mission.current().known(), Some(MissionType::Unload));
         assert_eq!(mission.queued(), MissionId::NONE);

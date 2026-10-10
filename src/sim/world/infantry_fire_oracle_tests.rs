@@ -910,6 +910,7 @@ fn original_single_listener_expiry_clears_pending_shot_and_shortens_passive_time
                     PointerExpiryControl::Uninit,
                     Some(&rules),
                     None,
+                    crate::sim::world::FrameEffects::default(),
                 );
                 assert_source(&fixture, &expiry["after"], name);
                 assert_rng(&fixture.sim, &expiry["rng_after"], name);
@@ -1015,7 +1016,8 @@ fn original_whole_ai_shot_dynamic_logic_damage_and_deferred_lifetimes_match_nati
             assert!(!fixture.sim.visit_combat_tail(
                 case["original_actor_prefix"]["count"].as_u64().unwrap() + 1,
                 &rules,
-                None
+                None,
+                crate::sim::world::FrameEffects::default()
             ));
             assert_emission_boundary(&fixture, &suffix["after_pass"], &ids, name);
             let start = suffix["event_range"][0].as_u64().unwrap() as usize;
@@ -1034,7 +1036,11 @@ fn original_whole_ai_shot_dynamic_logic_damage_and_deferred_lifetimes_match_nati
             // The original caller increments A8ED84 before725C70. Object AI
             // and both clocks saw the previous absolute frame throughout.
             fixture.sim.session.binary_frame += 1;
-            fixture.sim.process_pending_delete_with(Some(&rules), None);
+            fixture.sim.process_pending_delete_with(
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_emission_boundary(&fixture, &suffix["after_drain"], &ids, name);
             assert_rng(&fixture.sim, &suffix["rng_after"], name);
             suffixes += 1;

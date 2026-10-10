@@ -65,6 +65,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::infantry_entry::{InfantryEntryArgs, InfantryEntryClass};
 use crate::sim::passenger::PassengerRole;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
     UninitContext,
@@ -151,12 +152,13 @@ pub enum SellOrder {
 /// uninitialised (`vt+0xF8`) at once, with no click or refund (the branch
 /// computes Cost_Of `Type vt+0x84` and asks `0x0050B730`, and discards
 /// both). Returns whether the order was taken.
-pub fn sell_back(
+pub(crate) fn sell_back(
     sim: &mut Simulation,
     rules: &RuleSet,
     id: u64,
     order: SellOrder,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let Some((owner, buildup, firestorm_wall, selling, c4)) =
         sim.substrate.entities.get(id).and_then(|entity| {
@@ -181,8 +183,8 @@ pub fn sell_back(
     };
     if !buildup {
         if firestorm_wall {
-            let context = UninitContext::new(Some(rules), registry);
-            let _ = sim.techno_limbo_with_rules(id, rules, registry);
+            let context = UninitContext::new(Some(rules), registry).with_effects(frame_effects);
+            let _ = sim.techno_limbo_with_context(id, context);
             sim.uninit_with_context(id, context);
         }
         return firestorm_wall;
@@ -325,7 +327,12 @@ fn qualifying_undeploy(sim: &Simulation, rules: &RuleSet, id: u64) -> bool {
 /// Bunker's vehicle released (`+0x2E4`, `0x004593A0`), RUN_AWAY to every
 /// contact (`0x0044AB68`) and the damage-fire anims released (`+0x5C8`,
 /// `0x0044AB87..0x0044ABAA`).
-pub(crate) fn sell_stage_zero(sim: &mut Simulation, rules: Option<&RuleSet>, id: u64) {
+pub(crate) fn sell_stage_zero(
+    sim: &mut Simulation,
+    rules: Option<&RuleSet>,
+    id: u64,
+    frame_effects: FrameEffects<'_>,
+) {
     //MissionSelling44AB0E/44AB1B, after the optional upgrade-sale work and
     //before DeploySound/RUN_AWAY. Ordinary stage0 reaches both writers.
     if let Some(owner) = sim
@@ -362,9 +369,15 @@ pub(crate) fn sell_stage_zero(sim: &mut Simulation, rules: Option<&RuleSet>, id:
         .and_then(|building| building.bunker_occupant)
         .is_some()
     {
-        crate::sim::docking::bunker_link::release_sell_destroy(sim, id);
+        crate::sim::docking::bunker_link::release_sell_destroy(sim, id, frame_effects);
     }
-    crate::sim::radio::broadcast(sim, id, crate::sim::radio::RadioMessage::RunAway, rules);
+    crate::sim::radio::broadcast(
+        sim,
+        id,
+        crate::sim::radio::RadioMessage::RunAway,
+        rules,
+        frame_effects,
+    );
     sim.clear_building_damage_fire_slots(id, rules);
 }
 
@@ -380,8 +393,9 @@ pub(crate) fn sell_stage_one(
     rules: Option<&RuleSet>,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
-    crate::sim::radio::broadcast_break(sim, id, rules);
+    crate::sim::radio::broadcast_break(sim, id, rules, frame_effects);
     if sim
         .substrate
         .entities
@@ -391,7 +405,7 @@ pub(crate) fn sell_stage_one(
         return false;
     }
     let spawned = rules.is_some_and(|rules| {
-        let spawned = sale_survivors(sim, rules, registry, id);
+        let spawned = sale_survivors(sim, rules, registry, id, frame_effects);
         sale_sounds(sim, rules, id);
         spawned
     });
@@ -418,6 +432,7 @@ fn sale_survivors(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let Some((skip, cells)) = sim.substrate.entities.get(id).and_then(|entity| {
         let object = sim.object_type(entity.type_ref(), rules)?;
@@ -436,9 +451,10 @@ fn sale_survivors(
         return false;
     }
     let count = sim.building_survivor_count(rules, id, false);
-    let passengers = sim.eject_absorbed_passengers(rules, registry, id, &cells, false);
-    let garrison = eject_garrison_occupants(sim, rules, registry, id);
-    let crew = sim.spawn_sale_crew(rules, registry, id, count, &cells);
+    let passengers =
+        sim.eject_absorbed_passengers(rules, registry, id, &cells, false, frame_effects);
+    let garrison = eject_garrison_occupants(sim, rules, registry, id, frame_effects);
+    let crew = sim.spawn_sale_crew(rules, registry, id, count, &cells, frame_effects);
     passengers > 0 || garrison > 0 || crew
 }
 
@@ -491,9 +507,10 @@ pub(crate) fn sell_complete(
     rules: Option<&RuleSet>,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let Some(rules) = rules else {
-        sim.uninit(id);
+        sim.uninit_with_context(id, UninitContext::default().with_effects(frame_effects));
         return false;
     };
     let _ = sim.assign_target_represented(id, None, Some(rules));
@@ -508,7 +525,7 @@ pub(crate) fn sell_complete(
             .push(SimSoundEvent::StructureSold { owner });
     }
     if qualifying_undeploy(sim, rules, id) {
-        sim.finish_undeploy(id, rules, registry);
+        sim.finish_undeploy(id, rules, registry, frame_effects);
         return true;
     }
     let refund = sim.substrate.entities.get(id).and_then(|entity| {
@@ -528,7 +545,10 @@ pub(crate) fn sell_complete(
         // Add_Credits (`0x0044A222`).
         crate::sim::credit_income::add_credits(sim, owner, refund);
     }
-    sim.uninit_with_context(id, UninitContext::new(Some(rules), registry));
+    sim.uninit_with_context(
+        id,
+        UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+    );
     crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     false
 }
@@ -641,6 +661,7 @@ fn sellbuilding_direct_scatter_handoff(
     building_ry: u16,
     building_width: u16,
     building_height: u16,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(pax) = sim.substrate.entities.get(passenger_id) else {
         return;
@@ -663,6 +684,7 @@ fn sellbuilding_direct_scatter_handoff(
         crate::sim::movement::ScatterFlags::new(true, true),
         rules,
         registry,
+        frame_effects,
     ) {
         log::debug!("ejected occupant {passenger_id} did not scatter: {cause}");
     }
@@ -686,7 +708,13 @@ fn place_garrison_passenger_at_cell(
     // then take the mutable borrow for the remaining field writes. change_owner is a no-op if the id is absent —
     // the get_mut below still guards absence.
     if let Some(owner) = owner_override {
-        sim.change_owner_with_rules(passenger_id, owner, rules, context.registry());
+        sim.change_owner_with_rules(
+            passenger_id,
+            owner,
+            rules,
+            context.registry(),
+            context.effects(),
+        );
     }
     let Some(pax_sub_cell) = sim
         .substrate
@@ -734,6 +762,7 @@ fn place_garrison_passenger_at_cell(
         building_ry,
         building_width,
         building_height,
+        context.effects(),
     );
 
     true
@@ -817,6 +846,7 @@ fn eject_garrison_occupants(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> usize {
     // Snapshot building data before mutation.
     let (rx, ry, z, width, height, passenger_ids) = {
@@ -854,7 +884,7 @@ fn eject_garrison_occupants(
         &passenger_ids,
         None,
         GarrisonEjectMode::PlayerSell,
-        UninitContext::new(Some(rules), registry),
+        UninitContext::new(Some(rules), registry).with_effects(frame_effects),
     );
 
     // Clear player-sell cargo only. Native SellBuilding is an ejection helper;
@@ -899,19 +929,36 @@ pub(crate) fn eject_destruction_garrison(
 /// completed.
 #[cfg(test)]
 pub(crate) fn sell_building_now_for_test(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
-    if !sell_back(sim, rules, id, SellOrder::Player, None)
-        || sim
-            .substrate
-            .entities
-            .get(id)
-            .is_none_or(|building| !building.building_down())
+    if !sell_back(
+        sim,
+        rules,
+        id,
+        SellOrder::Player,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    ) || sim
+        .substrate
+        .entities
+        .get(id)
+        .is_none_or(|building| !building.building_down())
     {
         return false;
     }
     // This test-only immediate sale fixture has no resident overlay table.
-    sim.visit_building_operational(id, rules, None);
-    sell_stage_zero(sim, Some(rules), id);
-    sell_stage_one(sim, Some(rules), None, id);
+    sim.visit_building_operational(id, rules, None, crate::sim::world::FrameEffects::default());
+    sell_stage_zero(
+        sim,
+        Some(rules),
+        id,
+        crate::sim::world::FrameEffects::default(),
+    );
+    sell_stage_one(
+        sim,
+        Some(rules),
+        None,
+        id,
+        crate::sim::world::FrameEffects::default(),
+    );
     if sim
         .substrate
         .entities
@@ -920,7 +967,13 @@ pub(crate) fn sell_building_now_for_test(sim: &mut Simulation, rules: &RuleSet, 
     {
         return false;
     }
-    sell_complete(sim, Some(rules), None, id);
+    sell_complete(
+        sim,
+        Some(rules),
+        None,
+        id,
+        crate::sim::world::FrameEffects::default(),
+    );
     true
 }
 
@@ -969,6 +1022,7 @@ pub(crate) fn sell_building_occupants(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> usize {
     let (rx, ry, z, width, height, owner, passenger_ids) = {
         let Some(entity) = sim.substrate.entities.get(building_id) else {
@@ -1020,7 +1074,7 @@ pub(crate) fn sell_building_occupants(
         &passenger_ids,
         Some(owner),
         GarrisonEjectMode::DestructionNoExitRemove,
-        UninitContext::new(Some(rules), registry),
+        UninitContext::new(Some(rules), registry).with_effects(frame_effects),
     );
 
     if let Some(building) = sim.substrate.entities.get_mut(building_id) {
@@ -1400,7 +1454,13 @@ mod tests {
         let americans = sim.interner.intern("Americans");
 
         assert_eq!(
-            eject_garrison_occupants(&mut sim, &rules, None, building_id),
+            eject_garrison_occupants(
+                &mut sim,
+                &rules,
+                None,
+                building_id,
+                crate::sim::world::FrameEffects::default()
+            ),
             1
         );
 
@@ -1569,7 +1629,13 @@ mod tests {
         let rng_before = sim.scenario_rng.state();
 
         assert_eq!(
-            eject_garrison_occupants(&mut sim, &rules, None, building_id),
+            eject_garrison_occupants(
+                &mut sim,
+                &rules,
+                None,
+                building_id,
+                crate::sim::world::FrameEffects::default()
+            ),
             1
         );
 

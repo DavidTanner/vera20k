@@ -90,7 +90,16 @@ fn observed_launch(
     sw_type: InternedId,
 ) -> (bool, Vec<Observed>) {
     OBSERVED.set(Some(Vec::new()));
-    let launched = launch(sim, rules, owner, cell.0, cell.1, sw_type, None);
+    let launched = launch(
+        sim,
+        rules,
+        owner,
+        cell.0,
+        cell.1,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     (launched, OBSERVED.take().unwrap())
 }
 
@@ -386,7 +395,12 @@ fn the_overrides_match_native() {
             let drone = sim
                 .construct_object_limbo_at_height("DRON", "Russians", 39, 40, 0, 0, &rules)
                 .unwrap();
-            sim.parasite_attach(drone, Some(victim), &rules);
+            sim.parasite_attach(
+                drone,
+                Some(victim),
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_eq!(
                 sim.substrate
                     .entities
@@ -482,7 +496,16 @@ fn the_overrides_match_native() {
 fn the_invoke_anim_plays_its_report() {
     let (rules, mut sim, owner) = world_with(rules(""), 64, &[]);
     let sw_type = charge_super(&mut sim, owner, IRON_CURTAIN);
-    assert!(launch(&mut sim, &rules, owner, 10, 10, sw_type, None));
+    assert!(launch(
+        &mut sim,
+        &rules,
+        owner,
+        10,
+        10,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.sound_events.iter().any(|event| matches!(
         event,
         SimSoundEvent::AnimationStarted { sound_id, .. }
@@ -503,7 +526,16 @@ fn a_curtained_tank_draws_its_tint_number_in_its_own_ai() {
             .unwrap();
         if curtain {
             let sw_type = charge_super(&mut sim, owner, IRON_CURTAIN);
-            assert!(launch(&mut sim, &rules, owner, 10, 10, sw_type, None));
+            assert!(launch(
+                &mut sim,
+                &rules,
+                owner,
+                10,
+                10,
+                sw_type,
+                None,
+                crate::sim::world::FrameEffects::default()
+            ));
         }
         let mut drawn = Vec::new();
         for visit in 1..=40 {
@@ -544,7 +576,16 @@ fn curtained_infantry_die_and_announce_each_loss() {
     let tank = spawn(&mut sim, "MTNK", 9);
     let sw_type = charge_super(&mut sim, owner, IRON_CURTAIN);
     sim.sound_events.clear();
-    assert!(launch(&mut sim, &rules, owner, 10, 10, sw_type, None));
+    assert!(launch(
+        &mut sim,
+        &rules,
+        owner,
+        10,
+        10,
+        sw_type,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let lost: Vec<InternedId> = sim
         .sound_events

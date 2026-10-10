@@ -4,8 +4,8 @@
 //! calls. Only recursion guards and ordered publication receipts are local.
 
 use super::*;
-use crate::sim::world::Simulation;
 use crate::sim::world::techno_ai_cloak::emit_configured_cloak_sound;
+use crate::sim::world::{FrameEffects, Simulation};
 
 #[path = "aircraft_release.rs"]
 mod aircraft_release;
@@ -16,6 +16,7 @@ fn respond_to_base_attack(
     _site: BaseDefenseResponseCallSite,
     victim_id: u64,
     attacker_id: u64,
+    effects: FrameEffects<'_>,
 ) {
     #[cfg(test)]
     if let Some(fixture) = world.receiver_fixture.as_mut() {
@@ -38,7 +39,7 @@ fn respond_to_base_attack(
             });
         return;
     }
-    base_defense_response::respond_to_base_attack(world, rules, victim_id, attacker_id);
+    base_defense_response::respond_to_base_attack(world, rules, victim_id, attacker_id, effects);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -139,6 +140,7 @@ pub(crate) fn apply_area_damage(
     damage: i32,
     warhead: &WarheadType,
     origin: (u64, Option<InternedId>, InternedId),
+    effects: FrameEffects<'_>,
 ) -> bool {
     let area = collect_area_at(
         world,
@@ -150,7 +152,7 @@ pub(crate) fn apply_area_damage(
         origin,
     );
     let receipt =
-        world.commit_noncombat_aoe_receivers(rules, overlay_registry, &area.aoe.receivers);
+        world.commit_noncombat_aoe_receivers(rules, overlay_registry, &area.aoe.receivers, effects);
     let bridge_continued = continue_area_bridge_damage(
         world,
         rules,
@@ -161,6 +163,7 @@ pub(crate) fn apply_area_damage(
         area.z_leptons,
         area.routed_wall,
         receipt.area_result.expect("area receiver receipt"),
+        effects,
     );
     receipt.bridge_state_changed || bridge_continued
 }
@@ -210,6 +213,7 @@ pub(crate) fn apply_area_damage_in_run(
         area.z_leptons,
         area.routed_wall,
         area_result,
+        run.effects(),
     );
     (effects, pings)
 }
@@ -277,7 +281,7 @@ fn commit_smudges(
 }
 
 #[derive(Default)]
-pub(crate) struct ReceiverRun {
+pub(crate) struct ReceiverRun<'a> {
     pub(crate) handled_deaths: Vec<u64>,
     pub(super) finalizing_terrain: BTreeSet<u64>,
     pub(crate) navigation_changed_cells: Vec<(u16, u16)>,
@@ -288,9 +292,19 @@ pub(crate) struct ReceiverRun {
     /// callback deselects the unit, and a dying one hands it to its
     /// passengers and crewman.
     pub(crate) selected_units: Vec<u64>,
+    effects: FrameEffects<'a>,
 }
 
-impl ReceiverRun {
+impl<'a> ReceiverRun<'a> {
+    pub(crate) fn with_effects(mut self, effects: FrameEffects<'a>) -> Self {
+        self.effects = effects;
+        self
+    }
+
+    pub(crate) const fn effects(&self) -> FrameEffects<'a> {
+        self.effects
+    }
+
     pub(crate) fn finish(self) -> Vec<(u16, u16)> {
         debug_assert!(self.finalizing_terrain.is_empty());
         self.navigation_changed_cells
@@ -591,6 +605,7 @@ pub(crate) fn commit_entities(
                         BaseDefenseResponseCallSite::BuildingPrelude,
                         event.target_id,
                         event.attacker_id,
+                        run.effects(),
                     );
                 }
             }
@@ -618,6 +633,7 @@ pub(crate) fn commit_entities(
             event.damage,
             event.warhead_ref,
             rules,
+            run.effects(),
         );
         // ReceiveDamage carries sourceHouse separately from the source object.
         // Records snapshot it at detonation; a record without one falls back
@@ -674,7 +690,7 @@ pub(crate) fn commit_entities(
                 .get(target_id)
                 .is_some_and(|target| !target.berserk.active);
         if starts_berserk {
-            world.leave_team(target_id, false, Some(rules));
+            world.leave_team(target_id, false, Some(rules), run.effects());
         }
         let Some(receiver_health::ReceiverHealthCommit {
             building_entry_frame,
@@ -763,6 +779,7 @@ pub(crate) fn commit_entities(
                 BaseDefenseResponseCallSite::ProtectedTechno,
                 target_id,
                 attacker_id,
+                run.effects(),
             );
         }
 
@@ -837,7 +854,8 @@ pub(crate) fn commit_entities(
         if reached_exact_zero && postmortem_candidate.is_none() && callbacks_enabled(world) {
             world.object_destroy_callback(
                 target_id,
-                crate::sim::world::UninitContext::new(Some(rules), overlay_registry),
+                crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
+                    .with_effects(run.effects()),
             );
         }
         if postmortem_candidate.is_some() {
@@ -850,7 +868,8 @@ pub(crate) fn commit_entities(
                     target_id,
                     fatal_category,
                     crate::sim::world::UninitContext::with_rules(rules)
-                        .with_registry(overlay_registry),
+                        .with_registry(overlay_registry)
+                        .with_effects(run.effects()),
                 );
             };
         }
@@ -916,7 +935,8 @@ pub(crate) fn commit_entities(
                     target_id,
                     category,
                     crate::sim::world::UninitContext::with_rules(rules)
-                        .with_registry(overlay_registry),
+                        .with_registry(overlay_registry)
+                        .with_effects(run.effects()),
                 );
             };
         }
@@ -960,6 +980,7 @@ pub(crate) fn commit_entities(
                 attacker_coord.and_then(|attacker_coord| {
                     world.select_infantry_damage_scatter(
                         target_id, attacker_coord, rules, overlay_registry,
+                        run.effects(),
                     ).unwrap_or_else(|cause| {
                         panic!("damage Scatter requires valid live infantry entry state for {target_id}: {cause}")
                     })
@@ -981,6 +1002,7 @@ pub(crate) fn commit_entities(
                         scatter.speed,
                         rules,
                         overlay_registry,
+                        run.effects(),
                     )
                     .unwrap_or_else(|cause| {
                         panic!("damage Scatter destination for {target_id}: {cause}")
@@ -1009,6 +1031,7 @@ pub(crate) fn commit_entities(
                         scatter.destination,
                         scatter.speed,
                         Some(rules),
+                        run.effects(),
                     );
                 }
             }
@@ -1063,7 +1086,12 @@ pub(crate) fn commit_entities(
             if combat_targeting::should_retaliate(world, rules, target_id, attacker_id)
                 && retaliation_reaches(world, rules, target_id, attacker_id)
             {
-                world.override_mission_on_damage_response(target_id, attacker_id, rules);
+                world.override_mission_on_damage_response(
+                    target_id,
+                    attacker_id,
+                    rules,
+                    run.effects(),
+                );
             }
             // RESIDUAL — ReceiveDamage's scatter tail (`0x00702B47..0x00702D0B`)
             // is not ported. Past the Override, a Foot with no Target and no
@@ -1086,7 +1114,8 @@ pub(crate) fn commit_entities(
                         target_id,
                         fatal_category,
                         crate::sim::world::UninitContext::with_rules(rules)
-                            .with_registry(overlay_registry),
+                            .with_registry(overlay_registry)
+                            .with_effects(run.effects()),
                     );
                 };
             }
@@ -1112,7 +1141,8 @@ pub(crate) fn commit_entities(
                             target_id,
                             fatal_category,
                             crate::sim::world::UninitContext::with_rules(rules)
-                                .with_registry(overlay_registry),
+                                .with_registry(overlay_registry)
+                                .with_effects(run.effects()),
                         );
                     };
                 }
@@ -1266,12 +1296,19 @@ pub(crate) fn handle_death(
                     .rfind(|event| event.target_id == dead_id)
                     .map(|event| event.attacker_id)
                     .filter(|&attacker| attacker != RAD_NO_ATTACKER);
-                world.free_slaves(dead_id, killer, None, rules, overlay_registry);
+                world.free_slaves(
+                    dead_id,
+                    killer,
+                    None,
+                    rules,
+                    overlay_registry,
+                    run.effects(),
+                );
             }
             // `0x00702112`: the death arm frees a controller's captives before
             // its death sounds (their fate draws precede the debris draws).
             if callbacks_enabled(world) {
-                world.free_all_captures(dead_id, rules, overlay_registry);
+                world.free_all_captures(dead_id, rules, overlay_registry, run.effects());
             }
             let type_id_str = world.interner.resolve(type_id);
             if let Some(obj) = rules.object(type_id_str) {
@@ -1280,7 +1317,7 @@ pub(crate) fn handle_death(
                     category,
                     rules.general.building_die_sound.as_deref(),
                     world.houses.get(&owner).is_some_and(|house| house.is_human),
-                    &mut world.main_rng,
+                    &world.main_rng,
                     rx,
                     ry,
                     &mut death_sounds,
@@ -1290,7 +1327,8 @@ pub(crate) fn handle_death(
                 if callbacks_enabled(world) {
                     world.techno_death_stun(
                         dead_id,
-                        crate::sim::world::UninitContext::new(Some(rules), overlay_registry),
+                        crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
+                            .with_effects(run.effects()),
                     );
                 }
                 // gamemd-derived: the debris block of
@@ -1339,7 +1377,13 @@ pub(crate) fn handle_death(
                 let explodes = death_arm_explodes(obj, veterancy, numbered_weapon);
                 if explodes && callbacks_enabled(world) {
                     let attacker = killing_attacker(world, damage_events, dead_id);
-                    world.kill_passengers(dead_id, attacker, rules, overlay_registry);
+                    world.kill_passengers(
+                        dead_id,
+                        attacker,
+                        rules,
+                        overlay_registry,
+                        run.effects(),
+                    );
                 }
                 // `Fire_Death_Weapon(0)` (`0x0070266D`): its bullet
                 // detonates here, inside this ReceiveDamage, through the
@@ -1402,7 +1446,7 @@ pub(crate) fn handle_death(
                         && building.lifecycle.object_alive
                 })
         {
-            world.building_now_dead_contacts(dead_id, contacts, Some(rules));
+            world.building_now_dead_contacts(dead_id, contacts, Some(rules), run.effects());
         }
         finish_concrete_death(
             world,
@@ -1412,6 +1456,7 @@ pub(crate) fn handle_death(
             rules,
             overlay_registry,
             &mut effects,
+            run.effects(),
         );
     }
 
@@ -1431,6 +1476,7 @@ fn finish_concrete_death(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     effects: &mut DeathEffects,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(entity) = world.substrate.entities.get(dead_id) else {
         return;
@@ -1495,7 +1541,7 @@ fn finish_concrete_death(
     match category {
         EntityCategory::Unit => {
             if world.unit_sinks_on_death(rules, dead_id) {
-                world.begin_ship_sinking(dead_id, rules);
+                world.begin_ship_sinking(dead_id, rules, frame_effects);
             } else {
                 world.unit_death_explosion(rules, dead_id, &mut effects.explosion_effects);
             }
@@ -1515,19 +1561,20 @@ fn finish_concrete_death(
             .object_type(type_id, rules)
             .is_some_and(|object| object.crashable);
     if category == EntityCategory::Unit && callbacks_enabled(world) {
-        world.foot_mark_remove(dead_id, Some(rules), overlay_registry);
+        world.foot_mark_remove(dead_id, Some(rules), overlay_registry, frame_effects);
         let dying = crate::sim::crew_survival::DyingTransport {
             attacker: killing_attacker(world, damage_events, dead_id),
             ignore_defenses,
             selected_by_player,
         };
-        world.release_dying_unit_passengers(rules, overlay_registry, dead_id, dying);
+        world.release_dying_unit_passengers(rules, overlay_registry, dead_id, dying, frame_effects);
         world.spawn_vehicle_crew(
             rules,
             overlay_registry,
             dead_id,
             prevent_crew_escape,
             selected_by_player,
+            frame_effects,
         );
     }
 
@@ -1555,6 +1602,7 @@ fn finish_concrete_death(
             rules,
             overlay_registry,
             &mut effects.immediate_uninit_ids,
+            frame_effects,
         );
         concrete_smudge_plans.push(ConcreteDeathSmudgePlan::Infantry(postlude));
         effects.despawned_ids.push(dead_id);
@@ -1586,6 +1634,7 @@ fn finish_concrete_death(
             killing_attacker(world, damage_events, dead_id),
             rules,
             overlay_registry,
+            frame_effects,
         )
     {
         // `AircraftClass::ReceiveDamage` (`0x00416694..0x004166A3`): an
@@ -1594,7 +1643,7 @@ fn finish_concrete_death(
         effects.despawned_ids.push(dead_id);
     } else if crashable
         && callbacks_enabled(world)
-        && world.foot_crash(dead_id, None, rules, overlay_registry)
+        && world.foot_crash(dead_id, None, rules, overlay_registry, frame_effects)
     {
         // `UnitClass::ReceiveDamage` (`0x00738457..0x00738475`): an airborne
         // `Crashable=` unit crashes (`Crash(0)`, no attacker) instead of its
@@ -1651,6 +1700,7 @@ fn finish_concrete_death(
                                 deferred,
                             );
                         },
+                        frame_effects,
                     );
                 }
             }
@@ -1706,6 +1756,7 @@ fn run_special_detonation_arm(
     action: SpecialDetonationAction,
     detonation: &ProjectileDetonation,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let owner = detonation.source_id;
     let target = match detonation.target {
@@ -1736,11 +1787,11 @@ fn run_special_detonation_arm(
                         )
                     })
                 });
-                world.parasite_attach(owner, victim, rules);
+                world.parasite_attach(owner, victim, rules, effects);
             }
         }
         SpecialDetonationAction::MindControl => {
-            world.mind_control_detonation(owner, object, rules, overlay_registry);
+            world.mind_control_detonation(owner, object, rules, overlay_registry, effects);
         }
         SpecialDetonationAction::Temporal => {
             let target = match target {
@@ -1750,7 +1801,7 @@ fn run_special_detonation_arm(
                 SpecialArmTarget::Cell => crate::sim::temporal::TemporalShotTarget::Cell,
                 SpecialArmTarget::None => crate::sim::temporal::TemporalShotTarget::None,
             };
-            world.temporal_detonation(owner, target, rules, overlay_registry);
+            world.temporal_detonation(owner, target, rules, overlay_registry, effects);
         }
         SpecialDetonationAction::IvanBomb => {
             // 0x00469343..0x00469375: the bullet's owner plants on a Techno.
@@ -1881,6 +1932,7 @@ pub(crate) fn continue_area_bridge_damage(
     impact_z_leptons: i32,
     routed_wall: bool,
     area_result: AreaDamageResult,
+    effects: FrameEffects<'_>,
 ) -> bool {
     if area_result == AreaDamageResult::IronCurtain
         || world.session.no_damage
@@ -1909,6 +1961,7 @@ pub(crate) fn continue_area_bridge_damage(
         rules,
         std::slice::from_ref(&event),
         overlay_registry,
+        effects,
     )
 }
 
@@ -1931,6 +1984,7 @@ fn emit_detonation_receivers(
     detonation: &ProjectileDetonation,
     warhead: &WarheadType,
     out: &mut CombatEmit,
+    effects: FrameEffects<'_>,
 ) -> Option<bool> {
     let (impact_rx, impact_ry, ..) = projectile_impact_cell(detonation.impact);
 
@@ -2027,7 +2081,14 @@ fn emit_detonation_receivers(
             Some(area.routed_wall)
         }
         claimed => {
-            run_special_detonation_arm(world, rules, claimed, detonation, overlay_registry);
+            run_special_detonation_arm(
+                world,
+                rules,
+                claimed,
+                detonation,
+                overlay_registry,
+                effects,
+            );
             None
         }
     }
@@ -2212,6 +2273,7 @@ pub(crate) fn commit_projectile_detonations_inline(
                 &clustered,
                 warhead,
                 emit,
+                run.effects(),
             );
             let outer_explosion_effects = emit.effects.explosion_effects.split_off(explosion_start);
             let outer_anim_requests = emit.effects.smudge_spawn_requests.split_off(smudge_start);
@@ -2237,6 +2299,7 @@ pub(crate) fn commit_projectile_detonations_inline(
                     z,
                     routed_wall,
                     area_result,
+                    run.effects(),
                 );
             }
             emit.effects
@@ -2314,6 +2377,7 @@ pub(super) fn resolve_attacker_fire(
     binary_frame: u32,
     has_active_wave: bool,
     out: &mut CombatEmit,
+    effects: FrameEffects<'_>,
 ) -> Option<fire_error::FireError> {
     let mut fire_error = None;
     if let Some(shot) = admit_attacker_fire(
@@ -2326,8 +2390,17 @@ pub(super) fn resolve_attacker_fire(
         has_active_wave,
         &mut fire_error,
         out,
+        effects,
     ) {
-        emit_admitted_fire(world, rules, shot, binary_frame, out, overlay_registry);
+        emit_admitted_fire(
+            world,
+            rules,
+            shot,
+            binary_frame,
+            out,
+            overlay_registry,
+            effects,
+        );
     }
     fire_error
 }
@@ -2361,6 +2434,7 @@ fn admit_attacker_fire<'r>(
     has_active_wave: bool,
     fire_error_out: &mut Option<fire_error::FireError>,
     out: &mut CombatEmit,
+    effects: FrameEffects<'_>,
 ) -> Option<AdmittedFire<'r>> {
     let sound_enabled = sound_enabled(world);
     let delayed_building_slot = match snap.building_shot {
@@ -2603,6 +2677,7 @@ fn admit_attacker_fire<'r>(
                     snap.stable_id,
                     Some(rules),
                     overlay_registry,
+                    effects,
                 );
             }
             _ => {}
@@ -2616,7 +2691,7 @@ fn admit_attacker_fire<'r>(
                         .get_mut(snap.stable_id)?
                         .mission_leaf
                         .set_foot_firing_sequence(0);
-                    world.infantry_fire_refused_action(snap.stable_id, rules);
+                    world.infantry_fire_refused_action(snap.stable_id, rules, effects);
                 }
             } else {
                 match code {
@@ -2674,7 +2749,9 @@ fn admit_attacker_fire<'r>(
         //5208FE may refuse unchanged/noninterruptible/absent actions.520912
         // raises+68D regardless of AL; the retained Doing/Stage still decides
         // when this attempt can discharge.
-        if let Err(cause) = world.infantry_do_action(snap.stable_id, requested, false, rules) {
+        if let Err(cause) =
+            world.infantry_do_action(snap.stable_id, requested, false, rules, effects)
+        {
             log::debug!("infantry {} firing Do_Action: {cause}", snap.stable_id);
         }
         let actor = world.substrate.entities.get_mut(snap.stable_id)?;
@@ -2691,9 +2768,12 @@ fn admit_attacker_fire<'r>(
             //52093C/520946: shared FootStop4DF0D0 then the concrete+500
             // receiver. That receiver owns any DoAction/Walk Stop callback.
             crate::sim::movement::foot_stop_moving(actor);
-            if let Err(cause) =
-                world.run_find_path_failed_receiver(snap.stable_id, rules, overlay_registry)
-            {
+            if let Err(cause) = world.run_find_path_failed_receiver(
+                snap.stable_id,
+                rules,
+                overlay_registry,
+                effects,
+            ) {
                 log::debug!("infantry {} firing Stop_Driver: {cause}", snap.stable_id);
             }
         }
@@ -2741,7 +2821,7 @@ fn admit_attacker_fire<'r>(
                 .get_mut(snap.stable_id)?
                 .mission_leaf
                 .set_foot_firing_sequence(0);
-            world.infantry_fire_refused_action(snap.stable_id, rules);
+            world.infantry_fire_refused_action(snap.stable_id, rules, effects);
             return None;
         }
     }
@@ -3270,6 +3350,7 @@ pub(super) fn emit_admitted_fire(
     binary_frame: u32,
     out: &mut CombatEmit,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> Option<u64> {
     // Infantry51DF70 clears68D for every direct FireAt caller, including
     // Guard521432 and a launch subsequently refused by Techno6FDD50.
@@ -3680,7 +3761,7 @@ pub(super) fn emit_admitted_fire(
     // store, so the firer may try again next frame. The tail from
     // `0x006FF749` still runs.
     if !launched {
-        fireat_tail(world, rules, snap, weapon, None, overlay_registry);
+        fireat_tail(world, rules, snap, weapon, None, overlay_registry, effects);
         return None;
     }
 
@@ -3840,6 +3921,7 @@ pub(super) fn emit_admitted_fire(
         weapon,
         Some(bullet_id),
         overlay_registry,
+        effects,
     );
     Some(bullet_id)
 }
@@ -3866,6 +3948,7 @@ fn fireat_tail(
     weapon: &WeaponType,
     bullet: Option<u64>,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     if weapon.limbo_launch {
         world.parasite_limbo_launch(
@@ -3875,12 +3958,13 @@ fn fireat_tail(
             bullet,
             rules,
             overlay_registry,
+            effects,
         );
     }
     if weapon.fire_once {
         // Native Abstract+0x14 bit 4 admits Foot receivers, not buildings.
         if snap.category != EntityCategory::Structure {
-            world.team_fire_once_complete(snap.stable_id, rules, overlay_registry);
+            world.team_fire_once_complete(snap.stable_id, rules, overlay_registry, effects);
         }
         world
             .assign_target_represented(snap.stable_id, None, Some(rules))
@@ -3972,6 +4056,7 @@ fn commit_fire_bookkeeping(
     rules: &RuleSet,
     emit: &mut CombatEmit,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let spawn_target_updates = std::mem::take(&mut emit.spawn_target_updates);
     let drain_links = std::mem::take(&mut emit.drain_links);
@@ -4003,8 +4088,8 @@ fn commit_fire_bookkeeping(
         // `0x0070FDBD`: a drained Psychic Tower frees its captives; then the
         // drainer leaves its team without idling (`0x0070FE19..0x0070FE32`).
         if crate::sim::credit_income::install_drain_link(world, drainer_id, victim_id) {
-            world.free_all_captures(victim_id, rules, overlay_registry);
-            world.leave_team(drainer_id, true, Some(rules));
+            world.free_all_captures(victim_id, rules, overlay_registry, effects);
+            world.leave_team(drainer_id, true, Some(rules), effects);
         }
         if let Some(drainer) = world.substrate.entities.get_mut(drainer_id) {
             represented_assign_target(drainer, None);
@@ -4066,7 +4151,7 @@ impl FireCommitBoundary {
             &mut emit.effects.smudge_spawn_requests,
         );
         under_attack_events.append(&mut pings);
-        commit_fire_bookkeeping(world, rules, emit, overlay_registry);
+        commit_fire_bookkeeping(world, rules, emit, overlay_registry, run.effects());
         let wave_fire_events = emit.fire_events[fire_event_start..].to_vec();
         for event in &wave_fire_events {
             {
@@ -4157,6 +4242,7 @@ pub(crate) fn visit_fire(
                     world.session.binary_frame,
                     world.active_wave_links.contains_key(&id),
                     emit,
+                    run.effects(),
                 );
             }
         }
@@ -4187,6 +4273,7 @@ pub(crate) fn visit_fire(
                         world.session.binary_frame,
                         world.active_wave_links.contains_key(&id),
                         emit,
+                        run.effects(),
                     );
                 }
                 unit_tail = Some((id, fire_error));
@@ -4206,6 +4293,7 @@ pub(crate) fn visit_fire(
                     world.session.binary_frame,
                     world.active_wave_links.contains_key(&id),
                     emit,
+                    run.effects(),
                 );
             } else if let Some(actor) = world.substrate.entities.get_mut(id) {
                 //520AD2: absence of TarCom clears the raw firing latch.
@@ -4251,6 +4339,7 @@ pub(crate) fn visit_fire(
                     world.session.binary_frame,
                     emit,
                     overlay_registry,
+                    run.effects(),
                 );
             }
         }
@@ -4277,6 +4366,7 @@ pub(crate) fn visit_fire(
                     gattling::UnitFireOutcome::Code,
                 ),
                 rules,
+                run.effects(),
             );
         }
         if let Some(entity) = world.substrate.entities.get(id) {
@@ -4527,6 +4617,7 @@ pub(crate) fn tick_combat(
                 binary_frame,
                 active_wave_owners.contains(&live_snap.stable_id),
                 &mut emit,
+                run.effects(),
             );
             boundary.commit(
                 world,

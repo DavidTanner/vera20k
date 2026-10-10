@@ -17,7 +17,7 @@ use super::choose_map::ChooseMapSelection;
 /// The app supplies a borrow of process Main (the installed simulation's
 /// continuation, or the frontend before the first scenario). Map remains
 /// sim-independent (F05), so this trait binding lives with the UI adapter.
-impl RandomRanged for crate::sim::rng::MainRngDraws<'_> {
+impl RandomRanged for crate::sim::rng::MainRngDraws {
     fn ranged(&mut self, min: i32, max: i32) -> i32 {
         crate::sim::rng::MainRngDraws::ranged(self, min, max)
     }
@@ -456,8 +456,8 @@ mod tests {
 
     #[test]
     fn gsi_04_02_dialog_open_is_rng_pure_and_generate_reroll_uses_process_main_only() {
-        let mut process_main = crate::sim::rng::SimRng::new(0);
-        let mut reference_main = crate::sim::rng::SimRng::new(0);
+        let process_main = crate::sim::rng::MainRng::new(0);
+        let reference_main = crate::sim::rng::MainRng::new(0);
         let scenario = crate::sim::rng::SimRng::new(0x1234);
         let scenario_before = scenario.state();
         let mut mapgen = crate::map::rmg::RmgRng::new(0x5678);
@@ -477,12 +477,9 @@ mod tests {
         derive_from_map_type(
             &mut expected_options,
             &RmgSettings::default(),
-            &mut crate::sim::rng::MainRngDraws::borrow(&mut reference_main),
+            &mut reference_main.draws(),
         );
-        modal.reroll_derived_for_generate(
-            &RmgSettings::default(),
-            &mut crate::sim::rng::MainRngDraws::borrow(&mut process_main),
-        );
+        modal.reroll_derived_for_generate(&RmgSettings::default(), &mut process_main.draws());
 
         assert_eq!(modal.options, expected_options);
         assert_eq!(process_main.logical_state(), reference_main.logical_state());

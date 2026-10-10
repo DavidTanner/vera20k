@@ -20,9 +20,9 @@ use crate::sim::projectile::ProjectileTarget;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 use crate::util::lepton::LEPTONS_PER_LEVEL;
 
-use super::Simulation;
 use super::display_layers::DisplayLayer;
 use super::substrate::ObjectKind;
+use super::{FrameEffects, Simulation};
 
 /// The control value `DispatchPointerExpiredCleanup @ 0x007258D0` forwards to
 /// every listener's `PointerExpired` slot (`vt+0x28`), i.e. the third argument
@@ -66,6 +66,7 @@ pub(crate) struct UninitContext<'a> {
     rules: Option<&'a RuleSet>,
     registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     requested_facing: Option<u8>,
+    effects: FrameEffects<'a>,
 }
 
 impl<'a> UninitContext<'a> {
@@ -79,16 +80,12 @@ impl<'a> UninitContext<'a> {
             rules,
             registry,
             requested_facing: None,
+            effects: FrameEffects::empty(),
         }
     }
 
     pub(crate) const fn with_rules(rules: &'a RuleSet) -> Self {
-        Self {
-            terrain: None,
-            rules: Some(rules),
-            registry: None,
-            requested_facing: None,
-        }
+        Self::new(Some(rules), None)
     }
 
     /// A nested receiver with an admitted RuleSet must retain the enclosing
@@ -103,7 +100,19 @@ impl<'a> UninitContext<'a> {
             rules: Some(rules),
             registry: self.registry,
             requested_facing: self.requested_facing,
+            effects: self.effects,
         }
+    }
+
+    /// Preserve the current frame's synchronous sound boundary through nested
+    /// lifecycle receivers. It borrows the caller; no callback survives the
+    /// enclosing frame or becomes simulation state.
+    pub(crate) const fn with_effects(self, effects: FrameEffects<'a>) -> Self {
+        Self { effects, ..self }
+    }
+
+    pub(crate) const fn effects(self) -> FrameEffects<'a> {
+        self.effects
     }
 
     /// Techno Unlimbo's direction for this synchronous reveal. The caller's
@@ -652,6 +661,15 @@ impl Simulation {
         stable_id: u64,
         rules: &RuleSet,
     ) -> RevealOutcome {
+        self.reveal_entity_with_context(stable_id, UninitContext::with_rules(rules))
+    }
+
+    /// A nested Reveal retains the enclosing frame and receiver authorities.
+    pub(crate) fn reveal_entity_with_context(
+        &mut self,
+        stable_id: u64,
+        context: UninitContext<'_>,
+    ) -> RevealOutcome {
         let Some(position) = self.current_reveal_position(stable_id) else {
             return RevealOutcome::Failed(RevealFailure::MissingObject);
         };
@@ -662,7 +680,7 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::with_rules(rules),
+            context,
         )
     }
 
@@ -846,7 +864,13 @@ impl Simulation {
             if context.requested_facing.is_some() {
                 self.trace_lifecycle_for_test(LifecycleTestEvent::UnlimboIdleMode);
             }
-            super::foot_unlimbo_idle_mode(self, stable_id, rules, context.registry());
+            super::foot_unlimbo_idle_mode(
+                self,
+                stable_id,
+                rules,
+                context.registry(),
+                context.effects(),
+            );
         }
         // TechnoUnlimbo6F6E65..AD runs this second mode-one query only
         // after successful Object Mark and the +90 alive gate. A failed Mark
@@ -1317,7 +1341,12 @@ impl Simulation {
             return false;
         };
         if entity.category != EntityCategory::Structure {
-            return self.foot_mark_put(stable_id, context.rules, context.registry());
+            return self.foot_mark_put(
+                stable_id,
+                context.rules,
+                context.registry(),
+                context.effects(),
+            );
         }
         if entity.lifecycle.cell_marked {
             return false;
@@ -1657,7 +1686,12 @@ impl Simulation {
             return false;
         };
         if entity.category != EntityCategory::Structure {
-            return self.foot_mark_remove(stable_id, context.rules, context.registry());
+            return self.foot_mark_remove(
+                stable_id,
+                context.rules,
+                context.registry(),
+                context.effects(),
+            );
         }
         if !entity.lifecycle.cell_marked {
             return false;
@@ -1802,6 +1836,7 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> crate::sim::movement::air_movement::AirMovementTickStats {
         use crate::rules::locomotor_type::LocomotorKind;
         use crate::sim::movement::locomotor::MovementLayer;
@@ -1819,7 +1854,7 @@ impl Simulation {
                     })
             });
         if fly {
-            let stats = self.fly_process(stable_id, rules, registry);
+            let stats = self.fly_process(stable_id, rules, registry, effects);
             if !stats.impact {
                 self.sync_air_spatial_membership(stable_id);
             }
@@ -1838,7 +1873,7 @@ impl Simulation {
             .and_then(|_| self.entity_display_layer(stable_id, rules));
         // A cruising Jumpjet runs the native Update/State3 body
         // (`world::jumpjet_cruise`).
-        let stats = match self.tick_jumpjet_cruise_one(stable_id, rules, registry) {
+        let stats = match self.tick_jumpjet_cruise_one(stable_id, rules, registry, effects) {
             // State 5's impact notice UnInits the wreck, so `Process`'s layer
             // tail finds it dead (`0x0054B16C`); the object turn commits it.
             Some(stats) if stats.impact => return stats,
@@ -1861,6 +1896,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let admitted = self.substrate.entities.get(id).is_some_and(|entity| {
             entity.lifecycle.object_alive
@@ -1907,7 +1943,7 @@ impl Simulation {
             return false;
         }
         let before = self.entity_display_layer(id, rules);
-        self.foot_mark_remove(id, rules, registry);
+        self.foot_mark_remove(id, rules, registry, effects);
         self.substrate.display.remove(id);
         if self
             .substrate
@@ -1917,7 +1953,7 @@ impl Simulation {
             .and_then(|l| l.fly_runtime())
             .is_some_and(|s| s.landing())
         {
-            self.apply_fly_landing_callback(id, rules, registry);
+            self.apply_fly_landing_callback(id, rules, registry, effects);
         }
         if self
             .substrate
@@ -1956,15 +1992,15 @@ impl Simulation {
                         .reject_landing_cell();
                     entity.on_bridge = false;
                 }
-                self.foot_mark_remove(id, rules, registry);
+                self.foot_mark_remove(id, rules, registry, effects);
                 let height = crate::sim::movement::air_movement::current_fly_height(
                     self.substrate.entities.get(id).unwrap(),
                     self.resolved_terrain.as_ref(),
                 );
-                self.set_object_height(id, height.wrapping_add(10), rules, registry);
-                self.foot_mark_put(id, rules, registry);
+                self.set_object_height(id, height.wrapping_add(10), rules, registry, effects);
+                self.foot_mark_put(id, rules, registry, effects);
             } else {
-                self.finish_fly_layer_transition(id, after, rules);
+                self.finish_fly_layer_transition(id, after, rules, effects);
             }
         }
         // Display4A9720 has no limbo gate, so the tail resubmits even an owner
@@ -1978,7 +2014,7 @@ impl Simulation {
             .get(id)
             .is_some_and(|e| !e.lifecycle.in_limbo)
         {
-            self.foot_mark_put(id, rules, registry);
+            self.foot_mark_put(id, rules, registry, effects);
         }
         true
     }
@@ -2451,11 +2487,16 @@ impl Simulation {
             .get(stable_id)
             .is_some_and(|entity| entity.category == EntityCategory::Structure)
         {
-            crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
+            crate::sim::production::detach_building_factory(
+                self,
+                context.rules(),
+                stable_id,
+                context.effects(),
+            );
         }
         // The Foot prelude (`0x004D9744`) leaves the object's team, before
         // Limbo is set, so the object still takes its idle mode.
-        self.leave_team(stable_id, false, context.rules());
+        self.leave_team(stable_id, false, context.rules(), context.effects());
         // This Detach_All(1) (`0x005F4D61`) also visits the concealed object
         // itself, so a live spawner's Limbo runs its SpawnManager's owner arm:
         // docked children UnInit with a zero regen timer, and airborne ones
@@ -2555,6 +2596,7 @@ impl Simulation {
         self.techno_limbo_with_context(stable_id, UninitContext::default())
     }
 
+    #[cfg(test)]
     pub(crate) fn techno_limbo_with_rules(
         &mut self,
         stable_id: u64,
@@ -2564,7 +2606,7 @@ impl Simulation {
         self.techno_limbo_with_context(stable_id, UninitContext::new(Some(rules), registry))
     }
 
-    fn techno_limbo_with_context(
+    pub(crate) fn techno_limbo_with_context(
         &mut self,
         stable_id: u64,
         context: UninitContext<'_>,
@@ -2642,7 +2684,8 @@ impl Simulation {
                 .is_some_and(|entity| {
                     entity.category == EntityCategory::Infantry && !entity.lifecycle.in_limbo
                 })
-            && let Err(cause) = self.infantry_stop_driver(stable_id, rules, context.registry())
+            && let Err(cause) =
+                self.infantry_stop_driver(stable_id, rules, context.registry(), context.effects())
         {
             log::debug!("infantry {stable_id} Limbo Stop_Driver: {cause}");
         }
@@ -2733,8 +2776,8 @@ impl Simulation {
         self.clear_building_base_reservation_and_repair(stable_id, context);
         // TechnoClass::Limbo releases the gattling loop and clears the report
         // latch (`0x006F6C6B`, `0x006F6C76`) ahead of its radio pass.
-        self.gattling_limbo(stable_id);
-        crate::sim::radio::broadcast_break(self, stable_id, None);
+        self.gattling_limbo(stable_id, context);
+        crate::sim::radio::broadcast_break(self, stable_id, None, context.effects());
         self.object_conceal_with_context(stable_id, context)
     }
 
@@ -2847,13 +2890,18 @@ impl Simulation {
             EntityCategory::Structure => {
                 // The Building prelude opens with the building's own factory
                 // (`0x0044EC01..0x0044EC21`).
-                crate::sim::production::detach_building_factory(self, context.rules(), stable_id);
-                crate::sim::radio::broadcast_break(self, stable_id, None);
+                crate::sim::production::detach_building_factory(
+                    self,
+                    context.rules(),
+                    stable_id,
+                    context.effects(),
+                );
+                crate::sim::radio::broadcast_break(self, stable_id, None, context.effects());
             }
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft => {
                 // `0x004D9744`: the Foot prelude leaves the object's team
                 // first.
-                self.leave_team(stable_id, false, context.rules());
+                self.leave_team(stable_id, false, context.rules(), context.effects());
                 if let Some(contact) = self
                     .substrate
                     .entities
@@ -2867,6 +2915,7 @@ impl Simulation {
                         crate::sim::radio::RadioMessage::Break,
                         crate::sim::radio::RadioPayload::default(),
                         None,
+                        context.effects(),
                     );
                 }
             }
@@ -2900,6 +2949,7 @@ impl Simulation {
         building_id: u64,
         contacts: &[u64],
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(rules) = rules else {
             return;
@@ -2951,6 +3001,7 @@ impl Simulation {
                     crate::sim::radio::RadioMessage::RunAway,
                     crate::sim::radio::RadioPayload::default(),
                     Some(rules),
+                    effects,
                 );
                 if let Some(unit) = self.substrate.entities.get_mut(contact) {
                     crate::sim::docking::building_dock::clear_pending_entry(unit);
@@ -3011,20 +3062,32 @@ impl Simulation {
             category,
             EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
         ) {
-            self.assign_null_destination(stable_id, context.rules, context.registry);
+            self.assign_null_destination(
+                stable_id,
+                context.rules,
+                context.registry,
+                context.effects(),
+            );
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
                 entity.clear_live_path_head();
             }
             if category == EntityCategory::Infantry {
                 if let Some(rules) = context.rules
-                    && let Err(cause) =
-                        self.infantry_stop_driver(stable_id, rules, context.registry)
+                    && let Err(cause) = self.infantry_stop_driver(
+                        stable_id,
+                        rules,
+                        context.registry,
+                        context.effects(),
+                    )
                 {
                     log::debug!("infantry {stable_id} Stun Stop_Driver: {cause}");
                 }
-            } else if let Err(cause) =
-                self.locomotor_stop_moving(stable_id, context.rules, context.registry)
-            {
+            } else if let Err(cause) = self.locomotor_stop_moving(
+                stable_id,
+                context.rules,
+                context.registry,
+                context.effects(),
+            ) {
                 log::debug!("{stable_id} Stun Stop_Driver: {cause}");
             }
         }
@@ -3033,17 +3096,23 @@ impl Simulation {
         } else if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
         }
-        self.assign_null_destination(stable_id, context.rules, context.registry);
+        self.assign_null_destination(
+            stable_id,
+            context.rules,
+            context.registry,
+            context.effects(),
+        );
         if !self.substrate.entities.contains(stable_id) {
             return;
         }
-        crate::sim::radio::broadcast_break(self, stable_id, None);
+        crate::sim::radio::broadcast_break(self, stable_id, None, context.effects());
         crate::sim::spawn_manager::kill_all_spawns_with_context(self, stable_id, context);
         crate::sim::spawn_manager::clear_all_spawn_targets(
             self,
             stable_id,
             context.rules(),
             context.registry(),
+            context.effects(),
         );
         // A living object's Stun cannot use the Health-0 elision above: its
         // Techno6FCD9B Detach_All(1) runs, and self and other pointer-expiry
@@ -3077,12 +3146,16 @@ impl Simulation {
         request: LifecycleRequest,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         match request {
             LifecycleRequest::Uninit {
                 stable_id,
                 reason: _,
-            } => self.uninit_with_context(stable_id, UninitContext::new(Some(rules), registry)),
+            } => self.uninit_with_context(
+                stable_id,
+                UninitContext::new(Some(rules), registry).with_effects(effects),
+            ),
         }
     }
 
@@ -3213,10 +3286,12 @@ impl Simulation {
     /// Each RNG stream's cursor, which every draw moves.
     #[cfg(test)]
     fn rng_cursors(&self) -> [(u8, i32, i32); 3] {
-        [&self.scenario_rng, &self.main_rng, &self.mapgen_rng].map(|rng| {
-            let view = rng.logical_view();
-            (view.disabled, view.index_a, view.index_b)
-        })
+        [
+            self.scenario_rng.logical_state(),
+            self.main_rng.logical_state(),
+            self.mapgen_rng.logical_state(),
+        ]
+        .map(|view| (view.disabled, view.index_a, view.index_b))
     }
 
     /// Represented entries in global ObjectClass construction order, each
@@ -3334,8 +3409,9 @@ impl Simulation {
         detach_id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
-        self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules, registry);
+        self.stop_all_targeting_target(TargetKind::Entity(detach_id), rules, registry, effects);
     }
 
     /// Apply_area_damage bridge success calls the same 0x0070D4A0 sweep with a
@@ -3347,8 +3423,9 @@ impl Simulation {
         ry: u16,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
-        self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules, registry);
+        self.stop_all_targeting_target(TargetKind::Cell(rx, ry), rules, registry, effects);
     }
 
     fn stop_all_targeting_target(
@@ -3356,6 +3433,7 @@ impl Simulation {
         target: TargetKind,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let mut listeners = self.substrate.entities.keys_sorted();
         listeners.reverse();
@@ -3366,7 +3444,7 @@ impl Simulation {
             }
 
             let restored = self
-                .mission_restore_represented(listener_id, rules, registry)
+                .mission_restore_represented(listener_id, rules, registry, effects)
                 .expect("detach sweep listener was resolved immediately before the Restore");
 
             let target_cleared = self.listener_targets(listener_id, target);
@@ -3412,6 +3490,7 @@ impl Simulation {
         hut_id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         // Infantry ctor517B34 appends to its type registry. Represented
         // PointerExpired receivers do not construct/delete registry entries;
@@ -3448,6 +3527,7 @@ impl Simulation {
                 PointerExpiryControl::DetachAll,
                 Some(rules),
                 registry,
+                effects,
             );
             // Techno707B24 forwards this manager independently of control.
             crate::sim::spawn_manager::notify_pointer_expired(
@@ -3456,6 +3536,7 @@ impl Simulation {
                 hut_id,
                 Some(rules),
                 registry,
+                effects,
             );
         }
     }
@@ -3504,6 +3585,7 @@ impl Simulation {
         control: PointerExpiryControl,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(listener) = self.substrate.entities.get(listener_id) else {
             return;
@@ -3598,7 +3680,7 @@ impl Simulation {
             self.assign_target_represented(listener_id, None, rules)
                 .expect("expiry listener remains present");
             if mission_is_suspended {
-                self.mission_restore_represented(listener_id, rules, registry)
+                self.mission_restore_represented(listener_id, rules, registry, effects)
                     .expect("represented expiry restore remains available");
             }
         }
@@ -3834,6 +3916,7 @@ impl Simulation {
         expired_id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         if !self.substrate.entities.contains(expired_id) {
             return;
@@ -3841,7 +3924,7 @@ impl Simulation {
         self.broadcast_pointer_expired(
             expired_id,
             PointerExpiryControl::DetachAll,
-            UninitContext::new(Some(rules), registry),
+            UninitContext::new(Some(rules), registry).with_effects(effects),
         );
     }
 
@@ -4025,6 +4108,7 @@ impl Simulation {
                     control,
                     context.rules(),
                     context.registry(),
+                    context.effects(),
                 );
                 // `TechnoClass::PointerExpired` forwards to the listener's
                 // SpawnManager: `0x00707B24 CALL 0x006B7C60`, gated only on
@@ -4038,6 +4122,7 @@ impl Simulation {
                     expired_id,
                     context.rules(),
                     context.registry(),
+                    context.effects(),
                 );
                 // The CaptureManager forward — `0x00707B14 CALL 0x00471F90` —
                 // sits inside the `if (control != 0)` block opened at
@@ -4059,10 +4144,20 @@ impl Simulation {
                 }
                 // The TemporalClass forward (`0x00707B34` -> `0x0071AB60`)
                 // follows, outside the control test like the SpawnManager's.
-                self.temporal_pointer_expired(listener_id, expired_id, context.rules());
+                self.temporal_pointer_expired(
+                    listener_id,
+                    expired_id,
+                    context.rules(),
+                    context.effects(),
+                );
                 // FootClass::PointerExpired 0x004D998C..0x004D99CD follows the
                 // Techno body: the parasite link and its forward.
-                self.foot_parasite_pointer_expired(listener_id, expired_id, context.rules());
+                self.foot_parasite_pointer_expired(
+                    listener_id,
+                    expired_id,
+                    context.rules(),
+                    context.effects(),
+                );
                 #[cfg(test)]
                 if let Some(before) = passed_over {
                     assert_eq!(
@@ -4217,11 +4312,11 @@ impl Simulation {
             && entity.capture_manager.is_some()
             && let Some(rules) = context.rules()
         {
-            self.free_all_captures(stable_id, rules, context.registry());
+            self.free_all_captures(stable_id, rules, context.registry(), context.effects());
         }
         // `0x004DE604`: then the object leaves its team.
         if foot {
-            self.leave_team(stable_id, false, context.rules());
+            self.leave_team(stable_id, false, context.rules(), context.effects());
         }
 
         self.run_represented_uninit_pre_hook(stable_id);
@@ -4486,7 +4581,7 @@ impl Simulation {
     /// [`Self::process_pending_delete_with`]).
     #[cfg(test)]
     pub(crate) fn process_pending_delete(&mut self) {
-        self.process_pending_delete_with(None, None);
+        self.process_pending_delete_with(None, None, FrameEffects::default());
     }
 
     /// Native-shaped pending-delete drain: preserve alive entries, collapse all
@@ -4501,6 +4596,7 @@ impl Simulation {
         &mut self,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::PendingDeleteDrainStarted);
@@ -4514,8 +4610,11 @@ impl Simulation {
             self.substrate
                 .pending_delete
                 .retain(|&queued| queued != stable_id);
-            self.release_slave_links_at_destruction(stable_id, rules, registry);
-            self.finalize_and_remove_common(stable_id, UninitContext::new(rules, registry));
+            self.release_slave_links_at_destruction(stable_id, rules, registry, effects);
+            self.finalize_and_remove_common(
+                stable_id,
+                UninitContext::new(rules, registry).with_effects(effects),
+            );
         }
     }
 

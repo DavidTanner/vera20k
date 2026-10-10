@@ -99,7 +99,12 @@ fn mcv_conversion_uses_actual_and_type_strength_then_resets_estimate() {
         .spawn_object_at_height("MCV", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 25);
-    assert!(sim.deploy_mcv(source, &rules, None));
+    assert!(sim.deploy_mcv(
+        source,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.flush_pending_delete();
     assert!(sim.substrate.entities.get(source).is_none());
     let destination = sim
@@ -120,7 +125,12 @@ fn building_conversion_reads_health_when_animation_finishes() {
         .spawn_object_at_height("YARD", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 750);
-    assert!(sim.undeploy_building(source, &rules, None));
+    assert!(sim.undeploy_building(
+        source,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     damage(&mut sim, source, 250);
     sim.substrate
         .entities
@@ -142,7 +152,12 @@ fn building_conversion_reads_health_when_animation_finishes() {
 /// UnitClass::Deploy (`deploy_mcv`) of `source`, answering the building it
 /// became.
 fn deploy(sim: &mut Simulation, rules: &RuleSet, source: u64, into: &str) -> u64 {
-    assert!(sim.deploy_mcv(source, rules, None));
+    assert!(sim.deploy_mcv(
+        source,
+        rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.substrate
         .entities
         .values()
@@ -162,7 +177,12 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
         .get_mut(building)
         .unwrap()
         .finish_building_construction_for_test();
-    assert!(sim.undeploy_building(building, rules, None));
+    assert!(sim.undeploy_building(
+        building,
+        rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.substrate
         .entities
         .get_mut(building)
@@ -230,7 +250,12 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
         .spawn_object_at_height("MCV", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 75_000);
-    assert!(sim.deploy_mcv(source, &rules, None));
+    assert!(sim.deploy_mcv(
+        source,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.flush_pending_delete();
     let yard = sim
         .substrate
@@ -245,7 +270,12 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
         sim.advance_tick(&[], Some(&rules), None, None, 22);
     }
     assert!(!sim.substrate.entities.get(yard).unwrap().building_up());
-    assert!(sim.undeploy_building(yard, &rules, None));
+    assert!(sim.undeploy_building(
+        yard,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.substrate
         .entities
         .get_mut(yard)
@@ -312,7 +342,12 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
     let constructor_word = expected_rng.next_u32() as u16;
     let before_rng = expected_rng.state();
     let destination_id = sim.substrate.next_stable_object_id;
-    assert!(sim.deploy_mcv(source, &rules, None));
+    assert!(sim.deploy_mcv(
+        source,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let destination = sim.entities().get(destination_id).unwrap();
     assert_eq!(destination.health.current, 250);
     assert_eq!(destination.techno_ctor_random_word, constructor_word);

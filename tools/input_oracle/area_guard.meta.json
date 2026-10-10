@@ -96,7 +96,7 @@
     "tools/spatial_oracle/harvest_field.py": "047fd5d2333dcee593d93edfa92a69debd6ad2f7b5a53029711f3dde17b5e087",
     "tools/spatial_oracle/slave_manager.py": "257ef2d170d2f5bf01e001f1e46561374677168a2d32a21181ef684c3bdb662d",
     "tools/spatial_oracle/building_construction.py": "077bbae61a9851d06f42e6e67b755d9a2b928791522eae624355081290c7efdb",
-    "tools/spatial_oracle/engineer_repair_admission.py": "7a4cc38f9ab1d9b1483dc1b61782e2a74fab878df7e99818363e5c5aff6e889c"
+    "tools/spatial_oracle/engineer_repair_admission.py": "72425a6835813cb6d8f448dad5e1c28b70522665dfd52d2bcfb474a7725f95e0"
   },
   "payload_sha256": "27806e1c2f01e8836a39332be34181c83c7250834f4b795814e67fe3504104e0"
 }

@@ -7,6 +7,7 @@ use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::native_x87::MaskedX87Ordering::Greater;
 
@@ -82,6 +83,7 @@ impl Simulation {
         scenario_initialization: bool,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -156,8 +158,9 @@ impl Simulation {
         self.add_building_sensor_array_if_powered(id, rules);
         self.announce_super_weapon_building_complete(id, rules);
         if !captured && !scenario_initialization {
-            self.mission_spawned_entities |=
-                crate::sim::production::spawn_building_free_unit(self, id, rules, registry);
+            self.mission_spawned_entities |= crate::sim::production::spawn_building_free_unit(
+                self, id, rules, registry, effects,
+            );
         }
     }
     fn building_anim_config(
@@ -987,11 +990,21 @@ mod slot_tests {
             );
             assert_eq!(sim.anim(missing).unwrap().effective_end, 0);
             assert_eq!(sim.scenario_rng.logical_state(), before_rng);
-            sim.visit_anim(missing, &rules, None);
+            sim.visit_anim(
+                missing,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert!(!sim.anim(missing).unwrap().runtime.first_ai_guard);
             assert!(!sim.anim(missing).unwrap().runtime.inactive);
             sim.session.binary_frame += 1;
-            sim.visit_anim(missing, &rules, None);
+            sim.visit_anim(
+                missing,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert!(sim.substrate.pending_delete.contains(&missing));
             assert!(!sim.anim(missing).unwrap().in_logic_vector);
             assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[5], None);
@@ -1120,10 +1133,24 @@ mod slot_tests {
     #[test]
     fn construction_initializes_real_slot_once_and_health_write_retains_it() {
         let (mut sim, rules, id) = slot_test_fixture();
-        sim.grand_opening(id, false, true, &rules, None);
+        sim.grand_opening(
+            id,
+            false,
+            true,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let old = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
         sim.entities_mut().get_mut(id).unwrap().health.current = 25;
-        sim.grand_opening(id, false, true, &rules, None);
+        sim.grand_opening(
+            id,
+            false,
+            true,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.entities().get(id).unwrap().building_anim_slots[3],
             Some(old)

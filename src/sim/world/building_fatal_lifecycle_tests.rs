@@ -47,12 +47,12 @@ fn append_sections(text: &mut String, sections: &Value) {
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str) {
     for (name, rng) in [
-        ("scenario", &sim.scenario_rng),
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("main", sim.main_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert!(
-            rng.native_state_hex() == native[name].as_str().unwrap(),
+            rng == native[name].as_str().unwrap(),
             "{boundary}: full {name} state"
         );
     }
@@ -280,6 +280,7 @@ impl Fixture {
             0,
             super::PlacementEvidence::MarkSucceeded,
             &rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
         if prior.get("attacker").is_none() {
@@ -332,7 +333,14 @@ impl Fixture {
             int(&prior_anim["native_id"]).wrapping_sub(1) as u32,
         ));
         sim.set_building_damage_state(building, true, &rules);
-        sim.grand_opening(building, false, false, &rules, Some(&registry));
+        sim.grand_opening(
+            building,
+            false,
+            false,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(
             sim.substrate
                 .entities
@@ -397,7 +405,7 @@ impl Fixture {
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(prior["rng"]["scenario"].as_str().unwrap());
         sim.main_rng =
-            SimRng::from_native_state_hex_for_test(prior["rng"]["main"].as_str().unwrap());
+            SimRng::from_native_state_hex_for_test(prior["rng"]["main"].as_str().unwrap()).into();
         sim.mapgen_rng =
             SimRng::from_native_state_hex_for_test(prior["rng"]["mapgen"].as_str().unwrap());
         Self {
@@ -426,8 +434,12 @@ impl Fixture {
                 arg6: false,
             },
         );
-        self.sim
-            .commit_noncombat_aoe_hits(&self.rules, Some(&self.registry), &[hit]);
+        self.sim.commit_noncombat_aoe_hits(
+            &self.rules,
+            Some(&self.registry),
+            &[hit],
+            crate::sim::world::FrameEffects::default(),
+        );
     }
 
     fn power_prefix(&mut self) {
@@ -1178,7 +1190,11 @@ impl Fixture {
             })
         );
 
-        restored.process_pending_delete_with(Some(&self.rules), Some(&self.registry));
+        restored.process_pending_delete_with(
+            Some(&self.rules),
+            Some(&self.registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         let actor = restored.substrate.entities.get(self.unit).unwrap();
         assert_eq!(
             actor.door_phase(),
@@ -1331,6 +1347,7 @@ fn assert_ready_fatal_routes(corpus: &Value) {
             },
             &fixture.rules,
             Some(&fixture.registry),
+            crate::sim::world::FrameEffects::default(),
         );
         fixture.assert_live_frame(
             route,
@@ -1360,7 +1377,11 @@ fn assert_ready_fatal_routes(corpus: &Value) {
         for frame in route["frames"].as_array().unwrap() {
             fixture
                 .sim
-                .advance_live_object_pass(Some(&fixture.rules), Some(&fixture.registry))
+                .advance_live_object_pass(
+                    Some(&fixture.rules),
+                    Some(&fixture.registry),
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             fixture.assert_live_frame(
                 route,
@@ -1377,9 +1398,11 @@ fn assert_ready_fatal_routes(corpus: &Value) {
                 break;
             }
             fixture.sim.session.binary_frame = fixture.sim.session.binary_frame.wrapping_add(1);
-            fixture
-                .sim
-                .process_pending_delete_with(Some(&fixture.rules), Some(&fixture.registry));
+            fixture.sim.process_pending_delete_with(
+                Some(&fixture.rules),
+                Some(&fixture.registry),
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let retained_slot = fixture
             .sim
@@ -1392,9 +1415,11 @@ fn assert_ready_fatal_routes(corpus: &Value) {
         fixture.assert_stock_pending_snapshot(route);
         let identities = fixture.identities();
         fixture.sim.session.binary_frame = int(&route["after_frame_increment"]["frame"]) as u32;
-        fixture
-            .sim
-            .process_pending_delete_with(Some(&fixture.rules), Some(&fixture.registry));
+        fixture.sim.process_pending_delete_with(
+            Some(&fixture.rules),
+            Some(&fixture.registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(
             fixture
                 .sim
@@ -1484,9 +1509,11 @@ fn original_direct_ap_receivers_join_debris_crew_uninit_power_and_deferred_destr
         .building_anim_slots;
     assert!(slots[3].is_some(), "UnInit retains ordinary attached ART");
     fixture.sim.session.binary_frame = int(&route["after_frame_increment"]["frame"]) as u32;
-    fixture
-        .sim
-        .process_pending_delete_with(Some(&fixture.rules), Some(&fixture.registry));
+    fixture.sim.process_pending_delete_with(
+        Some(&fixture.rules),
+        Some(&fixture.registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         fixture
             .sim

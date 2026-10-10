@@ -105,19 +105,19 @@ fn rng_input(hex: &Value) -> SimRng {
 }
 
 fn import_rng(sim: &mut Simulation, native: &Value) {
-    sim.main_rng = rng_input(&native["main"]["before_hex"]);
+    sim.main_rng = rng_input(&native["main"]["before_hex"]).into();
     sim.scenario_rng = rng_input(&native["scenario"]["before_hex"]);
     sim.mapgen_rng = rng_input(&native["mapgen"]["before_hex"]);
 }
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str, name: &str) {
     for (stream, rng) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert!(
-            rng.native_state_hex() == native[stream][boundary].as_str().unwrap(),
+            rng == native[stream][boundary].as_str().unwrap(),
             "{name}: complete {stream} {boundary} native RNG"
         );
     }
@@ -501,7 +501,8 @@ fn fixture_input(fixture: &mut Fixture, rules: &RuleSet, native: &Value) {
                     *product,
                     message,
                     RadioPayload::default(),
-                    Some(rules)
+                    Some(rules),
+                    crate::sim::world::FrameEffects::default()
                 )
                 .code(),
                 1
@@ -520,8 +521,14 @@ fn fixture_input(fixture: &mut Fixture, rules: &RuleSet, native: &Value) {
         // Import the declared post-UnitAI radio seam using the existing
         // reciprocal cleanup owner; no raw tether mutation is introduced.
         assert_eq!(
-            radio::transmit_to_contact(sim, *product, RadioMessage::RequestClearance, Some(rules))
-                .code(),
+            radio::transmit_to_contact(
+                sim,
+                *product,
+                RadioMessage::RequestClearance,
+                Some(rules),
+                crate::sim::world::FrameEffects::default()
+            )
+            .code(),
             23
         );
     }
@@ -798,7 +805,13 @@ fn original_harvester_and_weeder_primary_controls_use_shared_mission_authority()
         .unwrap();
         fixture
             .sim
-            .per_cell_process(fixture.product, PerCellReason::Arrival, Some(&rules), None)
+            .per_cell_process(
+                fixture.product,
+                PerCellReason::Arrival,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_snapshot(&fixture, &row["after"], name);
         assert_rng(&fixture.sim, &row["rng"], "after_hex", name);

@@ -8,6 +8,7 @@ use crate::sim::find_nearby_cell::{
     NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
     RADIUS_HARD_CAP, find_nearby_passable_cell_with_options,
 };
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
 use crate::rules::foundation::foundation_dimensions;
@@ -47,6 +48,7 @@ pub(crate) fn spawn_building_free_unit(
     stable_id: u64,
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let Some((owner_id, type_ref, rx, ry, width, height)) =
         sim.substrate.entities.get(stable_id).and_then(|entity| {
@@ -78,6 +80,7 @@ pub(crate) fn spawn_building_free_unit(
         width,
         height,
         overlay_registry,
+        effects,
     )
 }
 
@@ -91,6 +94,7 @@ fn try_spawn_building_free_unit(
     width: u16,
     height: u16,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let Some(free_unit_type) = rules.building_free_unit(building_type_id) else {
         return false;
@@ -138,6 +142,7 @@ fn try_spawn_building_free_unit(
             FREE_UNIT_FACING_PRIMARY,
             rules,
             overlay_registry,
+            effects,
         )
     {
         log::info!(
@@ -169,6 +174,7 @@ fn try_spawn_building_free_unit(
             FREE_UNIT_FACING_FALLBACK,
             rules,
             overlay_registry,
+            effects,
         ) {
             log::info!(
                 "Completed refinery {} spawned free {} at fallback ({},{}) for {}",
@@ -184,7 +190,10 @@ fn try_spawn_building_free_unit(
 
     // gamemd refunds before uninitializing the constructed UnitClass.
     let refund = refund_free_unit(sim, rules, owner, &free_unit_type);
-    sim.uninit_with_rules(free_unit_id, rules);
+    sim.uninit_with_context(
+        free_unit_id,
+        crate::sim::world::UninitContext::new(Some(rules), overlay_registry).with_effects(effects),
+    );
     log::warn!(
         "Completed refinery {} could not place free unit {}; refunded {} to {}",
         building_type_id,
@@ -203,6 +212,7 @@ fn try_place_free_unit(
     facing: u8,
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     // BuildingClass::OnConstructionComplete @ 0x00445F80 invokes the newly
     // constructed UnitClass through virtual Unlimbo for every primary/fallback
@@ -222,6 +232,7 @@ fn try_place_free_unit(
         PlacementEvidence::EvaluateMark,
         rules,
         overlay_registry,
+        effects,
     )
     .is_some()
 }

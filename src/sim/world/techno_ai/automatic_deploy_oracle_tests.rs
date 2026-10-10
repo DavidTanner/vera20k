@@ -41,7 +41,13 @@ fn native_automatic_guard_admission_stop_order_and_signed_caller_returns() {
                 .known()
                 .unwrap();
             assert_eq!(
-                infantry_automatic_guard_delay(&mut sim, id, &rules, mission),
+                infantry_automatic_guard_delay(
+                    &mut sim,
+                    id,
+                    &rules,
+                    mission,
+                    crate::sim::world::FrameEffects::default()
+                ),
                 expected
             );
         } else {
@@ -110,7 +116,9 @@ fn pending_deploy_survives_snapshot_and_paid_head_completion() {
     );
     // The existing paid-head completion owner releases Head_To and invokes
     // the original-compared Stop callback. Orders/restore add no latch reset.
-    restored.finish_walk_navigation(id, Some(&rules)).unwrap();
+    restored
+        .finish_walk_navigation(id, Some(&rules), crate::sim::world::FrameEffects::default())
+        .unwrap();
     let actor = restored.substrate.entities.get(id).unwrap();
     assert_eq!(
         actor.mission_leaf.as_infantry().unwrap().pending_deploy(),
@@ -195,7 +203,14 @@ fn retail_gi_and_guardian_gi_complete_deploy_in_bound_runtime() {
     };
     let mut entered = [false; 2];
     for _ in 0..250 {
-        runtime.advance_frame(&[], 22, TickLane::Ordinary).unwrap();
+        runtime
+            .advance_frame(
+                &[],
+                22,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap();
         for (index, id) in [gi, guardian].into_iter().enumerate() {
             let actor = runtime.simulation.substrate.entities.get(id).unwrap();
             entered[index] |= actor.mission_leaf.as_infantry().unwrap().doing() == 27;

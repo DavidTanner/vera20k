@@ -58,6 +58,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::BlockingObject;
 use crate::sim::movement::ground_pose::position_world_coord;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::team_ai::member_is_live_joined;
@@ -129,6 +130,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let vm = &mut self.team_script_vm;
         let Some(team) = vm.teams.get_mut(&team_id) else {
@@ -162,10 +164,10 @@ impl Simulation {
                 }
             }
             if (cursor as u32) >= count {
-                self.destroy_team(team_id, rules);
+                self.destroy_team(team_id, rules, frame_effects);
                 return;
             }
-            self.team_assign_mission_target(team_id, None, rules, registry);
+            self.team_assign_mission_target(team_id, None, rules, registry, frame_effects);
             if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
                 team.focus = None;
             }
@@ -180,7 +182,7 @@ impl Simulation {
             .is_some_and(|team| std::mem::take(&mut team.retarget))
         {
             first = true;
-            self.team_assign_mission_target(team_id, None, rules, registry);
+            self.team_assign_mission_target(team_id, None, rules, registry, frame_effects);
             if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
                 team.focus = None;
             }
@@ -198,7 +200,7 @@ impl Simulation {
         if action.action_id as u32 > 0x40 {
             return;
         }
-        self.team_run_action(team_id, action, first, rules, registry);
+        self.team_run_action(team_id, action, first, rules, registry, frame_effects);
     }
 
     /// The jump table's cases.
@@ -209,10 +211,17 @@ impl Simulation {
         first: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let current_frame = self.session.binary_frame as i32;
         match action.action_id {
-            0 => self.team_action_attack_quarry(team_id, action.argument, rules, registry),
+            0 => self.team_action_attack_quarry(
+                team_id,
+                action.argument,
+                rules,
+                registry,
+                frame_effects,
+            ),
             // `0x006E95AB`: returns; the team stays on the action.
             2 => {}
             // `0x006E97CE`: the guard timer starts on the first frame at
@@ -225,7 +234,7 @@ impl Simulation {
                         guard_frames(action.argument),
                     );
                 }
-                self.team_regroup(team_id, rules, registry);
+                self.team_regroup(team_id, rules, registry, frame_effects);
                 if let Some(team) = self.team_script_vm.teams.get_mut(&team_id)
                     && team.guard_timer.remaining(current_frame) == 0
                 {
@@ -240,7 +249,13 @@ impl Simulation {
                     team.advance_pending = true;
                 }
             }
-            11 => self.team_action_do_mission(team_id, action.argument, rules, registry),
+            11 => self.team_action_do_mission(
+                team_id,
+                action.argument,
+                rules,
+                registry,
+                frame_effects,
+            ),
             // `0x006E984B`: each member panics (`vt+0x518`, in list order).
             19 => {
                 let members: Vec<u64> = self
@@ -274,16 +289,29 @@ impl Simulation {
                     team.succeeded |= action.action_id == 49;
                 }
             }
-            53 => self.team_action_gather_at_enemy_base(team_id, first, rules, registry),
-            54 => self.team_action_regroup_at_base(team_id, first, rules, registry),
-            55 => self.team_action_iron_curtain(team_id, rules, registry),
-            57 => self.team_action_chronoshift(team_id, action.argument, rules, registry),
+            53 => self.team_action_gather_at_enemy_base(
+                team_id,
+                first,
+                rules,
+                registry,
+                frame_effects,
+            ),
+            54 => self.team_action_regroup_at_base(team_id, first, rules, registry, frame_effects),
+            55 => self.team_action_iron_curtain(team_id, rules, registry, frame_effects),
+            57 => self.team_action_chronoshift(
+                team_id,
+                action.argument,
+                rules,
+                registry,
+                frame_effects,
+            ),
             58 => self.team_action_move_to_own_building(
                 team_id,
                 action.argument,
                 first,
                 rules,
                 registry,
+                frame_effects,
             ),
             action_id => {
                 debug_assert!(!action_is_ported(action_id));
@@ -312,6 +340,7 @@ impl Simulation {
         mission: i32,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
             return;
@@ -332,7 +361,7 @@ impl Simulation {
             if !entity.lifecycle.object_alive {
                 continue;
             }
-            self.team_member_join_up(team_id, member, rules, registry);
+            self.team_member_join_up(team_id, member, rules, registry, frame_effects);
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
@@ -347,10 +376,10 @@ impl Simulation {
                     && mission != MissionType::AreaGuard as i32
                 {
                     self.team_member_queue_mission(member, MissionType::Move, rules);
-                    self.team_member_set_destination(member, zone, rules, registry);
+                    self.team_member_set_destination(member, zone, rules, registry, frame_effects);
                     self.team_member_queue_mission(member, MissionType::Move, rules);
                     let cell = zone.and_then(|zone| self.team_target_cell_of_coord(zone));
-                    self.team_member_set_destination(member, cell, rules, registry);
+                    self.team_member_set_destination(member, cell, rules, registry, frame_effects);
                     continue;
                 }
             }
@@ -369,7 +398,7 @@ impl Simulation {
             self.team_member_clear_archive_target(member);
             self.team_member_queue_mission_id(member, MissionId::from_raw(mission), rules);
             self.team_member_clear_target(member, rules);
-            self.team_member_set_destination(member, None, rules, registry);
+            self.team_member_set_destination(member, None, rules, registry, frame_effects);
         }
     }
 
@@ -423,6 +452,7 @@ impl Simulation {
         first: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if first && let Some(leader) = self.team_leader(team_id, rules) {
             let Some(entity) = self.substrate.entities.get(leader) else {
@@ -439,9 +469,9 @@ impl Simulation {
             let seed = regroup_seed_cell(own, enemy, rules.general.ai_safe_distance, || {
                 self.scenario_rng.next_range_i32_inclusive(0, 255)
             });
-            self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry);
+            self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry, frame_effects);
         }
-        self.team_coordinate_move(team_id, rules, registry);
+        self.team_coordinate_move(team_id, rules, registry, frame_effects);
     }
 
     /// Script action 53 (`0x006EF700`), gather at the enemy base: on its
@@ -458,9 +488,10 @@ impl Simulation {
         first: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if !first {
-            self.team_coordinate_move(team_id, rules, registry);
+            self.team_coordinate_move(team_id, rules, registry, frame_effects);
             return;
         }
         let gather = self.team_leader(team_id, rules).and_then(|leader| {
@@ -485,8 +516,8 @@ impl Simulation {
             }
             return;
         };
-        self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry);
-        self.team_coordinate_move(team_id, rules, registry);
+        self.team_assign_gather_cell(team_id, seed, speed_type, rules, registry, frame_effects);
+        self.team_coordinate_move(team_id, rules, registry, frame_effects);
     }
 
     /// Actions 53 and 54's mission target (`0x006EF947..0x006EF9AB`,
@@ -500,6 +531,7 @@ impl Simulation {
         speed_type: Option<crate::rules::locomotor_type::SpeedType>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let cell = speed_type
             .and_then(|speed_type| {
@@ -516,7 +548,7 @@ impl Simulation {
             x: cell.0 as i16,
             y: cell.1 as i16,
         };
-        self.team_assign_mission_target(team_id, Some(target), rules, registry);
+        self.team_assign_mission_target(team_id, Some(target), rules, registry, frame_effects);
     }
 
     /// Script action 58 (`0x006EE5C0`), move to own building: on its first
@@ -538,6 +570,7 @@ impl Simulation {
         first: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if first
             && let Some(leader) = self.team_leader(team_id, rules)
@@ -548,13 +581,13 @@ impl Simulation {
                 x: cell.0 as i16,
                 y: cell.1 as i16,
             };
-            self.team_assign_mission_target(team_id, Some(target), rules, registry);
+            self.team_assign_mission_target(team_id, Some(target), rules, registry, frame_effects);
         }
         let Some(team) = self.team_script_vm.teams.get_mut(&team_id) else {
             return;
         };
         if team.mission_target.is_some() {
-            self.team_coordinate_move(team_id, rules, registry);
+            self.team_coordinate_move(team_id, rules, registry, frame_effects);
         } else {
             team.advance_pending = true;
         }
@@ -704,6 +737,7 @@ impl Simulation {
         target: Option<TeamTarget>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
             return;
@@ -725,7 +759,13 @@ impl Simulation {
                 if aimed || moving {
                     self.team_member_queue_mission(member, MissionType::Guard, rules);
                     if moving {
-                        self.team_member_set_destination(member, None, rules, registry);
+                        self.team_member_set_destination(
+                            member,
+                            None,
+                            rules,
+                            registry,
+                            frame_effects,
+                        );
                     }
                     if aimed {
                         self.team_member_clear_target(member, rules);
@@ -749,7 +789,7 @@ impl Simulation {
             team.leaving_map = !in_playfield;
             if !in_playfield {
                 for member in members {
-                    self.team_member_set_destination(member, None, rules, registry);
+                    self.team_member_set_destination(member, None, rules, registry, frame_effects);
                 }
             }
         }
@@ -766,11 +806,12 @@ impl Simulation {
         firer: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team_id) = self.team_script_vm.member_team.get(&firer).copied() else {
             return;
         };
-        self.team_assign_mission_target(team_id, None, rules, registry);
+        self.team_assign_mission_target(team_id, None, rules, registry, frame_effects);
         // FireAt rereads Foot+0x5D4 after the member setters return.
         if let Some(team_id) = self.team_script_vm.member_team.get(&firer)
             && let Some(team) = self.team_script_vm.teams.get_mut(team_id)
@@ -790,8 +831,9 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
-        self.team_assign_mission_target(team_id, None, rules, registry);
+        self.team_assign_mission_target(team_id, None, rules, registry, frame_effects);
         let members: Vec<u64> = self
             .team_script_vm
             .teams
@@ -825,6 +867,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let vm = &mut self.team_script_vm;
         let Some(team) = vm.teams.get_mut(&team_id) else {
@@ -853,7 +896,7 @@ impl Simulation {
             if !self.team_script_vm.teams.contains_key(&team_id) {
                 return;
             }
-            if self.team_member_join_up(team_id, member, rules, registry) {
+            if self.team_member_join_up(team_id, member, rules, registry, frame_effects) {
                 finished = false;
             }
             let Some(entity) = self.substrate.entities.get(member) else {
@@ -905,8 +948,20 @@ impl Simulation {
                             || crate::sim::movement::motion_query::is_moving(entity) == Some(true)
                     });
                     if !still_moving && entity.attack_target.is_none() {
-                        self.team_member_set_destination(member, None, rules, registry);
-                        crate::sim::world::enter_idle_mode(self, member, rules, None);
+                        self.team_member_set_destination(
+                            member,
+                            None,
+                            rules,
+                            registry,
+                            frame_effects,
+                        );
+                        crate::sim::world::enter_idle_mode(
+                            self,
+                            member,
+                            rules,
+                            None,
+                            frame_effects,
+                        );
                     }
                 }
             } else {
@@ -923,7 +978,13 @@ impl Simulation {
                     .get(member)
                     .is_some_and(|entity| entity.navigation.nav_com.is_none())
                 {
-                    self.team_member_set_destination(member, Some(focus), rules, registry);
+                    self.team_member_set_destination(
+                        member,
+                        Some(focus),
+                        rules,
+                        registry,
+                        frame_effects,
+                    );
                 }
                 let Some(entity) = self.substrate.entities.get(member) else {
                     continue;
@@ -936,7 +997,13 @@ impl Simulation {
                         && (balloon_hover || (aircraft && nav_names(nav, member_cell(entity))))
                 }) || (entity.navigation.nav_com.is_none() && balloon_hover);
                 if resend {
-                    self.team_member_set_destination(member, Some(focus), rules, registry);
+                    self.team_member_set_destination(
+                        member,
+                        Some(focus),
+                        rules,
+                        registry,
+                        frame_effects,
+                    );
                 }
                 finished = false;
             }
@@ -1009,6 +1076,7 @@ impl Simulation {
         quarry: i32,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
             return;
@@ -1022,6 +1090,7 @@ impl Simulation {
                 target.map(TeamTarget::Object),
                 rules,
                 registry,
+                frame_effects,
             );
         }
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
@@ -1037,7 +1106,7 @@ impl Simulation {
         if finished && let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
             team.advance_pending = true;
         }
-        self.team_coordinate_attack(team_id, rules, registry);
+        self.team_coordinate_attack(team_id, rules, registry, frame_effects);
     }
 
     /// `Coordinate_Attack @ 0x006EB490`: the team attacks its move target,
@@ -1062,6 +1131,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team) = self.team_script_vm.teams.get_mut(&team_id) else {
             return;
@@ -1117,7 +1187,7 @@ impl Simulation {
             if !self.team_script_vm.teams.contains_key(&team_id) {
                 return;
             }
-            self.team_member_join_up(team_id, member, rules, registry);
+            self.team_member_join_up(team_id, member, rules, registry, frame_effects);
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
@@ -1147,10 +1217,11 @@ impl Simulation {
                     member,
                     crate::sim::radio::RadioMessage::Break,
                     Some(rules),
+                    frame_effects,
                 );
                 self.team_member_queue_mission(member, MissionType::Attack, rules);
                 self.team_member_clear_target(member, rules);
-                self.team_member_set_destination(member, None, rules, registry);
+                self.team_member_set_destination(member, None, rules, registry, frame_effects);
             }
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;

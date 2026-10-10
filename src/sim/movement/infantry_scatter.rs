@@ -11,6 +11,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 
@@ -104,6 +105,7 @@ impl Simulation {
         id: u64,
         flags: ScatterFlags,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let infantry = self
             .substrate
@@ -118,7 +120,7 @@ impl Simulation {
         let human = self.owner_is_human(infantry.owner());
         if DEPLOY_DOINGS.contains(&doing) {
             if flags.forced && flags.no_kidding {
-                self.infantry_do_action(id, DO_UNDEPLOY, false, rules)?;
+                self.infantry_do_action(id, DO_UNDEPLOY, false, rules, frame_effects)?;
             } else if human {
                 return Ok(false);
             }
@@ -180,8 +182,9 @@ impl Simulation {
         flags: ScatterFlags,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
-        if !self.infantry_scatter_admitted(id, flags, rules)? {
+        if !self.infantry_scatter_admitted(id, flags, rules, frame_effects)? {
             return Ok(false);
         }
         let infantry = self
@@ -196,7 +199,14 @@ impl Simulation {
             &mut self.scenario_rng,
         );
         if let Some(cell) = self.scatter_nearby_cell(id, rules) {
-            return self.infantry_scatter_destination(id, cell, rules, registry, true);
+            return self.infantry_scatter_destination(
+                id,
+                cell,
+                rules,
+                registry,
+                true,
+                frame_effects,
+            );
         }
         let Some(scatter) = self.infantry_scatter_neighbor(id, start, rules, registry)? else {
             return Ok(false);
@@ -207,7 +217,14 @@ impl Simulation {
                 MissionId::from_known(MissionType::Move),
             );
         }
-        self.infantry_scatter_destination(id, scatter.destination, rules, registry, false)
+        self.infantry_scatter_destination(
+            id,
+            scatter.destination,
+            rules,
+            registry,
+            false,
+            frame_effects,
+        )
     }
 
     /// `InfantryClass::Scatter` with a real coordinate, after
@@ -224,8 +241,9 @@ impl Simulation {
         flags: ScatterFlags,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
-        if !self.infantry_scatter_admitted(id, flags, rules)? {
+        if !self.infantry_scatter_admitted(id, flags, rules, frame_effects)? {
             return Ok(false);
         }
         let Some(scatter) = self.select_infantry_scatter_away_from(id, source, rules, registry)?
@@ -244,6 +262,7 @@ impl Simulation {
             scatter.speed,
             rules,
             registry,
+            frame_effects,
         )
     }
 
@@ -256,6 +275,7 @@ impl Simulation {
         source: (i32, i32),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<Option<InfantryDamageScatter>, String> {
         let Some(infantry) = self.substrate.entities.get(id) else {
             return Ok(None);
@@ -267,7 +287,12 @@ impl Simulation {
         {
             return Ok(None);
         }
-        if !self.infantry_scatter_admitted(id, ScatterFlags::new(false, false), rules)? {
+        if !self.infantry_scatter_admitted(
+            id,
+            ScatterFlags::new(false, false),
+            rules,
+            frame_effects,
+        )? {
             return Ok(None);
         }
         self.select_infantry_scatter_away_from(id, source, rules, registry)
@@ -385,6 +410,7 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
         process_now: bool,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let infantry = self
             .substrate
@@ -394,7 +420,7 @@ impl Simulation {
         let kind = infantry.locomotor.as_ref().map(|loco| loco.active_kind());
         let speed = scatter_movement_speed(infantry, Some(rules), &self.interner, &self.houses);
         if kind == Some(LocomotorKind::Jumpjet) {
-            if !self.issue_air_cell_destination(id, cell, speed, Some(rules)) {
+            if !self.issue_air_cell_destination(id, cell, speed, Some(rules), frame_effects) {
                 return Err(
                     "Scatter Jumpjet destination requires its failed-placement continuation".into(),
                 );
@@ -407,6 +433,7 @@ impl Simulation {
             speed,
             rules,
             registry,
+            frame_effects,
         )? || !process_now
             || kind != Some(LocomotorKind::Walk)
         {
@@ -423,7 +450,7 @@ impl Simulation {
             return Err(String::from("Scatter Process requires navigation"));
         }
         let outcome = self
-            .process_ground_locomotor_one(id, Some(rules), registry)
+            .process_ground_locomotor_one(id, Some(rules), registry, frame_effects)
             .map_err(|error| format!("Scatter Process failed: {error:?}"))?;
         Ok(outcome.bridge_state_changed())
     }
@@ -624,6 +651,7 @@ impl Simulation {
         speed: SimFixed,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         use crate::rules::locomotor_type::LocomotorKind;
         let actor = self
@@ -672,7 +700,7 @@ impl Simulation {
                 self.substrate.entities.get_mut(id).unwrap(),
             );
             return Ok(self
-                .jumpjet_cell_destination(id, cell, speed, Some(rules))
+                .jumpjet_cell_destination(id, cell, speed, Some(rules), frame_effects)
                 .unwrap_or(false));
         }
         let human = self.owner_is_human(actor.owner());
@@ -689,7 +717,7 @@ impl Simulation {
             if actor.mission.current().raw() != 1
                 || !super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
             {
-                self.infantry_stop_driver(id, rules, registry)?;
+                self.infantry_stop_driver(id, rules, registry, frame_effects)?;
             }
         }
         // 51ABD7..51AC1F: the human same-reference prone request is an
@@ -705,7 +733,7 @@ impl Simulation {
             && super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
             && actor.infantry.as_ref().is_some_and(|state| state.is_prone)
         {
-            self.infantry_do_action(id, 7, false, rules)?;
+            self.infantry_do_action(id, 7, false, rules, frame_effects)?;
         }
         super::movement_commands::clear_destination_path_head(
             self.substrate.entities.get_mut(id).unwrap(),
@@ -725,6 +753,7 @@ impl Simulation {
                 rules,
                 false,
                 registry,
+                frame_effects,
             )?;
             let actor = self.substrate.entities.get_mut(id).unwrap();
             super::DestinationTiming::from_rules(frame, Some(rules)).accept(actor);
@@ -756,6 +785,7 @@ impl Simulation {
         requested: NavTargetRef,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let speed = {
             let infantry = self
@@ -765,7 +795,7 @@ impl Simulation {
                 .ok_or("destination lost infantry actor")?;
             scatter_movement_speed(infantry, Some(rules), &self.interner, &self.houses)
         };
-        self.assign_infantry_walk_destination(id, requested, speed, rules, registry)
+        self.assign_infantry_walk_destination(id, requested, speed, rules, registry, frame_effects)
     }
 
     /// The Infantry class setter `vt+0x480(NULL, 1)` (`0x0051AA40`), every
@@ -791,6 +821,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
@@ -804,7 +835,7 @@ impl Simulation {
                 .get_mut(id)
                 .expect("same setter actor"),
         );
-        self.foot_null_destination(id, rules, registry);
+        self.foot_null_destination(id, rules, registry, frame_effects);
         true
     }
 

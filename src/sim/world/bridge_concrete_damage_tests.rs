@@ -135,6 +135,7 @@ fn retail_concrete_hut_damage_matches_native_both_huts_and_three_states() {
                 Some(&runtime.resources.overlay_registry),
                 (87, 54),
                 crate::sim::bridge_state::ramp_repair::Family::High,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         }
@@ -154,7 +155,7 @@ fn retail_concrete_hut_damage_matches_native_both_huts_and_three_states() {
             case["hut"][1].as_u64().unwrap() as u16,
         );
         assert!(crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
-            sim, &runtime.resources.rules, hut, Some(&runtime.resources.overlay_registry)
+            sim, &runtime.resources.rules, hut, Some(&runtime.resources.overlay_registry), crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(
             json!({"main":sim.main_rng,"scenario":sim.scenario_rng,"mapgen":sim.mapgen_rng}),
@@ -254,7 +255,8 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
             sim,
             rules,
             &[event],
-            Some(registry)
+            Some(registry),
+            crate::sim::world::FrameEffects::default()
         )
     );
     assert_eq!(
@@ -276,7 +278,8 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
             sim,
             rules,
             &[event],
-            Some(registry)
+            Some(registry),
+            crate::sim::world::FrameEffects::default()
         )
     );
     assert_eq!(
@@ -343,6 +346,7 @@ fn force_fire_scene() -> (HeadlessScenario, u64, String) {
             std::slice::from_ref(&command),
             SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
     export(&scene, "attack_command_applied");
@@ -356,7 +360,12 @@ fn retail_force_fire_emits_native_muzzle_from_real_command() {
     let (output, draws) = crate::sim::rng::trace_draws(|| {
         scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap()
     });
     if let Some(root) = std::env::var_os("VERA20K_ANYTOWN_EXPORT") {
@@ -421,7 +430,12 @@ fn retail_force_fire_collapses_concrete_then_engineer_rebuilds_it() {
         let logic_frame = scene.sim().session.binary_frame;
         let output = scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         for shot in output
             .fire_events
@@ -486,7 +500,12 @@ fn retail_force_fire_collapses_concrete_then_engineer_rebuilds_it() {
     for _ in 0..32 {
         let output = scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert!(
             !output

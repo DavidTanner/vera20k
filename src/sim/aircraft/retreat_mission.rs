@@ -30,6 +30,7 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::CellRef;
 use crate::sim::components::NavTargetRef;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::sim::world::edge_cell::Edge;
 
@@ -84,7 +85,12 @@ fn retreat_visit(
 }
 
 /// One visit of aircraft `id`.
-pub(super) fn retreat(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+pub(super) fn retreat(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) -> i32 {
     let entity = sim.substrate.entities.get(id).expect("aircraft dispatch");
     let nav_com = match entity.navigation.nav_com {
         None => RetreatNavCom::None,
@@ -112,7 +118,12 @@ pub(super) fn retreat(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         nav_com,
         HOUSE_EDGE_UNSET,
         waypoint_edge,
-        &mut WorldRetreat { sim, id, rules },
+        &mut WorldRetreat {
+            sim,
+            id,
+            rules,
+            frame_effects,
+        },
     )
 }
 
@@ -120,6 +131,7 @@ struct WorldRetreat<'a> {
     sim: &'a mut Simulation,
     id: u64,
     rules: &'a RuleSet,
+    frame_effects: FrameEffects<'a>,
 }
 
 impl RetreatHost for WorldRetreat<'_> {
@@ -132,6 +144,7 @@ impl RetreatHost for WorldRetreat<'_> {
             self.id,
             cell.map(|(rx, ry)| NavTargetRef::cell(rx, ry)),
             self.rules,
+            self.frame_effects,
         );
     }
 }

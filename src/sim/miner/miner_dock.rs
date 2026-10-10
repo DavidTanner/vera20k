@@ -25,6 +25,7 @@
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// Whether the refinery's Contacts[] list holds the miner.
@@ -38,7 +39,12 @@ pub(crate) fn has_contact(sim: &Simulation, refinery_sid: u64, miner_sid: u64) -
 
 /// BREAK over the bus — drops the contact on both ends and clears the miner's
 /// `dock_entered_with`.
-pub(crate) fn break_contact(sim: &mut Simulation, miner_sid: u64, refinery_sid: u64) {
+pub(crate) fn break_contact(
+    sim: &mut Simulation,
+    miner_sid: u64,
+    refinery_sid: u64,
+    frame_effects: FrameEffects<'_>,
+) {
     let _ = radio::transmit(
         sim,
         miner_sid,
@@ -46,6 +52,7 @@ pub(crate) fn break_contact(sim: &mut Simulation, miner_sid: u64, refinery_sid: 
         RadioMessage::Break,
         RadioPayload::default(),
         None,
+        frame_effects,
     );
 }
 
@@ -63,6 +70,7 @@ pub(crate) mod test_support {
             RadioMessage::Hello,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         ) == radio::RadioResponse::Roger
     }
 
@@ -83,6 +91,7 @@ pub(crate) mod test_support {
             RadioMessage::Tether,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
     }
 

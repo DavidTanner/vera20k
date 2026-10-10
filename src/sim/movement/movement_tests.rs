@@ -497,7 +497,12 @@ fn walk_path_timer_waits_without_double_aging_or_losing_owner_state() {
         // the next accepted order must not recreate or truncate the dword count.
         sim.substrate.entities.get_mut(1).unwrap().movement_target = None;
         sim.session.binary_frame = 200;
-        assert!(sim.set_infantry_null_destination(1, None, None));
+        assert!(sim.set_infantry_null_destination(
+            1,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
             actor.navigation.path_runtime.movement_timer,
@@ -676,7 +681,14 @@ fn drive_slope_boundary_is_detected_on_process_after_forced_track_crossing() {
     let rules = forced_drive_rules("DRIVE", 5);
     sim.resolved_terrain = Some(terrain.clone());
     crate::sim::arena_fixture::supply_native_map(&mut sim);
-    assert!(sim.force_track(1, 0x47, DriveCoord { x: 0, y: 256, z: 0 }, None, None));
+    assert!(sim.force_track(
+        1,
+        0x47,
+        DriveCoord { x: 0, y: 256, z: 0 },
+        None,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.substrate
         .entities
         .get_mut(1)
@@ -1065,7 +1077,14 @@ fn forced_track_object_turn_relinks_each_committed_cell_without_a_movement_targe
         .unwrap()
         .foot_speed
         .set_speed_fraction(SimFixed::lit("0.25"));
-    assert!(sim.force_track(1, 0x47, head, None, None));
+    assert!(sim.force_track(
+        1,
+        0x47,
+        head,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
     let drive = entity
@@ -1813,6 +1832,7 @@ fn walk_move(
         },
         Some(rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
 }
 

@@ -313,7 +313,13 @@ fn the_try_fire_arms_match_native() {
         }
 
         AI_FIRE_LOG.set(Some(Vec::new()));
-        try_fire(&mut sim, &rules, computer, None);
+        try_fire(
+            &mut sim,
+            &rules,
+            computer,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let log = AI_FIRE_LOG.take().unwrap();
 
         let index = |id: InternedId| ids.iter().position(|&sw| sw == id).unwrap();
@@ -460,9 +466,19 @@ fn the_genetic_mutator_target_matches_native() {
                 "{object} high-flying"
             );
             if extra["bridge"].as_bool().unwrap_or(false) {
-                assert!(sim.foot_mark_remove(id, Some(&rules), None));
+                assert!(sim.foot_mark_remove(
+                    id,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                ));
                 sim.substrate.entities.get_mut(id).unwrap().on_bridge = true;
-                assert!(sim.foot_mark_put(id, Some(&rules), None));
+                assert!(sim.foot_mark_put(
+                    id,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                ));
             }
             if extra["limbo"].as_bool().unwrap_or(false) {
                 sim.techno_limbo(id);
@@ -651,7 +667,13 @@ fn retail_walk_reads_each_object() {
         .lifecycle
         .object_alive = false;
     let flying = spawn(&mut sim, "ORCA", "Russians", (20, 50), 0);
-    sim.set_object_height(flying, 600, Some(&rules), None);
+    sim.set_object_height(
+        flying,
+        600,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_ne!(
         sim.entity_display_layer(flying, Some(&rules)),
         Some(crate::sim::world::display_layers::DisplayLayer::GROUND)
@@ -913,9 +935,19 @@ fn the_psychic_dominator_target_matches_native() {
                 );
             }
             if fact("bridge") {
-                assert!(sim.foot_mark_remove(id, Some(&rules), None));
+                assert!(sim.foot_mark_remove(
+                    id,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                ));
                 sim.substrate.entities.get_mut(id).unwrap().on_bridge = true;
-                assert!(sim.foot_mark_put(id, Some(&rules), None));
+                assert!(sim.foot_mark_put(
+                    id,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                ));
             }
             if fact("limbo") {
                 sim.techno_limbo(id);

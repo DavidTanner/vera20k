@@ -261,6 +261,7 @@ fn order(s: &mut Scene, command: crate::sim::command::Command) {
         &command,
         Some(&s.rules),
         Some(registry()),
+        crate::sim::world::FrameEffects::default(),
     ));
 }
 
@@ -376,6 +377,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
                 &command,
                 Some(&s.rules),
                 Some(&registry),
+                crate::sim::world::FrameEffects::default(),
             ));
         };
         if on_ore {

@@ -6,9 +6,9 @@
 //! are paused after admission. Endpoint405A00 is invoked explicitly below;
 //! wall time and silence never stand in for native natural completion.
 
-use super::unit_voice_tests::native;
+use super::unit_voice_tests::{native, recorded_draws, retained_draws};
 use super::*;
-use crate::sim::rng::{SimRng, trace_draws};
+use crate::sim::rng::{MainRng, SimRng, trace_draws};
 use serde_json::Value;
 
 fn history(name: &str) -> &'static Value {
@@ -67,7 +67,7 @@ fn actor_id(history: &Value, pointer: u64) -> u64 {
 /// SfxPlayer/VoiceQueue/arbiter and the caller's canonical Main generator.
 struct Playback<'a> {
     player: SfxPlayer,
-    main: SimRng,
+    main: MainRng,
     history: &'static Value,
     registry: &'a SoundRegistry,
     assets: &'a AssetManager,
@@ -85,10 +85,11 @@ fn with_playback(name: &str, run: impl FnOnce(&mut Playback<'_>)) {
     let definitions = crate::rules::audio_sources::AudioDefinitions::select(&assets);
     let selected_index = assets.load_audio_index().unwrap();
     let history = history(name);
-    let main = SimRng::from_native_state_hex_for_test(main_hex(
+    let main: MainRng = SimRng::from_native_state_hex_for_test(main_hex(
         history,
         &boundary(history, "audio_pump_1034")["before"],
-    ));
+    ))
+    .into();
     let mut playback = Playback {
         player,
         main,
@@ -104,7 +105,7 @@ fn with_playback(name: &str, run: impl FnOnce(&mut Playback<'_>)) {
         playback.registry,
         playback.assets,
         playback.index,
-        &mut |lo, hi| playback.main.next_range_i32_inclusive(lo, hi),
+        &mut retained_draws(&playback.main),
     );
     assert!(playback.player.play_registered_sound_spatial(
         "CommandBar",
@@ -158,20 +159,14 @@ impl Playback<'_> {
             self.main.native_state_hex(),
             main_hex(self.history, &step["before"])
         );
-        let mut ranges = Vec::new();
+        let (mut draw, ranges) = recorded_draws(&self.main);
         let (_, draws) = trace_draws(|| {
             self.player.service_events(
                 milliseconds,
                 self.registry,
                 self.assets,
                 self.index,
-                &mut |lo, hi| {
-                    let result = self.main.next_range_i32_inclusive(lo, hi);
-                    if lo != hi {
-                        ranges.push((lo, hi, result));
-                    }
-                    result
-                },
+                &mut draw,
             );
         });
         // Freeze the real source queues; subsequent checks supply endpoint
@@ -194,7 +189,11 @@ impl Playback<'_> {
                 })
             })
             .collect();
-        assert_eq!(ranges, expected_ranges, "native service {milliseconds}");
+        assert_eq!(
+            *ranges.lock().unwrap(),
+            expected_ranges,
+            "native service {milliseconds}"
+        );
         assert_eq!(
             draws.iter().map(|draw| &draw["value"]).collect::<Vec<_>>(),
             step["advances"]
@@ -311,7 +310,10 @@ fn ended_unit_voice_holds_a_different_request_until_native_pool_retirement() {
         for event in events {
             // Existing device endpoint and output cleanup, not a substitute
             // voice completion rule. Production capture covers actual pulls.
-            playback.player.arbiter.notify_playout_ended(event);
+            playback
+                .player
+                .arbiter
+                .notify_playout_ended(playback.player.arbiter.event_token(event).unwrap());
             playback.player.release_output(event);
         }
         playback.assert_state(&endpoint["after"]);
@@ -436,7 +438,6 @@ fn native_load_reset_discards_pending_playing_handles_and_real_outputs() {
         playback.assert_state(&last_reset["after"]);
         assert!(playback.player.live.is_empty());
         assert!(playback.player.pending.is_empty());
-        assert!(playback.player.loops.is_empty());
         assert_eq!(playback.main.native_state_hex(), before);
         assert_eq!(before, main_hex(playback.history, &last_reset["after"]));
         playback.service(1068);

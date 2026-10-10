@@ -490,11 +490,21 @@ mod tests {
         };
 
         assert!(!hidden(&sim));
-        sim.visit_anim(id, &rules, Some(&overlays));
+        sim.visit_anim(
+            id,
+            &rules,
+            Some(&overlays),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(!hidden(&sim), "ore under the twinkle keeps it visible");
 
         *sim.overlay_grid.as_mut().unwrap().cell_mut(7, 7) = Default::default();
-        sim.visit_anim(id, &rules, Some(&overlays));
+        sim.visit_anim(
+            id,
+            &rules,
+            Some(&overlays),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(
             hidden(&sim),
             "harvested ore hides the twinkle within one AI visit"
@@ -505,11 +515,16 @@ mod tests {
         );
 
         sim.overlay_grid.as_mut().unwrap().place_overlay(7, 7, 0, 1);
-        sim.visit_anim(id, &rules, Some(&overlays));
+        sim.visit_anim(
+            id,
+            &rules,
+            Some(&overlays),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(!hidden(&sim), "regrown ore shows it again");
 
         *sim.overlay_grid.as_mut().unwrap().cell_mut(7, 7) = Default::default();
-        sim.visit_anim(id, &rules, None);
+        sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
         assert!(
             !hidden(&sim),
             "registry-less fixture visits leave the flag alone"

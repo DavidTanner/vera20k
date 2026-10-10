@@ -319,7 +319,8 @@ impl Replay {
                         "Americans",
                         &command,
                         Some(&s.rules),
-                        Some(registry())
+                        Some(registry()),
+                        crate::sim::world::FrameEffects::default()
                     ),
                     "{context}: command admission"
                 );
@@ -347,6 +348,7 @@ impl Replay {
                     s.miner,
                     crate::sim::radio::RadioMessage::Break,
                     Some(&s.rules),
+                    crate::sim::world::FrameEffects::default(),
                 );
                 assert_eq!(
                     response.code() as i32,
@@ -364,9 +366,12 @@ impl Replay {
             }
             "idle" => {
                 let skip_land = input["args"].as_array().is_some_and(|a| a[0] != 0);
-                let result = s
-                    .sim
-                    .unit_enter_idle_mode(s.miner, Some(&s.rules), skip_land);
+                let result = s.sim.unit_enter_idle_mode(
+                    s.miner,
+                    Some(&s.rules),
+                    skip_land,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 assert_eq!(
                     u8::from(result),
                     (int(&step["returned"]) & 255) as u8,
@@ -406,6 +411,7 @@ impl Replay {
                     },
                     Some(&s.rules),
                     None,
+                    crate::sim::world::FrameEffects::default(),
                 );
             }
             "deadline" => {

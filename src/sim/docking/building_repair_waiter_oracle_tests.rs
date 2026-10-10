@@ -158,6 +158,7 @@ fn native_marked_foundation_entry_parking_and_retry_match_shared_owners() {
                         NavTargetRef::Building { id: scene.depot },
                         &scene.rules,
                         true,
+                        crate::sim::world::FrameEffects::default(),
                     );
                 }
                 "park_dispatch" => {
@@ -172,7 +173,12 @@ fn native_marked_foundation_entry_parking_and_retry_match_shared_owners() {
                 | "free_outside_retry"
                 | "free_foundation_retry"
                 | "blocked_goal_foundation_retry" => {
-                    try_pending_entry(&mut scene.sim, &scene.rules, scene.tank);
+                    try_pending_entry(
+                        &mut scene.sim,
+                        &scene.rules,
+                        scene.tank,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                 }
                 "release_by_break" | "blocked_goal_release_by_break" => {
                     radio::transmit(
@@ -182,12 +188,16 @@ fn native_marked_foundation_entry_parking_and_retry_match_shared_owners() {
                         RadioMessage::Break,
                         RadioPayload::default(),
                         Some(&scene.rules),
+                        crate::sim::world::FrameEffects::default(),
                     );
                 }
                 "null_destination_on_foundation" => {
-                    scene
-                        .sim
-                        .set_unit_null_destination(scene.tank, Some(&scene.rules), None);
+                    scene.sim.set_unit_null_destination(
+                        scene.tank,
+                        Some(&scene.rules),
+                        None,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                 }
                 other => panic!("unrepresented original waiter control {other}"),
             }
@@ -297,6 +307,7 @@ fn native_actual_ally_entry_near_stop_preserves_pending_until_foundation_refusal
         None,
         &scene.rules,
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     let (calls, unused) = fresh_oracle_seam::finish();
     result.unwrap();
@@ -317,8 +328,14 @@ fn native_actual_ally_entry_near_stop_preserves_pending_until_foundation_refusal
         RadioMessage::Break,
         RadioPayload::default(),
         Some(&scene.rules),
+        crate::sim::world::FrameEffects::default(),
     );
-    try_pending_entry(&mut scene.sim, &scene.rules, scene.tank);
+    try_pending_entry(
+        &mut scene.sim,
+        &scene.rules,
+        scene.tank,
+        crate::sim::world::FrameEffects::default(),
+    );
     let refused = case["controls"]
         .as_array()
         .unwrap()

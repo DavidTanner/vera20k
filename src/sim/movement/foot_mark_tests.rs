@@ -50,7 +50,15 @@ fn tethered_infantry() -> Simulation {
     sim.substrate.raw_cell_occupation.mark_ground(4, 4, 0x80);
     for message in [RadioMessage::Hello, RadioMessage::Tether] {
         assert_eq!(
-            radio::transmit(&mut sim, 1, 2, message, RadioPayload::default(), None),
+            radio::transmit(
+                &mut sim,
+                1,
+                2,
+                message,
+                RadioPayload::default(),
+                None,
+                crate::sim::world::FrameEffects::default()
+            ),
             RadioResponse::Roger
         );
     }
@@ -70,7 +78,7 @@ fn a_tethered_foot_marks_before_radio13_and_changes_its_list_after_the_receiver(
     let mut sim = tethered_infantry();
     let rng_before = sim.rng_state();
 
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert_eq!(
         radio::take_test_trace(),
         vec![RadioTestEvent::ObjectMarkRefresh {
@@ -84,7 +92,7 @@ fn a_tethered_foot_marks_before_radio13_and_changes_its_list_after_the_receiver(
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0x80);
 
-    assert!(sim.foot_mark_remove(1, None, None));
+    assert!(sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default()));
     assert_eq!(
         radio::take_test_trace(),
         vec![RadioTestEvent::ObjectMarkRefresh {
@@ -132,6 +140,7 @@ fn foot_mark_refresh_is_immediate_and_does_not_reenter_techno_mark() {
                 RadioMessage::AnimStop,
                 RadioPayload::default(),
                 None,
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Roger
         );
@@ -152,14 +161,14 @@ fn foot_mark_refresh_is_immediate_and_does_not_reenter_techno_mark() {
 fn a_refused_mark_and_a_null_first_contact_do_not_emit_radio13() {
     use crate::sim::radio;
     let mut sim = tethered_infantry();
-    assert!(!sim.foot_mark_remove(1, None, None));
+    assert!(!sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default()));
     sim.substrate
         .entities
         .get_mut(1)
         .unwrap()
         .lifecycle
         .in_limbo = true;
-    assert!(!sim.foot_mark_put(1, None, None));
+    assert!(!sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(radio::take_transmit_log().is_empty());
 
     let actor = sim.substrate.entities.get_mut(1).unwrap();
@@ -167,7 +176,7 @@ fn a_refused_mark_and_a_null_first_contact_do_not_emit_radio13() {
     actor.radio_contacts.set_capacity(2);
     assert_eq!(actor.radio_contacts.remove(2), Some(0));
     actor.radio_contacts.set_slot(1, 2);
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(radio::take_transmit_log().is_empty());
     assert!(radio::take_test_trace().is_empty());
     assert_eq!(
@@ -217,21 +226,21 @@ fn mark_writes_the_unit_and_aircraft_raw_bits_and_never_an_infantrymans() {
         (EntityCategory::Infantry, LocomotorKind::Walk, 0x00),
     ] {
         let mut sim = fixture(category, kind);
-        sim.foot_mark_put(1, None, None);
+        sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default());
         assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
         assert_eq!(
             sim.substrate.raw_cell_occupation.ground_bits(4, 4),
             expected_bits,
             "{category:?}"
         );
-        sim.foot_mark_put(1, None, None);
+        sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default());
         assert_eq!(
             sim.substrate
                 .occupancy
                 .count_on_layer(4, 4, MovementLayer::Ground),
             1
         );
-        sim.foot_mark_remove(1, None, None);
+        sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default());
         assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
         assert!(!sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
@@ -250,11 +259,11 @@ fn an_airborne_fly_object_is_marked_without_joining_its_cell() {
         .unwrap()
         .position
         .exact_z_leptons = Some(600);
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
-    assert!(sim.foot_mark_remove(1, None, None));
+    assert!(sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(!sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
 }
 
@@ -278,11 +287,11 @@ fn a_cruising_jumpjet_clears_the_deck_bit_on_remove_and_joins_nothing_on_put() {
         .cell_marked = true;
     sim.substrate.raw_cell_occupation.mark_ground(4, 4, 0x20);
     sim.substrate.raw_cell_occupation.mark_deck(4, 4, 0x20);
-    assert!(sim.foot_mark_remove(1, None, None));
+    assert!(sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default()));
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(4, 4), 0);
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0x20);
 
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(4, 4), 0);
@@ -299,7 +308,7 @@ fn a_limbo_object_is_refused() {
         .unwrap()
         .lifecycle
         .in_limbo = true;
-    assert!(!sim.foot_mark_put(1, None, None));
+    assert!(!sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(!sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
 }
@@ -316,7 +325,7 @@ fn a_location_outside_the_map_is_marked_without_a_cell() {
         .collect();
     sim.resolved_terrain =
         Some(crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(4, 4, cells));
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
@@ -326,28 +335,34 @@ fn a_location_outside_the_map_is_marked_without_a_cell() {
 fn put_receiver_observes_mark_and_link_before_raw_and_can_change_live_enable() {
     let mut sim = fixture(EntityCategory::Unit, LocomotorKind::Drive);
     let mut called = false;
-    sim.foot_mark_put_observed(1, None, None, &mut |sim, id| {
-        called = true;
-        assert!(
+    sim.foot_mark_put_observed(
+        1,
+        None,
+        None,
+        &mut |sim, id| {
+            called = true;
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(id)
+                    .unwrap()
+                    .lifecycle
+                    .cell_marked
+            );
+            assert!(sim.substrate.occupancy.contains_entity(4, 4, id));
+            assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
             sim.substrate
                 .entities
-                .get(id)
+                .get_mut(id)
                 .unwrap()
-                .lifecycle
-                .cell_marked
-        );
-        assert!(sim.substrate.occupancy.contains_entity(4, 4, id));
-        assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
-        sim.substrate
-            .entities
-            .get_mut(id)
-            .unwrap()
-            .foot_occupation_enabled = false;
-    });
+                .foot_occupation_enabled = false;
+        },
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(called);
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(4, 4), 0);
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
-    sim.foot_mark_remove(1, None, None);
+    sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default());
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));
 }
 
@@ -364,7 +379,7 @@ fn a_list_walk_passes_through_a_listed_landed_jumpjet() {
             .insert(actor(id, EntityCategory::Unit, kind));
     }
     for id in 1..=3 {
-        assert!(sim.foot_mark_put(id, None, None));
+        assert!(sim.foot_mark_put(id, None, None, crate::sim::world::FrameEffects::default()));
     }
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 2));
     let next = |sim: &Simulation, id| sim.next_cell_object(CellObjectMember::Entity(id));
@@ -379,7 +394,7 @@ fn a_list_walk_passes_through_a_listed_landed_jumpjet() {
 fn a_listed_landed_jumpjet_units_vehicle_bit_survives_reconcile_and_rebuild() {
     use crate::sim::occupancy::CellOccupationGrid;
     let mut sim = fixture(EntityCategory::Unit, LocomotorKind::Jumpjet);
-    assert!(sim.foot_mark_put(1, None, None));
+    assert!(sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(sim.substrate.occupancy.contains_entity(4, 4, 1));
     let plane = |grid: &CellOccupationGrid| grid.vehicle_bits(4, 4, MovementLayer::Ground);
     assert_eq!(plane(&sim.substrate.cell_occupation), 0x20);

@@ -468,7 +468,12 @@ fn fly_process_matches_native_frames() {
             let frame = start + n as u32;
             sim.session.binary_frame = frame;
             let ((), idle_calls) = crate::sim::aircraft::record_idle_calls_for_test(|| {
-                sim.tick_air_movement_with_cell_lists_one(AIRCRAFT, Some(&rules), None);
+                sim.tick_air_movement_with_cell_lists_one(
+                    AIRCRAFT,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             });
             if let Some(mismatch) = frame_mismatch(&sim, frame, expected, idle_calls) {
                 failures.push(format!("{name} frame {n}: {mismatch}"));

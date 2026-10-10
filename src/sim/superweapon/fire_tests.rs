@@ -129,7 +129,16 @@ fn click_fire_matches_native() {
             // A storm already counts down.
             super::super::lightning_storm::start(&mut sim, &rules, 180, 250, (3, 3), Some(owner));
         }
-        let launched = click_fire(&mut sim, &rules, owner, sw_type_id, &sw, (33, 44), None);
+        let launched = click_fire(
+            &mut sim,
+            &rules,
+            owner,
+            sw_type_id,
+            &sw,
+            (33, 44),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let events = row["events"].as_array().unwrap();
         let called = |name: &str| events.iter().any(|event| event[0] == name);
         assert_eq!(launched, called("launch"), "{row}");
@@ -320,7 +329,8 @@ fn a_charged_nuke_held_for_low_power_does_not_launch() {
         nuke,
         sw,
         (33, 44),
-        None
+        None,
+        crate::sim::world::FrameEffects::default()
     ));
     sim.power_states.get_mut(&owner).unwrap().is_low_power = false;
     sim.session.binary_frame = 30;
@@ -332,6 +342,7 @@ fn a_charged_nuke_held_for_low_power_does_not_launch() {
         nuke,
         sw,
         (33, 44),
-        None
+        None,
+        crate::sim::world::FrameEffects::default()
     ));
 }

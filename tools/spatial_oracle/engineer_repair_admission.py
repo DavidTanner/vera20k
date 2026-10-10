@@ -198,7 +198,9 @@ class NativeAudioPlatform:
                             device=None, buffer_devices=None, critical_calls=None):
         """Admit raw OS inputs; native readers, clocks and consumers still run.
 
-        Files are immutable bytes selected/pinned by the caller. Clock values
+        Files are immutable bytes selected/pinned by the caller; an explicit
+        None value represents a pinned absent file and a failed CreateFile.
+        Clock values
         are raw QPF/QPC inputs, not converted milliseconds. Device values are
         explicit OS status/cursors. Optional per-buffer inputs are keyed only
         by device-buffer identities returned by this transport; unlisted
@@ -206,7 +208,8 @@ class NativeAudioPlatform:
         and unsupported-clock defaults unless these inputs are configured.
         """
         if prepared_files is not None:
-            values = {str(name).lower(): bytes(raw) for name, raw in prepared_files.items()}
+            values = {str(name).lower(): None if raw is None else bytes(raw)
+                      for name, raw in prepared_files.items()}
             if len(values) != len(prepared_files):
                 raise ValueError('Case-colliding prepared RawFile names')
             self.prepared_files = MappingProxyType(values)
@@ -286,6 +289,12 @@ class NativeAudioPlatform:
             name = requested_name.lower()
             if name not in ('audio.idx', 'audio.bag') and name not in self.prepared_files:
                 raise ValueError('Unadmitted RawFile name: ' + name)
+            if name in self.prepared_files and self.prepared_files[name] is None:
+                self.file_io.append(dict(phase=self.owner.phase, pc=f'0x{pc:08X}',
+                    kind='CreateFile', name=requested_name, args=args, result=0xFFFFFFFF,
+                    bytes=0, sha256=None, prepared_physical_absence=True))
+                self.callsite(pc, 6, args, 0xFFFFFFFF)
+                return True
             handle = len(self.files) + 1
             raw = self.prepared_files[name] if name in self.prepared_files else (self.root / name).read_bytes()
             self.files[handle] = dict(name=name, raw=raw, position=0)

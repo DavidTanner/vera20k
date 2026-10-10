@@ -60,6 +60,11 @@ COMMAND_BAR_GESTURE_POLICY = 'map-local-gesture-v4'
 SIDEBAR_POLICY = 'map-retained-sidebar-observation-v1'
 AUDIO_POLICY = 'map-device-pulled-player-pcm-v2'
 PRIOR_AUDIO_POLICY = 'map-device-pulled-player-pcm-v1'
+AUDIO_FINISH_FIELDS = ('event_serial', 'event_live_at_finish', 'channel_live_at_finish',
+                       'token_slot_occupied_at_finish', 'pending_payload_at_finish',
+                       'live_payload_at_finish')
+AUDIO_POOL_FINISH_FIELDS = ('live_event_count_at_finish', 'busy_channel_count_at_finish')
+AUDIO_PLAYBACK_FIELDS = ('playback_clips', 'source_state_alive_at_finish')
 LOAD_SEGMENT_POLICY = 'map-literal-quickload-clock-segments-v1'
 SIDEBAR_TABS = ('building', 'defense', 'infantry', 'vehicle')
 DOCKING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v3'
@@ -1610,12 +1615,20 @@ def _sound_state(value: Any, label: str) -> int:
     previous = 0
     for actor in actors:
         row = require_object(actor, f'{label}.actors[]')
-        require_exact_keys(row, ('stable_id', 'body_counter', 'active', 'countdown'), f'{label}.actors[]')
+        gattling_fields = ('gattling_stage', 'gattling_value')
+        observes_gattling = any(key in row for key in gattling_fields)
+        require_exact_keys(row, ('stable_id', 'body_counter', 'active', 'countdown',
+                                 *(gattling_fields if observes_gattling else ())), f'{label}.actors[]')
         previous = _bounded_int(row['stable_id'], f'{label}.stable_id', previous + 1, (1 << 64) - 1)
         _bounded_int(row['body_counter'], f'{label}.body_counter', -(1 << 31), (1 << 32) - 1)
         _bounded_int(row['countdown'], f'{label}.countdown', -(1 << 31), (1 << 31) - 1)
         if type(row['active']) is not bool:
             raise ValidationError(f'{label}.active must be a boolean')
+        if observes_gattling:
+            # Techno +140/+144 owner values, independent of animation +F8.
+            # Historical receipts may omit the pair; no state is inferred.
+            for key in gattling_fields:
+                _bounded_int(row[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
     return len(actors) + 2
 
 
@@ -1675,8 +1688,22 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
     if audio.get('policy') not in (AUDIO_POLICY, PRIOR_AUDIO_POLICY):
         raise ValidationError('unknown audio observation policy')
     voices = audio['policy'] == AUDIO_POLICY
+    pool_finish = any(key in audio for key in AUDIO_POOL_FINISH_FIELDS)
     require_exact_keys(audio, ('policy', 'point', 'completion_tail_ms', 'tail_draw_count',
-                               'settled', 'truncated', 'outputs', *(('voice_actions',) if voices else ())), label)
+                               'settled', 'truncated', 'outputs', *(('voice_actions',) if voices else ()),
+                               *(AUDIO_POOL_FINISH_FIELDS if pool_finish else ())), label)
+    if pool_finish:
+        counts = [audio[key] for key in AUDIO_POOL_FINISH_FIELDS]
+        if any(value is None for value in counts):
+            if not all(value is None for value in counts):
+                raise ValidationError('audio final pool counts must be both observed or explicitly both unobserved')
+        else:
+            # Existing SoundArbiter pool/channel capacities, not cue-filter
+            # counts or conclusions inferred from selected output actions.
+            _bounded_int(counts[0], f'{label}.{AUDIO_POOL_FINISH_FIELDS[0]}', 0, 300)
+            _bounded_int(counts[1], f'{label}.{AUDIO_POOL_FINISH_FIELDS[1]}', 0, 13)
+            if counts[1] > counts[0]:
+                raise ValidationError('audio busy channel count exceeds live event count')
     for key, expected in (('point', 'post_player_pre_device_mixer'),
                           ('settled', True), ('truncated', False)):
         require_value(audio[key], expected, f'{label}.{key}')
@@ -1686,13 +1713,29 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
     outputs = require_array(audio['outputs'], f'{label}.outputs')
     if len(outputs) > config['max_events']:
         raise ValidationError('audio event count exceeds requested bound')
+    tokens = set()
     for index, value in enumerate(outputs):
         row_label = f'{label}.outputs[{index}]'
         row = require_object(value, row_label)
-        require_exact_keys(row, ('submission', 'event', 'owner', 'sound_id', 'resolved_samples', 'source_sample_count', 'source_ended', 'actions', 'pcm', *(('owner_role',) if voices else ())), row_label)
+        finish = any(key in row for key in AUDIO_FINISH_FIELDS)
+        playback = any(key in row for key in AUDIO_PLAYBACK_FIELDS)
+        require_exact_keys(row, ('submission', 'event', 'owner', 'sound_id', 'resolved_samples', 'source_sample_count', 'source_ended', 'actions', 'pcm', *(('owner_role',) if voices else ()), *(AUDIO_FINISH_FIELDS if finish else ()), *(AUDIO_PLAYBACK_FIELDS if playback else ())), row_label)
         require_value(row['submission'], index, f'{row_label}.submission')
         require_value(row['source_ended'], True, f'{row_label}.source_ended')
         _bounded_int(row['event'], f'{row_label}.event', 0, (1 << 32) - 1)
+        if finish:
+            serial = _bounded_int(row['event_serial'], f'{row_label}.event_serial', 1, (1 << 32) - 1)
+            token = (row['event'], serial)
+            if token in tokens:
+                raise ValidationError('audio submissions repeat one allocation token')
+            tokens.add(token)
+            snapshot = [row[key] for key in AUDIO_FINISH_FIELDS[1:]]
+            if not (all(value is None for value in snapshot) or all(type(value) is bool for value in snapshot)):
+                raise ValidationError('audio final ownership must be all boolean or explicitly all unobserved')
+            if row['channel_live_at_finish'] is True and row['event_live_at_finish'] is not True:
+                raise ValidationError('audio final channel requires its live allocation token')
+            if row['event_live_at_finish'] is True and row['token_slot_occupied_at_finish'] is not True:
+                raise ValidationError('audio live allocation requires its occupied pool slot')
         if row['owner'] is not None:
             _bounded_int(row['owner'], f'{row_label}.owner', 1, (1 << 64) - 1)
         if voices and (row['owner_role'] not in (None, 'positional', 'unit_voice')
@@ -1704,6 +1747,28 @@ def _audio_observation(value: Any, profile: Mapping[str, Any]) -> None:
         if len(names) > 128 or any(type(name) is not str or not name or len(name) > 128 for name in names):
             raise ValidationError('audio sample identities exceed bounds')
         _bounded_int(row['source_sample_count'], f'{row_label}.source_sample_count', 0, (1 << 64) - 1)
+        if playback:
+            if type(row['source_state_alive_at_finish']) is not bool:
+                raise ValidationError('audio playback source state requires an observed boolean')
+            clips = require_array(row['playback_clips'], f'{row_label}.playback_clips')
+            if len(clips) > 32:  # SoundEntry MAX_SAMPLES, not a playlist pass.
+                raise ValidationError('audio playback clip table exceeds loaded sample bound')
+            filled_total = 0
+            loaded_names = set()
+            for clip_index, value in enumerate(clips):
+                clip_label = f'{row_label}.playback_clips[{clip_index}]'
+                clip = require_object(value, clip_label)
+                require_exact_keys(clip, ('name', 'filled_samples', 'pulled_samples'), clip_label)
+                name = require_string(clip['name'], f'{clip_label}.name')
+                if not name or len(name) > 128:
+                    raise ValidationError('audio playback sample name exceeds bounds')
+                filled = _bounded_int(clip['filled_samples'], f'{clip_label}.filled_samples', 0, (1 << 64) - 1)
+                _bounded_int(clip['pulled_samples'], f'{clip_label}.pulled_samples', 0, filled)
+                filled_total += filled
+                loaded_names.add(name)
+            require_value(row['source_sample_count'], filled_total, f'{row_label}.source_sample_count')
+            if any(name not in loaded_names for name in names):
+                raise ValidationError('audio playback starts require loaded clip identities')
         actions = require_array(row['actions'], f'{row_label}.actions')
         if (not 2 <= len(actions) <= 64
                 or require_object(actions[0], 'first audio action').get('kind') != 'submitted'
@@ -2592,6 +2657,8 @@ def export_audio(directory: Path, output: Path) -> dict[str, Any]:
             name = f'submission-{event["submission"]}-event-{event["event"]}-span-{index}.wav'
             payloads.append((name, wav))
             files.append({'file_name': name, 'submission': event['submission'], 'event': event['event'], 'sound_id': event['sound_id'],
+                          **({key: event[key] for key in AUDIO_FINISH_FIELDS} if 'event_serial' in event else {}),
+                          **({key: event[key] for key in AUDIO_PLAYBACK_FIELDS} if 'playback_clips' in event else {}),
                           'resolved_samples': event['resolved_samples'], 'channels': channels, 'sample_rate': rate,
                           'sample_count': usable, 'unframed_tail_samples': count - usable,
                           'pcm_sha256': sha256_bytes(data), 'sha256': sha256_bytes(wav)})
@@ -2601,6 +2668,8 @@ def export_audio(directory: Path, output: Path) -> dict[str, Any]:
         write_bytes_exclusive(output / name, wav)
     report = {'schema_version': 'vera20k.map-audio-export.v1', 'status': 'EXPORTED',
               'source_manifest': checked.capture.manifest.public_identity(), 'point': audio['point'],
+              **({key: audio[key] for key in AUDIO_POOL_FINISH_FIELDS}
+                 if 'live_event_count_at_finish' in audio else {}),
               'files': files, 'native_comparator': 'NONE', 'parity_certification': 'NONE'}
     write_json_exclusive(output / 'audio.json', report)
     return report

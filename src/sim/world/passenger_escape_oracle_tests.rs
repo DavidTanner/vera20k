@@ -359,7 +359,13 @@ fn compare(row: &Value) {
     };
     // The oracle answers the Walk Process slot (`0x0075AC80`) as not moving.
     crate::sim::movement::answered_process::install();
-    sim.release_dying_unit_passengers(&rules, None, transport, dying);
+    sim.release_dying_unit_passengers(
+        &rules,
+        None,
+        transport,
+        dying,
+        crate::sim::world::FrameEffects::default(),
+    );
     let processed = crate::sim::movement::answered_process::finish();
     let expected_processed: Vec<u64> = events
         .iter()

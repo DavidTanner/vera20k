@@ -126,6 +126,7 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
         false,
         rules,
         Some(&runtime.resources.overlay_registry),
+        crate::sim::world::FrameEffects::default(),
     );
     let plant_entity = runtime
         .simulation
@@ -181,7 +182,12 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
         // frame transaction (match_runtime::sim_tick). Follow that same edge.
         let due = runtime.simulation.take_due_commands();
         let output = runtime
-            .advance_frame(&due, crate::app::types::SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(
+                &due,
+                crate::app::types::SIM_TICK_MS,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         for event in output.sound_events {
             if matches!(event, SimSoundEvent::VocAt { ref sound_id, .. } if sound_id == "BuildingRepaired")
@@ -216,7 +222,12 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
     );
     assert_eq!(repaired_sound, 1);
     runtime
-        .advance_frame(&[], crate::app::types::SIM_TICK_MS, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            crate::app::types::SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let plant_entity = runtime.simulation.entities().get(plant).unwrap();
     assert_eq!(

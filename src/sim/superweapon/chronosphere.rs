@@ -51,6 +51,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
 use crate::sim::superweapon::deck_coords;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// Leptons case 3, CreateChronoAnim and case 4 each raise their anims
@@ -181,6 +182,7 @@ pub(super) fn launch_warp(
     sw_type: InternedId,
     target: (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(source) = sim
         .super_weapons
@@ -227,7 +229,7 @@ pub(super) fn launch_warp(
                 target,
                 destination_cell,
             };
-            warp_object(sim, rules, &warp, id, overlay_registry);
+            warp_object(sim, rules, &warp, id, overlay_registry, frame_effects);
             next = live_successor(sim, id, (rx, ry), layer);
         }
     }
@@ -270,6 +272,7 @@ fn warp_object(
     warp: &ChronoWarpLaunch,
     id: u64,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let in_air = |sim: &Simulation, id: u64| {
         sim.substrate.entities.get(id).is_some_and(|entity| {
@@ -303,6 +306,7 @@ fn warp_object(
             eater,
             crate::sim::combat::parasite::CHRONO_WARP_SUPPRESSION_FRAMES,
             rules,
+            frame_effects,
         );
     }
     let on_factory = category == EntityCategory::Unit && sim.unit_in_contact_war_factory(id, rules);
@@ -328,7 +332,7 @@ fn warp_object(
                 arg6: false,
             },
         );
-        sim.commit_direct_damage_receiver(rules, overlay_registry, event);
+        sim.commit_direct_damage_receiver(rules, overlay_registry, event, frame_effects);
         return;
     }
     let frame = sim.session.binary_frame;
@@ -345,7 +349,7 @@ fn warp_object(
     {
         return;
     }
-    arm_chrono_warp(sim, rules, warp, id, overlay_registry);
+    arm_chrono_warp(sim, rules, warp, id, overlay_registry, frame_effects);
 }
 
 /// Case 4's arming of one Foot (`0x006CC91D..0x006CCCA8`):
@@ -370,6 +374,7 @@ fn arm_chrono_warp(
     warp: &ChronoWarpLaunch,
     id: u64,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -385,14 +390,21 @@ fn arm_chrono_warp(
             .get(bunker)
             .is_some_and(|building| building.category == EntityCategory::Structure)
     {
-        crate::sim::docking::bunker_link::clear_bunker(sim, bunker, rules);
+        crate::sim::docking::bunker_link::clear_bunker(sim, bunker, rules, frame_effects);
     }
     let (cx, cy) = warp.destination_cell;
     let [x, y, z] = deck_coords(sim, (cx as u16, cy as u16));
     let mut destination = DriveCoord { x, y, z };
     if category == EntityCategory::Unit {
         sim.locomotor_mark_all_occupation_bits_up(id);
-        let _ = sim.force_track(id, -1, destination, Some(rules), overlay_registry);
+        let _ = sim.force_track(
+            id,
+            -1,
+            destination,
+            Some(rules),
+            overlay_registry,
+            frame_effects,
+        );
         sim.object_raw_receiver_at(id, destination, false);
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.foot_occupation_enabled = true;
@@ -452,12 +464,13 @@ fn arm_chrono_warp(
         warp.owner,
         frame,
     ));
-    crate::sim::radio::broadcast_break(sim, id, Some(rules));
+    crate::sim::radio::broadcast_break(sim, id, Some(rules), frame_effects);
     if let Err(error) = sim.assign_destination_represented(
         id,
         Some(NavTargetRef::cell(cx as u16, cy as u16)),
         Some(rules),
         overlay_registry,
+        frame_effects,
     ) {
         log::debug!("chrono warp {id} destination: {error:?}");
     }

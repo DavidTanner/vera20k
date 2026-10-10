@@ -128,8 +128,13 @@ fn bridge_rim_stock_damage_events_match_original_body_perpendicular_and_cleanup(
                             .level,
                     );
             sim.radar_terrain_dirty_cells.clear();
-            let collapsed =
-                apply_bridge_damage_events_with_overlay_registry(&mut sim, &rules, &[damage], None);
+            let collapsed = apply_bridge_damage_events_with_overlay_registry(
+                &mut sim,
+                &rules,
+                &[damage],
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let calls = hit["calls"].as_array().unwrap();
             assert_eq!(
                 collapsed,
@@ -239,7 +244,13 @@ fn bridge_rim_middle_section_fallout_and_restored_navigation() {
                         .unwrap()
                         .level,
                 );
-        apply_bridge_damage_events_with_overlay_registry(&mut sim, &rules, &[damage], None);
+        apply_bridge_damage_events_with_overlay_registry(
+            &mut sim,
+            &rules,
+            &[damage],
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let alive = sim
             .substrate
             .entities

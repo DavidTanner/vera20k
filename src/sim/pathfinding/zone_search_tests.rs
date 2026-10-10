@@ -1119,6 +1119,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         crate::sim::movement::PerCellReason::Arrival,
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     )
     .expect("the supplied clear-exit arrival completes");
     let produced = sim.substrate.entities.get(produced_id).unwrap();
@@ -1179,7 +1180,8 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
         miner_id,
         crate::sim::components::NavTargetRef::cell(1, 0),
         &rules,
-        true
+        true,
+        crate::sim::world::FrameEffects::default()
     ));
 
     let route = first_track_process_route(&mut sim, miner_id, Some(&rules), &path_grid)
@@ -1612,8 +1614,13 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         ..rectangular_spawn_bounds(5)
     });
     sim.playfield_size_height = Some(1);
-    sim.process_ground_locomotor_one(1, Some(&rules), None)
-        .expect("the pending Drive Process completes");
+    sim.process_ground_locomotor_one(
+        1,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .expect("the pending Drive Process completes");
 
     let continued = sim
         .substrate
@@ -1715,6 +1722,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         1,
         (3, 0),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     assert_eq!(
         first_track_process_route(&mut ore_trip, 1, Some(&rules), &path_grid)
@@ -1730,6 +1738,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
         (3, 0),
         SimFixed::from_num(128),
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(
         first_track_process_route(&mut refinery_return, 1, Some(&rules), &path_grid)

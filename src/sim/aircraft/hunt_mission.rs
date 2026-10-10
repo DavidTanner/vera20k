@@ -184,11 +184,18 @@ impl HuntHost for WorldHunt<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        super::enter_idle_mode_for(self.sim, self.id, self.rules, self.ctx.overlay_registry);
+        super::enter_idle_mode_for(
+            self.sim,
+            self.id,
+            self.rules,
+            self.ctx.overlay_registry,
+            self.ctx.effects,
+        );
     }
 
     fn leave_team(&mut self) {
-        self.sim.leave_team(self.id, false, Some(self.rules));
+        self.sim
+            .leave_team(self.id, false, Some(self.rules), self.ctx.effects);
     }
 
     fn epilogue(&mut self) -> i32 {

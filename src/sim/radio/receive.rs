@@ -40,7 +40,7 @@ use crate::sim::movement::ScatterFlags;
 use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
 #[cfg(test)]
 use crate::sim::world::LifecycleTestEvent;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 /// The hull facing a Unit turns to on PREPARE_TO_DOCK (`0x007376E6`): east.
 pub(crate) const DOCK_FACING: u16 = 0x4000;
@@ -58,25 +58,30 @@ pub(crate) fn dock_pad_cell(rx: u16, ry: u16) -> (u16, u16) {
 /// Receiver-side radio dispatch. `target_sid` is the receiver; `sender_sid` is
 /// the RTTI-filtered sender (`None` when the sender failed the Techno filter).
 /// Returns the receiver's response code.
-pub fn receive_radio(
+pub(crate) fn receive_radio(
     sim: &mut Simulation,
     target_sid: u64,
     sender_sid: Option<u64>,
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(category) = sim.substrate.entities.get(target_sid).map(|t| t.category) else {
         return RadioResponse::None;
     };
     match category {
         EntityCategory::Structure => {
-            building_receive(sim, target_sid, sender_sid, msg, payload, rules)
+            building_receive(sim, target_sid, sender_sid, msg, payload, rules, effects)
         }
-        EntityCategory::Unit => unit_receive(sim, target_sid, sender_sid, msg, payload, rules),
-        EntityCategory::Infantry => foot_receive(sim, target_sid, sender_sid, msg, payload, rules),
+        EntityCategory::Unit => {
+            unit_receive(sim, target_sid, sender_sid, msg, payload, rules, effects)
+        }
+        EntityCategory::Infantry => {
+            foot_receive(sim, target_sid, sender_sid, msg, payload, rules, effects)
+        }
         EntityCategory::Aircraft => {
-            aircraft_receive(sim, target_sid, sender_sid, msg, payload, rules)
+            aircraft_receive(sim, target_sid, sender_sid, msg, payload, rules, effects)
         }
     }
 }
@@ -89,6 +94,7 @@ fn building_receive(
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     // VERA's bunker install adapter owns a Bunker= building's CAN_LOAD and
     // DOCK_NOW (native 0x0043C4F8 / 0x0043C75A arms).
@@ -107,7 +113,7 @@ fn building_receive(
                     sim.session.binary_frame as i32,
                 );
             }
-            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            let _ = techno_receive(sim, building, sender, msg, payload, rules, effects);
             RadioResponse::Roger
         }
         // Original43CC39/43CCE0: the Construction status-zero first-contact
@@ -119,7 +125,7 @@ fn building_receive(
                     MissionId::from_known(MissionType::Repair),
                 );
             }
-            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            let _ = techno_receive(sim, building, sender, msg, payload, rules, effects);
             RadioResponse::Roger
         }
         // Original43CC4C..43CCE0: C queues Guard unless Selling. A yard
@@ -150,12 +156,12 @@ fn building_receive(
                     sim.set_building_anim_slot(building, 8, damaged, false, 0, rules);
                 }
             }
-            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            let _ = techno_receive(sim, building, sender, msg, payload, rules, effects);
             RadioResponse::Roger
         }
-        RadioMessage::CanDock => building_docking(sim, building, sender, rules),
-        RadioMessage::DockNow => building_dock_now(sim, building, sender, payload, rules),
-        RadioMessage::CanEnter => building_can_load(sim, building, sender, payload, rules),
+        RadioMessage::CanDock => building_docking(sim, building, sender, rules, effects),
+        RadioMessage::DockNow => building_dock_now(sim, building, sender, payload, rules, effects),
+        RadioMessage::CanEnter => building_can_load(sim, building, sender, payload, rules, effects),
         RadioMessage::RequestClearance => {
             let Some(object) = rules.and_then(|rules| {
                 sim.substrate
@@ -186,7 +192,7 @@ fn building_receive(
                 return RadioResponse::Roger;
             }
             //43CDDD delegates before re-reading the live type at43CDE2.
-            let _ = techno_receive(sim, building, sender, msg, payload, rules);
+            let _ = techno_receive(sim, building, sender, msg, payload, rules, effects);
             if rules.is_some_and(|rules| {
                 sim.substrate
                     .entities
@@ -213,10 +219,10 @@ fn building_receive(
             }) {
                 RadioResponse::Roger
             } else {
-                techno_receive(sim, building, sender, msg, payload, rules)
+                techno_receive(sim, building, sender, msg, payload, rules, effects)
             }
         }
-        _ => techno_receive(sim, building, sender, msg, payload, rules),
+        _ => techno_receive(sim, building, sender, msg, payload, rules, effects),
     }
 }
 
@@ -231,6 +237,7 @@ fn building_can_load(
     sender: Option<u64>,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let (Some(from), Some(rules)) = (sender, rules) else {
         return RadioResponse::None;
@@ -286,6 +293,7 @@ fn building_can_load(
             RadioMessage::IsOccupied,
             RadioPayload::default(),
             Some(rules),
+            effects,
         ) {
             RadioResponse::Roger => RadioResponse::Negatory,
             _ => RadioResponse::Roger,
@@ -347,6 +355,7 @@ fn building_docking(
     building_id: u64,
     sender: Option<u64>,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let (Some(from), Some(rules)) = (sender, rules) else {
         return RadioResponse::None;
@@ -379,6 +388,7 @@ fn building_docking(
             RadioMessage::IsRepairing,
             RadioPayload::default(),
             Some(rules),
+            effects,
         ) == RadioResponse::Negatory
     {
         return RadioResponse::Negatory;
@@ -404,6 +414,7 @@ fn building_docking(
             RadioMessage::Hello,
             RadioPayload::default(),
             Some(rules),
+            effects,
         );
     }
     // 0x0043C8D1..0x0043C93A: a contacted Foot whose NavCom is not the
@@ -458,6 +469,7 @@ fn building_docking(
         RadioMessage::NeedToMove,
         RadioPayload::default(),
         Some(rules),
+        effects,
     );
     if moving != RadioResponse::Roger && !force {
         return RadioResponse::Roger;
@@ -476,6 +488,7 @@ fn building_docking(
                     ..RadioPayload::default()
                 },
                 Some(rules),
+                effects,
             ) == RadioResponse::AlreadyThere
         {
             crate::sim::radio::transmit_to_contact(
@@ -483,6 +496,7 @@ fn building_docking(
                 building_id,
                 RadioMessage::Tether,
                 Some(rules),
+                effects,
             );
         }
         return RadioResponse::Roger;
@@ -500,6 +514,7 @@ fn building_docking(
             ..RadioPayload::default()
         },
         Some(rules),
+        effects,
     );
     if arrived != RadioResponse::AlreadyThere {
         return RadioResponse::Roger;
@@ -511,6 +526,7 @@ fn building_docking(
         RadioMessage::Tether,
         RadioPayload::default(),
         Some(rules),
+        effects,
     );
     // 0x0043CAD4..0x0043CAF7: a non-ROGER answer would Scatter the sender;
     // every represented PREPARE_TO_DOCK receiver (Unit 0x007376AD, Techno
@@ -522,6 +538,7 @@ fn building_docking(
         RadioMessage::PrepareToDock,
         RadioPayload::default(),
         Some(rules),
+        effects,
     );
     RadioResponse::Roger
 }
@@ -535,6 +552,7 @@ fn building_dock_now(
     sender: Option<u64>,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(from) = sender else {
         return RadioResponse::None;
@@ -604,6 +622,7 @@ fn building_dock_now(
         RadioMessage::DockNow,
         payload,
         Some(rules),
+        effects,
     )
 }
 
@@ -615,6 +634,7 @@ fn unit_receive(
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     match msg {
         // 0x00737B14: a unit on Return queues Guard, then the Foot receiver;
@@ -631,14 +651,16 @@ fn unit_receive(
                     &EntityReadyInputProvider,
                 );
             }
-            let _ = foot_receive(sim, unit, sender, msg, payload, rules);
+            let _ = foot_receive(sim, unit, sender, msg, payload, rules, effects);
             RadioResponse::Roger
         }
-        RadioMessage::PrepareToDock => unit_prepare_to_dock(sim, unit, sender, payload, rules),
+        RadioMessage::PrepareToDock => {
+            unit_prepare_to_dock(sim, unit, sender, payload, rules, effects)
+        }
         // 0x00737A98: a harvester mid-unload leaves it, then the Foot arm.
         RadioMessage::RunAway => {
-            unit_run_away(sim, unit, rules);
-            foot_receive(sim, unit, sender, msg, payload, rules)
+            unit_run_away(sim, unit, rules, effects);
+            foot_receive(sim, unit, sender, msg, payload, rules, effects)
         }
         // 7, 0xE, 0xF and 0x15: the transport/service arms have no
         // represented sender.
@@ -646,7 +668,7 @@ fn unit_receive(
         | RadioMessage::CanDock
         | RadioMessage::CanEnter
         | RadioMessage::DockNow => RadioResponse::None,
-        _ => foot_receive(sim, unit, sender, msg, payload, rules),
+        _ => foot_receive(sim, unit, sender, msg, payload, rules, effects),
     }
 }
 
@@ -660,6 +682,7 @@ fn unit_prepare_to_dock(
     sender: Option<u64>,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     // 0x007376BA: the Foot receiver first (Techno sends TETHER back).
     let _ = foot_receive(
@@ -669,6 +692,7 @@ fn unit_prepare_to_dock(
         RadioMessage::PrepareToDock,
         payload,
         rules,
+        effects,
     );
     let frame = sim.session.binary_frame;
     let Some(entity) = sim.substrate.entities.get_mut(unit) else {
@@ -700,6 +724,7 @@ fn unit_prepare_to_dock(
             RadioMessage::DockNow,
             RadioPayload::default(),
             rules,
+            effects,
         );
     }
     RadioResponse::Roger
@@ -709,7 +734,12 @@ fn unit_prepare_to_dock(
 /// a `Harvester=`/`Weeder=` unit with its unload latch up drops it, scatters
 /// (forced, not no-kidding — the Unit Scatter refuses while Unload is still
 /// current), queues Harvest and commences it when ready.
-fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
+fn unit_run_away(
+    sim: &mut Simulation,
+    unit: u64,
+    rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
+) {
     let Some(rules) = rules else {
         return;
     };
@@ -726,7 +756,8 @@ fn unit_run_away(sim: &mut Simulation, unit: u64, rules: Option<&RuleSet>) {
         return;
     }
     crate::sim::miner::clear_unload_latch(sim, unit);
-    if let Err(cause) = sim.scatter_null(unit, ScatterFlags::new(true, false), rules, None) {
+    if let Err(cause) = sim.scatter_null(unit, ScatterFlags::new(true, false), rules, None, effects)
+    {
         log::debug!("RUN_AWAY unit {unit} did not scatter: {cause}");
     }
     let now = sim.session.binary_frame;
@@ -776,6 +807,7 @@ fn aircraft_receive(
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(entity) = sim.substrate.entities.get(aircraft) else {
         return RadioResponse::None;
@@ -825,10 +857,12 @@ fn aircraft_receive(
                 RadioResponse::Negatory
             }
         }
-        RadioMessage::MoveToCell => aircraft_move_here(sim, aircraft, sender, payload, rules),
+        RadioMessage::MoveToCell => {
+            aircraft_move_here(sim, aircraft, sender, payload, rules, effects)
+        }
         RadioMessage::NeedToMove => {
             // 0x00419274: Foot first, its answer dropped.
-            let _ = foot_receive(sim, aircraft, sender, msg, payload, rules);
+            let _ = foot_receive(sim, aircraft, sender, msg, payload, rules, effects);
             aircraft_need_to_move(sim, aircraft, rules)
         }
         RadioMessage::RunAway => {
@@ -843,22 +877,28 @@ fn aircraft_receive(
                     &EntityReadyInputProvider,
                 );
                 let airfield = sim.aircraft_nearest_friendly_airfield_cell(aircraft, rules);
-                sim.assign_aircraft_destination(aircraft, Some(airfield), rules);
+                sim.assign_aircraft_destination(aircraft, Some(airfield), rules, effects);
             }
-            crate::sim::radio::transmit_to_contact(sim, aircraft, RadioMessage::Break, rules);
-            foot_receive(sim, aircraft, sender, msg, payload, rules)
+            crate::sim::radio::transmit_to_contact(
+                sim,
+                aircraft,
+                RadioMessage::Break,
+                rules,
+                effects,
+            );
+            foot_receive(sim, aircraft, sender, msg, payload, rules, effects)
         }
         RadioMessage::RequestClearance if !transport.carryall => {
-            foot_receive(sim, aircraft, sender, msg, payload, rules)
+            foot_receive(sim, aircraft, sender, msg, payload, rules, effects)
         }
         RadioMessage::CanDock if transport.passengers <= transport.cargo => {
-            foot_receive(sim, aircraft, sender, msg, payload, rules)
+            foot_receive(sim, aircraft, sender, msg, payload, rules, effects)
         }
         RadioMessage::RequestClearance
         | RadioMessage::CanDock
         | RadioMessage::CanEnter
         | RadioMessage::DockNow => RadioResponse::None,
-        _ => foot_receive(sim, aircraft, sender, msg, payload, rules),
+        _ => foot_receive(sim, aircraft, sender, msg, payload, rules, effects),
     }
 }
 
@@ -873,6 +913,7 @@ fn aircraft_move_here(
     sender: Option<u64>,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let _ = foot_receive(
         sim,
@@ -881,6 +922,7 @@ fn aircraft_move_here(
         RadioMessage::MoveToCell,
         payload,
         rules,
+        effects,
     );
     let Some(rules) = rules else {
         return RadioResponse::None;
@@ -905,6 +947,7 @@ fn aircraft_move_here(
                 RadioMessage::CanEnter,
                 RadioPayload::default(),
                 Some(rules),
+                effects,
             ) != RadioResponse::Roger
             {
                 return RadioResponse::Negatory;
@@ -921,7 +964,7 @@ fn aircraft_move_here(
         now,
         &EntityReadyInputProvider,
     );
-    sim.assign_aircraft_destination(aircraft, payload.target, rules);
+    sim.assign_aircraft_destination(aircraft, payload.target, rules, effects);
     let _ = sim.mission_commence_exact(aircraft, now);
     RadioResponse::Roger
 }
@@ -967,13 +1010,14 @@ fn foot_receive(
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     match msg {
-        RadioMessage::MoveToCell => foot_move_here(sim, foot, payload, rules),
+        RadioMessage::MoveToCell => foot_move_here(sim, foot, payload, rules, effects),
         RadioMessage::NeedToMove => foot_need_to_move(sim, foot),
         RadioMessage::RunAway => {
-            foot_run_away(sim, foot, rules);
-            techno_receive(sim, foot, sender, msg, payload, rules)
+            foot_run_away(sim, foot, rules, effects);
+            techno_receive(sim, foot, sender, msg, payload, rules, effects)
         }
         RadioMessage::IsOccupied => foot_is_occupied(sim, foot, sender),
         // Foot4D900E..4D9028: a live NavCom blocks the repair request before
@@ -987,12 +1031,12 @@ fn foot_receive(
             {
                 RadioResponse::Negatory
             } else {
-                techno_receive(sim, foot, sender, msg, payload, rules)
+                techno_receive(sim, foot, sender, msg, payload, rules, effects)
             }
         }
         // 0x11 has no represented sender.
         RadioMessage::IsUnitLinked => RadioResponse::None,
-        _ => techno_receive(sim, foot, sender, msg, payload, rules),
+        _ => techno_receive(sim, foot, sender, msg, payload, rules, effects),
     }
 }
 
@@ -1006,6 +1050,7 @@ fn foot_move_here(
     foot: u64,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(entity) = sim.substrate.entities.get(foot) else {
         return RadioResponse::None;
@@ -1057,12 +1102,12 @@ fn foot_move_here(
     }
     // 0x004D91E1..0x004D91EB: the class setter vt+0x480(*P, 1).
     match (payload.target, aircraft) {
-        (target, true) => sim.assign_aircraft_destination(foot, target, rules),
+        (target, true) => sim.assign_aircraft_destination(foot, target, rules, effects),
         (Some(target), false) => {
-            sim.set_unit_destination(foot, target, rules, true);
+            sim.set_unit_destination(foot, target, rules, true, effects);
         }
         (None, false) => {
-            sim.assign_null_destination(foot, Some(rules), None);
+            sim.assign_null_destination(foot, Some(rules), None, effects);
         }
     }
     // 0x004D91F1..0x004D920D: UpdateTimer (+0xC8) = {Frame, -, 0}. Inside a
@@ -1077,7 +1122,12 @@ fn foot_move_here(
 /// the first contact is dropped; a unit asleep queues Guard and commences it
 /// when ready, one on Enter queues Guard; one with no NavCom and no turret
 /// swing (`+0x6AF`) scatters (forced, no-kidding). The Techno receiver follows.
-fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
+fn foot_run_away(
+    sim: &mut Simulation,
+    foot: u64,
+    rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
+) {
     let Some(rules) = rules else {
         return;
     };
@@ -1098,7 +1148,7 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         _ => false,
     };
     if aimed_at_contact {
-        sim.assign_null_destination(foot, Some(rules), None);
+        sim.assign_null_destination(foot, Some(rules), None, effects);
     }
     let mission = |sim: &Simulation| {
         sim.substrate
@@ -1133,7 +1183,8 @@ fn foot_run_away(sim: &mut Simulation, foot: u64, rules: Option<&RuleSet>) {
         .entities
         .get(foot)
         .is_some_and(|entity| !entity.turret_rotation_latch && entity.navigation.nav_com.is_none())
-        && let Err(cause) = sim.scatter_null(foot, ScatterFlags::new(true, true), rules, None)
+        && let Err(cause) =
+            sim.scatter_null(foot, ScatterFlags::new(true, true), rules, None, effects)
     {
         log::debug!("RUN_AWAY foot {foot} did not scatter: {cause}");
     }
@@ -1163,9 +1214,10 @@ fn techno_receive(
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     match msg {
-        RadioMessage::Break => techno_over_out(sim, techno, sender, payload, rules),
+        RadioMessage::Break => techno_over_out(sim, techno, sender, payload, rules, effects),
         // 0x006F4C6F (7, 9, 0x16): TETHER back to the sender, then the Radio
         // receiver; ROGER.
         RadioMessage::DockingComplete | RadioMessage::TetherBack | RadioMessage::PrepareToDock => {
@@ -1177,6 +1229,7 @@ fn techno_receive(
                     RadioMessage::Tether,
                     RadioPayload::default(),
                     rules,
+                    effects,
                 );
             }
             let _ = radio_receive(sim, techno, sender, msg);
@@ -1202,8 +1255,8 @@ fn techno_receive(
                 RadioResponse::Roger
             }
         }
-        RadioMessage::Tether => techno_tether(sim, techno, sender, rules),
-        RadioMessage::Untether => techno_untether(sim, techno, sender, rules),
+        RadioMessage::Tether => techno_tether(sim, techno, sender, rules, effects),
+        RadioMessage::Untether => techno_untether(sim, techno, sender, rules, effects),
         // Techno6F4C29: the RECEIVER sends0x19 then0x03 to the original sender.
         // Radio65A970/Techno's existing nested receivers own both endpoints.
         // Source: anytown_damage/unit_unlimbo factory exit radio controls.
@@ -1216,6 +1269,7 @@ fn techno_receive(
                     RadioMessage::Untether,
                     RadioPayload::default(),
                     rules,
+                    effects,
                 );
                 // Original6F4C47..6F4C4D returns the nested Break reply.
                 transmit(
@@ -1225,15 +1279,28 @@ fn techno_receive(
                     RadioMessage::Break,
                     RadioPayload::default(),
                     rules,
+                    effects,
                 )
             } else {
                 // Radio65A970 resolves a null explicit target through slot0
                 // on EACH send. Re-read after the nested Untether callback.
-                crate::sim::radio::transmit_to_contact(sim, techno, RadioMessage::Untether, rules);
-                crate::sim::radio::transmit_to_contact(sim, techno, RadioMessage::Break, rules)
+                crate::sim::radio::transmit_to_contact(
+                    sim,
+                    techno,
+                    RadioMessage::Untether,
+                    rules,
+                    effects,
+                );
+                crate::sim::radio::transmit_to_contact(
+                    sim,
+                    techno,
+                    RadioMessage::Break,
+                    rules,
+                    effects,
+                )
             }
         }
-        RadioMessage::RepairTick => techno_repair_tick(sim, techno, rules),
+        RadioMessage::RepairTick => techno_repair_tick(sim, techno, rules, effects),
         RadioMessage::Reload => techno_reload(sim, techno, rules),
         // 0x1A, 0x1B and 0x1E have no represented sender; neither has 0x1D
         // to anything but an aircraft, which answers it itself.
@@ -1277,7 +1344,12 @@ fn techno_reload(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>) -> 
 /// getters both read RepairStep. Payment precedes the actual/estimated adds,
 /// forced parasite release and damage-smoke retirement, then full-health clamp.
 /// Original execution: building_repair.depot_service.json receiver/history rows.
-fn techno_repair_tick(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>) -> RadioResponse {
+fn techno_repair_tick(
+    sim: &mut Simulation,
+    techno: u64,
+    rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
+) -> RadioResponse {
     let Some(rules) = rules else {
         return RadioResponse::None;
     };
@@ -1317,6 +1389,7 @@ fn techno_repair_tick(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>
             eater,
             crate::sim::combat::parasite::FORCED_RELEASE_SUPPRESSION_FRAMES,
             rules,
+            effects,
         );
     }
     // Radio6F4DAB..6F4DE5 uses the same two-clause health/height gate as
@@ -1342,6 +1415,7 @@ fn techno_over_out(
     sender: Option<u64>,
     _payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     if let Some(from) = sender {
         #[cfg(test)]
@@ -1367,6 +1441,7 @@ fn techno_over_out(
                 RadioMessage::Untether,
                 RadioPayload::default(),
                 rules,
+                effects,
             );
         }
     }
@@ -1382,6 +1457,7 @@ fn techno_tether(
     techno: u64,
     sender: Option<u64>,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(from) = sender else {
         return RadioResponse::None;
@@ -1406,6 +1482,7 @@ fn techno_tether(
         RadioMessage::Tether,
         RadioPayload::default(),
         rules,
+        effects,
     );
     RadioResponse::Roger
 }
@@ -1416,6 +1493,7 @@ fn techno_untether(
     techno: u64,
     sender: Option<u64>,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(entity) = sim.substrate.entities.get_mut(techno) else {
         return RadioResponse::None;
@@ -1432,6 +1510,7 @@ fn techno_untether(
             RadioMessage::Untether,
             RadioPayload::default(),
             rules,
+            effects,
         );
     }
     RadioResponse::Roger
@@ -1702,6 +1781,7 @@ mod tests {
             RadioMessage::Hello,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         )
     }
 
@@ -1713,6 +1793,7 @@ mod tests {
             RadioMessage::CanEnter,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         )
     }
 
@@ -1760,6 +1841,7 @@ mod tests {
                 RadioMessage::Tether,
                 RadioPayload::default(),
                 Some(&rules),
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Roger
         );
@@ -1787,7 +1869,8 @@ mod tests {
                 1,
                 RadioMessage::Break,
                 RadioPayload::default(),
-                Some(&rules)
+                Some(&rules),
+                crate::sim::world::FrameEffects::default()
             ),
             RadioResponse::Roger
         );
@@ -1806,7 +1889,8 @@ mod tests {
                 1,
                 RadioMessage::Hello,
                 RadioPayload::default(),
-                Some(&rules)
+                Some(&rules),
+                crate::sim::world::FrameEffects::default()
             ),
             RadioResponse::Roger
         );
@@ -1817,7 +1901,8 @@ mod tests {
                 1,
                 RadioMessage::TetherBack,
                 RadioPayload::default(),
-                Some(&rules)
+                Some(&rules),
+                crate::sim::world::FrameEffects::default()
             ),
             RadioResponse::Roger
         );
@@ -1871,6 +1956,7 @@ mod tests {
                 RadioMessage::RequestClearance,
                 RadioPayload::default(),
                 Some(&rules),
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Roger
         );
@@ -1913,6 +1999,7 @@ mod tests {
                 RadioMessage::RequestClearance,
                 RadioPayload::default(),
                 Some(&rules),
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Queued
         );
@@ -1944,6 +2031,7 @@ mod tests {
                 RadioMessage::AnimStop,
                 RadioPayload::default(),
                 Some(&rules),
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Roger
         );
@@ -1980,6 +2068,7 @@ mod tests {
                 RadioMessage::AnimStop,
                 RadioPayload::default(),
                 Some(&rules),
+                crate::sim::world::FrameEffects::default(),
             ),
             RadioResponse::Roger
         );
@@ -2029,6 +2118,7 @@ mod tests {
             RadioMessage::DockNow,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
         let rt = sim
             .substrate
@@ -2111,6 +2201,7 @@ mod tests {
             RadioMessage::Tether,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().dock_entered_with,
@@ -2124,6 +2215,7 @@ mod tests {
             RadioMessage::Break,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().dock_entered_with,
@@ -2182,7 +2274,13 @@ mod tests {
                 .set_slot(0, partner);
         }
 
-        crate::sim::radio::broadcast(&mut sim, 1, RadioMessage::Tether, Some(&rules));
+        crate::sim::radio::broadcast(
+            &mut sim,
+            1,
+            RadioMessage::Tether,
+            Some(&rules),
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().dock_entered_with,
@@ -2222,7 +2320,12 @@ mod tests {
             .insert(1);
 
         clear_test_trace();
-        broadcast_break(&mut sim, 1, None);
+        broadcast_break(
+            &mut sim,
+            1,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let trace = take_test_trace();
 
         let reads = trace
@@ -2270,6 +2373,7 @@ mod tests {
             RadioMessage::Tether,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
 
         clear_test_trace();
@@ -2280,6 +2384,7 @@ mod tests {
             RadioMessage::Break,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert_eq!(
@@ -2326,6 +2431,7 @@ mod tests {
             RadioMessage::Tether,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
 
         clear_test_trace();
@@ -2336,6 +2442,7 @@ mod tests {
             RadioMessage::Break,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
         let trace = take_test_trace();
 
@@ -2393,6 +2500,7 @@ mod tests {
                 RadioMessage::Break,
                 RadioPayload::default(),
                 None,
+                crate::sim::world::FrameEffects::default(),
             );
 
             assert!(
@@ -2433,6 +2541,7 @@ mod tests {
             RadioMessage::Break,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
         transmit(
             &mut sim,
@@ -2441,6 +2550,7 @@ mod tests {
             RadioMessage::Break,
             RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert!(

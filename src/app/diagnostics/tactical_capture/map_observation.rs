@@ -795,7 +795,8 @@ fn sound_state(state: &AppState, profile: &MapCaptureProfile) -> Result<Value> {
         (profile.observe_owners().iter().any(|watch| watch == owner)
             && profile.observe_types.as_ref().is_none_or(|types| types.iter().any(|watch| watch == type_id)))
             .then(|| json!({"stable_id": id, "body_counter": entity.body_frame_counter,
-                "active": entity.move_sound.is_active(), "countdown": entity.move_sound.countdown()}))
+                "active": entity.move_sound.is_active(), "countdown": entity.move_sound.countdown(),
+                "gattling_stage": entity.gattling.stage(), "gattling_value": entity.gattling.value()}))
     }).collect::<Vec<_>>();
     let snapshot = json!({"main_rng_cursor": [rng.main.index_a, rng.main.index_b],
         "scenario_rng_cursor": [rng.scenario.index_a, rng.scenario.index_b], "actors": actors});
@@ -1630,6 +1631,12 @@ impl MapElectricBoltObservation {
             json!({
             "disabled": stream.disabled, "index_a": stream.index_a, "index_b": stream.index_b, "words": stream.words})
         };
+        let main = crate::sim::rng::SimRngLogicalView {
+            disabled: rng.main.disabled,
+            index_a: rng.main.index_a,
+            index_b: rng.main.index_b,
+            words: &rng.main.words,
+        };
         Ok(Self {
             detail: presentation.detail.borrow().observation(),
             live,
@@ -1638,7 +1645,7 @@ impl MapElectricBoltObservation {
             native_id_cursor: sim
                 .native_identity_cursor()
                 .context("Scenario native identity absent")?,
-            rng: json!({"main": rng_value(rng.main), "scenario": rng_value(rng.scenario), "mapgen": rng_value(rng.mapgen)}),
+            rng: json!({"main": rng_value(main), "scenario": rng_value(rng.scenario), "mapgen": rng_value(rng.mapgen)}),
         })
     }
 
@@ -3508,8 +3515,14 @@ mod tests {
     #[test]
     fn audio_frames_and_immediate_restore_charge_actors_and_both_rng_cursors() {
         let audio = json!({"main_rng_cursor": [0, 103], "scenario_rng_cursor": [0, 103],
-            "actors": [{"stable_id": 7, "body_counter": 1, "active": true, "countdown": 2}]});
+            "actors": [{"stable_id": 7, "body_counter": 1, "active": true, "countdown": 2,
+                "gattling_stage": 1, "gattling_value": 201}]});
         assert_eq!(sound_state_sample_count(&audio), 3);
+        let mut historical = audio.clone();
+        let row = historical["actors"][0].as_object_mut().unwrap();
+        row.remove("gattling_stage");
+        row.remove("gattling_value");
+        assert_eq!(sound_state_sample_count(&historical), 3);
         for available in [2, 3] {
             let mut frames = MapObservation {
                 sample_count: MAX_OBSERVATION_SAMPLES - available,

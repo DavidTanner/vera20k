@@ -6,6 +6,7 @@
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeSet;
 
 use super::ground_move::GroundMove;
@@ -628,7 +629,13 @@ impl Simulation {
         cmd: &Command,
         rules: Option<&RuleSet>,
     ) -> bool {
-        self.apply_command_with_overlays(command_owner, cmd, rules, None)
+        self.apply_command_with_overlays(
+            command_owner,
+            cmd,
+            rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
     }
 
     pub(crate) fn apply_command_with_overlays(
@@ -637,6 +644,7 @@ impl Simulation {
         cmd: &Command,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         match cmd {
             Command::Select { entity_ids, .. } => self.apply_selection_snapshot(entity_ids, rules),
@@ -680,7 +688,7 @@ impl Simulation {
                 }
                 // Queue Move. The destination/radio owners handle any existing
                 // dock contact.
-                self.queue_megamission(*entity_id, MissionType::Move, rules);
+                self.queue_megamission(*entity_id, MissionType::Move, rules, frame_effects);
                 // Clear attack and order intent.
                 let _ = self.assign_target_represented(*entity_id, None, rules);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
@@ -709,6 +717,7 @@ impl Simulation {
                             *target_rx, *target_ry,
                         )),
                         rules,
+                        frame_effects,
                     );
                     true
                 } else if info.loco_layer == MovementLayer::Air {
@@ -718,6 +727,7 @@ impl Simulation {
                         (*target_rx, *target_ry),
                         info.speed,
                         rules,
+                        frame_effects,
                     )
                 } else if !*queue
                     && let Some(rules) = rules
@@ -740,6 +750,7 @@ impl Simulation {
                         )),
                         Some(rules),
                         overlay_registry,
+                        frame_effects,
                     )
                     .map_or_else(
                         |cause| {
@@ -761,6 +772,7 @@ impl Simulation {
                         },
                         rules,
                         overlay_registry,
+                        frame_effects,
                     )
                 };
                 result
@@ -798,7 +810,7 @@ impl Simulation {
                 // Event6 sends BREAK to every sparse contact (vt28065ACE0
                 // at4C75E0), before NULL destination4C75ED/target4C75F8.
                 // Unlike MEGAMISSION it never clears Foot pending-entry+500.
-                crate::sim::radio::broadcast_break(self, *entity_id, rules);
+                crate::sim::radio::broadcast_break(self, *entity_id, rules, frame_effects);
                 // `0x004C75ED`: the class setter's null destination, which
                 // reaches the active locomotor's Stop_Moving (a Teleport's
                 // drops only an armed warp, a moving Jumpjet's re-targets the
@@ -810,7 +822,7 @@ impl Simulation {
                 // TarCom skips the Stop (`0x004D9672`). Building455D50 clears
                 // an eligible rally ArchiveTarget without touching Foot NavCom;
                 // its native matrix is factory_destination.json.
-                self.assign_null_destination(*entity_id, rules, overlay_registry);
+                self.assign_null_destination(*entity_id, rules, overlay_registry, frame_effects);
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.order_intent = None;
                     e.c4_plant = None;
@@ -829,7 +841,12 @@ impl Simulation {
                         .is_some_and(|object| object.balloon_hover)
                 });
                 if balloon {
-                    self.assign_null_destination(*entity_id, rules, overlay_registry);
+                    self.assign_null_destination(
+                        *entity_id,
+                        rules,
+                        overlay_registry,
+                        frame_effects,
+                    );
                     let _ = self.assign_target_represented(*entity_id, None, rules);
                 }
                 // `0x004C762A..0x004C7634`: a spawner's manager drops its
@@ -840,6 +857,7 @@ impl Simulation {
                     *entity_id,
                     rules,
                     overlay_registry,
+                    frame_effects,
                 );
                 // **VERA-internal: retail Stop leaves the installed locomotor
                 // alone.** This existing unwind policy uses the same END gate
@@ -880,7 +898,7 @@ impl Simulation {
                 // `0x004C769C..0x004C76AC`: Stop takes a Slave Miner off its
                 // hunt (`sim::slave_manager`).
                 if let Some(rules) = rules {
-                    self.reset_slave_manager(*entity_id, rules);
+                    self.reset_slave_manager(*entity_id, rules, frame_effects);
                 }
                 true
             }
@@ -909,7 +927,7 @@ impl Simulation {
                 }
                 // Retask onto Attack keeping the interrupt stack (combat sets
                 // the target).
-                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules, frame_effects);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
@@ -921,7 +939,12 @@ impl Simulation {
                 if issued {
                     // `0x004C747C`: the order's NULL destination through the
                     // class setter, after its target (`0x004C7467`).
-                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
+                    self.assign_null_destination(
+                        *attacker_id,
+                        rules,
+                        overlay_registry,
+                        frame_effects,
+                    );
                     // `0x004C7482..0x004C749D`: an open-topped transport's
                     // riders take the ordered target.
                     if let Some(rules) = rules {
@@ -953,7 +976,7 @@ impl Simulation {
                 }
                 // Force-attack bypasses friendship check (Ctrl+click). Retask
                 // onto Attack keeping fields.
-                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules, frame_effects);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
@@ -963,7 +986,12 @@ impl Simulation {
                     rules,
                 );
                 if issued {
-                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
+                    self.assign_null_destination(
+                        *attacker_id,
+                        rules,
+                        overlay_registry,
+                        frame_effects,
+                    );
                     // `0x004C7482..0x004C749D`: an open-topped transport's
                     // riders take the ordered target.
                     if let Some(rules) = rules {
@@ -991,7 +1019,7 @@ impl Simulation {
                 }
                 // No target-entity existence check — cells always "exist".
                 // Retask onto Attack keeping fields.
-                self.queue_megamission(*attacker_id, MissionType::Attack, rules);
+                self.queue_megamission(*attacker_id, MissionType::Attack, rules, frame_effects);
                 if let Some(e) = self.substrate.entities.get_mut(*attacker_id) {
                     e.order_intent = None;
                 }
@@ -1001,7 +1029,12 @@ impl Simulation {
                     rules,
                 );
                 if issued {
-                    self.assign_null_destination(*attacker_id, rules, overlay_registry);
+                    self.assign_null_destination(
+                        *attacker_id,
+                        rules,
+                        overlay_registry,
+                        frame_effects,
+                    );
                     // `0x004C7482..0x004C749D`, a cell target included.
                     if let Some(rules) = rules {
                         self.open_topped_passengers_take_target(
@@ -1037,7 +1070,7 @@ impl Simulation {
                 }
                 // Retask onto AttackMove (the order_intent set after the move
                 // issues is the real driver).
-                self.queue_megamission(*entity_id, MissionType::AttackMove, rules);
+                self.queue_megamission(*entity_id, MissionType::AttackMove, rules, frame_effects);
                 let _ = self.assign_target_represented(*entity_id, None, rules);
 
                 // Snapshot speed, locomotor, and rules data in one lookup.
@@ -1061,6 +1094,7 @@ impl Simulation {
                             *target_rx, *target_ry,
                         )),
                         rules,
+                        frame_effects,
                     );
                     true
                 } else if info.loco_layer == MovementLayer::Air {
@@ -1070,6 +1104,7 @@ impl Simulation {
                         (*target_rx, *target_ry),
                         info.speed,
                         rules,
+                        frame_effects,
                     )
                 } else {
                     self.issue_ground_move(
@@ -1084,6 +1119,7 @@ impl Simulation {
                         },
                         rules,
                         overlay_registry,
+                        frame_effects,
                     )
                 };
                 if issued {
@@ -1102,13 +1138,14 @@ impl Simulation {
                 *target,
                 rules,
                 overlay_registry,
+                frame_effects,
             ),
             Command::DeployMcv { entity_id } => {
                 let Some(rules) = rules else { return false };
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
-                crate::sim::deploy::issue_order(self, *entity_id, rules)
+                crate::sim::deploy::issue_order(self, *entity_id, rules, frame_effects)
             }
             // RESIDUAL: retail undeploys a building only through a cell click
             // (`0x004436F0`: the rally/ArchiveTarget event 0x1E, then SELL
@@ -1123,7 +1160,7 @@ impl Simulation {
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
-                self.undeploy_building(*entity_id, rules, overlay_registry)
+                self.undeploy_building(*entity_id, rules, overlay_registry, frame_effects)
             }
             // The synchronized self-deploy order queues Unload; the concrete
             // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
@@ -1146,7 +1183,7 @@ impl Simulation {
                 {
                     return false;
                 }
-                self.order_unload(*entity_id, rules, overlay_registry);
+                self.order_unload(*entity_id, rules, overlay_registry, frame_effects);
                 true
             }
             Command::SetRally {
@@ -1159,7 +1196,7 @@ impl Simulation {
             Command::QueueProduction { type_id } => {
                 let Some(rules) = rules else { return false };
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::enqueue_by_type(self, rules, command_owner, &type_s)
+                production::enqueue_by_type(self, rules, command_owner, &type_s, frame_effects)
             }
             Command::SuspendProduction { category } => {
                 production::suspend_production(self, command_owner, *category)
@@ -1185,6 +1222,7 @@ impl Simulation {
                         cell: (*rx, *ry),
                     },
                     overlay_registry,
+                    frame_effects,
                 );
                 if !placed {
                     // `HouseClass::Place_Production 0x004FB369..0x004FB377`:
@@ -1210,12 +1248,20 @@ impl Simulation {
                         category: *category,
                     },
                     overlay_registry,
+                    frame_effects,
                 )
             }
             Command::CancelProductionByType { type_id, all } => {
                 let Some(rules) = rules else { return false };
                 let type_s = self.interner.resolve(*type_id).to_string();
-                production::cancel_by_type_for_owner(self, rules, command_owner, &type_s, *all)
+                production::cancel_by_type_for_owner(
+                    self,
+                    rules,
+                    command_owner,
+                    &type_s,
+                    *all,
+                    frame_effects,
+                )
             }
             // The SELL event (`EventClass::Execute 0x004C6F20`): the target's
             // owner must be the event's house (`0x004C6F45`); a building
@@ -1231,6 +1277,7 @@ impl Simulation {
                     *entity_id,
                     production::SellOrder::Player,
                     overlay_registry,
+                    frame_effects,
                 )
             }
             Command::SellWallAtCell { x, y } => {
@@ -1324,7 +1371,7 @@ impl Simulation {
                 {
                     return false;
                 }
-                self.begin_megamission_retask(*entity_id, MissionType::Enter, rules);
+                self.begin_megamission_retask(*entity_id, MissionType::Enter, rules, frame_effects);
                 if self
                     .substrate
                     .entities
@@ -1350,6 +1397,7 @@ impl Simulation {
                             self,
                             *entity_id,
                             old_refinery,
+                            frame_effects,
                         );
                     }
                 }
@@ -1436,7 +1484,7 @@ impl Simulation {
                 }
                 // Queue Enter; the Unit setter below owns depot admission and
                 // contact changes, without a parallel reservation teardown.
-                self.queue_megamission(*entity_id, MissionType::Enter, Some(rules));
+                self.queue_megamission(*entity_id, MissionType::Enter, Some(rules), frame_effects);
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*entity_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
@@ -1448,6 +1496,7 @@ impl Simulation {
                     crate::sim::components::NavTargetRef::Building { id: *depot_id },
                     rules,
                     true,
+                    frame_effects,
                 );
                 true
             }
@@ -1535,7 +1584,12 @@ impl Simulation {
                         None
                     };
                 // Retask onto Enter; the target setter below owns combat cancellation.
-                self.queue_megamission(*passenger_id, MissionType::Enter, Some(rules));
+                self.queue_megamission(
+                    *passenger_id,
+                    MissionType::Enter,
+                    Some(rules),
+                    frame_effects,
+                );
                 // Clear existing state on the passenger.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*passenger_id, None, Some(rules));
@@ -1568,6 +1622,7 @@ impl Simulation {
                     },
                     Some(rules),
                     overlay_registry,
+                    frame_effects,
                 );
                 true
             }
@@ -1597,7 +1652,12 @@ impl Simulation {
                         if !self.order_actor_admits(*transport_id) {
                             return false;
                         }
-                        self.queue_megamission(*transport_id, MissionType::Unload, rules);
+                        self.queue_megamission(
+                            *transport_id,
+                            MissionType::Unload,
+                            rules,
+                            frame_effects,
+                        );
                         true
                     }
                     Some(crate::map::entities::EntityCategory::Unit)
@@ -1633,7 +1693,12 @@ impl Simulation {
                                 now,
                             );
                         } else {
-                            self.order_unload(*transport_id, rules, overlay_registry);
+                            self.order_unload(
+                                *transport_id,
+                                rules,
+                                overlay_registry,
+                                frame_effects,
+                            );
                         }
                         if let Some(e) = self.substrate.entities.get_mut(*transport_id) {
                             e.order_intent = None;
@@ -1672,7 +1737,12 @@ impl Simulation {
                 }
                 // Shared Event prefix ends the refinery handshake. This
                 // legacy Harvest mission path still owns the unload latch.
-                self.begin_megamission_retask(*entity_id, MissionType::Harvest, rules);
+                self.begin_megamission_retask(
+                    *entity_id,
+                    MissionType::Harvest,
+                    rules,
+                    frame_effects,
+                );
                 crate::sim::miner::clear_unload_latch(self, *entity_id);
                 // Native (EventClass::Execute MEGAMISSION, disassembled
                 // 2026-09-05/-25): the client's mission byte passes through
@@ -1712,7 +1782,7 @@ impl Simulation {
                 // Harvest it queued then sends it to the clicked field
                 // (HandleReturnedSlaves, `sim::slave_manager`).
                 if let Some(rules) = rules {
-                    self.reset_slave_manager(*entity_id, rules);
+                    self.reset_slave_manager(*entity_id, rules, frame_effects);
                 }
                 if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
                     e.set_archive_target(None);
@@ -1726,6 +1796,7 @@ impl Simulation {
                         *entity_id,
                         (*target_rx, *target_ry),
                         overlay_registry,
+                        frame_effects,
                     );
                 }
                 true
@@ -1812,7 +1883,12 @@ impl Simulation {
                     return false;
                 }
                 // Retask onto Sabotage; the target setter below owns combat cancellation.
-                self.queue_megamission(*attacker_id, MissionType::Sabotage, Some(rules));
+                self.queue_megamission(
+                    *attacker_id,
+                    MissionType::Sabotage,
+                    Some(rules),
+                    frame_effects,
+                );
                 // Clear conflicting state and set c4_plant.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*attacker_id, None, Some(rules));
@@ -1851,6 +1927,7 @@ impl Simulation {
                     },
                     Some(rules),
                     overlay_registry,
+                    frame_effects,
                 );
                 true
             }
@@ -1905,7 +1982,12 @@ impl Simulation {
                     return false;
                 }
                 // Retask onto Capture; the target setter below owns combat cancellation.
-                self.queue_megamission(*engineer_id, MissionType::Capture, Some(rules));
+                self.queue_megamission(
+                    *engineer_id,
+                    MissionType::Capture,
+                    Some(rules),
+                    frame_effects,
+                );
                 // Clear conflicting state and set capture target.
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*engineer_id, None, Some(rules));
@@ -1942,6 +2024,7 @@ impl Simulation {
                     },
                     Some(rules),
                     overlay_registry,
+                    frame_effects,
                 );
                 true
             }
@@ -1959,6 +2042,7 @@ impl Simulation {
                     *sw_type_id,
                     (*target_rx, *target_ry),
                     overlay_registry,
+                    frame_effects,
                 )
             }
             Command::EnterBunker { unit_id, bunker_id } => {
@@ -2007,6 +2091,7 @@ impl Simulation {
                     crate::sim::radio::RadioMessage::CanEnter,
                     crate::sim::radio::RadioPayload::default(),
                     None,
+                    frame_effects,
                 ) != crate::sim::radio::RadioResponse::Roger
                 {
                     return false;
@@ -2019,10 +2104,11 @@ impl Simulation {
                     crate::sim::radio::RadioMessage::DockNow,
                     crate::sim::radio::RadioPayload::default(),
                     None,
+                    frame_effects,
                 );
                 // Retask onto Enter (no dock reservation), mark the unit as
                 // approaching THIS bunker (the install machine's keep-alive gate).
-                self.queue_megamission(*unit_id, MissionType::Enter, Some(rules));
+                self.queue_megamission(*unit_id, MissionType::Enter, Some(rules), frame_effects);
                 // Event4C7467 dispatches the class target setter before Dest.
                 let _ = self.assign_target_represented(*unit_id, None, Some(rules));
                 if let Some(e) = self.substrate.entities.get_mut(*unit_id) {
@@ -2058,6 +2144,7 @@ impl Simulation {
                         },
                         Some(rules),
                         overlay_registry,
+                        frame_effects,
                     );
                 }
                 true
@@ -2075,7 +2162,12 @@ impl Simulation {
                 if !has_occupant {
                     return false;
                 }
-                crate::sim::docking::bunker_link::release_normal(self, *bunker_id, rules);
+                crate::sim::docking::bunker_link::release_normal(
+                    self,
+                    *bunker_id,
+                    rules,
+                    frame_effects,
+                );
                 true
             }
         }
@@ -2415,6 +2507,7 @@ impl Simulation {
         target: Option<combat::TargetKind>,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if !self.entity_owned_by_id(command_owner, entity_id) {
             return false;
@@ -2441,7 +2534,7 @@ impl Simulation {
         }
         let foot =
             self.substrate.entities.get(entity_id).unwrap().category != EntityCategory::Structure;
-        self.queue_megamission(entity_id, MissionType::AreaGuard, rules);
+        self.queue_megamission(entity_id, MissionType::AreaGuard, rules, frame_effects);
         self.substrate
             .entities
             .get_mut(entity_id)
@@ -2456,6 +2549,7 @@ impl Simulation {
             if foot { target.map(Into::into) } else { None },
             rules,
             overlay_registry,
+            frame_effects,
         )
         .unwrap_or_else(|cause| panic!("Area Guard order destination: {cause}"));
         if foot {
@@ -2524,13 +2618,14 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
-        self.queue_megamission(id, MissionType::Unload, Some(rules));
+        self.queue_megamission(id, MissionType::Unload, Some(rules), frame_effects);
         // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
         // NavQueue588/598, and has no represented producer here.
         self.assign_target_represented(id, None, Some(rules))
             .unwrap_or_else(|cause| panic!("Unload order target: {cause}"));
-        self.assign_destination_represented(id, None, Some(rules), overlay_registry)
+        self.assign_destination_represented(id, None, Some(rules), overlay_registry, frame_effects)
             .unwrap_or_else(|cause| panic!("Unload order destination: {cause}"));
     }
 }
@@ -3808,7 +3903,12 @@ mod tests {
         // 2) Drive the install machine to Occupied, completing each body turn
         // it issues in this component harness.
         for _ in 0..6 {
-            tick_bunker_install(&mut sim, &rules, None);
+            tick_bunker_install(
+                &mut sim,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let frame = sim.session.binary_frame;
             if let Some(u) = sim.substrate.entities.get_mut(1) {
                 let destination = u.body_facing.destination();

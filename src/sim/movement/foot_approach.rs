@@ -12,6 +12,7 @@ use crate::sim::cell_rect::{self, CellRect, CellRectPassabilityContext};
 use crate::sim::combat::{self, TargetKind, in_range};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::mission::{MissionType, concrete_effects::represented_assign_target};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::direction_tables::{cell_delta_unchecked, facing16_between};
 use crate::util::native_trig::facing_step_world_xy;
@@ -85,11 +86,18 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(destination) = self.balloon_hover_approach(id, rules) else {
             return false;
         };
-        let _ = self.assign_destination_represented(id, Some(destination), Some(rules), registry);
+        let _ = self.assign_destination_represented(
+            id,
+            Some(destination),
+            Some(rules),
+            registry,
+            frame_effects,
+        );
         true
     }
 
@@ -156,6 +164,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<Option<(u16, u16)>, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(None);
@@ -227,7 +236,7 @@ impl Simulation {
                         || !human && mission == Some(MissionType::Hunt)))
         {
             represented_assign_target(self.substrate.entities.get_mut(id).unwrap(), None);
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, frame_effects);
             return Ok(None);
         }
 
@@ -266,7 +275,7 @@ impl Simulation {
             return Ok(None);
         }
         if let Some(NavTargetRef::Cell { rx, ry }) = actor.navigation.nav_queue.first().copied() {
-            self.set_unit_destination(id, NavTargetRef::cell(rx, ry), rules, false);
+            self.set_unit_destination(id, NavTargetRef::cell(rx, ry), rules, false, frame_effects);
             let queue = &mut self
                 .substrate
                 .entities
@@ -401,6 +410,7 @@ impl Simulation {
                 NavTargetRef::cell(cell.0 as u16, cell.1 as u16),
                 rules,
                 true,
+                frame_effects,
             );
             //4D68B8 and4D68C7 perform separate lookups for setter and return.
             self.resolved_terrain
@@ -415,15 +425,27 @@ impl Simulation {
             .hunter_seeker
         {
             let cell = (target_cell.0 as u16, target_cell.1 as u16);
-            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
+            self.set_unit_destination(
+                id,
+                NavTargetRef::cell(cell.0, cell.1),
+                rules,
+                true,
+                frame_effects,
+            );
             return Ok(Some(cell));
         }
         let fallback = self.approach_fallback(id, retained_candidate, rules, &cells)?;
         represented_assign_target(self.substrate.entities.get_mut(id).unwrap(), None);
         if let Some(cell) = fallback {
-            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
+            self.set_unit_destination(
+                id,
+                NavTargetRef::cell(cell.0, cell.1),
+                rules,
+                true,
+                frame_effects,
+            );
         } else {
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, frame_effects);
         }
         Ok(None)
     }

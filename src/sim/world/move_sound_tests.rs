@@ -31,12 +31,12 @@ fn expected_state(value: &Value) -> Value {
 
 fn assert_rng(sim: &Simulation, expected: &Value, context: &str) {
     for (name, rng) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert_eq!(
-            rng.native_state_hex(),
+            rng,
             expected["rng"][name].as_str().unwrap(),
             "{context}: complete {name} continuation"
         );
@@ -46,7 +46,7 @@ fn assert_rng(sim: &Simulation, expected: &Value, context: &str) {
 fn scene(input: &Value, before: &Value, rules: &RuleSet) -> (Simulation, u64) {
     let seed = input["seed"].as_u64().unwrap_or(31);
     let mut sim = Simulation::with_seed(seed);
-    sim.main_rng = SimRng::new(seed);
+    sim.main_rng = SimRng::new(seed).into();
     sim.scenario_rng = SimRng::new(seed);
     sim.mapgen_rng = SimRng::new(seed);
     sim.intern_rule_type_ids(rules);
@@ -354,7 +354,11 @@ fn ordinary_uninit_then_physical_destruction_detaches_without_a_foot_hard_stop()
         assert!(sim.substrate.pending_delete.contains(&id));
         let mut expected = native_effects(original_limbo, true);
         expected.extend(native_effects(original_destructor, true));
-        sim.process_pending_delete_with(Some(&rules), None);
+        sim.process_pending_delete_with(
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             effects(id, &sim.sound_events, true),
             expected,
@@ -428,7 +432,8 @@ fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
     // dispatch intact. This is not a whole-map startup RNG comparison.
     sim.session.binary_frame = steps[0]["frame"].as_u64().unwrap() as u32;
     sim.main_rng =
-        SimRng::from_native_state_hex_for_test(steps[0]["before"]["rng"]["main"].as_str().unwrap());
+        SimRng::from_native_state_hex_for_test(steps[0]["before"]["rng"]["main"].as_str().unwrap())
+            .into();
     for step in steps {
         let native_frame = step["frame"].as_u64().unwrap() as u32;
         assert_eq!(
@@ -440,6 +445,7 @@ fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("paid ordinary production frame");
         assert!(output.tick.frame_committed);

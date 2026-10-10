@@ -121,6 +121,7 @@ use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::bump_crush;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::timer::CdTimer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{
     PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, SimSoundEvent, Simulation,
     UninitContext,
@@ -462,6 +463,7 @@ impl Simulation {
         master: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let now = self.now_frame();
         let Some(manager) = self.slave_manager_mut(master) else {
@@ -471,8 +473,8 @@ impl Simulation {
             return;
         }
         manager.ai_timer.start(now, 10);
-        self.slave_ai_update(master, rules, registry);
-        self.slave_manager_step(master, rules, registry);
+        self.slave_ai_update(master, rules, registry, frame_effects);
+        self.slave_manager_step(master, rules, registry, frame_effects);
     }
 
     /// `SlaveManagerClass::AI_Update @ 0x006AF6C0`: each node in order.
@@ -481,6 +483,7 @@ impl Simulation {
         master: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let count = self.slave_manager(master).map_or(0, |m| m.nodes.len());
         for index in 0..count {
@@ -496,7 +499,7 @@ impl Simulation {
                 node.state = SlaveState::Dead;
                 node.timer.start(self.now_frame(), regen_rate);
             }
-            self.slave_node_step(master, &mut node, rules, registry);
+            self.slave_node_step(master, &mut node, rules, registry, frame_effects);
             if let Some(slot) = self
                 .slave_manager_mut(master)
                 .and_then(|manager| manager.nodes.get_mut(index))
@@ -512,6 +515,7 @@ impl Simulation {
         node: &mut SlaveNode,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let now = self.now_frame();
         match node.state {
@@ -525,7 +529,7 @@ impl Simulation {
                     self, rules, registry, slave, range,
                 ) {
                     Some(cell) => {
-                        self.send_slave(slave, cell, rules, registry);
+                        self.send_slave(slave, cell, rules, registry, frame_effects);
                         node.state = SlaveState::Moving;
                     }
                     None => {
@@ -533,7 +537,7 @@ impl Simulation {
                             entity.set_archive_target(None);
                         }
                         if let Some(drop) = self.slave_drop_cell(master, rules) {
-                            self.send_slave(slave, drop, rules, registry);
+                            self.send_slave(slave, drop, rules, registry, frame_effects);
                         }
                         node.state = SlaveState::Returning;
                     }
@@ -569,7 +573,7 @@ impl Simulation {
                         entity.set_archive_target(Some(TargetKind::Cell(cell.0, cell.1)));
                     }
                     if let Some(drop) = self.slave_drop_cell(master, rules) {
-                        self.send_slave(slave, drop, rules, registry);
+                        self.send_slave(slave, drop, rules, registry, frame_effects);
                     }
                     node.state = SlaveState::Returning;
                 } else if !crate::sim::miner::ore_scan::cell_is_tiberium_land(self, registry, cell)
@@ -584,7 +588,7 @@ impl Simulation {
             }
             SlaveState::Returning => {
                 let Some(slave) = node.slave else { return };
-                self.slave_returning_step(master, slave, node, rules, registry);
+                self.slave_returning_step(master, slave, node, rules, registry, frame_effects);
             }
             SlaveState::Reloading => {
                 if !node.timer.expired(now) {
@@ -610,7 +614,7 @@ impl Simulation {
             }
             SlaveState::Dead => {
                 if node.timer.expired(now) {
-                    self.regrow_slave(master, node, rules, registry);
+                    self.regrow_slave(master, node, rules, registry, frame_effects);
                 }
             }
         }
@@ -624,6 +628,7 @@ impl Simulation {
         node: &mut SlaveNode,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(drop) = self.slave_drop_cell(master, rules) else {
             return;
@@ -654,12 +659,12 @@ impl Simulation {
         if cell == drop && nav_com.is_none() {
             // 0x006AFBCC: pay, go inside and reload.
             self.slave_deposit(slave, master, rules);
-            self.limbo_slave(slave, rules, registry);
+            self.limbo_slave(slave, rules, registry, frame_effects);
             let reload = self.slave_manager(master).map_or(0, |m| m.reload_rate);
             node.state = SlaveState::Reloading;
             node.timer.start(self.now_frame(), reload);
         } else if nav_com.is_none() || drifted {
-            self.send_slave(slave, drop, rules, registry);
+            self.send_slave(slave, drop, rules, registry, frame_effects);
         }
     }
 
@@ -669,6 +674,7 @@ impl Simulation {
         master: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let now = self.now_frame();
         let Some(owner) = self.substrate.entities.get(master) else {
@@ -710,7 +716,7 @@ impl Simulation {
                 match target {
                     None => self.set_manager_state(master, ManagerState::Ready, now),
                     Some(cell) => {
-                        self.send_slave_master(master, cell, rules);
+                        self.send_slave_master(master, cell, rules, frame_effects);
                         self.set_manager_state(master, ManagerState::Travelling, i32::MAX);
                     }
                 }
@@ -721,7 +727,9 @@ impl Simulation {
                 // 30 frames.
                 if !unit {
                     self.set_manager_state(master, ManagerState::Ready, now);
-                } else if !driving && !self.slave_master_deploys(master, rules, registry) {
+                } else if !driving
+                    && !self.slave_master_deploys(master, rules, registry, frame_effects)
+                {
                     self.set_manager_state(master, ManagerState::Deploying, i32::MAX);
                     if let Some(manager) = self.slave_manager_mut(master) {
                         manager.ai_timer.start(now, 30);
@@ -733,7 +741,7 @@ impl Simulation {
                 // refusal hunts again.
                 if !unit {
                     self.set_manager_state(master, ManagerState::Ready, now);
-                } else if !self.slave_master_deploys(master, rules, registry) {
+                } else if !self.slave_master_deploys(master, rules, registry, frame_effects) {
                     self.set_manager_state(master, ManagerState::Scanning, i32::MAX);
                 }
             }
@@ -767,13 +775,13 @@ impl Simulation {
                     self.relocate_refinery(master, rules);
                     return;
                 }
-                self.deploy_slaves(master, rules, registry);
+                self.deploy_slaves(master, rules, registry, frame_effects);
             }
             ManagerState::PackingUp => {
                 // 0x006B020F..0x006B022A: a Slave Miner recalls its idle
                 // slaves and hunts.
                 if unit {
-                    self.reset_live_slaves(master, rules);
+                    self.reset_live_slaves(master, rules, frame_effects);
                     self.set_manager_state(master, ManagerState::Scanning, i32::MAX);
                 }
             }
@@ -792,9 +800,10 @@ impl Simulation {
         master: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         self.set_manager_state(master, ManagerState::Deployed, i32::MAX);
-        self.deploy_mcv(master, rules, registry)
+        self.deploy_mcv(master, rules, registry, frame_effects)
     }
 
     /// State 5's relocation test (`0x006B00B2..0x006B01BF`), once no ore
@@ -872,12 +881,19 @@ impl Simulation {
 
     /// The Slave Miner's class setter (`vt+0x480(cell, 1)`, the Unit setter
     /// `0x00741970`) then `Queue_Mission(Move, 0)`.
-    fn send_slave_master(&mut self, master: u64, cell: (u16, u16), rules: &RuleSet) {
+    fn send_slave_master(
+        &mut self,
+        master: u64,
+        cell: (u16, u16),
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if !self.set_unit_destination(
             master,
             crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
             rules,
             true,
+            frame_effects,
         ) {
             log::debug!("slave master {master} has no Unit setter for {cell:?}");
         }
@@ -888,7 +904,7 @@ impl Simulation {
     /// to Guard (`vt+0x3D0`, `TechnoClass::ResetOrdersToGuard`): the loop
     /// 0x006B0490, 0x006B0C80, 0x006B0CC0, 0x006B0D10 and
     /// HandleReturnedSlaves each run.
-    fn reset_live_slaves(&mut self, master: u64, rules: &RuleSet) {
+    fn reset_live_slaves(&mut self, master: u64, rules: &RuleSet, frame_effects: FrameEffects<'_>) {
         let slaves: Vec<u64> = self.slave_manager(master).map_or_else(Vec::new, |manager| {
             manager
                 .nodes
@@ -899,7 +915,7 @@ impl Simulation {
                 .collect()
         });
         for slave in slaves {
-            self.reset_orders_to_guard(slave, rules);
+            self.reset_orders_to_guard(slave, rules, frame_effects);
         }
     }
 
@@ -960,7 +976,12 @@ impl Simulation {
     /// VERA hands a produced unit its rally point at production rather than
     /// at the factory exit, so production asks this there. Answers whether
     /// the rally move is skipped.
-    pub(crate) fn slave_master_leaves_factory(&mut self, id: u64, rules: &RuleSet) -> bool {
+    pub(crate) fn slave_master_leaves_factory(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
@@ -973,13 +994,18 @@ impl Simulation {
         {
             return false;
         }
-        self.begin_slave_hunt(id, rules);
+        self.begin_slave_hunt(id, rules, frame_effects);
         true
     }
 
     /// `0x006B0CC0`: an idle manager (state 0) starts its owner's hunt for a
     /// field (state 1, frame MAX) and resets its live slaves.
-    pub(crate) fn begin_slave_hunt(&mut self, master: u64, rules: &RuleSet) {
+    pub(crate) fn begin_slave_hunt(
+        &mut self,
+        master: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if !self
             .slave_manager(master)
             .is_some_and(|manager| manager.state == ManagerState::Ready)
@@ -987,7 +1013,7 @@ impl Simulation {
             return;
         }
         self.set_manager_state(master, ManagerState::Scanning, i32::MAX);
-        self.reset_live_slaves(master, rules);
+        self.reset_live_slaves(master, rules, frame_effects);
     }
 
     /// `0x006B0C80`: back to state 0 at now, with the live slaves reset. The
@@ -995,13 +1021,18 @@ impl Simulation {
     /// other than Attack (`0x004C73E1..0x004C73EA`), the IDLE event
     /// (`0x004C769C..0x004C76AC`) and FootClass::Mission_Hunt's new
     /// destination (`0x004D553D..0x004D5547`).
-    pub(crate) fn reset_slave_manager(&mut self, master: u64, rules: &RuleSet) {
+    pub(crate) fn reset_slave_manager(
+        &mut self,
+        master: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if self.slave_manager(master).is_none() {
             return;
         }
         let now = self.now_frame();
         self.set_manager_state(master, ManagerState::Ready, now);
-        self.reset_live_slaves(master, rules);
+        self.reset_live_slaves(master, rules, frame_effects);
     }
 
     /// `SlaveManagerClass::HandleReturnedSlaves @ 0x006B0DB0`, the Enslaves
@@ -1012,7 +1043,12 @@ impl Simulation {
     ///
     /// The building arm (an archived field) belongs to the refinery's
     /// relocation (module residual).
-    pub(crate) fn handle_returned_slaves(&mut self, master: u64, rules: &RuleSet) {
+    pub(crate) fn handle_returned_slaves(
+        &mut self,
+        master: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let now = self.now_frame();
         let Some(owner) = self.substrate.entities.get(master) else {
             return;
@@ -1046,9 +1082,9 @@ impl Simulation {
                 self.queue_slave_mission(master, MissionType::Guard);
             }
             Some(cell) => {
-                self.send_slave_master(master, cell, rules);
+                self.send_slave_master(master, cell, rules, frame_effects);
                 self.set_manager_state(master, ManagerState::Travelling, i32::MAX);
-                self.reset_live_slaves(master, rules);
+                self.reset_live_slaves(master, rules, frame_effects);
             }
         }
     }
@@ -1145,6 +1181,7 @@ impl Simulation {
         mission: MissionType,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Option<i32> {
         let entity = self.substrate.entities.get(id)?;
         entity.slave_manager.as_ref()?;
@@ -1160,7 +1197,7 @@ impl Simulation {
         if !self.should_recall_slaves(id, rules, registry) {
             return None;
         }
-        self.begin_slave_hunt(id, rules);
+        self.begin_slave_hunt(id, rules, frame_effects);
         Some(self.mission_rate_epilogue_for(rules, id, mission))
     }
 
@@ -1189,12 +1226,14 @@ impl Simulation {
         cell: (u16, u16),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         match self.set_infantry_destination(
             slave,
             crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
             rules,
             registry,
+            frame_effects,
         ) {
             Ok(true) => {}
             Ok(false) => log::debug!("slave {slave} has no Walk setter for {cell:?}"),
@@ -1243,6 +1282,7 @@ impl Simulation {
         master: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let count = self.slave_manager(master).map_or(0, |m| m.nodes.len());
         for index in (0..count).rev() {
@@ -1278,7 +1318,7 @@ impl Simulation {
                 continue;
             };
             let (sub_x, sub_y) = crate::util::lepton::subcell_lepton_offset(Some(spot));
-            if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules, registry) {
+            if !self.unlimbo_slave(slave, drop, (sub_x, sub_y), rules, registry, frame_effects) {
                 continue;
             }
             if let Some(source) = self.slave_owner_centre(master)
@@ -1288,6 +1328,7 @@ impl Simulation {
                     crate::sim::movement::ScatterFlags::new(true, true),
                     rules,
                     registry,
+                    frame_effects,
                 )
             {
                 log::debug!("slave {slave} did not scatter: {cause}");
@@ -1323,6 +1364,7 @@ impl Simulation {
         ),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let z = self.terrain_cell_level(cell.0, cell.1).unwrap_or(0);
         // DeploySlaves6B04C0's Map4ACA10 caller placement remains in
@@ -1355,14 +1397,25 @@ impl Simulation {
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
-            UninitContext::new(Some(rules), registry).with_unlimbo_facing(Some(0)),
+            UninitContext::new(Some(rules), registry)
+                .with_effects(frame_effects)
+                .with_unlimbo_facing(Some(0)),
         );
         matches!(outcome, RevealOutcome::Revealed { .. })
     }
 
     /// The slave's Limbo (`vt+0xD4`, `InfantryClass::Limbo @ 0x0051DF10`).
-    fn limbo_slave(&mut self, slave: u64, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>) {
-        let _ = self.techno_limbo_with_rules(slave, rules, registry);
+    fn limbo_slave(
+        &mut self,
+        slave: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
+    ) {
+        let _ = self.techno_limbo_with_context(
+            slave,
+            UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+        );
     }
 
     /// `0x006AF650`: a new slave for the master's house, left in limbo with
@@ -1375,6 +1428,7 @@ impl Simulation {
         node: &mut SlaveNode,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some((slave_type, owner, cell, z)) =
             self.substrate.entities.get(master).and_then(|m| {
@@ -1395,7 +1449,7 @@ impl Simulation {
         let Some(slave) = slave else {
             return;
         };
-        self.limbo_slave(slave, rules, registry);
+        self.limbo_slave(slave, rules, registry, frame_effects);
         if let Some(entity) = self.substrate.entities.get_mut(slave) {
             entity.slave.owner = Some(master);
         }
@@ -1415,6 +1469,7 @@ impl Simulation {
         slave: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> (i32, bool) {
         let Some(entity) = self.substrate.entities.get(slave) else {
             return (1, false);
@@ -1431,7 +1486,7 @@ impl Simulation {
             && !self.slave_is_full(slave, rules)
         {
             if doing != Some(DO_SHOVEL) {
-                self.slave_do_action(slave, DO_SHOVEL, rules);
+                self.slave_do_action(slave, DO_SHOVEL, rules, frame_effects);
             }
             // ftol(min(1.0, Storage - total)): one level while not full.
             let config = MinerConfig::from_rules(rules);
@@ -1443,14 +1498,20 @@ impl Simulation {
             }
             return (harvest_rate, false);
         }
-        self.slave_do_action(slave, DO_READY, rules);
+        self.slave_do_action(slave, DO_READY, rules, frame_effects);
         (1, true)
     }
 
-    fn slave_do_action(&mut self, slave: u64, action: i32, rules: &RuleSet) {
+    fn slave_do_action(
+        &mut self,
+        slave: u64,
+        action: i32,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         // Mission_Harvest (`0x00522E87`, `0x00522EEB`, `0x00522F90`) and the
         // cheer (`0x00522C19`) push force 0.
-        if let Err(cause) = self.infantry_do_action(slave, action, false, rules) {
+        if let Err(cause) = self.infantry_do_action(slave, action, false, rules, frame_effects) {
             log::debug!("slave {slave} Do_Action({action}): {cause}");
         }
     }
@@ -1534,10 +1595,11 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         self.remove_slave(id);
         match rules {
-            Some(rules) => self.free_slaves(id, None, None, rules, registry),
+            Some(rules) => self.free_slaves(id, None, None, rules, registry, frame_effects),
             None => {
                 let Some(manager) = self
                     .substrate
@@ -1553,7 +1615,10 @@ impl Simulation {
                     };
                     entity.slave.owner = None;
                     if entity.lifecycle.in_limbo {
-                        self.uninit_with_context(slave, UninitContext::default());
+                        self.uninit_with_context(
+                            slave,
+                            UninitContext::default().with_effects(frame_effects),
+                        );
                     }
                 }
             }
@@ -1575,6 +1640,7 @@ impl Simulation {
         house: Option<InternedId>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(manager) = self
             .substrate
@@ -1596,16 +1662,16 @@ impl Simulation {
             };
             entity.slave.owner = None;
             if entity.lifecycle.in_limbo {
-                self.slave_dies_inside(slave, killer, rules, registry);
+                self.slave_dies_inside(slave, killer, rules, registry, frame_effects);
                 continue;
             }
             let Some(new_house) = new_house else {
-                self.slave_dies_unfreed(slave, rules, registry);
+                self.slave_dies_unfreed(slave, rules, registry, frame_effects);
                 continue;
             };
-            self.change_owner_with_rules(slave, new_house, rules, registry);
-            self.reset_orders_to_guard(slave, rules);
-            self.slave_cheers(slave, rules);
+            self.change_owner_with_rules(slave, new_house, rules, registry, frame_effects);
+            self.reset_orders_to_guard(slave, rules, frame_effects);
+            self.slave_cheers(slave, rules, frame_effects);
             first_freed.get_or_insert(slave);
         }
         if let (Some(slave), Some(sound)) = (first_freed, rules.general.slaves_free_sound.clone())
@@ -1624,6 +1690,7 @@ impl Simulation {
         killer: Option<u64>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let killer_owner = killer
             .and_then(|id| self.substrate.entities.get(id))
@@ -1635,7 +1702,10 @@ impl Simulation {
             crate::sim::combat::KillCallback::Terminal,
             rules,
         );
-        self.uninit_with_context(slave, UninitContext::new(Some(rules), registry));
+        self.uninit_with_context(
+            slave,
+            UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+        );
     }
 
     /// `vt+0x16C(&Strength, 0, C4Warhead, 0, 0, 0, 0)` (`0x006B0BDF..`).
@@ -1644,6 +1714,7 @@ impl Simulation {
         slave: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(health) = self
             .substrate
@@ -1666,12 +1737,12 @@ impl Simulation {
                 arg6: false,
             },
         );
-        self.commit_direct_damage_receiver(rules, registry, event);
+        self.commit_direct_damage_receiver(rules, registry, event, frame_effects);
     }
 
     /// `InfantryClass vt+0x388(1)` (`0x00522C00`): Do_Action(0x20), the cheer.
-    fn slave_cheers(&mut self, slave: u64, rules: &RuleSet) {
-        self.slave_do_action(slave, DO_CHEER, rules);
+    fn slave_cheers(&mut self, slave: u64, rules: &RuleSet, frame_effects: FrameEffects<'_>) {
+        self.slave_do_action(slave, DO_CHEER, rules, frame_effects);
     }
 
     /// The hand-off (`0x006B0D10`, and `0x006B0D60`, the same body): an idle
@@ -1681,13 +1752,18 @@ impl Simulation {
     /// once its Unlimbo succeeds (`BuildingClass::ExitObject @ 0x004452FA`,
     /// `HouseClass::Place_Production @ 0x004FB252`), so it waits out its
     /// build-up in state 4 as a deployed one does.
-    pub(crate) fn slave_manager_hand_off(&mut self, master: u64, rules: &RuleSet) {
+    pub(crate) fn slave_manager_hand_off(
+        &mut self,
+        master: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if self
             .slave_manager(master)
             .is_some_and(|manager| manager.state == ManagerState::Ready)
         {
             self.set_manager_state(master, ManagerState::Deployed, i32::MAX);
-            self.reset_live_slaves(master, rules);
+            self.reset_live_slaves(master, rules, frame_effects);
         }
     }
 
@@ -1704,9 +1780,10 @@ impl Simulation {
         deploying: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if deploying {
-            self.slave_manager_hand_off(from, rules);
+            self.slave_manager_hand_off(from, rules, frame_effects);
         }
         let Some(manager) = self
             .substrate
@@ -1716,7 +1793,7 @@ impl Simulation {
         else {
             return;
         };
-        self.free_slaves(to, None, None, rules, registry);
+        self.free_slaves(to, None, None, rules, registry, frame_effects);
         for slave in manager.slaves() {
             if let Some(entity) = self.substrate.entities.get_mut(slave) {
                 entity.slave.owner = Some(to);
@@ -1747,7 +1824,14 @@ mod tests {
         sim.substrate.raw_cell_occupation.mark_ground(15, 15, 0x20);
         let before = sim.scenario_rng.logical_state();
         let centre = crate::util::lepton::CELL_CENTER_LEPTON;
-        assert!(!sim.unlimbo_slave(slave, (15, 15), (centre, centre), &rules, None));
+        assert!(!sim.unlimbo_slave(
+            slave,
+            (15, 15),
+            (centre, centre),
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         assert!(
             sim.substrate
                 .entities
@@ -1772,7 +1856,8 @@ mod tests {
             (15, 15),
             (centre, centre),
             &rules,
-            None
+            None,
+            crate::sim::world::FrameEffects::default()
         )));
         let entity = sim.substrate.entities.get(slave).unwrap();
         assert!(!entity.lifecycle.in_limbo);

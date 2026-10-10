@@ -2,6 +2,7 @@
 //! sound transaction. Foot destination timing is an optional enclosing caller;
 //! locomotor retries must not reset those timers. Stop_Moving4CCFD0 re-targets
 //! a moving aircraft through its own class setter.
+use crate::sim::world::FrameEffects;
 use std::ops::ControlFlow;
 
 use super::Simulation;
@@ -48,9 +49,10 @@ impl Simulation {
         id: u64,
         requested: Option<NavTargetRef>,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(requested) = requested else {
-            self.foot_null_destination(id, Some(rules), None);
+            self.foot_null_destination(id, Some(rules), None, frame_effects);
             return;
         };
         let high = nav_object(requested).is_some_and(|target| {
@@ -63,7 +65,7 @@ impl Simulation {
             })
         });
         if high {
-            self.foot_null_destination(id, Some(rules), None);
+            self.foot_null_destination(id, Some(rules), None, frame_effects);
             return;
         }
         let entering = self.substrate.entities.get(id).is_some_and(|entity| {
@@ -77,15 +79,17 @@ impl Simulation {
                 .is_some_and(|e| e.category == EntityCategory::Structure)
         });
         let destination = match building.filter(|_| entering) {
-            Some(building) => match self.aircraft_enter_destination(id, building, rules) {
-                ControlFlow::Break(()) => return,
-                ControlFlow::Continue(destination) => destination,
-            },
+            Some(building) => {
+                match self.aircraft_enter_destination(id, building, rules, frame_effects) {
+                    ControlFlow::Break(()) => return,
+                    ControlFlow::Continue(destination) => destination,
+                }
+            }
             None => Some(requested),
         };
-        self.aircraft_pad_departure(id, destination, rules);
+        self.aircraft_pad_departure(id, destination, rules, frame_effects);
         let Some(destination) = destination else {
-            self.foot_null_destination(id, Some(rules), None);
+            self.foot_null_destination(id, Some(rules), None, frame_effects);
             return;
         };
         if !self.begin_foot_destination(id, true) {
@@ -138,6 +142,7 @@ impl Simulation {
         id: u64,
         building: u64,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) -> ControlFlow<(), Option<NavTargetRef>> {
         let dock = NavTargetRef::Building { id: building };
         let Some(object) = self
@@ -175,12 +180,17 @@ impl Simulation {
             if holds_aircraft {
                 return ControlFlow::Continue(Some(dock));
             }
-            if radio::transmit_to_contact(self, id, RadioMessage::CanDock, Some(rules))
-                == RadioResponse::Roger
+            if radio::transmit_to_contact(
+                self,
+                id,
+                RadioMessage::CanDock,
+                Some(rules),
+                frame_effects,
+            ) == RadioResponse::Roger
             {
                 return ControlFlow::Break(());
             }
-            radio::transmit_to_contact(self, id, RadioMessage::Break, Some(rules));
+            radio::transmit_to_contact(self, id, RadioMessage::Break, Some(rules), frame_effects);
             if services {
                 archive(self, Some(dock));
                 return ControlFlow::Continue(None);
@@ -196,9 +206,16 @@ impl Simulation {
                 RadioMessage::CanDock,
                 RadioPayload::default(),
                 Some(rules),
+                frame_effects,
             );
             if answer != RadioResponse::Roger {
-                radio::transmit_to_contact(self, id, RadioMessage::Break, Some(rules));
+                radio::transmit_to_contact(
+                    self,
+                    id,
+                    RadioMessage::Break,
+                    Some(rules),
+                    frame_effects,
+                );
                 if services {
                     archive(self, Some(dock));
                     destination = None;
@@ -221,8 +238,8 @@ impl Simulation {
         archive(self, Some(dock));
         let mut destination = Some(dock);
         if helipad {
-            let pad = self.aircraft_find_docking_bay(id, rules);
-            self.assign_aircraft_destination(id, None, rules);
+            let pad = self.aircraft_find_docking_bay(id, rules, frame_effects);
+            self.assign_aircraft_destination(id, None, rules, frame_effects);
             let accepted = pad.filter(|&pad| {
                 radio::transmit(
                     self,
@@ -231,6 +248,7 @@ impl Simulation {
                     RadioMessage::CanEnter,
                     RadioPayload::default(),
                     Some(rules),
+                    frame_effects,
                 ) == RadioResponse::Roger
             });
             let mission = match accepted {
@@ -242,6 +260,7 @@ impl Simulation {
                         RadioMessage::Hello,
                         RadioPayload::default(),
                         Some(rules),
+                        frame_effects,
                     );
                     destination = Some(NavTargetRef::Building { id: pad });
                     MissionType::Enter
@@ -278,6 +297,7 @@ impl Simulation {
         id: u64,
         destination: Option<NavTargetRef>,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) {
         let entity = self
             .substrate
@@ -314,7 +334,7 @@ impl Simulation {
         if entity.radio_contacts.slot(0) == Some(pad)
             && destination.and_then(nav_object) != Some(pad)
         {
-            radio::transmit_to_contact(self, id, RadioMessage::Break, Some(rules));
+            radio::transmit_to_contact(self, id, RadioMessage::Break, Some(rules), frame_effects);
         }
     }
 
@@ -515,6 +535,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -538,7 +559,13 @@ impl Simulation {
                 .is_some_and(|building| entity.radio_contacts.contains(building));
             if !contact {
                 if let Some(rules) = rules {
-                    crate::sim::aircraft::enter_idle_mode_for(self, id, rules, registry);
+                    crate::sim::aircraft::enter_idle_mode_for(
+                        self,
+                        id,
+                        rules,
+                        registry,
+                        frame_effects,
+                    );
                 }
                 return false;
             }
@@ -567,6 +594,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(rules) = rules else {
             return !self.substrate.entities.get(id).is_some_and(|entity| {
@@ -582,7 +610,7 @@ impl Simulation {
         match order {
             None => {}
             Some(FlyStopOrder::SelfDestruct) => {
-                self.receive_own_health_c4(id, rules, registry);
+                self.receive_own_health_c4(id, rules, registry, frame_effects);
                 if let Some(state) = self
                     .substrate
                     .entities
@@ -594,7 +622,7 @@ impl Simulation {
                 }
             }
             Some(FlyStopOrder::Destination(target)) => {
-                self.assign_aircraft_destination(id, target, rules);
+                self.assign_aircraft_destination(id, target, rules, frame_effects);
             }
         }
         true

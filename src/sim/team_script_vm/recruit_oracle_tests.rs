@@ -129,7 +129,7 @@ fn recalc_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
 fn recalc_matches_the_original() {
     for (number, row) in rows("recalc").iter().enumerate() {
         let (mut sim, rules, team_id) = recalc_fixture(row);
-        let kept = sim.team_recalc(team_id, &rules);
+        let kept = sim.team_recalc(team_id, &rules, crate::sim::world::FrameEffects::default());
         assert_eq!(
             kept,
             int(&row["result"]) == 1,

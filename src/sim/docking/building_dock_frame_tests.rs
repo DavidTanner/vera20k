@@ -78,6 +78,7 @@ fn constructed_depot_waiters_take_the_freed_slot_in_live_logic_order() {
                         arg6: false,
                     },
                 ),
+                crate::sim::world::FrameEffects::default(),
             );
             assert_eq!(
                 sim.substrate.entities.get(tank).unwrap().health.current,

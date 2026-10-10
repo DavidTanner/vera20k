@@ -305,7 +305,13 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .unwrap();
     assert!(!upgrade.lifecycle.in_limbo && !upgrade.lifecycle.cell_marked);
     let upgrade_id = upgrade.stable_id();
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "HELD"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "HELD",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held_id = sim
         .production
         .factories
@@ -337,6 +343,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert_eq!(output.overlay_updates.len(), 1);

@@ -56,8 +56,7 @@ fn coordinate(point: Option<crate::sim::components::DriveCoord>) -> Value {
     point.map_or_else(|| json!([0, 0, 0]), |p| json!([p.x, p.y, p.z]))
 }
 
-fn rng_sha(rng: &crate::sim::rng::SimRng) -> String {
-    let hex = rng.native_state_hex();
+fn rng_sha(hex: String) -> String {
     let bytes: Vec<_> = hex
         .as_bytes()
         .chunks_exact(2)
@@ -191,7 +190,7 @@ fn paid_snapshot(
             "level":cell.level,"tile":cell.final_tile_index,"subtile":cell.final_sub_tile,
             "overlay":cell.bridge_facts.overlay_id.map_or(-1,i32::from),
             "state":cell.bridge_facts.state_byte},
-        "rng_sha256":{"main":rng_sha(&sim.main_rng),"scenario":rng_sha(&sim.scenario_rng),"mapgen":rng_sha(&sim.mapgen_rng)},
+        "rng_sha256":{"main":rng_sha(sim.main_rng.native_state_hex()),"scenario":rng_sha(sim.scenario_rng.native_state_hex()),"mapgen":rng_sha(sim.mapgen_rng.native_state_hex())},
     })
 }
 
@@ -242,7 +241,12 @@ fn prepared_paid_scene(stage: &str) -> (HeadlessScenario, AmbientAnims) {
         }
         scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
     }
     assert!(
@@ -274,7 +278,7 @@ fn command_paid_fv(
     // measured constructor/AI. Normalized water-impact Anims use this
     // stored speed through native5FB2E0, independently of frame pacing.
     assert!(sim.session.game_options.apply_in_game_speed(game_speed));
-    sim.main_rng = crate::sim::rng::SimRng::new(0);
+    sim.main_rng = crate::sim::rng::SimRng::new(0).into();
     sim.mapgen_rng = crate::sim::rng::SimRng::new(0);
     sim.scenario_rng = crate::sim::rng::SimRng::new(scenario_seed);
     let id = spawn_fv(scene, xyz);
@@ -294,6 +298,7 @@ fn command_paid_fv(
         },
         Some(&runtime.resources.rules),
         Some(&runtime.resources.overlay_registry),
+        crate::sim::world::FrameEffects::default(),
     ));
     id
 }
@@ -351,11 +356,17 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
                             &Command::Stop { entity_id: id },
                             Some(&runtime.resources.rules),
                             Some(&runtime.resources.overlay_registry),
+                            crate::sim::world::FrameEffects::default(),
                         ));
                     }
                     scene
                         .runtime
-                        .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+                        .advance_frame(
+                            &[],
+                            SIM_TICK_MS,
+                            TickLane::Ordinary,
+                            crate::sim::world::FrameEffects::default(),
+                        )
                         .unwrap()
                 };
                 let output = if export_requested {
@@ -505,7 +516,13 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
             });
             if let Some(value) = row["input"].get("retained_nav") {
                 let (rx, ry) = cell(value);
-                assert!(sim.set_unit_destination(id, NavTargetRef::cell(rx, ry), &rules, true));
+                assert!(sim.set_unit_destination(
+                    id,
+                    NavTargetRef::cell(rx, ry),
+                    &rules,
+                    true,
+                    crate::sim::world::FrameEffects::default()
+                ));
             }
             if let Some(values) = row["input"].get("nav_queue") {
                 sim.substrate
@@ -560,7 +577,12 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
             );
             let target_before = actor.attack_target.as_ref().map(|attack| attack.target);
             let result = sim
-                .approach_unit_cell_target(id, &rules, Some(&runtime.resources.overlay_registry))
+                .approach_unit_cell_target(
+                    id,
+                    &rules,
+                    Some(&runtime.resources.overlay_registry),
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             let actor = sim.substrate.entities.get(id).unwrap();
             assert_eq!(
@@ -711,10 +733,20 @@ fn retail_fv_approaches_a_firing_cell_before_its_first_paid_step() {
         },
     );
     runtime
-        .advance_frame(&[command], SIM_TICK_MS, TickLane::Ordinary)
+        .advance_frame(
+            &[command],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     runtime
-        .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let actor = runtime.simulation.substrate.entities.get(id).unwrap();
     assert_eq!(

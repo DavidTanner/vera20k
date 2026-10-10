@@ -46,6 +46,7 @@
 //! - Conditions 5 and 6 compare a super weapon's charge against its type's
 //!   `RechargeTime=` ([`super_nearly_ready`]'s residual).
 
+use crate::sim::world::FrameEffects;
 use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
@@ -120,7 +121,12 @@ impl HouseTeamCreation {
 
 /// The team block of `HouseClass::Update` for house `owner` (see the module
 /// doc).
-pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
+pub(crate) fn update_team_creation(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    frame_effects: FrameEffects<'_>,
+) {
     let frame = sim.session.binary_frame as i32;
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     let Some(house) = sim.houses.get(&owner) else {
@@ -132,7 +138,7 @@ pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner:
     {
         return;
     }
-    let team_types = select_team_types(sim, rules, owner);
+    let team_types = select_team_types(sim, rules, owner, frame_effects);
     for team_type in team_types {
         sim.team_script_vm
             .construct_team(team_type, owner, game_mode_nonzero, frame);
@@ -165,7 +171,12 @@ pub(crate) fn update_team_creation(sim: &mut Simulation, rules: &RuleSet, owner:
 /// When one of the house's teams is still forming and is of a picked type,
 /// nothing is created. Otherwise each picked TeamType is marked
 /// `Autocreate=` (`+0xA9`).
-fn select_team_types(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -> Vec<InternedId> {
+fn select_team_types(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: InternedId,
+    frame_effects: FrameEffects<'_>,
+) -> Vec<InternedId> {
     select_team_types_with(
         sim,
         rules,
@@ -174,6 +185,7 @@ fn select_team_types(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) -
             is_eligible(sim, rules, trigger, owner, enemy, defense_full)
         },
         |sim, low, high| sim.scenario_rng.next_range_i32_inclusive(low, high),
+        frame_effects,
     )
 }
 
@@ -185,6 +197,7 @@ pub(crate) fn select_team_types_with(
     owner: InternedId,
     eligible: impl FnMut(&Simulation, &TeamAiTriggerDefinition, Option<InternedId>, bool) -> bool,
     mut draw: impl FnMut(&mut Simulation, i32, i32) -> i32,
+    frame_effects: FrameEffects<'_>,
 ) -> Vec<InternedId> {
     let Some(house) = sim.houses.get(&owner) else {
         return Vec::new();
@@ -204,7 +217,7 @@ pub(crate) fn select_team_types_with(
         } else if let Some(oldest) = oldest_defense_team(sim, owner) {
             teams -= 1;
             defense_full = true;
-            sim.destroy_team(oldest, rules);
+            sim.destroy_team(oldest, rules, frame_effects);
         }
         if teams < team_cap {
             picked = draw_ai_trigger(sim, enemy, defense_full, eligible, draw);

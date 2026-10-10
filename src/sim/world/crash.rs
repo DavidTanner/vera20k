@@ -35,6 +35,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::RockingState;
 use crate::sim::movement::air_movement::current_fly_height;
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
 
@@ -93,6 +94,7 @@ impl Simulation {
         attacker: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -126,9 +128,13 @@ impl Simulation {
             id,
             crate::sim::radio::RadioMessage::Break,
             Some(rules),
+            frame_effects,
         );
-        self.techno_death_stun(id, UninitContext::new(Some(rules), registry));
-        self.kill_passengers(id, attacker, rules, registry);
+        self.techno_death_stun(
+            id,
+            UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+        );
+        self.kill_passengers(id, attacker, rules, registry, frame_effects);
         if category != EntityCategory::Infantry && !self.object_placement_scope_active() {
             let sideways = self.scenario_rng.next_range_i32_inclusive(0, 0x7FFF_FFFE);
             let sign = self.scenario_rng.next_range_i32_inclusive(0, 1);
@@ -144,7 +150,7 @@ impl Simulation {
                 rocking.vel_forwards = vel_forwards;
             }
         }
-        self.detach_all_pointer_expired(id, rules, registry);
+        self.detach_all_pointer_expired(id, rules, registry, frame_effects);
         true
     }
 
@@ -180,6 +186,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let terrain = self.resolved_terrain.as_ref();
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -204,7 +211,7 @@ impl Simulation {
         };
         let counter = runtime.advance_fall(true);
         if placed {
-            let context = UninitContext::new(rules, registry);
+            let context = UninitContext::new(rules, registry).with_effects(frame_effects);
             self.substrate.display.remove(id);
             self.unmark_entity_remove(id, context);
             let dropped = crate::sim::components::DriveCoord {
@@ -241,15 +248,20 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if !self.substrate.entities.contains(id) {
             return false;
         }
         self.aircraft_tracker_remove(id);
-        self.set_object_height(id, 0, Some(rules), overlay_registry);
-        let bridge_state_changed = self.fire_death_weapon(id, rules, overlay_registry);
+        self.set_object_height(id, 0, Some(rules), overlay_registry, frame_effects);
+        let bridge_state_changed =
+            self.fire_death_weapon(id, rules, overlay_registry, frame_effects);
         self.play_crash_impact_sound(id, rules);
-        self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
+        self.uninit_with_context(
+            id,
+            UninitContext::new(Some(rules), overlay_registry).with_effects(frame_effects),
+        );
         bridge_state_changed
     }
 
@@ -272,6 +284,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -287,14 +300,17 @@ impl Simulation {
             // The notice goes unanswered: the wreck rests in State 6.
             return false;
         }
-        self.set_object_height(id, 0, Some(rules), overlay_registry);
+        self.set_object_height(id, 0, Some(rules), overlay_registry, frame_effects);
         let bridge_state_changed = if balloon_hover {
-            self.fire_death_weapon(id, rules, overlay_registry)
+            self.fire_death_weapon(id, rules, overlay_registry, frame_effects)
         } else {
             self.unit_death_explosion(rules, id, &mut Vec::new());
             false
         };
-        self.uninit_with_context(id, UninitContext::new(Some(rules), overlay_registry));
+        self.uninit_with_context(
+            id,
+            UninitContext::new(Some(rules), overlay_registry).with_effects(frame_effects),
+        );
         bridge_state_changed
     }
 
@@ -306,9 +322,15 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         crate::sim::combat::death_weapon_detonation(self, id, rules).is_some_and(|detonation| {
-            self.commit_logic_projectile_detonations(rules, overlay_registry, &[detonation])
+            self.commit_logic_projectile_detonations(
+                rules,
+                overlay_registry,
+                &[detonation],
+                frame_effects,
+            )
         })
     }
 
@@ -458,6 +480,7 @@ impl Simulation {
         attacker: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         loop {
             let Some(passenger) = self
@@ -472,7 +495,7 @@ impl Simulation {
             };
             // `0x00707CE0`: `TeamClass::Remove_Member` (in limbo, so no idle
             // order).
-            self.leave_team(passenger, false, Some(rules));
+            self.leave_team(passenger, false, Some(rules), frame_effects);
             if let Some(entity) = self.substrate.entities.get_mut(passenger)
                 && matches!(
                     entity.passenger_role,
@@ -482,8 +505,8 @@ impl Simulation {
             {
                 entity.passenger_role = crate::sim::passenger::PassengerRole::None;
             }
-            self.kill_passengers(passenger, Some(passenger), rules, registry);
-            self.record_kill_and_uninit(passenger, attacker, rules, registry);
+            self.kill_passengers(passenger, Some(passenger), rules, registry, frame_effects);
+            self.record_kill_and_uninit(passenger, attacker, rules, registry, frame_effects);
         }
     }
 
@@ -497,6 +520,7 @@ impl Simulation {
         attacker: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
@@ -509,7 +533,10 @@ impl Simulation {
             crate::sim::combat::KillCallback::Terminal,
             rules,
         );
-        self.uninit_with_context(victim, UninitContext::new(Some(rules), registry));
+        self.uninit_with_context(
+            victim,
+            UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+        );
     }
 }
 

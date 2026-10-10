@@ -214,6 +214,7 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
             std::slice::from_ref(&command),
             SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
     export(&scene, "attack_command_applied");
@@ -233,7 +234,12 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
         let logic_frame = scene.sim().session.binary_frame;
         let output = scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         for shot in output
             .fire_events
@@ -295,7 +301,12 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
     for _ in 0..32 {
         let output = scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert!(
             !output

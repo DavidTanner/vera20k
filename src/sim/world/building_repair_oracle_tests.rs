@@ -394,7 +394,13 @@ fn update_repair_and_power_matches_the_original() {
             .get(1)
             .unwrap()
             .building_damage_state_active;
-        production::update_repair_and_power(&mut sim, &rules, 1, None);
+        production::update_repair_and_power(
+            &mut sim,
+            &rules,
+            1,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let owner = sim.interner.get("AI").unwrap();
         let building = sim.substrate.entities.get(1).unwrap();
         let house = &sim.houses[&owner];
@@ -701,7 +707,13 @@ fn the_repair_step_keeps_signed_adds_and_the_live_strength() {
         building.estimated_health = EstimatedHealth::from_raw(estimate);
         building.repairing = true;
         sim.substrate.entities.insert(building);
-        production::update_repair_and_power(&mut sim, &rules, 1, None);
+        production::update_repair_and_power(
+            &mut sim,
+            &rules,
+            1,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let building = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
             (

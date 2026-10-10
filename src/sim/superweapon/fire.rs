@@ -36,6 +36,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
@@ -49,6 +50,7 @@ impl Simulation {
         sw_type_id: InternedId,
         cell: (u16, u16),
         overlay_registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         #[cfg(test)]
         super::ai_fire::observe(super::ai_fire::AiFireEvent::Fire(sw_type_id, cell));
@@ -63,7 +65,16 @@ impl Simulation {
             let cell = super_instance(self, owner, pre_type).chrono_cell();
             super_instance(self, owner, sw_type_id).chrono_cell = cell;
         }
-        let called_launch = click_fire(self, rules, owner, sw_type_id, sw, cell, overlay_registry);
+        let called_launch = click_fire(
+            self,
+            rules,
+            owner,
+            sw_type_id,
+            sw,
+            cell,
+            overlay_registry,
+            frame_effects,
+        );
         if let Some((pre_type, pre_sw)) = paired {
             // `0x004FAEA6..0x004FAEC1`.
             super_instance(self, owner, pre_type).is_ready = false;
@@ -97,6 +108,7 @@ fn click_fire(
     sw: &SuperWeaponType,
     cell: (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if sw.use_charge_drain {
         return false;
@@ -115,7 +127,16 @@ fn click_fire(
             .push(SimSoundEvent::PsychicDominatorRefused { owner });
         return false;
     }
-    launch(sim, rules, owner, sw_type_id, sw, cell, overlay_registry);
+    launch(
+        sim,
+        rules,
+        owner,
+        sw_type_id,
+        sw,
+        cell,
+        overlay_registry,
+        frame_effects,
+    );
     // `0x006CBBDE..0x006CBC34`: a type that is neither pairs no anim.
     if !sw.manual_control && !sw.pre_click && !sw.post_click {
         sim.release_super_anim(owner, sw_type_id);
@@ -142,6 +163,7 @@ fn launch(
     sw: &SuperWeaponType,
     (rx, ry): (u16, u16),
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     use super::paradrop::ParaDropKind;
     match sw.kind {
@@ -152,7 +174,16 @@ fn launch(
             super::lightning_storm::launch(sim, rules, owner, sw_type_id, (rx, ry));
         }
         SuperWeaponKind::IronCurtain => {
-            super::iron_curtain::launch(sim, rules, owner, rx, ry, sw_type_id, overlay_registry);
+            super::iron_curtain::launch(
+                sim,
+                rules,
+                owner,
+                rx,
+                ry,
+                sw_type_id,
+                overlay_registry,
+                frame_effects,
+            );
         }
         SuperWeaponKind::ForceShield => {
             super::force_shield::launch(sim, rules, owner, rx, ry, sw_type_id);
@@ -166,13 +197,23 @@ fn launch(
                 ry,
                 sw_type_id,
                 overlay_registry,
+                frame_effects,
             );
         }
         SuperWeaponKind::PsychicReveal => {
             super::psychic_reveal::launch(sim, rules, owner, rx, ry, sw_type_id);
         }
         SuperWeaponKind::ParaDrop => {
-            super::paradrop::launch(sim, rules, owner, rx, ry, ParaDropKind::Generic, sw_type_id);
+            super::paradrop::launch(
+                sim,
+                rules,
+                owner,
+                rx,
+                ry,
+                ParaDropKind::Generic,
+                sw_type_id,
+                frame_effects,
+            );
         }
         SuperWeaponKind::AmerParaDrop => {
             super::paradrop::launch(
@@ -183,6 +224,7 @@ fn launch(
                 ry,
                 ParaDropKind::American,
                 sw_type_id,
+                frame_effects,
             );
         }
         SuperWeaponKind::ChronoSphere => {
@@ -196,13 +238,14 @@ fn launch(
                 sw_type_id,
                 (rx, ry),
                 overlay_registry,
+                frame_effects,
             );
         }
         SuperWeaponKind::PsychicDominator => {
             super::psychic_dominator::launch(sim, rules, owner, sw_type_id, (rx, ry));
         }
         SuperWeaponKind::SpyPlane => {
-            super::spy_plane::launch(sim, rules, owner, sw_type_id, (rx, ry));
+            super::spy_plane::launch(sim, rules, owner, sw_type_id, (rx, ry), frame_effects);
         }
     }
 }

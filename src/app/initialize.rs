@@ -585,7 +585,7 @@ impl App {
                 scenario_catalog,
                 skirmish_modes,
                 loading_session: None,
-                frontend_main_rng: crate::sim::rng::SimRng::new(u64::from(frontend_seed.value)),
+                frontend_main_rng: crate::sim::rng::MainRng::new(u64::from(frontend_seed.value)),
                 legacy_crt_rng: crate::util::legacy_crt_rng::LegacyCrtRng::default(),
                 next_match_correlation: 1,
                 random_map_generation: None,
@@ -865,7 +865,7 @@ mod tests {
                 // the tooling tick helper's different millisecond cadence.
                 let output = loaded
                     .runtime
-                    .advance_frame(&[], crate::app::types::SIM_TICK_MS, TickLane::Ordinary)
+                    .advance_frame(&[], crate::app::types::SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                     .expect("fixture frame must complete");
                 victory_edges += output.sound_events.iter().filter(|event| matches!(event,
                     SimSoundEvent::MatchOutcome { owner: event_owner, kind: HouseOutcomeKind::Victory }
@@ -923,7 +923,7 @@ mod tests {
                 );
                 let output = loaded
                     .runtime
-                    .advance_frame(&[exit], crate::app::types::SIM_TICK_MS, TickLane::Ordinary)
+                    .advance_frame(&[exit], crate::app::types::SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                     .expect("fixture frame must complete");
                 assert_eq!(output.tick.executed_commands, 1);
                 assert!(!output.tick.frame_committed);

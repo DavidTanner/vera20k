@@ -74,6 +74,7 @@ use crate::sim::combat::TargetKind;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::passenger::{PassengerCargo, PassengerRole};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
 use crate::sim::world::{PlacementEvidence, SimSoundEvent, Simulation};
 
@@ -92,7 +93,7 @@ pub enum ParaDropKind {
 
 /// Launch case 5 or 6 for `owner`'s Super of type `sw_type` at (target_rx,
 /// target_ry): see the module doc. Returns whether the Super was charged.
-pub fn launch(
+pub(crate) fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -100,6 +101,7 @@ pub fn launch(
     target_ry: u16,
     kind: ParaDropKind,
     sw_type: InternedId,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if !super::is_charged(sim, owner, sw_type) {
         return false;
@@ -143,6 +145,7 @@ pub fn launch(
             MissionType::ParadropApproach,
             cell,
             Some((infantry, count)),
+            frame_effects,
         );
     }
     true
@@ -228,6 +231,7 @@ pub(super) fn send_planes(
     mission: MissionType,
     target: (u16, u16),
     payload: Option<(&str, u32)>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let owner_name = sim.interner.resolve(owner).to_string();
     let plane = sim.with_object_placement_scope(|sim| {
@@ -254,7 +258,7 @@ pub(super) fn send_planes(
         &mut sim.scenario_rng,
     ) else {
         // No MapClass authority (headless fixtures): no edge to pick.
-        let _ = sim.discard_constructed_limbo(plane, Some(rules));
+        let _ = sim.discard_constructed_limbo(plane, Some(rules), frame_effects);
         return false;
     };
     let entity = sim
@@ -279,10 +283,11 @@ pub(super) fn send_planes(
             0,
             PlacementEvidence::MarkSucceeded,
             rules,
+            frame_effects,
         )
     });
     if placed.is_none() {
-        let _ = sim.discard_constructed_limbo(plane, Some(rules));
+        let _ = sim.discard_constructed_limbo(plane, Some(rules), frame_effects);
         return false;
     }
     if let Some((infantry, count)) = payload.filter(|&(_, count)| count != 0) {

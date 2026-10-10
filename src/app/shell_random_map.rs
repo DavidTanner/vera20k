@@ -69,7 +69,7 @@ fn build_random_map_preview_grid(
     theater: Option<&crate::map::theater::TheaterData>,
     asset_manager: Option<&crate::assets::asset_manager::AssetManager>,
     terrain_rules: Option<&crate::rules::terrain_rules::TerrainRules>,
-    main: &mut crate::sim::rng::MainRngDraws<'_>,
+    main: &mut crate::sim::rng::MainRngDraws,
     selector_cache: &mut crate::map::tile_variant_selector::TileVariantSelectorCache,
 ) -> crate::map::resolved_terrain::ResolvedTerrainGrid {
     let mut raw_draw = || main.next_u32();
@@ -1521,7 +1521,7 @@ mod tests {
         process_dummy.stamp_coord(12, -4);
         let expected = process_dummy.snapshot();
         let map = generated_preview(11, 10).map_file;
-        let mut frontend_main_rng = crate::sim::rng::SimRng::new(0x0401_599D);
+        let mut frontend_main_rng = crate::sim::rng::MainRng::new(0x0401_599D);
         let mut selector_cache =
             crate::map::tile_variant_selector::TileVariantSelectorCache::default();
         for _ in 0..6 {

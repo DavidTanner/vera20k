@@ -482,6 +482,7 @@ fn fresh_arm_rows_match_the_original_responses() {
             None,
             &rules,
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         );
         let (records, unused) = fresh_oracle_seam::finish();
         let out = out.unwrap();
@@ -537,6 +538,7 @@ fn first_code7_scold_request_retains_the_native_byte() {
             None,
             &rules,
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         );
         let (_, unused) = fresh_oracle_seam::finish();
         result.unwrap();

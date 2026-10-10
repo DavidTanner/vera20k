@@ -79,9 +79,19 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
         }
         sim.substrate.entities.insert(e);
         if aircraft {
-            sim.assign_null_destination(1, Some(&rules), None);
+            sim.assign_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         } else {
-            sim.foot_null_destination(1, Some(&rules), None);
+            sim.foot_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let e = sim.substrate.entities.get(1).unwrap();
         let (destination, head) = if input["family"] == "drive" {
@@ -696,6 +706,7 @@ fn ground_orders_preserve_the_native_unit_same_destination_noop() {
                 },
                 Some(&rules),
                 None,
+                crate::sim::world::FrameEffects::default(),
             ));
             compare(sim.substrate.entities.get(1).unwrap(), &row);
             assert_eq!(sim.rng_state(), rng);
@@ -819,13 +830,19 @@ fn unit_setters_clear_navqueue_like_the_original() {
         }
         let (mut sim, rules) = destination_fixture(input);
         if input["null"] == true {
-            assert!(sim.set_unit_null_destination(1, Some(&rules), None));
+            assert!(sim.set_unit_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default()
+            ));
         } else {
             assert!(sim.set_unit_destination(
                 1,
                 NavTargetRef::cell(11, 10),
                 &rules,
                 input["flag"] != 0,
+                crate::sim::world::FrameEffects::default(),
             ));
         }
         compare(sim.substrate.entities.get(1).unwrap(), &row);
@@ -1163,7 +1180,9 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
             })
             .unwrap();
         let entry = &class["rng_at_entry"];
-        sim.main_rng = serde_json::from_value::<SimRng>(entry["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(entry["main"].clone())
+            .unwrap()
+            .into();
         sim.scenario_rng = serde_json::from_value::<SimRng>(entry["scenario"].clone()).unwrap();
         sim.mapgen_rng = serde_json::from_value::<SimRng>(entry["mapgen"].clone()).unwrap();
         let requested = NavTargetRef::Object { id: 2 };
@@ -1176,22 +1195,30 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
             ));
         }
         let accepted = if family == "MTNK" {
-            sim.set_unit_destination(1, requested, &rules, true)
+            sim.set_unit_destination(
+                1,
+                requested,
+                &rules,
+                true,
+                crate::sim::world::FrameEffects::default(),
+            )
         } else {
-            sim.set_infantry_destination(1, requested, &rules, Some(&overlays))
-                .unwrap()
+            sim.set_infantry_destination(
+                1,
+                requested,
+                &rules,
+                Some(&overlays),
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap()
         };
         assert!(accepted, "{input}");
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", serde_json::to_value(&sim.main_rng).unwrap()),
+            ("scenario", serde_json::to_value(&sim.scenario_rng).unwrap()),
+            ("mapgen", serde_json::to_value(&sim.mapgen_rng).unwrap()),
         ] {
-            assert_eq!(
-                serde_json::to_value(rng).unwrap(),
-                class["rng_at_return"][stream],
-                "{input}: {stream}"
-            );
+            assert_eq!(rng, class["rng_at_return"][stream], "{input}: {stream}");
         }
         // Prove the sole target+4C read and the structural bit used by MoveTo
         // against its actual returned native Cell, not invented flat terrain.

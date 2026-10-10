@@ -7,6 +7,7 @@
 
 use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 #[cfg(test)]
@@ -135,16 +136,19 @@ pub(crate) struct RepresentedConcreteMissionEffects<'r> {
     /// moving Infantry receiver's current-cell admission query.
     rules: Option<&'r crate::rules::ruleset::RuleSet>,
     overlay_registry: Option<&'r crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'r>,
 }
 
 impl<'r> RepresentedConcreteMissionEffects<'r> {
     pub(crate) fn new(
         rules: Option<&'r crate::rules::ruleset::RuleSet>,
         overlay_registry: Option<&'r crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'r>,
     ) -> Self {
         Self {
             rules,
             overlay_registry,
+            frame_effects,
         }
     }
 }
@@ -313,7 +317,12 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
             return true;
         }
         if requested.is_none() {
-            sim.assign_null_destination(prepared.receiver, self.rules, self.overlay_registry);
+            sim.assign_null_destination(
+                prepared.receiver,
+                self.rules,
+                self.overlay_registry,
+                self.frame_effects,
+            );
             return true;
         }
         let requested = requested.expect("nonnull destination arm");
@@ -328,7 +337,13 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                 crate::map::entities::EntityCategory::Unit
                     if sim.unit_setter_receiver(prepared.receiver, Some(rules)) =>
                 {
-                    let _ = sim.set_unit_destination(prepared.receiver, requested, rules, true);
+                    let _ = sim.set_unit_destination(
+                        prepared.receiver,
+                        requested,
+                        rules,
+                        true,
+                        self.frame_effects,
+                    );
                     return true;
                 }
                 crate::map::entities::EntityCategory::Infantry
@@ -340,13 +355,19 @@ impl ConcreteMissionEffects for RepresentedConcreteMissionEffects<'_> {
                             requested,
                             rules,
                             self.overlay_registry,
+                            self.frame_effects,
                         )
                         .expect("represented Infantry destination dependencies must be available");
                     return true;
                 }
                 // `AircraftClass::Assign_Destination @ 0x0041AA80`.
                 crate::map::entities::EntityCategory::Aircraft => {
-                    sim.assign_aircraft_destination(prepared.receiver, Some(requested), rules);
+                    sim.assign_aircraft_destination(
+                        prepared.receiver,
+                        Some(requested),
+                        rules,
+                        self.frame_effects,
+                    );
                     return true;
                 }
                 crate::map::entities::EntityCategory::Structure

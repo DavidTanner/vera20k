@@ -109,7 +109,8 @@ fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry
             target_ry: ry,
         },
         Some(rules),
-        None
+        None,
+        crate::sim::world::FrameEffects::default()
     ));
     assert!(
         !sim.super_weapons[&owner][&sw_type_id].is_ready,
@@ -124,7 +125,8 @@ fn held_infantry_survives_launch(name: &str) {
         &mut sim,
         &rules,
         "Americans",
-        "E1"
+        "E1",
+        crate::sim::world::FrameEffects::default()
     ));
     let held = sim
         .production
@@ -367,6 +369,7 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 None,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("fixture frame must complete");
         assert_eq!(
@@ -460,7 +463,16 @@ fn infantry_terminal_zero_count_death_request_retains_the_previous_action() {
     let victim = sim
         .spawn_object_at_height("E1", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
-    assert!(sim.infantry_do_action(victim, 0, true, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            victim,
+            0,
+            true,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let before = *sim.substrate.entities.get(victim).unwrap().native_stage();
     launch_command(&mut sim, &rules, "IC", 5, 5);
     let object = sim.substrate.entities.get(victim).unwrap();

@@ -42,6 +42,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::{SuperWeaponKind, SuperWeaponType};
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::native_x87::{NativeF32Bits, X87Chop53, X87Ordering};
 
@@ -816,10 +817,11 @@ pub fn tick_superweapon_instances(sim: &mut Simulation, rules: &RuleSet) {
 /// screen flash, then runs the Psychic Dominator's Process (`0x0053A742`)
 /// and, after the unported chrono screen (`0x0053A747`), the storm's own work.
 /// Returns whether a bridge changed.
-pub fn tick_active_superweapon_effects(
+pub(crate) fn tick_active_superweapon_effects(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if sim
         .session
@@ -829,8 +831,8 @@ pub fn tick_active_superweapon_effects(
         // `0x0053A705`; the screen redraw (`0x0053A711`) is presentation.
         sim.update_lighting();
     }
-    let dominator = psychic_dominator::process(sim, rules, overlay_registry);
-    let storm = lightning_storm::process(sim, rules, overlay_registry);
+    let dominator = psychic_dominator::process(sim, rules, overlay_registry, frame_effects);
+    let storm = lightning_storm::process(sim, rules, overlay_registry, frame_effects);
     dominator || storm
 }
 
@@ -1407,7 +1409,13 @@ mod frame_tests {
         assert_eq!(weapon(&sim, americans), Some((true, 0)));
 
         sim.session.binary_frame = 300;
-        sim.change_owner_with_rules(silo, russians, &rules, None);
+        sim.change_owner_with_rules(
+            silo,
+            russians,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             weapon(&sim, americans),
             Some((false, 0)),

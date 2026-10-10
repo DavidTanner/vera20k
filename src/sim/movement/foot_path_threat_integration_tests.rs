@@ -29,6 +29,7 @@ fn request_move(
         },
         Some(rules),
         Some(registry),
+        crate::sim::world::FrameEffects::default(),
     ));
     let destination = cell_centre((goal.0 as i16, goal.1 as i16));
     let request = FootPathRequest::track(
@@ -43,7 +44,13 @@ fn request_move(
     .unwrap();
     let rng = sim.rng_state();
     let result = sim
-        .foot_find_path(&request, None, rules, Some(registry))
+        .foot_find_path(
+            &request,
+            None,
+            rules,
+            Some(registry),
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert_eq!(
         sim.rng_state(),
@@ -115,7 +122,14 @@ fn live_avoid_threats_membership_reads_admitted_house_grid_through_search_and_sn
         .team_script_vm
         .construct_team(team_type, american, true, sim.session.binary_frame as i32)
         .unwrap();
-    assert!(sim.team_add_member(team, mover, false, &rules, Some(&registry)));
+    assert!(sim.team_add_member(
+        team,
+        mover,
+        false,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.team_script_vm.member_avoids_threats(mover));
     assert_eq!(
         sim.substrate
@@ -159,7 +173,13 @@ fn live_avoid_threats_membership_reads_admitted_house_grid_through_search_and_sn
         positive,
         "restored retained map/cache/team membership produces the same finished path"
     );
-    sim.team_remove_member(team, mover, true, Some(&rules));
+    sim.team_remove_member(
+        team,
+        mover,
+        true,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(!sim.team_script_vm.member_avoids_threats(mover));
     assert_eq!(
         sim.substrate

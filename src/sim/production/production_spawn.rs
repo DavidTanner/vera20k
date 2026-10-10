@@ -9,6 +9,7 @@ use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use crate::sim::movement::bump_crush;
@@ -237,6 +238,7 @@ pub fn mark_war_factory_spawn_contact(
     rules: &RuleSet,
     producer_id: u64,
     produced_id: u64,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let valid = sim
         .substrate
@@ -266,6 +268,7 @@ pub fn mark_war_factory_spawn_contact(
             message,
             crate::sim::radio::RadioPayload::default(),
             Some(rules),
+            effects,
         );
     }
     true
@@ -541,6 +544,7 @@ pub(super) fn unlimbo_held_naval_unit(
     stable_id: u64,
     cell: (u16, u16),
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> Option<u64> {
     let coord = resolve_produced_unit_cell_coords(sim, cell)?;
     sim.reveal_constructed_object_at_coord_with_overlay_context(
@@ -550,6 +554,7 @@ pub(super) fn unlimbo_held_naval_unit(
         crate::sim::world::PlacementEvidence::EvaluateMark,
         rules,
         overlay_registry,
+        effects,
     )
 }
 
@@ -1308,7 +1313,14 @@ mod tests {
         // Original Unit Unlimbo's empty-list/raw-zero control admits. Claims
         // are not another input of the native +1AC receiver.
         assert_eq!(
-            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None),
+            unlimbo_held_naval_unit(
+                &mut sim,
+                &rules,
+                stable_id,
+                (8, 8),
+                None,
+                crate::sim::world::FrameEffects::default()
+            ),
             Some(stable_id)
         );
     }
@@ -1333,7 +1345,14 @@ mod tests {
             .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 3, &rules)
             .unwrap();
         assert_eq!(
-            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None),
+            unlimbo_held_naval_unit(
+                &mut sim,
+                &rules,
+                stable_id,
+                (8, 8),
+                None,
+                crate::sim::world::FrameEffects::default()
+            ),
             Some(stable_id)
         );
         let entity = sim.substrate.entities.get(stable_id).unwrap();
@@ -1357,7 +1376,14 @@ mod tests {
             .create_production_object_limbo_at_height("DEST", "Americans", 8, 8, 0x40, 0, &rules)
             .expect("held production Unit");
         assert_eq!(
-            unlimbo_held_naval_unit(&mut sim, &rules, stable_id, (8, 8), None,),
+            unlimbo_held_naval_unit(
+                &mut sim,
+                &rules,
+                stable_id,
+                (8, 8),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            ),
             Some(stable_id),
             "the production API exposes no caller-forced Mark outcome"
         );

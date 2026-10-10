@@ -6866,7 +6866,7 @@ mod tests {
             );
             let mut runtime = SimRuntime::from_simulation(sim);
             let _ = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             assert_eq!(
                 runtime.simulation.projectiles.get(100).is_none(),

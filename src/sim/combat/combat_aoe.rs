@@ -3527,7 +3527,7 @@ mod tests {
                 );
             }
             world.session.binary_frame = 100;
-            world.main_rng = SimRng::new(7);
+            world.main_rng = SimRng::new(7).into();
             world.scenario_rng = SimRng::new(1);
             // Some(false) models campaign PlayerControl without IsHuman.
             world.session.game_mode_nonzero = false;
@@ -4133,6 +4133,7 @@ mod tests {
                 }),
                 AreaDamageReceiver::Entity(later_parent_receiver),
             ],
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert_eq!(
@@ -4265,6 +4266,7 @@ mod tests {
                     near_center_ic_isolation_eligible: true,
                 }),
             ],
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert_eq!(

@@ -168,11 +168,13 @@ fn original_stage_histories() {
                 }
                 "increase" => {
                     let before_latch = state.report_latch();
+                    let mut reached_stops = 0;
                     let effects = state.increase(
                         &ty.stages,
                         elite,
                         i32_of(&call["arg"]),
                         |weapon| ty.report(weapon, elite).map(|items| items.len() as i32),
+                        || reached_stops += 1,
                         || {
                             let draw = rng.next_u32();
                             draws.push(i64::from(draw));
@@ -185,10 +187,7 @@ fn original_stage_histories() {
                     let stops = audio.iter().filter(|token| **token == "stop a").count();
                     assert_eq!(
                         (audio.contains(&"play"), stops),
-                        (
-                            effects.report.is_some(),
-                            usize::from(effects.stage_up) + usize::from(effects.report.is_some())
-                        ),
+                        (effects.report.is_some(), reached_stops),
                         "{at}: handle calls {audio:?}"
                     );
                     if let Some(report) = effects.report {
@@ -201,7 +200,11 @@ fn original_stage_histories() {
                 }
                 "update" => {
                     let (before_latch, before_stage) = (state.report_latch(), state.stage());
-                    let released = state.update(&ty.stages, elite, i32_of(&call["arg"]));
+                    let mut reached_releases = 0;
+                    let released = state.update(&ty.stages, elite, i32_of(&call["arg"]), || {
+                        reached_releases += 1;
+                    });
+                    assert_eq!(reached_releases, 1, "{at}: native unconditional release");
                     assert_eq!(
                         state.stage() < before_stage,
                         path.contains("down"),
@@ -271,6 +274,7 @@ fn original_fault_inputs_play_nothing() {
             false,
             1,
             |weapon| ty.report(weapon, false).map(|items| items.len() as i32),
+            || {},
             || panic!("no draw without a WeaponType"),
         );
         assert!(effects.report.is_none());
@@ -381,10 +385,15 @@ fn original_unit_fire_update_rows() {
                 crate::sim::combat::veterancy::set_elite(entity);
             }
         }
-        sim.main_rng = SimRng::new(0x2A61);
+        sim.main_rng = SimRng::new(0x2A61).into();
         sim.sound_events.clear();
         let mut probe = SimRng::new(0x2A61);
-        sim.unit_fire_update_tail(id, outcome, &rules);
+        sim.unit_fire_update_tail(
+            id,
+            outcome,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
             i64::from(entity.gattling.value()),
@@ -635,14 +644,20 @@ fn a_gattling_tank_spins_up_while_it_fights() {
     assert_eq!(stage_weapons(0), ["G0"]);
     assert_eq!(stage_weapons(1), ["G2"]);
     assert_eq!(stage_weapons(2), ["G4"]);
-    assert_eq!(loops, ["Loop0", "stop", "Loop2", "stop", "Loop4"]);
+    //70DF9C stops before every new report, and70DF74 adds the stage stop.
+    assert_eq!(
+        loops,
+        [
+            "stop", "Loop0", "stop", "stop", "Loop2", "stop", "stop", "Loop4"
+        ]
+    );
 }
 
 /// Stopped at the cap after firing at the ground, with nothing to pick
 /// another target from: from the first frame without its target the tank
 /// loses 50 a frame, drops to stage 1 on the 5th frame and to 0 on the 9th,
 /// and is empty on the 12th (the original's rookie decay,
-/// `gattling_stage.py`); the loop is released once.
+/// `gattling_stage.py`);70E013 requests Release before every decay visit.
 #[test]
 fn a_gattling_tank_winds_down_without_a_target() {
     use crate::sim::command::Command;
@@ -679,7 +694,7 @@ fn a_gattling_tank_winds_down_without_a_target() {
     assert_eq!((timeline[3].0, timeline[4].0), (2, 1));
     assert_eq!((timeline[7].0, timeline[8].0), (1, 0));
     assert_eq!((timeline[10].1, timeline[11].1), (50, 0));
-    assert_eq!(releases, 1);
+    assert_eq!(releases, timeline.len());
 }
 
 /// A tank boarding a transport enters with its spin reset: `+0xC4`, the
@@ -701,7 +716,12 @@ fn a_gattling_tank_boards_with_its_spin_reset() {
         };
     }
     spin.sim.sound_events.clear();
-    crate::sim::passenger::tick_passenger_system(&mut spin.sim, &spin.rules, None);
+    crate::sim::passenger::tick_passenger_system(
+        &mut spin.sim,
+        &spin.rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let tank = spin.sim.substrate.entities.get(spin.tank).unwrap();
     assert!(tank.passenger_role.is_inside_transport());
     assert_eq!((tank.gattling.stage(), tank.gattling.value()), (0, 0));

@@ -37,6 +37,7 @@ use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::air_movement::{self, AirMovementTickStats};
 use crate::sim::movement::ground_pose;
 use crate::sim::rng::SimRng;
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 #[cfg(test)]
@@ -167,6 +168,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> AirMovementTickStats {
         let mut stats = AirMovementTickStats::default();
         let flight_level = self.fly_type_flight_level(id, rules);
@@ -190,7 +192,7 @@ impl Simulation {
         {
             let _ = self.mission_commence_exact(id, self.session.binary_frame);
         }
-        if self.fly_update_flight_motion(id, rules, registry) {
+        if self.fly_update_flight_motion(id, rules, registry, frame_effects) {
             stats.impact = true;
             return stats;
         }
@@ -214,7 +216,7 @@ impl Simulation {
             && !state.has_phase_callback()
             && air_movement::current_fly_height(entity, self.resolved_terrain.as_ref()) > 0
         {
-            self.fly_horizontal_step(id, destination, true, rules, registry);
+            self.fly_horizontal_step(id, destination, true, rules, registry, frame_effects);
         }
         if self
             .substrate
@@ -222,9 +224,9 @@ impl Simulation {
             .get(id)
             .is_some_and(|entity| entity.health.current > 0)
         {
-            self.complete_fly_phase(id, rules, registry);
+            self.complete_fly_phase(id, rules, registry, frame_effects);
         }
-        self.fly_playfield_latch(id, rules, registry);
+        self.fly_playfield_latch(id, rules, registry, frame_effects);
         stats
     }
 
@@ -244,6 +246,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -269,7 +272,7 @@ impl Simulation {
         {
             state.prepare_process(mission);
         }
-        if self.fly_crash_fall(id, rules, registry) {
+        if self.fly_crash_fall(id, rules, registry, frame_effects) {
             return true;
         }
         self.fly_guard_to_move(id);
@@ -279,7 +282,7 @@ impl Simulation {
         if crate::sim::movement::motion_query::is_moving(entity) != Some(true) {
             return false;
         }
-        self.fly_flight_step(id, rules, registry);
+        self.fly_flight_step(id, rules, registry, frame_effects);
         false
     }
 
@@ -329,9 +332,10 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
-        self.foot_mark_remove(id, rules, registry);
+        self.foot_mark_remove(id, rules, registry, frame_effects);
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
@@ -406,7 +410,7 @@ impl Simulation {
                 .approach(distance, object.slowdown_distance, object.pitch_angle);
         }
         if self.fly_landing_trigger(id) {
-            self.begin_fly_landing(id, rules, registry);
+            self.begin_fly_landing(id, rules, registry, frame_effects);
         }
         if let Some(entity) = self.substrate.entities.get_mut(id)
             && entity.health.current > 0
@@ -424,7 +428,7 @@ impl Simulation {
             .get(id)
             .is_some_and(|entity| entity.lifecycle.object_alive && !entity.lifecycle.in_limbo)
         {
-            self.foot_mark_put(id, rules, registry);
+            self.foot_mark_put(id, rules, registry, frame_effects);
         }
     }
 
@@ -596,6 +600,7 @@ impl Simulation {
         may_slow: bool,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> i32 {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -785,7 +790,7 @@ impl Simulation {
             }
         }
         if land {
-            self.begin_fly_landing(id, rules, registry);
+            self.begin_fly_landing(id, rules, registry, frame_effects);
         }
         distance
     }
@@ -815,6 +820,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(bounds) = self.playfield_bounds else {
             return;
@@ -835,7 +841,7 @@ impl Simulation {
         if !retreat {
             return;
         }
-        let context = super::UninitContext::new(rules, registry);
+        let context = super::UninitContext::new(rules, registry).with_effects(frame_effects);
         while let Some((passenger, _)) = self
             .substrate
             .entities

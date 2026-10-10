@@ -15,6 +15,7 @@ use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement;
 use crate::sim::movement::ScatterFlags;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// TryToDeploy's fallback sites (`0x00B1D010..0x00B1D09C`), offsets from the
@@ -134,6 +135,7 @@ pub(crate) fn mission_hunt_deploy(
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     match sim
         .substrate
@@ -142,8 +144,8 @@ pub(crate) fn mission_hunt_deploy(
         .map(|e| e.mission.handler_state())
     {
         Some(0) => {
-            if try_to_deploy(sim, id, rules, registry)
-                && sim.deploy_mcv(id, rules, registry)
+            if try_to_deploy(sim, id, rules, registry, effects)
+                && sim.deploy_mcv(id, rules, registry, effects)
                 && let Some(entity) = sim.substrate.entities.get_mut(id)
             {
                 entity.mission.set_handler_state(1);
@@ -177,6 +179,7 @@ pub(crate) fn try_to_deploy(
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let Some((yard, cell, owner)) = sim.substrate.entities.get(id).and_then(|entity| {
         Some((
@@ -194,7 +197,7 @@ pub(crate) fn try_to_deploy(
             .is_some_and(|e| e.navigation.nav_com.is_some())
     };
     let origin_of = |cell: (i16, i16)| (cell.0.wrapping_sub(1), cell.1.wrapping_sub(1));
-    sim.foot_mark_remove(id, Some(rules), registry);
+    sim.foot_mark_remove(id, Some(rules), registry, effects);
     if !has_destination(sim) {
         if crate::sim::build_site::can_place_building_at(
             sim,
@@ -204,7 +207,7 @@ pub(crate) fn try_to_deploy(
             origin_of(cell),
             None,
         ) {
-            sim.foot_mark_put(id, Some(rules), registry);
+            sim.foot_mark_put(id, Some(rules), registry, effects);
             return true;
         }
         // 0x007392CA..0x00739360: the first fallback site the type can stand
@@ -230,15 +233,22 @@ pub(crate) fn try_to_deploy(
                 crate::sim::components::NavTargetRef::cell(site.0 as u16, site.1 as u16),
                 rules,
                 true,
+                effects,
             );
         }
     }
-    sim.foot_mark_put(id, Some(rules), registry);
+    sim.foot_mark_put(id, Some(rules), registry, effects);
     // 0x00739372..0x00739394: vt+0x174 Scatter(&ZeroCoord, 0, 0), the Unit
     // receiver's null arm.
     if !has_destination(sim)
         && !sim.owner_is_human(owner)
-        && let Err(cause) = sim.scatter_null(id, ScatterFlags::new(false, false), rules, registry)
+        && let Err(cause) = sim.scatter_null(
+            id,
+            ScatterFlags::new(false, false),
+            rules,
+            registry,
+            effects,
+        )
     {
         log::debug!("MCV {id} did not scatter: {cause}");
     }
@@ -292,6 +302,7 @@ pub(crate) fn mission_unload(
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     let state = sim
         .substrate
@@ -305,6 +316,7 @@ pub(crate) fn mission_unload(
             id,
             crate::sim::radio::RadioMessage::Break,
             Some(rules),
+            effects,
         );
         if let Some(e) = sim.substrate.entities.get_mut(id) {
             e.navigation.path_replay.cursor = e
@@ -337,7 +349,7 @@ pub(crate) fn mission_unload(
                     let _ = sim.mission_commence_exact(id, now);
                 }
             } else {
-                sim.deploy_mcv(id, rules, registry);
+                sim.deploy_mcv(id, rules, registry, effects);
                 finish_initial_attempt(sim, id);
             }
         }
@@ -348,12 +360,12 @@ pub(crate) fn mission_unload(
                 .get(id)
                 .is_some_and(|e| e.mcv_deploy_pending);
             if pending {
-                let accepted = sim.deploy_mcv(id, rules, registry);
+                let accepted = sim.deploy_mcv(id, rules, registry, effects);
                 finish_retry(sim, id, accepted);
             } else {
                 // 0x0073D6CA..0x0073D6DB: Enter_Idle_Mode(0, 1), then
                 // NextMission.
-                sim.unit_enter_idle_mode(id, Some(rules), false);
+                sim.unit_enter_idle_mode(id, Some(rules), false, effects);
                 let _ = sim.mission_commence_exact(id, now);
             }
         }
@@ -408,6 +420,7 @@ pub(crate) fn per_cell_process(
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     // 0x739EEC..0x739EF8 has no current-mission guard. Stop and Move do not
     // erase pending intent; native Deploy decides whether NavCom allows it.
@@ -417,7 +430,7 @@ pub(crate) fn per_cell_process(
         .get(id)
         .is_some_and(|e| !e.dying && e.mcv_deploy_pending)
     {
-        sim.deploy_mcv(id, rules, registry);
+        sim.deploy_mcv(id, rules, registry, effects);
     }
 }
 

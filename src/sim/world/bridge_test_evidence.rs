@@ -178,6 +178,7 @@ fn damage_bridge(
         &runtime.resources.rules,
         &[event],
         Some(&runtime.resources.overlay_registry),
+        crate::sim::world::FrameEffects::default(),
     )
 }
 
@@ -440,7 +441,12 @@ fn repair_ordinary_bridge(
         let due = scene.runtime.simulation.take_due_commands();
         let output = scene
             .runtime
-            .advance_frame(&due, SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &due,
+                SIM_TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         published |= output.tick.bridge_state_changed;
         if scene

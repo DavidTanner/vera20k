@@ -285,13 +285,13 @@ fn native_last_category(value: &serde_json::Value) -> Option<u8> {
 }
 
 fn assert_navigation_rng(sim: &Simulation, native: &serde_json::Value, label: &str) {
-    for (name, rng) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+    for (name, state) in [
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert_eq!(
-            rng.native_state_hex(),
+            state,
             native[name].as_str().unwrap(),
             "{label}: full {name} cursor/state"
         );
@@ -911,7 +911,7 @@ fn replay_category_history(
         }
         assert_navigation_boundary(&input, &sim, step, &label);
         assert_navigation_rng(&sim, &step["rng_after_hex"], &label);
-        let mut continuation = sim.main_rng.clone();
+        let mut continuation = sim.main_rng.snapshot_for_test();
         for draw in step["main_next_four"].as_array().unwrap() {
             assert_eq!(
                 u64::from(continuation.next_u32()),

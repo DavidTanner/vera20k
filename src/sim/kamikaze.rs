@@ -71,7 +71,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::timer::CdTimer;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 use crate::util::lepton::lepton_to_cell_packed;
 
 /// Update's restart (`0x0054E500`).
@@ -224,6 +224,7 @@ struct WorldHost<'a> {
     sim: &'a mut Simulation,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    effects: FrameEffects<'a>,
 }
 
 impl KamikazeHost for WorldHost<'_> {
@@ -241,7 +242,8 @@ impl KamikazeHost for WorldHost<'_> {
     }
 
     fn crash(&mut self, child: u64) {
-        self.sim.foot_crash(child, None, self.rules, self.registry);
+        self.sim
+            .foot_crash(child, None, self.rules, self.registry, self.effects);
     }
 
     fn location_xy(&self, child: u64) -> [i32; 2] {
@@ -310,6 +312,7 @@ impl Simulation {
         target: Option<TargetKind>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let target_xy = target.and_then(|target| {
             let cells = self
@@ -328,6 +331,7 @@ impl Simulation {
                 sim: self,
                 rules,
                 registry,
+                effects,
             },
             child,
             target_xy,
@@ -342,13 +346,14 @@ impl Simulation {
     }
 
     /// Update (`0x0054E4D0`), from LogicClass::AI after the BombList.
-    pub(crate) fn kamikaze_update(&mut self, rules: &RuleSet) {
+    pub(crate) fn kamikaze_update(&mut self, rules: &RuleSet, effects: FrameEffects<'_>) {
         let frame = self.session.binary_frame;
         update(
             &mut WorldHost {
                 sim: self,
                 rules,
                 registry: None,
+                effects,
             },
             frame,
         );

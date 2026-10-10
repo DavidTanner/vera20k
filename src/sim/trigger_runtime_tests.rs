@@ -183,7 +183,7 @@ fn parsed_event_records_match_native_list_and_production_predicates() {
                         waypoints: &HashMap::new(),
                         rules: None,
                     }),
-                )
+                 crate::sim::world::FrameEffects::default(),)
                 .unwrap()
                 .into_tick();
             assert!(result.frame_committed);
@@ -263,7 +263,7 @@ fn parsed_variable_actions_match_native_reader_dispatch_and_restore() {
                         waypoints: &HashMap::new(),
                         rules: None,
                     }),
-                )
+                 crate::sim::world::FrameEffects::default(),)
                 .unwrap()
                 .into_tick();
             assert!(frame.frame_committed);
@@ -336,7 +336,7 @@ fn parsed_map_trigger_flags_gate_production_frames_and_survive_restore() {
                     waypoints: &map.waypoints,
                     rules: None,
                 }),
-            )
+             crate::sim::world::FrameEffects::default(),)
             .expect("production frame completes")
             .into_tick();
         assert!(frame.frame_committed);
@@ -481,7 +481,7 @@ fn trigger_action_40_normalizes_and_refreshes_authority_same_frame() {
                 waypoints: &HashMap::new(),
                 rules: None,
             }),
-        )
+         crate::sim::world::FrameEffects::default(),)
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -846,7 +846,7 @@ fn master_frame_polls_triggers_before_logic_houses_commit_and_delete() {
                 waypoints: &HashMap::new(),
                 rules: None,
             }),
-        )
+         crate::sim::world::FrameEffects::default(),)
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -935,7 +935,7 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             67,
             TickLane::Ordinary,
             Some(trigger_inputs),
-        )
+         crate::sim::world::FrameEffects::default(),)
         .expect("fixture frame must complete")
         .into_tick();
     assert!(original.trigger_runtime.globals_set.contains(&13));
@@ -996,7 +996,7 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             67,
             TickLane::Ordinary,
             Some(trigger_inputs),
-        )
+         crate::sim::world::FrameEffects::default(),)
         .expect("fixture frame must complete")
         .into_tick();
     let mut replay_log = ReplayLog::new(ReplayHeader {
@@ -1016,7 +1016,7 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
             67,
             TickLane::Ordinary,
             Some(trigger_inputs),
-        )
+         crate::sim::world::FrameEffects::default(),)
         .expect("fixture frame must complete")
         .into_tick();
 

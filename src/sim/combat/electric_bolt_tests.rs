@@ -62,7 +62,8 @@ fn ordinary_spark() -> &'static Value {
 }
 
 fn restore_rng(sim: &mut Simulation, expected: &Value) {
-    sim.main_rng = SimRng::from_native_state_hex_for_test(expected["main"].as_str().unwrap());
+    sim.main_rng =
+        SimRng::from_native_state_hex_for_test(expected["main"].as_str().unwrap()).into();
     sim.scenario_rng =
         SimRng::from_native_state_hex_for_test(expected["scenario"].as_str().unwrap());
     sim.mapgen_rng = SimRng::from_native_state_hex_for_test(expected["mapgen"].as_str().unwrap());
@@ -360,7 +361,7 @@ fn building_fireat_reads_the_retained_target_for_its_launch_coordinate() {
             },
             &rules,
             None,
-        );
+         crate::sim::world::FrameEffects::default(),);
         assert_eq!(sim.fire_events.len(), 1, "{name} actual Building FireAt");
         let event = &sim.fire_events[0];
         assert_eq!(event.attacker_id, source);
@@ -434,7 +435,7 @@ fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
         },
         rules,
         None,
-    );
+     crate::sim::world::FrameEffects::default(),);
     let bullet = *sim.projectiles.iter().next().unwrap().0;
     assert!(sim.object_ai_visit_one(bullet, Some(rules), Default::default()));
     let victim = sim.substrate.entities.get(target).unwrap();
@@ -454,7 +455,7 @@ fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
         );
     }
     for _ in 0..2 {
-        sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+        sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
             .unwrap();
         for &(x, y) in &cells {
             assert!(sim.path_grid().unwrap().is_walkable(x, y));
@@ -510,7 +511,7 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
         dispatch_timer: MissionDispatchTimer::from_raw(now, 100),
     });
     let frame = sim
-        .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
         .unwrap();
     let births: Vec<_> = frame
         .lifecycle_outputs
@@ -610,7 +611,7 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
     let identity_before_ai = sim.native_identity_cursor().unwrap();
     sim.clear_lifecycle_test_events_for_test();
     let next = sim
-        .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
         .unwrap();
     assert!(
         !next
@@ -729,7 +730,7 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
             });
         source_entity.mission_leaf.set_building_ready_latch(1);
         for _ in 0..start {
-            sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+            sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
                 .unwrap();
         }
         sim.clear_building_anim_slot(source, 3);
@@ -742,7 +743,7 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
                 int(&visit["frame"]) as u32,
                 "{name}"
             );
-            sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+            sim.advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
                 .unwrap();
             let actual = sim.anim(charge).unwrap_or_else(|| {
                 panic!("{name} charge retired during warmup at {}", visit["frame"])
@@ -787,7 +788,7 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
             .enumerate()
         {
             let frame = sim
-                .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None)
+                .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
                 .unwrap();
             let expected = &case[key]["state"];
             let births = frame

@@ -25,6 +25,7 @@ use super::track_process::TrackFamily;
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SimFixed;
 
@@ -37,6 +38,7 @@ impl Simulation {
         id: u64,
         family: TrackFamily,
         rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -54,7 +56,7 @@ impl Simulation {
         if selector.is_some_and(|selector| selector != -1) {
             return Ok(false);
         }
-        self.finish_deferred_track_order(id, rules);
+        self.finish_deferred_track_order(id, rules, frame_effects);
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
         };
@@ -132,7 +134,12 @@ impl Simulation {
     /// the path head already follow NavCom when the gates read them. The
     /// setter clears the path head, so the adapter's leftover route is
     /// abandoned.
-    fn finish_deferred_track_order(&mut self, id: u64, rules: Option<&RuleSet>) {
+    fn finish_deferred_track_order(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
@@ -140,7 +147,7 @@ impl Simulation {
             return;
         }
         actor.movement_target = None;
-        self.complete_pending_order(id, rules, None);
+        self.complete_pending_order(id, rules, None, frame_effects);
     }
 
     /// Rust bookkeeping, no native counterpart: a +34 can outlive the

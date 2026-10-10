@@ -77,6 +77,7 @@ use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::production::find_factory;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{PlacementEvidence, Simulation};
 
 /// The computer's production state on its House.
@@ -489,6 +490,7 @@ pub(crate) fn exit_building(
     factory: u64,
     product: u64,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> BuildingExit {
     let Some(owner) = sim.substrate.entities.get(factory).map(|yard| yard.owner()) else {
         return BuildingExit::Failed;
@@ -524,7 +526,7 @@ pub(crate) fn exit_building(
         .building_type_index(&ty.id)
         .and_then(|index| find_node(sim, rules, owner, index, registry));
     let site = building_site(sim, rules, owner, ty, node, registry);
-    match flush_for_placement(sim, rules, registry, ty, site, owner) {
+    match flush_for_placement(sim, rules, registry, ty, site, owner, effects) {
         Flush::Scattered => {
             // `0x00445237..0x004452C3`.
             if let Some(index) = node
@@ -543,7 +545,7 @@ pub(crate) fn exit_building(
             BuildingExit::Failed
         }
         Flush::Clear => {
-            if !place_building(sim, rules, owner, ty, product, site, registry) {
+            if !place_building(sim, rules, owner, ty, product, site, registry, effects) {
                 forget_failed_site(sim, rules, owner, node, site);
                 return BuildingExit::Failed;
             }
@@ -613,6 +615,7 @@ fn place_building(
     product: u64,
     site: (i16, i16),
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     if !can_place_building_at(sim, rules, registry, ty, site, Some(owner)) {
         return false;
@@ -634,7 +637,7 @@ fn place_building(
         ) {
             return false;
         }
-        let _ = sim.discard_constructed_limbo(product, Some(rules));
+        let _ = sim.discard_constructed_limbo(product, Some(rules), effects);
         return true;
     }
     let z = sim.terrain_cell_level(rx, ry).unwrap_or(0);
@@ -647,6 +650,7 @@ fn place_building(
             z,
             PlacementEvidence::EvaluateMark,
             rules,
+            effects,
         )
         .is_none()
     {
@@ -654,7 +658,7 @@ fn place_building(
     }
     sim.mission_spawned_entities = true;
     crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
-    sim.slave_manager_hand_off(product, rules);
+    sim.slave_manager_hand_off(product, rules, effects);
     // The choice clear at `0x0044531F` compares the product with the choice
     // the exit cleared at its start; nothing in between sets it.
     let control = rules.buildup_control(&ty.id);

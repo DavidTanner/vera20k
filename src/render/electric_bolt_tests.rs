@@ -8,7 +8,7 @@ use crate::render::electric_bolt::{ElectricBoltDraw, ElectricBoltPalette};
 use crate::render::laser::LaserDraw;
 use crate::render::terrain_draw_gpu_tests::{Gpu, camera, clear, encoded, seed_depth_grid};
 use crate::sim::projectile::ProjectileCoord;
-use crate::sim::rng::{MainRngDraws, SimRng};
+use crate::sim::rng::{MainRng, SimRng};
 use serde_json::Value;
 
 fn native() -> &'static Value {
@@ -115,8 +115,9 @@ fn trails(row: &Value, visit: &Value) -> Vec<LineTrailSegment> {
 /// implementing another lifetime owner in the render test.
 fn visit_lines(row: &Value, index: usize) -> (Vec<SurfaceLine>, Vec<bool>, Vec<usize>, String) {
     let visit = &row["visits"][index];
-    let mut main =
-        SimRng::from_native_state_hex_for_test(visit["rng_before"]["main"].as_str().unwrap());
+    let main: MainRng =
+        SimRng::from_native_state_hex_for_test(visit["rng_before"]["main"].as_str().unwrap())
+            .into();
     let mut lines = Vec::new();
     let mut accepted = Vec::new();
     let mut drawn = Vec::new();
@@ -160,7 +161,7 @@ fn visit_lines(row: &Value, index: usize) -> (Vec<SurfaceLine>, Vec<bool>, Vec<u
             let admitted = draw.lines(
                 viewport(&row["input"]),
                 palette(),
-                &mut MainRngDraws::borrow(&mut main),
+                &mut main.draws(),
                 |line| lines.push(line),
             );
             accepted.push(admitted);

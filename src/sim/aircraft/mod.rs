@@ -39,7 +39,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::world::{ObjectAiCtx, Simulation};
+use crate::sim::world::{FrameEffects, ObjectAiCtx, Simulation};
 
 /// What every MissionClass stub returns (`MOV EAX, 0x1C2`).
 const MISSION_STUB_FRAMES: i32 = 450;
@@ -125,13 +125,14 @@ pub(crate) fn dispatch_mission(
     let delay = match entity.mission.current().known() {
         Some(MissionType::Move) => {
             let state = handler_state(entity);
-            let (next, delay) = sim.aircraft_move(id, state, rules, registry);
+            let (next, delay) = sim.aircraft_move(id, state, rules, registry, ctx.effects);
             write_state(sim, id, state, next);
             delay
         }
         Some(MissionType::Attack) => {
             let state = handler_state(entity);
-            let Some((next, delay)) = attack_visit(sim, id, state, rules, registry) else {
+            let Some((next, delay)) = attack_visit(sim, id, state, rules, registry, ctx.effects)
+            else {
                 return true;
             };
             write_state(sim, id, state, next);
@@ -141,16 +142,24 @@ pub(crate) fn dispatch_mission(
             sim.aircraft_mission_guard(id, rules, ctx)
         }
         Some(MissionType::AreaGuard) => sim.aircraft_mission_area_guard(id, rules, ctx),
-        Some(MissionType::Enter) => sim.aircraft_mission_enter(id, rules, registry),
+        Some(MissionType::Enter) => sim.aircraft_mission_enter(id, rules, registry, ctx.effects),
         Some(MissionType::Hunt) => sim.aircraft_mission_hunt(id, rules, ctx),
-        Some(MissionType::Retreat) => retreat_mission::retreat(sim, id, rules),
+        Some(MissionType::Retreat) => retreat_mission::retreat(sim, id, rules, ctx.effects),
         Some(MissionType::Unload) => {
-            crate::sim::transport_unload::mission_unload(sim, id, rules, registry)
+            crate::sim::transport_unload::mission_unload(sim, id, rules, registry, ctx.effects)
         }
-        Some(MissionType::ParadropApproach) => paradrop_mission::approach(sim, id, rules),
-        Some(MissionType::ParadropOverfly) => paradrop_mission::overfly(sim, id, rules, registry),
-        Some(MissionType::SpyplaneApproach) => spyplane_mission::approach(sim, id, rules),
-        Some(MissionType::SpyplaneOverfly) => spyplane_mission::overfly(sim, id, rules),
+        Some(MissionType::ParadropApproach) => {
+            paradrop_mission::approach(sim, id, rules, ctx.effects)
+        }
+        Some(MissionType::ParadropOverfly) => {
+            paradrop_mission::overfly(sim, id, rules, registry, ctx.effects)
+        }
+        Some(MissionType::SpyplaneApproach) => {
+            spyplane_mission::approach(sim, id, rules, ctx.effects)
+        }
+        Some(MissionType::SpyplaneOverfly) => {
+            spyplane_mission::overfly(sim, id, rules, ctx.effects)
+        }
         Some(
             MissionType::Patrol
             | MissionType::Capture
@@ -221,17 +230,18 @@ fn attack_visit(
     state: u8,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> Option<(u8, i32)> {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         attack_mission::enter_attack_state(entity, state);
     }
     Some(match state {
         0 => sim.aircraft_begin_attack(id),
-        1 => sim.aircraft_reengage(id, rules),
-        3 => sim.aircraft_approach(id, rules),
+        1 => sim.aircraft_reengage(id, rules, frame_effects),
+        3 => sim.aircraft_approach(id, rules, frame_effects),
         4..=9 if sim.aircraft_strikes(id, state) => return None,
         4..=9 => (10, 1),
-        10 => sim.aircraft_exit(id, rules, registry),
+        10 => sim.aircraft_exit(id, rules, registry, frame_effects),
         // State 2 (`0x00418D1D`) is the epilogue alone. Mission_Attack runs
         // as the Attack mission's handler, so its epilogue reads Attack's
         // Rate.

@@ -448,12 +448,22 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
             crate::sim::miner::miner_system::unit_ai_clear_harvesting(&mut s.sim, s.miner);
         }
         "enter" => assert_eq!(
-            crate::sim::mission::enter::mission_enter(&mut s.sim, &s.rules, s.miner),
+            crate::sim::mission::enter::mission_enter(
+                &mut s.sim,
+                &s.rules,
+                s.miner,
+                crate::sim::world::FrameEffects::default()
+            ),
             int(&step["returned"]),
             "{context}: delay"
         ),
         "unload" => assert_eq!(
-            crate::sim::miner::mission_unload(&mut s.sim, &s.rules, s.miner),
+            crate::sim::miner::mission_unload(
+                &mut s.sim,
+                &s.rules,
+                s.miner,
+                crate::sim::world::FrameEffects::default()
+            ),
             int(&step["returned"]),
             "{context}: delay"
         ),
@@ -464,6 +474,7 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
                 s.miner,
                 op["wide"] == 1,
                 op["bypass"] == 1,
+                crate::sim::world::FrameEffects::default(),
             );
             assert_eq!(
                 found.map_or(Value::Null, |id| s.name(id)),
@@ -491,7 +502,8 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
                     target,
                     message,
                     RadioPayload::default(),
-                    Some(&s.rules)
+                    Some(&s.rules),
+                    crate::sim::world::FrameEffects::default()
                 )
                 .code() as i32,
                 int(&step["returned"]["reply"]),
@@ -501,7 +513,12 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
             // callers; Rust carries only the MOVE_HERE Cell payload.
         }
         "per_cell_enter" => assert_eq!(
-            s.sim.unit_dock_now(s.miner, &s.rules, Some(registry())),
+            s.sim.unit_dock_now(
+                s.miner,
+                &s.rules,
+                Some(registry()),
+                crate::sim::world::FrameEffects::default()
+            ),
             step["returned"]["early_return_before_unit_tail"]
                 .as_bool()
                 .unwrap(),
@@ -516,10 +533,21 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
             e.locomotor.as_mut().unwrap().power_on();
         }
         "pending_entry_try" => {
-            building_dock::try_pending_entry(&mut s.sim, &s.rules, s.miner);
+            building_dock::try_pending_entry(
+                &mut s.sim,
+                &s.rules,
+                s.miner,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         "break_other_contact" => {
-            radio::transmit_to_contact(&mut s.sim, s.other, RadioMessage::Break, Some(&s.rules));
+            radio::transmit_to_contact(
+                &mut s.sim,
+                s.other,
+                RadioMessage::Break,
+                Some(&s.rules),
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         "arrival" => {
             let (rx, ry) = cell(&step["returned"]["supplied_arrival_cell"]);
@@ -549,14 +577,19 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
                 None,
                 crate::sim::occupancy::CellListInsertion::PrependNonBuilding,
             );
-            s.sim
-                .set_unit_null_destination(s.miner, Some(&s.rules), Some(registry()));
+            s.sim.set_unit_null_destination(
+                s.miner,
+                Some(&s.rules),
+                Some(registry()),
+                crate::sim::world::FrameEffects::default(),
+            );
             s.sim
                 .per_cell_process(
                     s.miner,
                     crate::sim::movement::PerCellReason::Arrival,
                     Some(&s.rules),
                     Some(registry()),
+                    crate::sim::world::FrameEffects::default(),
                 )
                 .unwrap();
         }
@@ -564,8 +597,12 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
             let e = s.sim.substrate.entities.get_mut(s.refinery).unwrap();
             e.health.current = 0;
             e.lifecycle.object_alive = false;
-            s.sim
-                .building_now_dead_contacts(s.refinery, &[s.miner], Some(&s.rules));
+            s.sim.building_now_dead_contacts(
+                s.refinery,
+                &[s.miner],
+                Some(&s.rules),
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         "pointer_expiry" => {
             let e = s.sim.substrate.entities.get(s.refinery).unwrap();
@@ -585,6 +622,7 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
                 PointerExpiryControl::Uninit,
                 Some(&s.rules),
                 None,
+                crate::sim::world::FrameEffects::default(),
             );
         }
         other => panic!("{context}: operation {other}"),

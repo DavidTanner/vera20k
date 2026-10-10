@@ -86,7 +86,16 @@ fn unit_refusals_match_native_and_leave_orders_and_rng_untouched() {
             sim.session.binary_frame = now;
             sim.substrate.entities.insert(actor);
             let rng = sim.scenario_rng.state();
-            assert!(!sim.scatter_null(1, flags, &rules, None).unwrap());
+            assert!(
+                !sim.scatter_null(
+                    1,
+                    flags,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                )
+                .unwrap()
+            );
             assert_eq!(
                 serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap(),
                 before,
@@ -242,8 +251,14 @@ fn building_receiver_is_the_object_no_op() {
     sim.substrate.entities.insert(building);
     let rng = sim.scenario_rng.state();
     assert!(
-        !sim.scatter_null(1, ScatterFlags::new(true, true), &no_rules(), None)
-            .unwrap()
+        !sim.scatter_null(
+            1,
+            ScatterFlags::new(true, true),
+            &no_rules(),
+            None,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
     );
     assert_eq!(
         serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap(),
@@ -491,13 +506,31 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
     let rng = sim.scenario_rng.state();
     let flags = ScatterFlags::new(true, true);
     let cell = sim.scatter_nearby_cell(hover, &rules).unwrap();
-    assert!(!sim.scatter_null(hover, flags, &rules, None).unwrap());
+    assert!(
+        !sim.scatter_null(
+            hover,
+            flags,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let unit = sim.substrate.entities.get(hover).unwrap();
     let route = unit.movement_target.as_ref().expect("the Hover route");
     assert_eq!(route.final_goal, Some(cell));
     assert_eq!((unit.position.rx, unit.position.ry), (10, 10));
     let cell = sim.scatter_nearby_cell(jumpjet, &rules).unwrap();
-    assert!(!sim.scatter_null(jumpjet, flags, &rules, None).unwrap());
+    assert!(
+        !sim.scatter_null(
+            jumpjet,
+            flags,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let unit = sim.substrate.entities.get(jumpjet).unwrap();
     assert_eq!(
         unit.navigation.nav_com,
@@ -568,7 +601,16 @@ fn unit_null_arm_matches_original_execution() {
         assert_eq!(cell.is_some(), found, "{input}");
         let before = serde_json::to_value(sim.substrate.entities.get(unit).unwrap()).unwrap();
         let rng = sim.scenario_rng.state();
-        assert!(!sim.scatter_null(unit, flags, &rules, None).unwrap());
+        assert!(
+            !sim.scatter_null(
+                unit,
+                flags,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default()
+            )
+            .unwrap()
+        );
         let unit = sim.substrate.entities.get(unit).unwrap();
         match cell {
             Some((x, y)) => {

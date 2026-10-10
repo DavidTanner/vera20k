@@ -629,7 +629,13 @@ fn storm_strike_matches_native_rows() {
         let owner = house_ref(&houses, &row["owner"]);
         sim.lightning_storm =
             LightningStorm::for_test(true, false, 0, 180, 0, (at.0 as i16, at.1 as i16), owner);
-        let _ = lightning_storm::ground_strike(&mut sim, &rules, None, coords);
+        let _ = lightning_storm::ground_strike(
+            &mut sim,
+            &rules,
+            None,
+            coords,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let mut expected = Calls::expected(row);
         let mut seen = Calls::of(&sim, 0);
@@ -734,7 +740,12 @@ fn storm_process_matches_native_rows() {
             .set_clouds_for_test(pick("present"), pick("manifesting"));
         let anims_before = anims.len();
 
-        let _ = lightning_storm::process(&mut sim, &rules, None);
+        let _ = lightning_storm::process(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_globals(&sim, &houses, &row["storm"], row);
         let all: Vec<AnimId> = sim.anims().map(|(&id, _)| id).collect();
@@ -886,16 +897,31 @@ fn the_storm_cue_lands_on_the_countdowns_end_not_on_the_launch() {
     assert_eq!(count(&sim, began), 0, "a deferred launch returns first");
     assert_eq!(count(&sim, launched), 1);
     for frame in 1..=2 {
-        lightning_storm::process(&mut sim, &rules, None);
+        lightning_storm::process(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(count(&sim, began), 0, "countdown frame {frame}");
     }
-    lightning_storm::process(&mut sim, &rules, None);
+    lightning_storm::process(
+        &mut sim,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(count(&sim, began), 1);
     assert_eq!(
         sim.session.lighting.selected_profile,
         ScenarioLightingProfile::Ion
     );
-    lightning_storm::process(&mut sim, &rules, None);
+    lightning_storm::process(
+        &mut sim,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(count(&sim, began), 1, "a storm starts once");
 }
 
@@ -920,7 +946,12 @@ fn a_storm_of_duration_minus_one_rages_on() {
     let mut sim = Simulation::with_seed(0x421);
     launch(&mut sim, &rules);
     for _ in 0..4 {
-        lightning_storm::process(&mut sim, &rules, None);
+        lightning_storm::process(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let (active, time_to_end, _, duration, ..) = sim.lightning_storm.globals_for_test();
         assert_eq!((active, time_to_end, duration), (true, false, -1));
         assert_eq!(
@@ -986,6 +1017,7 @@ fn strike(
         rules,
         registry,
         [i32::from(x) * 256 + 128, i32::from(y) * 256 + 128, 0],
+        crate::sim::world::FrameEffects::default(),
     );
 }
 

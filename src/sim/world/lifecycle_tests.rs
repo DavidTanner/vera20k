@@ -181,7 +181,12 @@ fn commit_receiver_authority_lethal_hit(sim: &mut Simulation, target_id: u64) {
             arg6: false,
         },
     );
-    sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 }
 
 #[test]
@@ -322,7 +327,12 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
             arg6: false,
         },
     );
-    sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let passenger = sim.substrate.entities.get(passenger_id).unwrap();
     assert!(passenger.lifecycle.object_alive);
@@ -1588,7 +1598,12 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert!(aircraft.locomotor.as_ref().unwrap().altitude > SimFixed::from_num(0));
@@ -1620,7 +1635,12 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
         .unwrap()
         .position
         .exact_z_leptons = Some(1);
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1657,7 +1677,12 @@ fn gsi_05_05_fly_takeoff_commits_absolute_z_after_remove_process() {
 
         locomotor.set_fly_target_height(600);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     let altitude = aircraft
@@ -1695,7 +1720,12 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
         locomotor.begin_fly_landing();
         locomotor.set_fly_target_height(0);
     }
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1776,7 +1806,12 @@ fn gsi_05_05_mapless_fly_uses_dummy_ground_then_bridge_height() {
         Some(416 + 100)
     );
 
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(
         sim.substrate
@@ -1816,7 +1851,12 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     let shared_bucket = second.air_spatial_bucket();
     let second_order = second.air_spatial_enter_order();
 
-    sim.tick_air_movement_with_cell_lists_one(20, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        20,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -1838,7 +1878,12 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
         .fly_runtime_mut()
         .unwrap()
         .current_speed = SimFixed::from_num(1);
-    sim.tick_air_movement_with_cell_lists_one(20, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        20,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let crossed = sim.substrate.entities.get(20).unwrap();
     assert_ne!(crossed.air_spatial_bucket(), shared_bucket);
     assert!(crossed.air_spatial_enter_order() > second_order);
@@ -3176,7 +3221,16 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
         );
         insert_entity(&mut sim, 2, EntityCategory::Unit);
         let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
-        assert!(sim.infantry_do_action(1, doing, true, &rules).unwrap());
+        assert!(
+            sim.infantry_do_action(
+                1,
+                doing,
+                true,
+                &rules,
+                crate::sim::world::FrameEffects::default()
+            )
+            .unwrap()
+        );
         let listener = sim.substrate.entities.get_mut(1).unwrap();
         listener.attack_target = Some(AttackTarget::new(2));
         listener.mission_leaf =
@@ -4355,7 +4409,12 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
             crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
 
         let _ = runtime
-            .advance_frame(&[], 16, super::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                16,
+                super::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
         if old_height == 1 {
             let bullet = runtime.simulation.projectiles.get(id).expect(
@@ -4379,7 +4438,12 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
                 0
             );
             let _ = runtime
-                .advance_frame(&[], 16, super::TickLane::Ordinary)
+                .advance_frame(
+                    &[],
+                    16,
+                    super::TickLane::Ordinary,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .expect("fixture frame must complete");
         }
         assert!(runtime.simulation.projectiles.get(id).is_none());
@@ -4780,6 +4844,7 @@ fn gsi_05_02_lethal_terrain_unregisters_and_inactive_slot_cannot_roundtrip() {
                 near_center_ic_isolation_eligible: false,
             },
         )],
+        crate::sim::world::FrameEffects::default(),
     );
     let terrain = &sim.production.terrain_objects[&terrain_id];
     assert_eq!(terrain.lifecycle, TerrainObjectLifecycle::Destroyed);
@@ -4846,6 +4911,7 @@ fn gsi_05_03_terminal_non_entities_remain_resolvable_until_common_drain() {
                 near_center_ic_isolation_eligible: false,
             },
         )],
+        crate::sim::world::FrameEffects::default(),
     );
 
     let projectile_id = sim.allocate_stable_id();
@@ -5142,6 +5208,7 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         &std::collections::BTreeSet::new(),
         &Default::default(),
         &[detonation],
+        crate::sim::world::FrameEffects::default(),
     );
 
     let victim = sim
@@ -5278,6 +5345,7 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         &std::collections::BTreeSet::new(),
         &Default::default(),
         &[detonation],
+        crate::sim::world::FrameEffects::default(),
     );
 
     let passenger = sim
@@ -5766,7 +5834,12 @@ fn wave_pointer_expiry_owner_allows_dying_damage_then_uninit_nulls_later_calls()
     );
     assert_eq!(sim.active_wave_links.get(&owner_id), Some(&wave_id));
 
-    sim.commit_logic_wave_damage_request(&rules, None, &request);
+    sim.commit_logic_wave_damage_request(
+        &rules,
+        None,
+        &request,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -5787,7 +5860,12 @@ fn wave_pointer_expiry_owner_allows_dying_damage_then_uninit_nulls_later_calls()
     );
     assert!(!sim.active_wave_links.contains_key(&owner_id));
 
-    sim.commit_logic_wave_damage_request(&rules, None, &request);
+    sim.commit_logic_wave_damage_request(
+        &rules,
+        None,
+        &request,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -6464,6 +6542,7 @@ fn assert_direct_fatal_death_weapon_starts_crater(bridge: bool) {
             4,
             5,
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         );
     } else {
         let firer_id = sim.allocate_stable_id();
@@ -7035,7 +7114,7 @@ fn detach_sweep_restores_before_clearing_target_in_descending_id_order() {
     }
     sim.lifecycle_test_events.clear();
 
-    sim.stop_all_targeting_on_detach(3, None, None);
+    sim.stop_all_targeting_on_detach(3, None, None, crate::sim::world::FrameEffects::default());
 
     // The detaching object is untouched and still present: this is not removal.
     assert!(sim.substrate.entities.contains(3));
@@ -7100,7 +7179,7 @@ fn detach_sweep_clears_target_when_no_mission_was_suspended() {
         .apply_test_fixture(attack_fixture(MissionType::Attack, MissionId::NONE));
     sim.lifecycle_test_events.clear();
 
-    sim.stop_all_targeting_on_detach(2, None, None);
+    sim.stop_all_targeting_on_detach(2, None, None, crate::sim::world::FrameEffects::default());
 
     let attacker = sim.substrate.entities.get(1).unwrap();
     assert!(attacker.attack_target.is_none());
@@ -7138,7 +7217,7 @@ fn detach_sweep_never_matches_a_cell_target() {
         MissionId::from_known(MissionType::Move),
     ));
 
-    sim.stop_all_targeting_on_detach(2, None, None);
+    sim.stop_all_targeting_on_detach(2, None, None, crate::sim::world::FrameEffects::default());
 
     let attacker = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -7165,7 +7244,13 @@ fn bridge_cell_success_restores_before_conditional_target_clear() {
         MissionType::Attack,
         MissionId::from_known(MissionType::Move),
     ));
-    sim.stop_all_targeting_cell(9, 11, None, None);
+    sim.stop_all_targeting_cell(
+        9,
+        11,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let attacker = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
         attacker.attack_target.as_ref().map(|target| target.target),
@@ -7437,7 +7522,12 @@ fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy() {
         .as_mut()
         .unwrap()
         .set_fly_target_height(731 - ground - 416);
-    sim.tick_air_movement_with_cell_lists_one(1, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(1).unwrap();
     assert_eq!(e.position.exact_z_leptons, Some(731));
     assert_eq!(sim.foot_navigation_coordinate(1).unwrap().z, 731);
@@ -7471,7 +7561,11 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         sim
     }
     let mut direct = fixture();
-    assert!(direct.tick_jumpjet_cruise_one(1, None, None).is_some());
+    assert!(
+        direct
+            .tick_jumpjet_cruise_one(1, None, None, crate::sim::world::FrameEffects::default())
+            .is_some()
+    );
     let expected = direct
         .substrate
         .entities
@@ -7497,7 +7591,12 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         SimFixed::from_num(0)
     );
     let mut wrapped = fixture();
-    wrapped.tick_air_movement_with_cell_lists_one(1, None, None);
+    wrapped.tick_air_movement_with_cell_lists_one(
+        1,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         wrapped
             .substrate
@@ -7550,8 +7649,19 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         let fly = loco.fly_runtime_mut().unwrap();
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
-        assert!(sim.issue_air_cell_destination(1, (2, 2), SimFixed::from_num(3840), Some(&rules)));
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+        assert!(sim.issue_air_cell_destination(
+            1,
+            (2, 2),
+            SimFixed::from_num(3840),
+            Some(&rules),
+            crate::sim::world::FrameEffects::default()
+        ));
+        sim.tick_air_movement_with_cell_lists_one(
+            1,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         assert_eq!((entity.position.rx, entity.position.ry), (2, 2));
         let moved_z = entity.position.exact_z_leptons.unwrap();
@@ -7586,7 +7696,12 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             for instance in [&mut sim, &mut restored] {
                 instance.session.tick = frame;
                 instance.session.binary_frame = frame as u32;
-                instance.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+                instance.tick_air_movement_with_cell_lists_one(
+                    1,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();
@@ -7865,7 +7980,12 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     sim.substrate
         .display
         .submit(id, Some(DisplayLayer::TOP), &|_| 0);
-    sim.tick_air_movement_with_cell_lists_one(id, None, None);
+    sim.tick_air_movement_with_cell_lists_one(
+        id,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
 
     // A real changed query re-submits even if cached membership is absent.

@@ -63,6 +63,7 @@
 //! - Part of sim/ — depends on sim/world, sim/combat, sim/movement, rules/.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
+use crate::sim::world::FrameEffects;
 use serde::{Deserialize, Serialize};
 
 use crate::rules::missile_spawn::MissileFamily;
@@ -793,10 +794,13 @@ pub(crate) fn spawn_manager_ai(
     rules: &RuleSet,
     owner_id: u64,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
-    if let Some(mut host) =
-        WorldSpawn::new(sim, owner_id, UninitContext::new(Some(rules), registry))
-    {
+    if let Some(mut host) = WorldSpawn::new(
+        sim,
+        owner_id,
+        UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+    ) {
         ai(&mut host);
     }
 }
@@ -806,8 +810,17 @@ pub(crate) fn spawn_manager_ai(
 /// Native `SpawnManagerClass`'s constructor creates the whole pool up front
 /// (CreateObject, Limbo and the SpawnOwner per slot) so `CountAliveSpawns`
 /// is already full when the parent's first placement or fire attempt runs.
-pub fn commit_spawn_manager_pool(sim: &mut Simulation, owner_id: u64, rules: &RuleSet) {
-    let Some(mut host) = WorldSpawn::new(sim, owner_id, UninitContext::with_rules(rules)) else {
+pub(crate) fn commit_spawn_manager_pool(
+    sim: &mut Simulation,
+    owner_id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) {
+    let Some(mut host) = WorldSpawn::new(
+        sim,
+        owner_id,
+        UninitContext::with_rules(rules).with_effects(frame_effects),
+    ) else {
         return;
     };
     for index in 0..host.manager_ref().slots.len() {
@@ -829,14 +842,19 @@ pub fn commit_spawn_manager_pool(sim: &mut Simulation, owner_id: u64, rules: &Ru
 /// UnInit, a live spawner's Limbo (`0x005F4D61`) and each cloak broadcast. A
 /// live owner's docked children UnInit and its slots regenerate at once
 /// (`Kill_All_Spawns`); the next AI pass rebuilds them.
-pub fn notify_pointer_expired(
+pub(crate) fn notify_pointer_expired(
     sim: &mut Simulation,
     listener_id: u64,
     expired_id: u64,
     rules: Option<&RuleSet>,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
-    if let Some(mut host) = WorldSpawn::new(sim, listener_id, UninitContext::new(rules, registry)) {
+    if let Some(mut host) = WorldSpawn::new(
+        sim,
+        listener_id,
+        UninitContext::new(rules, registry).with_effects(frame_effects),
+    ) {
         pointer_expired(&mut host, expired_id);
     }
 }
@@ -852,8 +870,13 @@ pub(crate) fn clear_all_spawn_targets(
     owner_id: u64,
     rules: Option<&RuleSet>,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
-    if let Some(mut host) = WorldSpawn::new(sim, owner_id, UninitContext::new(rules, registry)) {
+    if let Some(mut host) = WorldSpawn::new(
+        sim,
+        owner_id,
+        UninitContext::new(rules, registry).with_effects(frame_effects),
+    ) {
         clear_all_targets(&mut host);
     }
 }
@@ -1190,7 +1213,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             SpawnDestination::Owner => Some(TargetKind::Entity(self.owner_id).into()),
         };
         self.sim
-            .assign_aircraft_destination(child, destination, rules);
+            .assign_aircraft_destination(child, destination, rules, self.context.effects());
     }
 
     fn queue_mission(&mut self, child: u64, mission: MissionType) {
@@ -1220,7 +1243,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .is_none_or(|child| child.lifecycle.in_limbo);
         if let (false, Some(rules)) = (in_limbo, self.context.rules()) {
             self.sim
-                .techno_limbo_with_rules(child, rules, self.context.registry());
+                .techno_limbo_with_context(child, self.context.requiring_rules(rules));
         }
     }
 
@@ -1261,8 +1284,13 @@ impl SpawnHost for WorldSpawn<'_, '_> {
 
     fn push(&mut self, child: u64, target: Option<TargetKind>) {
         if let Some(rules) = self.context.rules() {
-            self.sim
-                .kamikaze_push(child, target, rules, self.context.registry());
+            self.sim.kamikaze_push(
+                child,
+                target,
+                rules,
+                self.context.registry(),
+                self.context.effects(),
+            );
         }
     }
 

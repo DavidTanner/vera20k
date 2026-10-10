@@ -20,8 +20,7 @@ fn corpus() -> Value {
     .unwrap()
 }
 
-fn rng_digest(rng: &SimRng) -> String {
-    let hex = rng.native_state_hex();
+fn rng_digest(hex: String) -> String {
     let bytes: Vec<_> = (0..hex.len())
         .step_by(2)
         .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
@@ -42,6 +41,7 @@ fn prior_building(sim: &mut Simulation, rules: &RuleSet, name: &str, x: u16, y: 
             0,
             PlacementEvidence::EvaluateMark,
             rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .is_some()
     );
@@ -73,7 +73,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
     // Constructor/Unlimbo draws and full map admission are outside this join.
     sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(0));
     let seed = input["seed"].as_u64().unwrap();
-    sim.main_rng = SimRng::new(seed);
+    sim.main_rng = SimRng::new(seed).into();
     sim.scenario_rng = SimRng::new(seed);
     sim.set_logic_order_for_test(vec![id]);
     assert_eq!(sim.main_rng.native_state_hex(), row["rng_before"]["main"]);
@@ -99,6 +99,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
             RadioMessage::Hello,
             RadioPayload::default(),
             Some(rules),
+            crate::sim::world::FrameEffects::default(),
         );
     }
     sim.substrate
@@ -114,8 +115,15 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
             RadioMessage::DockArrived,
             RadioPayload::default(),
             Some(rules),
+            crate::sim::world::FrameEffects::default(),
         );
-        transmit_to_contact(&mut sim, yard, RadioMessage::Break, Some(rules));
+        transmit_to_contact(
+            &mut sim,
+            yard,
+            RadioMessage::Break,
+            Some(rules),
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     (sim, id)
 }
@@ -180,12 +188,12 @@ fn assert_joined_frame(sim: &Simulation, id: u64, frame: &Value, context: &str) 
         );
     } else {
         assert_eq!(
-            rng_digest(&sim.main_rng),
+            rng_digest(sim.main_rng.native_state_hex()),
             frame["rng_sha256"]["main"],
             "{context}: complete Main state digest"
         );
         assert_eq!(
-            rng_digest(&sim.scenario_rng),
+            rng_digest(sim.scenario_rng.native_state_hex()),
             frame["rng_sha256"]["scenario"],
             "{context}: complete Scenario state digest"
         );
@@ -435,14 +443,24 @@ fn stock_opening_matches_original_building_and_same_pass_anim_visits() {
             let (_, draws) = trace_draws(|| {
                 sim.for_each_live_object(|sim, stable_id| {
                     if sim.anim(stable_id).is_some() {
-                        sim.visit_anim(stable_id, &rules, None);
+                        sim.visit_anim(
+                            stable_id,
+                            &rules,
+                            None,
+                            crate::sim::world::FrameEffects::default(),
+                        );
                     } else {
                         // Execute the same bounded join as the native corpus.
                         // Its header/mission/body slices exclude damage fires,
                         // Techno common AI, repair and factory AI. Full object
                         // integration is checked by construction_tests and the
                         // separate normal-match production capture.
-                        sim.visit_building_operational(stable_id, &rules, None);
+                        sim.visit_building_operational(
+                            stable_id,
+                            &rules,
+                            None,
+                            crate::sim::world::FrameEffects::default(),
+                        );
                         update_animation(sim, stable_id, Some(&rules));
                         ready_commence(sim, stable_id, true);
                         dispatch(

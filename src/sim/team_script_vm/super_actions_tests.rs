@@ -293,8 +293,19 @@ fn the_superweapon_script_actions_match_native() {
 
         AI_FIRE_LOG.set(Some(Vec::new()));
         match int(&row["action"]) {
-            55 => sim.team_action_iron_curtain(team, &rules, None),
-            57 => sim.team_action_chronoshift(team, int(&row["argument"]), &rules, None),
+            55 => sim.team_action_iron_curtain(
+                team,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            ),
+            57 => sim.team_action_chronoshift(
+                team,
+                int(&row["argument"]),
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            ),
             other => panic!("action {other}"),
         }
         let log = AI_FIRE_LOG.take().unwrap();

@@ -119,21 +119,21 @@ impl AppAudioRuntime {
 
     /// `AudioSystem406F70`: service Sound4041D0, Vox752760, then Theme7209D0
     /// behind one process gate. Device completion/refill is serviced on every
-    /// call. Each consumer borrows the same Main886B88 continuation.
+    /// call. Each consumer retains draws on the same Main886B88 cell.
     pub(crate) fn service_audio(
         &mut self,
         wall_ms: u64,
         paused: bool,
         assets: Option<&AssetManager>,
         catalog: Option<&crate::app::process_assets::ProcessAudioCatalog>,
-        main: &mut crate::sim::rng::MainRngDraws<'_>,
+        main: &mut crate::sim::rng::MainRngDraws,
     ) {
-        let mut draw_main = |low, high| main.ranged(low, high);
+        let retained = main.clone();
+        let mut draw_main =
+            crate::audio::sfx::PlaybackDraws::new(move |low, high| retained.ranged(low, high));
         if let Some(sfx) = self.sfx_player.as_mut() {
             sfx.set_paused(paused, wall_ms);
-            if let Some(catalog) = catalog {
-                sfx.service_device_outputs(wall_ms, catalog.sounds(), &mut draw_main);
-            }
+            sfx.service_device_outputs(wall_ms);
         }
         if !self.service_clock.admit(wall_ms) {
             return;
@@ -150,7 +150,7 @@ impl AppAudioRuntime {
                 &mut draw_main,
             );
         }
-        self.service_theme(assets, wall_ms, &mut draw_main);
+        self.service_theme(assets, wall_ms, &mut |low, high| main.ranged(low, high));
     }
 
     /// Theme AI is the last service in the shared AudioSystem pass. Callers
@@ -364,7 +364,7 @@ mod tests {
             launcher_audio_available: true,
             theme_startup_suppressed: false,
         };
-        let mut frontend = crate::sim::rng::SimRng::new(1);
+        let mut frontend = crate::sim::rng::MainRng::new(1);
         let mut main = crate::app::state::process_main_draws(None, &mut frontend);
         runtime.service_audio(100, false, Some(&assets), None, &mut main);
         assert!(!runtime.service_clock.admit(100));

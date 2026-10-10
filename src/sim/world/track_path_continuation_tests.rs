@@ -270,7 +270,13 @@ fn supplied_find_path_results_take_the_native_continuations() {
             FindPathResult::Failed
         };
         let outcome = sim
-            .continue_track_path_request(id, found, &rules, Some(&registry))
+            .continue_track_path_request(
+                id,
+                found,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         compare(&sim, id, &row, Some(outcome));
         checked += 1;
@@ -339,14 +345,31 @@ fn near_native_rows_stop_through_the_continuation_null_setter() {
         sim.session.binary_frame = 101;
         // 0x4D4044 Unit +0x500 = 0x4D55C0 (locomotor Stop), then the
         // 0x4D404A tail, which returns for a Chebyshev-1 target.
-        sim.run_find_path_failed_receiver(id, &rules, Some(&registry))
-            .unwrap();
-        sim.finish_find_path_failure(id, DriveCoord::cell(11, 10, 0), &rules, Some(&registry))
-            .unwrap();
+        sim.run_find_path_failed_receiver(
+            id,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
+        .unwrap();
+        sim.finish_find_path_failure(
+            id,
+            DriveCoord::cell(11, 10, 0),
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
+        .unwrap();
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_some(), "the near tail keeps NavCom");
         let outcome = sim
-            .continue_track_path_request(id, FindPathResult::Failed, &rules, Some(&registry))
+            .continue_track_path_request(
+                id,
+                FindPathResult::Failed,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         compare(&sim, id, &row, Some(outcome));
         checked += 1;
@@ -374,7 +397,14 @@ fn post_warp_rows_refuse_the_own_cell_search() {
         // The oracle fixture's Foot+668 prestate, which only a setter rewrites.
         e.navigation.path_runtime.blocked_timer = crate::sim::timer::CdTimer::started(40, 6);
         let own = crate::sim::movement::ground_pose::position_world_coord(&e.position);
-        assert!(sim.force_track(id, -1, own, None, None));
+        assert!(sim.force_track(
+            id,
+            -1,
+            own,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         sim.session.binary_frame = 101;
         let rng = sim.rng_state();
         let grid = sim.path_grid.clone();
@@ -403,7 +433,12 @@ fn deferred_restore_completes_toward_navcom_over_a_stale_destination() {
     e.navigation.nav_com = Some(NavTargetRef::cell(10, 13));
     e.navigation.pending_arrival_clear = true;
     sim.session.binary_frame = 101;
-    sim.complete_pending_order(id, Some(&rules), None);
+    sim.complete_pending_order(
+        id,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(id).unwrap();
     let destination = e
         .locomotor
@@ -434,7 +469,12 @@ fn deferred_order_with_a_retained_destination_reschedules_without_a_setter() {
     e.navigation.pending_arrival_clear = true;
     e.navigation.path_runtime.start_movement(100, 9);
     sim.session.binary_frame = 101;
-    sim.complete_pending_order(id, Some(&rules), None);
+    sim.complete_pending_order(
+        id,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(crate::sim::movement::movement_goal_cell(e), Some((13, 10)));
     assert!(!e.navigation.pending_arrival_clear);
@@ -479,7 +519,12 @@ fn ordered_attack_null_destination_stops_a_moving_tank_after_its_track() {
         if adapter_dropped {
             sim.substrate.entities.get_mut(id).unwrap().movement_target = None;
         }
-        sim.assign_null_destination(id, Some(&rules), None);
+        sim.assign_null_destination(
+            id,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let e = sim.substrate.entities.get(id).unwrap();
         assert!(e.navigation.nav_com.is_none());
         assert!(
@@ -968,7 +1013,14 @@ fn forced_track_end_requests_its_own_cell_in_the_same_process() {
         y: 11 * 256,
         z: 0,
     };
-    assert!(sim.force_track(id, 0x47, head, None, None));
+    assert!(sim.force_track(
+        id,
+        0x47,
+        head,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     for frame in 101..300 {
         visit(&mut sim, &rules, &registry, id, frame);
         let e = sim.substrate.entities.get(id).unwrap();
@@ -1143,7 +1195,12 @@ fn after_active_rows_gate_the_same_call_continuation() {
         let aborted = int(input, "active_return", 0) & 0xFF != 0;
         let continued = !aborted
             && sim
-                .begin_track_end_continuation(id, family, Some(&rules))
+                .begin_track_end_continuation(
+                    id,
+                    family,
+                    Some(&rules),
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
         let events = row["events"].as_array().unwrap();
         let native_fresh = events
@@ -1235,7 +1292,12 @@ fn retaliation_mid_track_stops_the_tank_at_its_track_end() {
     let attacker = sim
         .spawn_object("DRV", "Russians", 20, 20, 0, &rules)
         .unwrap();
-    assert!(sim.override_mission_on_damage_response(id, attacker, &rules));
+    assert!(sim.override_mission_on_damage_response(
+        id,
+        attacker,
+        &rules,
+        crate::sim::world::FrameEffects::default()
+    ));
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(
         e.navigation.suspended_nav_com,
@@ -1284,7 +1346,13 @@ fn owner_change_mid_track_stops_the_tank_at_its_track_end() {
         owner,
         crate::sim::house_state::HouseState::new(owner, 1, None, false, 0, 0),
     );
-    sim.change_owner_with_rules(id, owner, &rules, Some(&registry));
+    sim.change_owner_with_rules(
+        id,
+        owner,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.navigation.nav_com.is_none());
     assert!(
@@ -1330,13 +1398,23 @@ fn restore_mid_track_heads_for_the_restored_order_at_the_track_end() {
     let attacker = sim
         .spawn_object("DRV", "Russians", 20, 20, 0, &rules)
         .unwrap();
-    assert!(sim.override_mission_on_damage_response(id, attacker, &rules));
+    assert!(sim.override_mission_on_damage_response(
+        id,
+        attacker,
+        &rules,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.session.binary_frame = frame;
     order(&mut sim, &rules, id, (10, 16));
     sim.substrate.entities.get_mut(id).unwrap().attack_target = None;
     assert!(
-        sim.mission_restore_represented(id, Some(&rules), Some(&registry))
-            .unwrap()
+        sim.mission_restore_represented(
+            id,
+            Some(&rules),
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
     );
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(20, 10)));
@@ -1647,7 +1725,12 @@ fn idle_mode_queue_head_runs_the_hover_unit_setter_in_the_same_call() {
     // it is not reentrant with the spawn's TechnoUnlimbo Idle(1,1).
     // A retained nonzero latch correctly skips the queue at4D82B8..C0.
     e.mission_leaf.set_foot_idle_entry_latch(0);
-    sim.unit_enter_idle_mode(id, Some(&rules), false);
+    sim.unit_enter_idle_mode(
+        id,
+        Some(&rules),
+        false,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.navigation.nav_com, Some(NavTargetRef::cell(14, 12)));
     assert_eq!(e.navigation.nav_queue, vec![NavTargetRef::cell(16, 12)]);
@@ -1675,7 +1758,13 @@ fn hover_unit_drives_to_its_destination_cell_and_stops() {
     let id = sim
         .spawn_object("HOV", "Americans", 10, 10, 0, &rules)
         .unwrap();
-    assert!(sim.set_unit_destination(id, NavTargetRef::cell(14, 12), &rules, true));
+    assert!(sim.set_unit_destination(
+        id,
+        NavTargetRef::cell(14, 12),
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default()
+    ));
     let mut moved = false;
     for _ in 0..600 {
         sim.advance_tick(&[], Some(&rules), None, Some(&registry), 67);

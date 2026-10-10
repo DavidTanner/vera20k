@@ -23,7 +23,7 @@ use crate::render::unit_atlas;
 use crate::sim::production;
 use crate::sim::replay::{ReplayHeader, ReplayLog};
 use crate::sim::trigger_runtime::TriggerEffect;
-use crate::sim::world::{LifecycleOutput, SimFireEvent, SimFrameOutput, TickLane};
+use crate::sim::world::{FrameEffects, LifecycleOutput, SimFireEvent, SimFrameOutput, TickLane};
 use crate::ui::game_screen::GameScreen;
 
 /// Directory for Rust-only deterministic diagnostic logs.
@@ -853,6 +853,8 @@ fn advance_one_simulation_frame(
         let local_owner_for_fog = preferred_local_owner_name(state);
         // Cache local owner name before mutable sim borrow (avoids borrow conflict).
         let local_owner_name = crate::app::input::commands::preferred_local_owner_name(state);
+        let sound_listener = crate::app::presentation::building_anim::sound_listener(state);
+        let eva_side = crate::app::presentation::building_anim::local_eva_side(state);
         let mut drained_fire_events: Vec<SimFireEvent> = Vec::new();
         let mut drained_lifecycle_outputs: Vec<LifecycleOutput> = Vec::new();
         let mut drained_combat_lights = Vec::new();
@@ -875,9 +877,43 @@ fn advance_one_simulation_frame(
             };
             // F07: the runtime is the one production frame API — bound
             // resources, no caller-substitutable inputs.
-            let mut output = rt
-                .advance_frame(&due_commands, SIM_TICK_MS, tick_lane)
-                .expect("simulation frame failed; prior world mutations remain");
+            let mut output = {
+                let playback = match (
+                    state.audio.sfx_player.as_mut(),
+                    state.process_assets.manager(),
+                    state.process_assets.audio_catalog(),
+                ) {
+                    (Some(sfx), Some(assets), Some(catalog)) => Some((
+                        sfx,
+                        crate::app::presentation::building_anim::SoundPlaybackInputs {
+                            assets,
+                            catalog,
+                            listener: sound_listener,
+                            eva_side,
+                        },
+                    )),
+                    _ => None,
+                };
+                let minimap = &mut state.match_state.match_presentation.minimap;
+                let mut admit_radar = |request, tick, rules: &crate::rules::ruleset::RuleSet| {
+                    minimap.as_mut().is_some_and(|minimap| {
+                        minimap.admit_radar_event(request, tick, Some(rules))
+                    })
+                };
+                let boundary = super::sound_dispatch::FrameSoundBoundary::new(
+                    playback,
+                    local_owner_name.as_deref(),
+                    &mut state.match_state.match_audio.sound_events,
+                    &mut admit_radar,
+                );
+                rt.advance_frame(
+                    &due_commands,
+                    SIM_TICK_MS,
+                    tick_lane,
+                    FrameEffects::for_sound(&boundary),
+                )
+                .expect("simulation frame failed; prior world mutations remain")
+            };
             let admitted_commands = output.take_admitted_commands();
             let SimFrameOutput {
                 tick: tick_result,
@@ -886,6 +922,7 @@ fn advance_one_simulation_frame(
                 overlay_updates,
                 overlay_removals,
                 sound_events: frame_sound_events,
+                sound_events_delivered,
                 fire_events: frame_fire_events,
                 combat_lights,
                 lighting_events,
@@ -959,6 +996,10 @@ fn advance_one_simulation_frame(
                 &sim.interner,
                 local_owner_name.as_deref(),
             );
+            assert!(
+                sound_events_delivered <= frame_sound_events.len(),
+                "frame delivered more sound facts than it produced"
+            );
             let minimap = &mut state.match_state.match_presentation.minimap;
             let mut admit_radar = |request: crate::sim::radar::RadarEventRequest| {
                 minimap.as_mut().is_some_and(|minimap| {
@@ -966,7 +1007,7 @@ fn advance_one_simulation_frame(
                 })
             };
             super::sound_dispatch::dispatch_sim_sound_events(
-                frame_sound_events,
+                frame_sound_events.into_iter().skip(sound_events_delivered),
                 sim,
                 &resources.rules,
                 local_owner_name.as_deref(),

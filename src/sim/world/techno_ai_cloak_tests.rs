@@ -45,7 +45,13 @@ fn spawned_sub() -> (Simulation, RuleSet, u64) {
 fn stock_cloak_producer_healthy_trace_uses_type_speed_and_no_rng() {
     let (mut sim, rules, id) = spawned_sub();
     let before = sim.scenario_rng.logical_state();
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -81,7 +87,13 @@ fn stock_cloak_producer_healthy_trace_uses_type_speed_and_no_rng() {
     );
     for frame in 1..=5 {
         sim.session.binary_frame = frame;
-        tick_stock_cloak_producer(&mut sim, id, &rules, None);
+        tick_stock_cloak_producer(
+            &mut sim,
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     assert_eq!(
         sim.substrate
@@ -105,7 +117,13 @@ fn stock_cloak_producer_healthy_trace_uses_type_speed_and_no_rng() {
 fn stock_cloak_producer_current_fire_and_weapons_factory_contact_block_entry() {
     let (mut sim, rules, id) = spawned_sub();
     sim.substrate.entities.get_mut(id).unwrap().attack_target = Some(AttackTarget::new(999));
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -128,7 +146,13 @@ fn stock_cloak_producer_current_fire_and_weapons_factory_contact_block_entry() {
         .unwrap()
         .radio_contacts
         .insert(yard);
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -147,7 +171,13 @@ fn stock_cloak_producer_current_fire_and_weapons_factory_contact_block_entry() {
         .unwrap()
         .radio_contacts
         .remove(yard);
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -183,7 +213,13 @@ fn fully_cloaked_sub_holding_a_target_does_not_surface() {
         .unwrap()
         .establish_unlimbo_fully_cloaked();
     sim.substrate.entities.get_mut(id).unwrap().attack_target = Some(AttackTarget::new(999));
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -211,7 +247,13 @@ fn fully_cloaked_sub_holding_a_target_does_not_surface() {
         .map(|entity| (entity.position.rx, entity.position.ry))
         .unwrap();
     sim.fog.mark_visible_for_owner(owner, rx, ry);
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -240,7 +282,13 @@ fn chrono_warp_surfaces_a_fully_cloaked_sub() {
         .establish_unlimbo_fully_cloaked();
     sim.substrate.entities.get_mut(id).unwrap().temporal =
         crate::sim::temporal::TemporalState::warped_by_for_test(99);
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -277,7 +325,13 @@ fn stock_cloak_producer_honors_rank_selected_cloak_ability() {
         .get_mut(ranked)
         .unwrap()
         .set_veterancy_rank(100);
-    tick_stock_cloak_producer(&mut sim, ranked, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        ranked,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -543,7 +597,13 @@ fn the_weapon_rearm_countdown_blocks_the_next_auto_cloak() {
 
     for frame in 0..20 {
         sim.session.binary_frame = frame;
-        tick_stock_cloak_producer(&mut sim, id, &rules, None);
+        tick_stock_cloak_producer(
+            &mut sim,
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.substrate
                 .entities
@@ -558,7 +618,13 @@ fn the_weapon_rearm_countdown_blocks_the_next_auto_cloak() {
         );
     }
     sim.session.binary_frame = 20;
-    tick_stock_cloak_producer(&mut sim, id, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -669,7 +735,13 @@ fn start_cloaking_drops_every_targeter_whose_house_cannot_sense_the_cell() {
         .to_vec();
     let mut expected_rng = sim.scenario_rng.clone();
     let rng_before = sim.scenario_rng.logical_state();
-    tick_stock_cloak_producer(&mut sim, cloaker, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        cloaker,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -773,7 +845,13 @@ fn a_dive_reaches_every_registered_object_but_leaves_radio_contacts_intact() {
     // A non-targeter spends no draw: the re-arm is inside the Target arm.
     let rng_before = sim.scenario_rng.logical_state();
 
-    tick_stock_cloak_producer(&mut sim, cloaker, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        cloaker,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(
         sim.substrate
@@ -832,7 +910,13 @@ fn a_sensing_house_keeps_both_target_and_destination_across_a_dive() {
     let american = sim.substrate.entities.get(sensing).unwrap().owner;
     sim.fog.increment_sensor_at(american, cell.0, cell.1);
 
-    tick_stock_cloak_producer(&mut sim, cloaker, &rules, None);
+    tick_stock_cloak_producer(
+        &mut sim,
+        cloaker,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let sensing_after = sim.substrate.entities.get(sensing).unwrap();
     assert!(

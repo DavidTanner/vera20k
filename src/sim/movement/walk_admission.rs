@@ -23,6 +23,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::combat::TargetKind;
 use crate::sim::components::DriveCoord;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::SIM_ZERO;
 use crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS;
@@ -37,6 +38,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<Option<FootPathRequest>, String> {
         let rules = rules.ok_or("Walk admission requires rules")?;
         let id = request.entity_id;
@@ -99,7 +101,15 @@ impl Simulation {
             rules,
             registry,
         )?;
-        self.finish_walk_admission_response(request, candidate, code, held, rules, registry)
+        self.finish_walk_admission_response(
+            request,
+            candidate,
+            code,
+            held,
+            rules,
+            registry,
+            frame_effects,
+        )
     }
 
     ///75B696: one response owner for the live classifier and the corpus's
@@ -113,6 +123,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<Option<FootPathRequest>, String> {
         let id = request.entity_id;
         let packed = coord_cell(candidate);
@@ -143,7 +154,13 @@ impl Simulation {
                         .and_then(|actor| actor.locomotor.as_ref())
                         .and_then(|loco| loco.step_head())
                         .ok_or("Walk head vanished before its crate question")?;
-                    let picked = self.pickup_crate_at(id, coord_cell(head), Some(rules), registry);
+                    let picked = self.pickup_crate_at(
+                        id,
+                        coord_cell(head),
+                        Some(rules),
+                        registry,
+                        frame_effects,
+                    );
                     let actor = self
                         .substrate
                         .entities
@@ -193,7 +210,7 @@ impl Simulation {
                 self.walk_retry_admission(request)
             }
             2 => {
-                self.walk_blocked_delay(request, held, rules, registry)?;
+                self.walk_blocked_delay(request, held, rules, registry, frame_effects)?;
                 Ok(None)
             }
             3 => {
@@ -226,7 +243,7 @@ impl Simulation {
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
-                self.walk_override_blocker(id, packed, blocker, rules, registry)?;
+                self.walk_override_blocker(id, packed, blocker, rules, registry, frame_effects)?;
                 //75BB59..75BB90: clear path, speed0, WalkStop. NavCom is
                 //changed only by an admitted Override, not this Stop itself.
                 self.clear_walk_admission_path(id)?;
@@ -236,7 +253,7 @@ impl Simulation {
                     .get_mut(id)
                     .ok_or("retired Walk stop owner")?;
                 actor.foot_speed.set_speed_fraction(SIM_ZERO);
-                self.walk_stop_moving(id, Some(rules))?;
+                self.walk_stop_moving(id, Some(rules), frame_effects)?;
                 let actor = self
                     .substrate
                     .entities
@@ -254,7 +271,7 @@ impl Simulation {
                 if request.allows_retry() {
                     return self.walk_retry_admission(request);
                 }
-                self.walk_scatter_or_stop(id, cell, rules, registry)?;
+                self.walk_scatter_or_stop(id, cell, rules, registry, frame_effects)?;
                 Ok(None)
             }
             7 => self.walk_retry_admission(request),
@@ -274,14 +291,18 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
     ) -> Result<Option<FootPathRequest>, String> {
-        let request = WalkAdmissionRequest::for_response_test(
-            &self.substrate.entities,
-            id,
-            allow_retry,
+        let request =
+            WalkAdmissionRequest::for_response_test(&self.substrate.entities, id, allow_retry, rules)
+                .ok_or("missing Walk corpus receiver")?;
+        self.finish_walk_admission_response(
+            request,
+            candidate,
+            code,
+            None,
             rules,
+            registry,
+            crate::sim::world::FrameEffects::default(),
         )
-        .ok_or("missing Walk corpus receiver")?;
-        self.finish_walk_admission_response(request, candidate, code, None, rules, registry)
     }
 
     fn walk_lookup_cell(&self, cell: (i16, i16)) -> Result<NativeCellIdentity, String> {
@@ -369,6 +390,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
@@ -390,7 +412,7 @@ impl Simulation {
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         let request = request.into_path_request(destination, urgency);
-        let found = self.foot_find_path(&request, held, rules, registry)?;
+        let found = self.foot_find_path(&request, held, rules, registry, frame_effects)?;
         self.substrate
             .entities
             .get_mut(id)
@@ -410,9 +432,9 @@ impl Simulation {
                 .and_then(|loco| loco.walk_destination())
                 .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
             if self.foot_path_zone_precheck(id, destination, rules)? {
-                self.walk_failed_path_receiver(id, rules)?;
+                self.walk_failed_path_receiver(id, rules, frame_effects)?;
             } else {
-                self.assign_null_destination(id, Some(rules), None);
+                self.assign_null_destination(id, Some(rules), None, frame_effects);
             }
             if let Some(actor) = self.substrate.entities.get_mut(id)
                 && actor.locomotor.as_ref().is_some_and(|loco| {
@@ -433,6 +455,7 @@ impl Simulation {
         cell: NativeCellIdentity,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -461,14 +484,14 @@ impl Simulation {
             if let Some(loco) = actor.locomotor.as_mut() {
                 loco.set_step_head(None);
             }
-            self.walk_stop_moving(id, Some(rules))?;
+            self.walk_stop_moving(id, Some(rules), frame_effects)?;
             self.substrate
                 .entities
                 .get_mut(id)
                 .ok_or("Walk code6 owner retired during its callback")?
                 .foot_speed
                 .set_speed_fraction(SIM_ZERO);
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), None, frame_effects);
             self.clear_walk_admission_path(id)?;
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 super::retain_committed_movement(actor);
@@ -486,7 +509,7 @@ impl Simulation {
             .wrapping_abs()
                 > 2;
         let at = cells.coord(cell);
-        self.scatter_cell_contacts(at, deck, true, rules, registry)
+        self.scatter_cell_contacts(at, deck, true, rules, registry, frame_effects)
     }
 
     fn walk_override_blocker(
@@ -496,6 +519,7 @@ impl Simulation {
         blocker: Option<BlockingObject>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let target = match blocker {
             Some(BlockingObject::Entity(blocker)) => {
@@ -565,7 +589,7 @@ impl Simulation {
             ) {
                 return Ok(());
             }
-            self.mission_override_movement_blocker(id, target, rules);
+            self.mission_override_movement_blocker(id, target, rules, frame_effects);
         }
         Ok(())
     }
@@ -577,6 +601,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -586,7 +611,7 @@ impl Simulation {
         if actor.mission.effective().raw() == 15 {
             self.assign_target_represented(id, None, Some(rules))
                 .map_err(|error| format!("{error:?}"))?;
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), None, frame_effects);
         }
         let actor = self
             .substrate

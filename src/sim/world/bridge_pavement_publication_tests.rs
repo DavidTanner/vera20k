@@ -36,6 +36,7 @@ fn retail_plain_pavement_native_entry_draw_selection_and_snapshot() {
     runtime.simulation.radar_terrain_dirty_cells.clear();
     let before_hash = runtime.simulation.state_hash();
     let mut live = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut runtime.simulation,
         rules: &runtime.resources.rules,
         registry: Some(&runtime.resources.overlay_registry),

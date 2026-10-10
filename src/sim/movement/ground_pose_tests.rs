@@ -479,7 +479,8 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
         let mut restored = GameSnapshot::load(&bytes)
             .expect("moving ramp snapshot")
             .sim;
-        restored.main_rng = sim.main_rng.clone();
+        // The original and restored controls run as independent test processes.
+        restored.main_rng = sim.main_rng.snapshot_for_test().into();
         restored.mapgen_rng = sim.mapgen_rng.clone();
         restored
             .restore_after_snapshot_load()
@@ -906,6 +907,7 @@ fn forced_track_terminal_samples_full_head_xy_before_relink() {
         },
         None,
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     if sim.path_grid.is_none() {
         sim.path_grid = Some(std::sync::Arc::new(grid.clone()));
@@ -1297,7 +1299,7 @@ fn two_marked_units() -> Simulation {
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         entity.position.exact_z_leptons = Some(0);
         sim.substrate.entities.insert(entity);
-        assert!(sim.foot_mark_put(id, None, None));
+        assert!(sim.foot_mark_put(id, None, None, crate::sim::world::FrameEffects::default()));
     }
     sim
 }
@@ -1314,7 +1316,13 @@ fn set_height_on_a_marked_object_re_marks_it_at_the_head_of_its_cell() {
     use crate::sim::occupancy::CellObjectMember::Entity;
     let mut sim = two_marked_units();
     assert_eq!(next_in_cell(&sim, 2), Some(Entity(1)));
-    sim.set_object_height(1, 30, None, None);
+    sim.set_object_height(
+        1,
+        30,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(next_in_cell(&sim, 1), Some(Entity(2)));
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(entity.lifecycle.cell_marked);
@@ -1339,8 +1347,14 @@ fn set_height_on_an_unmarked_object_writes_z_without_marking_it() {
         Some(30)
     );
 
-    assert!(sim.foot_mark_remove(1, None, None));
-    sim.set_object_height(1, 60, None, None);
+    assert!(sim.foot_mark_remove(1, None, None, crate::sim::world::FrameEffects::default()));
+    sim.set_object_height(
+        1,
+        60,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(!entity.lifecycle.cell_marked);
     assert_eq!(entity.position.exact_z_leptons, Some(60));

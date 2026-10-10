@@ -1,8 +1,7 @@
 //! Building animation lifecycle, sidebar UI tick, and sound playback.
 //!
-//! These are per-frame runtime updates that run after the sim tick advances.
-//! Split from `match_runtime::sim_tick` to separate animation/audio/UI concerns from
-//! core simulation advancement.
+//! The shared sound consumer runs at reached simulation boundaries and the
+//! frame tail. Periodic animation/audio/UI updates follow simulation advancement.
 //!
 //! ## Dependency rules
 //! - Part of the app layer — may depend on everything.
@@ -10,6 +9,302 @@
 use crate::app::AppState;
 use crate::app::input::commands::preferred_local_owner_name;
 use crate::sim::production;
+
+/// The tactical listener shared by inline and frame-tail sound consumption.
+pub(crate) fn sound_listener(state: &AppState) -> crate::audio::sfx::SpatialListener {
+    let (tactical_width, tactical_height) = crate::app::input::camera::tactical_viewport_size_px(
+        state.render_width(),
+        state.render_height(),
+    );
+    crate::audio::sfx::SpatialListener {
+        tactical_width: tactical_width as i32,
+        tactical_height: tactical_height as i32,
+        origin_x: state.match_state.input.camera_x,
+        origin_y: state.match_state.input.camera_y,
+        zoom: state.match_state.input.zoom_level,
+    }
+}
+
+/// Borrowed process sources and listener for one synchronous sound delivery.
+/// The simulation is supplied only for the duration of `consume`.
+pub(crate) struct SoundPlaybackInputs<'a> {
+    pub(crate) assets: &'a crate::assets::asset_manager::AssetManager,
+    pub(crate) catalog: &'a crate::app::process_assets::ProcessAudioCatalog,
+    pub(crate) listener: crate::audio::sfx::SpatialListener,
+    pub(crate) eva_side: crate::rules::sound_ini::EvaSide,
+}
+
+struct SoundSpatialContext<'a> {
+    registry: &'a crate::rules::sound_ini::SoundRegistry,
+    listener: &'a crate::audio::sfx::SpatialListener,
+    sim: Option<&'a crate::sim::world::Simulation>,
+    local_owner_id: Option<crate::sim::intern::InternedId>,
+}
+
+impl SoundSpatialContext<'_> {
+    /// `CellClass+0x12C & 0x18 == 0`: unrevealed or gap-covered.
+    fn shrouded(&self, rx: u16, ry: u16) -> bool {
+        match (self.sim, self.local_owner_id) {
+            (Some(sim), Some(owner)) => {
+                !sim.fog.is_cell_revealed(owner, rx, ry)
+                    || sim.fog.is_cell_gap_covered(owner, rx, ry)
+            }
+            _ => false,
+        }
+    }
+
+    /// `None` is native volume below 0.05: no sound admission.
+    fn gain_for(
+        &self,
+        sound_id: &str,
+        source: Option<crate::audio::events::SoundSource>,
+    ) -> Option<crate::audio::sfx::SpatialGain> {
+        use crate::audio::sfx::{SpatialGain, SpatialSource, spatial_gain};
+
+        let Some(source) = source else {
+            return Some(SpatialGain::CENTRED_FULL);
+        };
+        let facts = self.registry.get(sound_id).map_or_else(
+            || SpatialSource::from_registry_defaults(self.registry),
+            SpatialSource::from_entry,
+        );
+        let (rx, ry) = source.cell();
+        spatial_gain(
+            facts,
+            source.screen_x,
+            source.screen_y,
+            self.listener,
+            self.shrouded(rx, ry),
+        )
+    }
+}
+
+impl SoundPlaybackInputs<'_> {
+    fn spatial_context<'s>(
+        &'s self,
+        sim: Option<&'s crate::sim::world::Simulation>,
+        local_owner: Option<&str>,
+    ) -> SoundSpatialContext<'s> {
+        SoundSpatialContext {
+            registry: self.catalog.sounds(),
+            listener: &self.listener,
+            sim,
+            local_owner_id: local_owner.and_then(|name| sim.and_then(|sim| sim.interner.get(name))),
+        }
+    }
+
+    /// Consume ordered requests through the sole SFX owner. Periodic voice,
+    /// positional-owner and bomb maintenance stay in the frame-tail drain.
+    pub(crate) fn consume(
+        &self,
+        sfx: &mut crate::audio::sfx::SfxPlayer,
+        events: &[crate::audio::events::GameSoundEvent],
+        sim: Option<&crate::sim::world::Simulation>,
+        local_owner: Option<&str>,
+    ) {
+        use crate::audio::events::GameSoundEvent;
+        use crate::audio::sfx::SpatialGain;
+
+        let registry = self.catalog.sounds();
+        let audio_indices = self.catalog.index();
+        let eva_registry = self.catalog.eva();
+        let assets = self.assets;
+        let eva_side = self.eva_side;
+        let spatial = self.spatial_context(sim, local_owner);
+        let gain_for = |sound_id: &str, source| spatial.gain_for(sound_id, source);
+        for event in events {
+            match event {
+                GameSoundEvent::UnitVoiceVisit { owner } => sfx.visit_unit_voice(*owner, registry),
+                GameSoundEvent::UnitVoiceDestroyed { owner } => sfx.destroy_unit_voice(*owner),
+                // Unit acknowledgement lines — always full volume (non-positional).
+                // `TechnoClass::Queue_Voice @ 0x00708D90` only latches the line on
+                // the speaking object. Only an actual reached Techno6F9EBB
+                // effect above visits that latch, in the simulation's live order.
+                GameSoundEvent::UnitSelected { speaker_id, .. }
+                | GameSoundEvent::UnitMoveOrder { speaker_id, .. }
+                | GameSoundEvent::UnitAttackOrder { speaker_id, .. } => {
+                    sfx.queue_unit_voice(*speaker_id, event.sound_id());
+                }
+                // `VoxClass::PlayEVA @ 0x00752700`: routing (pending slot, the
+                // QUEUE FIFOs, critical/interrupt lists), the same-type duplicate
+                // rule and the 500 ms gap all come from the entry and the
+                // `VoxClass` state in `sfx` — see `audio::vox`.
+                GameSoundEvent::Eva {
+                    event: eva_event,
+                    type_override,
+                } => {
+                    let _ = sfx.play_eva(
+                        eva_event,
+                        *type_override,
+                        eva_registry,
+                        eva_side,
+                        registry,
+                        assets,
+                        audio_indices,
+                    );
+                }
+                GameSoundEvent::EvaRemove { event: eva_event } => {
+                    sfx.remove_eva(eva_event, eva_registry);
+                }
+                // UI events — always full volume (non-positional).
+                GameSoundEvent::UiSound { .. } => {
+                    sfx.play_sound(event.sound_id(), registry);
+                }
+                // `CreditsClass::Draw @ 0x004A2519`: `PUSH 0x3f000000` — the
+                // credit tick is the one UI cue native plays at half volume,
+                // centred (`EDX = 0x2000`).
+                GameSoundEvent::CreditTick { .. } => {
+                    sfx.play_sound_with_volume(event.sound_id(), 0.5, registry);
+                }
+                GameSoundEvent::AnimationStarted {
+                    anim_id,
+                    sound_id,
+                    source,
+                } => match gain_for(sound_id, *source) {
+                    Some(gain) => {
+                        sfx.play_animation_sound_spatial(*anim_id, sound_id, gain, registry);
+                    }
+                    None => sfx.bind_inaudible_animation_sound(*anim_id, sound_id, registry),
+                },
+                GameSoundEvent::AnimationReleased { anim_id } => {
+                    sfx.release_animation_sound(*anim_id);
+                }
+                GameSoundEvent::AnimationDetached { anim_id } => {
+                    sfx.detach_animation_sound(*anim_id);
+                }
+                GameSoundEvent::AnimationStopped {
+                    anim_id,
+                    stop_sound_id,
+                    source,
+                } => {
+                    sfx.stop_animation_sound(*anim_id);
+                    if let Some(stop_sound_id) =
+                        stop_sound_id.as_deref().filter(|id| !id.is_empty())
+                        && let Some(gain) = gain_for(stop_sound_id, *source)
+                    {
+                        sfx.play_sound_spatial(stop_sound_id, gain, registry);
+                    }
+                }
+                GameSoundEvent::CloakSound { sound_id, source }
+                | GameSoundEvent::WallCrushed { sound_id, source }
+                | GameSoundEvent::VocAt { sound_id, source } => {
+                    // RulesClass::ReadAudioVisual @ 0x006691E0 (CloakSound) and
+                    // ObjectTypeClass::ReadINI @ 0x005F93B5 (CrushSound) store only
+                    // the VocClass::FindByName @ 0x007514D0 result. An invalid name
+                    // is silent; it must not enter the generic raw audio-bag fallback.
+                    if registry.get(sound_id).is_none() {
+                        continue;
+                    }
+                    if let Some(gain) = gain_for(sound_id, *source) {
+                        sfx.play_registered_sound_spatial(sound_id, gain, registry);
+                    }
+                }
+                GameSoundEvent::BaseUnderAttackSfx { sound_id } => {
+                    // `0x004F95BF MOV EDX,0x2000` / `0x004F95C4 PUSH 0x3F800000`:
+                    // pan centred, volume 1.0f, no handle — an ordinary pooled
+                    // event, not a voice. `RulesClass::ReadAudioVisual` keeps only
+                    // the `VocClass::FindByName` result, so an unregistered name
+                    // must not reach the raw audio-bag path.
+                    if registry.get(sound_id).is_none() {
+                        continue;
+                    }
+                    sfx.play_registered_sound_spatial(
+                        sound_id,
+                        SpatialGain::CENTRED_FULL,
+                        registry,
+                    );
+                }
+                GameSoundEvent::BuildingDamagedSfx { sound_id, source } => {
+                    // `RulesClass::ReadAudioVisual @ 0x006691E0` keeps only the
+                    // `VocClass::FindByName` result in `Rules+0x714`, so a name
+                    // that is not a registered Voc is silence in gamemd and must
+                    // not reach the raw audio-bag fallback here.
+                    if registry.get(sound_id).is_none() {
+                        continue;
+                    }
+                    if let Some(gain) = gain_for(sound_id, *source) {
+                        sfx.play_registered_sound_spatial(sound_id, gain, registry);
+                    }
+                }
+                GameSoundEvent::SuperWeaponActivated {
+                    sound_id,
+                    source,
+                    eva_event,
+                } => {
+                    // `RulesClass::ReadAudioVisual @ 0x006691E0` and
+                    // `SuperWeaponTypeClass::ReadINI @ 0x006CEBE5` both store only
+                    // the `VocClass::FindByName @ 0x007514D0` result, so a name
+                    // that is not a registered Voc is silence in gamemd and must
+                    // not reach the raw audio-bag fallback.
+                    if !sound_id.is_empty() && registry.get(sound_id).is_some() {
+                        match source {
+                            // `VocClass::PlayAtCoord @ 0x00750E20` /
+                            // `PlayAt @ 0x007509E0` at the target coordinate.
+                            Some(source) => {
+                                if let Some(gain) = gain_for(sound_id, Some(*source)) {
+                                    let _ =
+                                        sfx.play_registered_sound_spatial(sound_id, gain, registry);
+                                }
+                            }
+                            // `StormSound` only: `LightningStorm::Start` calls
+                            // `VocClass::PlayAtPos @ 0x00750920` with pan `0x2000`
+                            // and volume `1.0f` (`0x0053A03A`/`0x0053A03F`).
+                            None => {
+                                let _ = sfx.play_registered_sound_spatial(
+                                    sound_id,
+                                    SpatialGain::CENTRED_FULL,
+                                    registry,
+                                );
+                            }
+                        }
+                    }
+                    // `VoxClass::PlayEVA(name, -1)` at every `SuperClass::Launch`
+                    // site: the entry's own `Type=`/`Priority=` route it.
+                    if let Some(eva_event) = eva_event.as_deref().filter(|s| !s.is_empty()) {
+                        let _ = sfx.play_eva(
+                            eva_event,
+                            None,
+                            eva_registry,
+                            eva_side,
+                            registry,
+                            assets,
+                            audio_indices,
+                        );
+                    }
+                }
+                GameSoundEvent::BridgeRepaired {
+                    sound_id,
+                    source,
+                    eva_event,
+                } => {
+                    if !sound_id.is_empty()
+                        && let Some(gain) = gain_for(sound_id, *source)
+                    {
+                        sfx.play_sound_spatial(sound_id, gain, registry);
+                    }
+                    if let Some(eva_event) = eva_event.as_deref().filter(|s| !s.is_empty()) {
+                        let _ = sfx.play_eva(
+                            eva_event,
+                            None,
+                            eva_registry,
+                            eva_side,
+                            registry,
+                            assets,
+                            audio_indices,
+                        );
+                    }
+                }
+                // Spatial events — distance volume and pan from the sound's
+                // Range/Type/MinVolume against the tactical view.
+                _ => {
+                    if let Some(gain) = gain_for(event.sound_id(), event.source()) {
+                        sfx.play_sound_spatial(event.sound_id(), gain, registry);
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// Tick the sidebar power bar animation (segment-by-segment transition).
 pub(crate) fn update_power_bar_anim(state: &mut AppState) {
@@ -137,30 +432,16 @@ pub(crate) fn drain_pending_sound_events(state: &mut AppState) {
 }
 
 fn drain_sound_events_inner(state: &mut AppState, redrive_owners: bool) {
-    use crate::audio::events::{GameSoundEvent, SoundSource};
-    use crate::audio::sfx::{SpatialGain, SpatialListener, SpatialSource, spatial_gain};
+    use crate::audio::sfx::{SpatialSource, spatial_gain};
 
     let events = state.match_state.match_audio.sound_events.drain();
-    let (tactical_width, tactical_height) = crate::app::input::camera::tactical_viewport_size_px(
-        state.render_width(),
-        state.render_height(),
-    );
-    let listener = SpatialListener {
-        tactical_width: tactical_width as i32,
-        tactical_height: tactical_height as i32,
-        origin_x: state.match_state.input.camera_x,
-        origin_y: state.match_state.input.camera_y,
-        zoom: state.match_state.input.zoom_level,
-    };
+    let listener = sound_listener(state);
     let local_owner = preferred_local_owner_name(state);
     let sim = state
         .match_state
         .sim_runtime
         .as_ref()
         .map(|rt| &rt.simulation);
-    let local_owner_id = local_owner
-        .as_deref()
-        .and_then(|name| sim.and_then(|sim| sim.interner.get(name)));
     let eva_side = local_eva_side(state);
     let ticking_sound = state
         .rules()
@@ -174,227 +455,19 @@ fn drain_sound_events_inner(state: &mut AppState, redrive_owners: bool) {
     };
     let registry = catalog.sounds();
     let audio_indices = catalog.index();
-    let eva_registry = catalog.eva();
     if redrive_owners {
         sfx.advance_voice_queue(registry, assets, audio_indices);
     }
 
-    // `CellClass+0x12C & 0x18 == 0`: neither explored nor visible. The shroud
-    // renderer (`render::shroud_buffer`) blacks out the same cells — never
-    // revealed, or re-shrouded by a hostile gap generator.
-    let shrouded = |rx: u16, ry: u16| -> bool {
-        match (sim, local_owner_id) {
-            (Some(sim), Some(owner)) => {
-                !sim.fog.is_cell_revealed(owner, rx, ry)
-                    || sim.fog.is_cell_gap_covered(owner, rx, ry)
-            }
-            _ => false,
-        }
+    let inputs = SoundPlaybackInputs {
+        assets,
+        catalog,
+        listener,
+        eva_side,
     };
-    // `None` is the native "volume below 0.05 -> nothing plays" outcome.
-    let gain_for = |sound_id: &str, source: Option<SoundSource>| -> Option<SpatialGain> {
-        let Some(source) = source else {
-            return Some(SpatialGain::CENTRED_FULL);
-        };
-        let facts = registry.get(sound_id).map_or_else(
-            || SpatialSource::from_registry_defaults(registry),
-            SpatialSource::from_entry,
-        );
-        let (rx, ry) = source.cell();
-        spatial_gain(
-            facts,
-            source.screen_x,
-            source.screen_y,
-            &listener,
-            shrouded(rx, ry),
-        )
-    };
-
-    for event in &events {
-        match event {
-            GameSoundEvent::UnitVoiceVisit { owner } => sfx.visit_unit_voice(*owner, registry),
-            GameSoundEvent::UnitVoiceDestroyed { owner } => sfx.destroy_unit_voice(*owner),
-            // Unit acknowledgement lines — always full volume (non-positional).
-            // `TechnoClass::Queue_Voice @ 0x00708D90` only latches the line on
-            // the speaking object. Only an actual reached Techno6F9EBB
-            // effect above visits that latch, in the simulation's live order.
-            GameSoundEvent::UnitSelected { speaker_id, .. }
-            | GameSoundEvent::UnitMoveOrder { speaker_id, .. }
-            | GameSoundEvent::UnitAttackOrder { speaker_id, .. } => {
-                sfx.queue_unit_voice(*speaker_id, event.sound_id());
-            }
-            // `VoxClass::PlayEVA @ 0x00752700`: routing (pending slot, the
-            // QUEUE FIFOs, critical/interrupt lists), the same-type duplicate
-            // rule and the 500 ms gap all come from the entry and the
-            // `VoxClass` state in `sfx` — see `audio::vox`.
-            GameSoundEvent::Eva {
-                event: eva_event,
-                type_override,
-            } => {
-                let _ = sfx.play_eva(
-                    eva_event,
-                    *type_override,
-                    eva_registry,
-                    eva_side,
-                    registry,
-                    assets,
-                    audio_indices,
-                );
-            }
-            GameSoundEvent::EvaRemove { event: eva_event } => {
-                sfx.remove_eva(eva_event, eva_registry);
-            }
-            // UI events — always full volume (non-positional).
-            GameSoundEvent::UiSound { .. } => {
-                sfx.play_sound(event.sound_id(), registry);
-            }
-            // `CreditsClass::Draw @ 0x004A2519`: `PUSH 0x3f000000` — the
-            // credit tick is the one UI cue native plays at half volume,
-            // centred (`EDX = 0x2000`).
-            GameSoundEvent::CreditTick { .. } => {
-                sfx.play_sound_with_volume(event.sound_id(), 0.5, registry);
-            }
-            GameSoundEvent::AnimationStarted {
-                anim_id,
-                sound_id,
-                source,
-            } => match gain_for(sound_id, *source) {
-                Some(gain) => {
-                    sfx.play_animation_sound_spatial(*anim_id, sound_id, gain, registry);
-                }
-                None => sfx.bind_inaudible_animation_sound(*anim_id, sound_id, registry),
-            },
-            GameSoundEvent::AnimationReleased { anim_id } => {
-                sfx.release_animation_sound(*anim_id);
-            }
-            GameSoundEvent::AnimationDetached { anim_id } => {
-                sfx.detach_animation_sound(*anim_id);
-            }
-            GameSoundEvent::AnimationStopped {
-                anim_id,
-                stop_sound_id,
-                source,
-            } => {
-                sfx.stop_animation_sound(*anim_id);
-                if let Some(stop_sound_id) = stop_sound_id.as_deref().filter(|id| !id.is_empty())
-                    && let Some(gain) = gain_for(stop_sound_id, *source)
-                {
-                    sfx.play_sound_spatial(stop_sound_id, gain, registry);
-                }
-            }
-            GameSoundEvent::CloakSound { sound_id, source }
-            | GameSoundEvent::WallCrushed { sound_id, source }
-            | GameSoundEvent::VocAt { sound_id, source } => {
-                // RulesClass::ReadAudioVisual @ 0x006691E0 (CloakSound) and
-                // ObjectTypeClass::ReadINI @ 0x005F93B5 (CrushSound) store only
-                // the VocClass::FindByName @ 0x007514D0 result. An invalid name
-                // is silent; it must not enter the generic raw audio-bag fallback.
-                if registry.get(sound_id).is_none() {
-                    continue;
-                }
-                if let Some(gain) = gain_for(sound_id, *source) {
-                    sfx.play_registered_sound_spatial(sound_id, gain, registry);
-                }
-            }
-            GameSoundEvent::BaseUnderAttackSfx { sound_id } => {
-                // `0x004F95BF MOV EDX,0x2000` / `0x004F95C4 PUSH 0x3F800000`:
-                // pan centred, volume 1.0f, no handle — an ordinary pooled
-                // event, not a voice. `RulesClass::ReadAudioVisual` keeps only
-                // the `VocClass::FindByName` result, so an unregistered name
-                // must not reach the raw audio-bag path.
-                if registry.get(sound_id).is_none() {
-                    continue;
-                }
-                sfx.play_registered_sound_spatial(sound_id, SpatialGain::CENTRED_FULL, registry);
-            }
-            GameSoundEvent::BuildingDamagedSfx { sound_id, source } => {
-                // `RulesClass::ReadAudioVisual @ 0x006691E0` keeps only the
-                // `VocClass::FindByName` result in `Rules+0x714`, so a name
-                // that is not a registered Voc is silence in gamemd and must
-                // not reach the raw audio-bag fallback here.
-                if registry.get(sound_id).is_none() {
-                    continue;
-                }
-                if let Some(gain) = gain_for(sound_id, *source) {
-                    sfx.play_registered_sound_spatial(sound_id, gain, registry);
-                }
-            }
-            GameSoundEvent::SuperWeaponActivated {
-                sound_id,
-                source,
-                eva_event,
-            } => {
-                // `RulesClass::ReadAudioVisual @ 0x006691E0` and
-                // `SuperWeaponTypeClass::ReadINI @ 0x006CEBE5` both store only
-                // the `VocClass::FindByName @ 0x007514D0` result, so a name
-                // that is not a registered Voc is silence in gamemd and must
-                // not reach the raw audio-bag fallback.
-                if !sound_id.is_empty() && registry.get(sound_id).is_some() {
-                    match source {
-                        // `VocClass::PlayAtCoord @ 0x00750E20` /
-                        // `PlayAt @ 0x007509E0` at the target coordinate.
-                        Some(source) => {
-                            if let Some(gain) = gain_for(sound_id, Some(*source)) {
-                                let _ = sfx.play_registered_sound_spatial(sound_id, gain, registry);
-                            }
-                        }
-                        // `StormSound` only: `LightningStorm::Start` calls
-                        // `VocClass::PlayAtPos @ 0x00750920` with pan `0x2000`
-                        // and volume `1.0f` (`0x0053A03A`/`0x0053A03F`).
-                        None => {
-                            let _ = sfx.play_registered_sound_spatial(
-                                sound_id,
-                                SpatialGain::CENTRED_FULL,
-                                registry,
-                            );
-                        }
-                    }
-                }
-                // `VoxClass::PlayEVA(name, -1)` at every `SuperClass::Launch`
-                // site: the entry's own `Type=`/`Priority=` route it.
-                if let Some(eva_event) = eva_event.as_deref().filter(|s| !s.is_empty()) {
-                    let _ = sfx.play_eva(
-                        eva_event,
-                        None,
-                        eva_registry,
-                        eva_side,
-                        registry,
-                        assets,
-                        audio_indices,
-                    );
-                }
-            }
-            GameSoundEvent::BridgeRepaired {
-                sound_id,
-                source,
-                eva_event,
-            } => {
-                if !sound_id.is_empty()
-                    && let Some(gain) = gain_for(sound_id, *source)
-                {
-                    sfx.play_sound_spatial(sound_id, gain, registry);
-                }
-                if let Some(eva_event) = eva_event.as_deref().filter(|s| !s.is_empty()) {
-                    let _ = sfx.play_eva(
-                        eva_event,
-                        None,
-                        eva_registry,
-                        eva_side,
-                        registry,
-                        assets,
-                        audio_indices,
-                    );
-                }
-            }
-            // Spatial events — distance volume and pan from the sound's
-            // Range/Type/MinVolume against the tactical view.
-            _ => {
-                if let Some(gain) = gain_for(event.sound_id(), event.source()) {
-                    sfx.play_sound_spatial(event.sound_id(), gain, registry);
-                }
-            }
-        }
-    }
+    inputs.consume(sfx, &events, sim, local_owner.as_deref());
+    let spatial = inputs.spatial_context(sim, local_owner.as_deref());
+    let shrouded = |rx, ry| spatial.shrouded(rx, ry);
 
     // `BombListClass::UpdateAll @ 0x00438BF0`'s ticking pass
     // (0x00438C6C..0x00438CFE): a carrier out of limbo starts

@@ -130,6 +130,7 @@ impl Simulation {
         stable_id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: super::FrameEffects<'_>,
     ) -> Result<bool, String> {
         use crate::map::cell_index::NativeCellIdentity;
         use crate::sim::mission::MissionType;
@@ -198,7 +199,13 @@ impl Simulation {
                 return Ok(false);
             }
         }
-        self.scatter_null(stable_id, ScatterFlags::new(true, true), rules, registry)
+        self.scatter_null(
+            stable_id,
+            ScatterFlags::new(true, true),
+            rules,
+            registry,
+            effects,
+        )
     }
 
     /// FootClass::AI's one call of the active locomotor's Process
@@ -252,11 +259,11 @@ impl Simulation {
         };
         match kind {
             LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Walk => self
-                .process_ground_locomotor_one(stable_id, rules, overlay_registry)
+                .process_ground_locomotor_one(stable_id, rules, overlay_registry, ctx.effects)
                 .map(LocomotorProcess::from_ground),
             LocomotorKind::Hover => {
-                self.complete_pending_order(stable_id, rules, overlay_registry);
-                self.process_hover_locomotor(stable_id, rules, overlay_registry)
+                self.complete_pending_order(stable_id, rules, overlay_registry, ctx.effects);
+                self.process_hover_locomotor(stable_id, rules, overlay_registry, ctx.effects)
                     .map(|hover| LocomotorProcess {
                         admitted: true,
                         bridge_state_changed: hover.bridge_state_changed,
@@ -265,11 +272,11 @@ impl Simulation {
                     })
             }
             LocomotorKind::Fly | LocomotorKind::Jumpjet => {
-                self.process_air_locomotor(stable_id, rules, overlay_registry)
+                self.process_air_locomotor(stable_id, rules, overlay_registry, ctx.effects)
             }
             LocomotorKind::Teleport => self.process_teleport_locomotor(stable_id, rules, ctx),
             LocomotorKind::Rocket => {
-                Ok(self.process_rocket_locomotor(stable_id, rules, overlay_registry))
+                Ok(self.process_rocket_locomotor(stable_id, rules, overlay_registry, ctx.effects))
             }
         }
     }
@@ -281,9 +288,10 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: super::FrameEffects<'_>,
     ) -> Result<LocomotorProcess, super::FrameAdvanceError> {
         let mut process = LocomotorProcess::admitted();
-        self.complete_pending_order(stable_id, rules, overlay_registry);
+        self.complete_pending_order(stable_id, rules, overlay_registry, effects);
         let jumpjet = self
             .substrate
             .entities
@@ -293,7 +301,8 @@ impl Simulation {
                     locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
                 })
             });
-        let air = self.tick_air_movement_with_cell_lists_one(stable_id, rules, overlay_registry);
+        let air =
+            self.tick_air_movement_with_cell_lists_one(stable_id, rules, overlay_registry, effects);
         let jumpjet_unit_touchdown = jumpjet
             && self
                 .substrate
@@ -310,12 +319,13 @@ impl Simulation {
                 movement::PerCellReason::Arrival,
                 rules,
                 overlay_registry,
+                effects,
             )?;
             process.per_cell_ran = true;
             if jumpjet {
                 //54C8CB..54C8EA already cleared the locomotor destination and
                 //moving byte;54C8FF calls the class NULL setter after PerCell.
-                self.assign_null_destination(stable_id, rules, overlay_registry);
+                self.assign_null_destination(stable_id, rules, overlay_registry, effects);
             }
         }
         if !air.impact {
@@ -329,7 +339,7 @@ impl Simulation {
             // to the sequencer and locomotion actions.
             if let Some(rules) = rules {
                 self.aircraft_tracker_remove(stable_id);
-                self.infantry_crash_impact(stable_id, rules, overlay_registry);
+                self.infantry_crash_impact(stable_id, rules, overlay_registry, effects);
             }
             return Ok(process);
         }
@@ -339,11 +349,11 @@ impl Simulation {
         match rules {
             Some(rules) if jumpjet => {
                 process.bridge_state_changed |=
-                    self.jumpjet_crash_impact(stable_id, rules, overlay_registry);
+                    self.jumpjet_crash_impact(stable_id, rules, overlay_registry, effects);
             }
             Some(rules) => {
                 process.bridge_state_changed |=
-                    self.fly_crash_impact(stable_id, rules, overlay_registry);
+                    self.fly_crash_impact(stable_id, rules, overlay_registry, effects);
             }
             None => self.uninit(stable_id),
         }
@@ -378,7 +388,7 @@ impl Simulation {
                 ..LocomotorProcess::default()
             });
         }
-        self.complete_pending_order(stable_id, rules, overlay_registry);
+        self.complete_pending_order(stable_id, rules, overlay_registry, ctx.effects);
         let sim = self;
         let mut process = LocomotorProcess::admitted();
         let teleport_armed = sim
@@ -411,7 +421,7 @@ impl Simulation {
                     .get(stable_id)
                     .and_then(|entity| entity.parasite_eating_me)
             {
-                sim.parasite_exit_unit(eater, rules);
+                sim.parasite_exit_unit(eater, rules, ctx.effects);
             }
             // `0x007195DB` Mark(UP) and `0x007196BF` Mark(DOWN) bracket the
             // relocation: the cell list entry, and a Unit's raw 0x20 and
@@ -419,7 +429,7 @@ impl Simulation {
             // OnBridge layer. An infantryman's sub-cell bit stays: his Mark
             // reaches no receiver, and the window calls none of its own.
             // ChronoOut plays at the old Location (`0x0071962C`).
-            sim.foot_mark_remove(stable_id, rules, overlay_registry);
+            sim.foot_mark_remove(stable_id, rules, overlay_registry, ctx.effects);
             if let Some(rules) = rules {
                 sim.teleport_warp_sound(stable_id, teleport_movement::WarpSound::Out, rules);
             }
@@ -431,7 +441,7 @@ impl Simulation {
             sim.resolved_terrain.as_ref(),
         );
         if teleport_relocating {
-            sim.foot_mark_put(stable_id, rules, overlay_registry);
+            sim.foot_mark_put(stable_id, rules, overlay_registry, ctx.effects);
         }
         // Teleport Process's warp step (`0x007192F0`), after the relocation.
         // Its `vt+0x480(NULL, 1)` is the owner's class setter
@@ -439,7 +449,7 @@ impl Simulation {
         // Teleport's own Stop_Moving through Foot's null arm.
         if teleport_reached {
             // 0x007197B4: vt+0x480(NULL, 1) before Stop_Moving.
-            sim.assign_null_destination(stable_id, rules, overlay_registry);
+            sim.assign_null_destination(stable_id, rules, overlay_registry, ctx.effects);
         }
         if teleport_relocating {
             // 0x00719710: ChronoIn at the new Location.
@@ -453,6 +463,7 @@ impl Simulation {
                 movement::PerCellReason::Arrival,
                 rules,
                 overlay_registry,
+                ctx.effects,
             )?;
             process.per_cell_ran = true;
             // 0x00719725 Stop_Moving: the tick retired the request.
@@ -464,12 +475,12 @@ impl Simulation {
                 .get(stable_id)
                 .map(|entity| (entity.position.rx as i16, entity.position.ry as i16));
             if let Some(cell) = cell {
-                let _ = sim.pickup_crate_at(stable_id, cell, rules, overlay_registry);
+                let _ = sim.pickup_crate_at(stable_id, cell, rules, overlay_registry, ctx.effects);
             }
             // 0x0071973C: vt+0x480(NULL, 1). A Teleporter still in radio
             // contact gets a Drive here, which the FootClass::AI tail ends
             // again.
-            sim.assign_null_destination(stable_id, rules, overlay_registry);
+            sim.assign_null_destination(stable_id, rules, overlay_registry, ctx.effects);
             // 0x00719742..0x00719791: the arrival WarpOut at the Location.
             if let Some(rules) = rules {
                 sim.teleport_warp_out(stable_id, rules);
@@ -487,12 +498,13 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: super::FrameEffects<'_>,
     ) -> LocomotorProcess {
         let mut process = LocomotorProcess::admitted();
         let Some(rules) = rules else {
             return process;
         };
-        let outcome = self.process_rocket(stable_id, rules, overlay_registry);
+        let outcome = self.process_rocket(stable_id, rules, overlay_registry, effects);
         process.bridge_state_changed = outcome.bridge_state_changed;
         process.ended = !self
             .substrate
@@ -515,7 +527,7 @@ impl Simulation {
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
         self.install_fixture_path_grid(grid);
-        self.process_ground_locomotor_one(id, rules, registry)
+        self.process_ground_locomotor_one(id, rules, registry, super::FrameEffects::default())
             .map(|outcome| outcome.movement)
     }
 
@@ -529,8 +541,13 @@ impl Simulation {
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<movement::MovementTickStats, super::FrameAdvanceError> {
-        self.process_ground_locomotor_one(stable_id, rules, overlay_registry)
-            .map(|outcome| outcome.movement)
+        self.process_ground_locomotor_one(
+            stable_id,
+            rules,
+            overlay_registry,
+            super::FrameEffects::default(),
+        )
+        .map(|outcome| outcome.movement)
     }
 
     pub(crate) fn process_ground_locomotor_one(
@@ -538,10 +555,11 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: super::FrameEffects<'_>,
     ) -> Result<GroundLocomotorOutcome, super::FrameAdvanceError> {
         let sim = self;
         let mut outcome = GroundLocomotorOutcome::default();
-        sim.complete_pending_order(stable_id, rules, overlay_registry);
+        sim.complete_pending_order(stable_id, rules, overlay_registry, effects);
         let movement_before = sim
             .substrate
             .entities
@@ -564,7 +582,7 @@ impl Simulation {
                 sim.session.binary_frame,
             );
         }
-        if !sim.process_track_turn(stable_id, rules, overlay_registry) {
+        if !sim.process_track_turn(stable_id, rules, overlay_registry, effects) {
             return Ok(outcome);
         }
         let mut pending_movement = {
@@ -608,12 +626,13 @@ impl Simulation {
                     pending_movement.take_scatter_requests(),
                     rules,
                     overlay_registry,
+                    effects,
                 )
                 .map_err(|cause| frame_error(sim, cause))?;
             if let Some(request) = pending_movement.take_foot_path_request() {
                 let held = Some(pending_movement.held_block_sets());
                 let outcome = sim
-                    .run_foot_path_request(&request, held, rules, overlay_registry)
+                    .run_foot_path_request(&request, held, rules, overlay_registry, effects)
                     .map_err(|cause| frame_error(sim, cause))?;
                 if outcome == movement::FootPathOutcome::Resume {
                     pending_movement.reenter_mover(
@@ -630,6 +649,7 @@ impl Simulation {
                         Some(pending_movement.held_block_sets()),
                         rules,
                         overlay_registry,
+                        effects,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
                 if let Some(request) = retry {
@@ -655,6 +675,7 @@ impl Simulation {
                         Some(pending_movement.held_block_sets()),
                         rules,
                         overlay_registry,
+                        effects,
                     )
                     .map_err(|cause| frame_error(sim, cause))?;
                 if !out
@@ -688,7 +709,7 @@ impl Simulation {
                 ..invocation
             };
             let pass = sim
-                .run_track_process(invocation, rules, overlay_registry)
+                .run_track_process(invocation, rules, overlay_registry, effects)
                 .map_err(|cause| frame_error(sim, cause))?;
             pending_movement.record_track_movement(pass.moved);
             outcome.track_owned = true;
@@ -696,7 +717,12 @@ impl Simulation {
                 break;
             }
             if !sim
-                .begin_track_end_continuation(invocation.entity_id, invocation.family, rules)
+                .begin_track_end_continuation(
+                    invocation.entity_id,
+                    invocation.family,
+                    rules,
+                    effects,
+                )
                 .map_err(|cause| frame_error(sim, cause))?
             {
                 break;
@@ -713,15 +739,16 @@ impl Simulation {
                 pending_movement.take_scatter_requests(),
                 rules,
                 overlay_registry,
+                effects,
             )
             .map_err(|cause| frame_error(sim, cause))?;
         if let Some((id, head)) = pending_movement.take_walk_per_cell() {
             outcome.bridge_state_changed |=
-                sim.run_completed_walk_step(id, head, rules, overlay_registry)?;
+                sim.run_completed_walk_step(id, head, rules, overlay_registry, effects)?;
             pending_movement.retain_walk_completion(id, &sim.substrate.entities);
         }
         if let Some((id, coord)) = pending_movement.take_walk_boundary() {
-            sim.run_walk_boundary(id, coord, rules, overlay_registry);
+            sim.run_walk_boundary(id, coord, rules, overlay_registry, effects);
             pending_movement.record_track_movement(1);
         }
 
@@ -745,6 +772,7 @@ impl Simulation {
                     movement::PerCellReason::Arrival,
                     rules,
                     overlay_registry,
+                    effects,
                 )?;
                 outcome.per_cell_ran = true;
             }
@@ -755,6 +783,7 @@ impl Simulation {
         &mut self,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: super::FrameEffects<'_>,
     ) -> Result<LiveObjectPassOutcome, super::FrameAdvanceError> {
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
         let terrain_spawner_cells = self
@@ -764,6 +793,7 @@ impl Simulation {
             .copied()
             .collect::<BTreeSet<_>>();
         let object_ctx = techno_ai::ObjectAiCtx {
+            effects,
             overlay_registry,
             terrain_spawner_cells: Some(&terrain_spawner_cells),
             miner_config: miner_config.as_ref(),
@@ -878,6 +908,7 @@ impl Simulation {
                 rules.general.parachute_max_fall_rate,
                 Some(rules),
                 overlay_registry,
+                object_ctx.effects,
             )
         {
             // Object AI5F3F8D: grounded fall completion calls vt+0x18C(2)
@@ -887,6 +918,7 @@ impl Simulation {
                 movement::PerCellReason::Arrival,
                 Some(rules),
                 overlay_registry,
+                object_ctx.effects,
             )?;
             per_cell_ran = true;
             sim.wind_down_parachute_anim(rules, stable_id);
@@ -920,7 +952,12 @@ impl Simulation {
         // An entry-active TubeMovement leaf runs through the ground corridor
         // in place of the Foot AI and its Process.
         let process = if tube_active_at_entry {
-            let ground = sim.process_ground_locomotor_one(stable_id, rules, overlay_registry)?;
+            let ground = sim.process_ground_locomotor_one(
+                stable_id,
+                rules,
+                overlay_registry,
+                object_ctx.effects,
+            )?;
             LocomotorProcess {
                 admitted: false,
                 ..LocomotorProcess::from_ground(ground)
@@ -1010,12 +1047,17 @@ impl Simulation {
                 .get(stable_id)
                 .is_some_and(|entity| !entity.is_warping_in() && entity.pending_entry().is_some())
         {
-            crate::sim::docking::building_dock::try_pending_entry(sim, rules, stable_id);
+            crate::sim::docking::building_dock::try_pending_entry(
+                sim,
+                rules,
+                stable_id,
+                object_ctx.effects,
+            );
         }
         // FootClass::AI tail 0x004DAEE1..0x004DAEF3, after the piggyback swap:
         // an infected Foot runs its eater's ParasiteClass AI in its own turn.
         if let Some(rules) = rules {
-            sim.parasite_ai_for_victim(stable_id, rules, overlay_registry);
+            sim.parasite_ai_for_victim(stable_id, rules, overlay_registry, object_ctx.effects);
         }
 
         // Unit73649C follows the complete Foot tail. Its disguise pick must
@@ -1073,7 +1115,12 @@ impl Simulation {
         let mut lifecycle_requests = std::mem::take(&mut sim.pending_lifecycle_requests);
         for request in lifecycle_requests.drain(..) {
             if let Some(rules) = rules {
-                sim.apply_lifecycle_request_with_rules(request, rules, overlay_registry);
+                sim.apply_lifecycle_request_with_rules(
+                    request,
+                    rules,
+                    overlay_registry,
+                    object_ctx.effects,
+                );
             } else {
                 sim.apply_lifecycle_request(request);
             }
@@ -1085,7 +1132,7 @@ impl Simulation {
         if let Some(rules) = rules {
             sim.sinking_edge_sounds(stable_id, rules);
             sim.crash_edge_sounds(stable_id, rules);
-            if sim.tick_ship_sinking(stable_id, rules, overlay_registry) {
+            if sim.tick_ship_sinking(stable_id, rules, overlay_registry, object_ctx.effects) {
                 return Ok(outcome);
             }
         }
@@ -1103,7 +1150,12 @@ impl Simulation {
             // its tails. A successful Scatter invokes Process a second time
             // synchronously, before the Infantry Ready/Commence/fire suffix.
             outcome.bridge_state_changed |= sim
-                .scatter_idle_infantry_from_building(stable_id, rules, overlay_registry)
+                .scatter_idle_infantry_from_building(
+                    stable_id,
+                    rules,
+                    overlay_registry,
+                    object_ctx.effects,
+                )
                 .map_err(|cause| super::FrameAdvanceError {
                     tick: sim.session.tick,
                     binary_frame: sim.session.binary_frame,
@@ -1111,7 +1163,7 @@ impl Simulation {
                     cause,
                 })?;
             outcome.bridge_state_changed |= sim
-                .infantry_action_turn(stable_id, rules, overlay_registry)
+                .infantry_action_turn(stable_id, rules, overlay_registry, object_ctx.effects)
                 .map_err(|cause| super::FrameAdvanceError {
                     tick: sim.session.tick,
                     binary_frame: sim.session.binary_frame,
@@ -1130,7 +1182,7 @@ impl Simulation {
         // AircraftClass::AI after FootClass::AI: past the map's edge the
         // aircraft may be removed (`0x00414F47..0x00414FDE`), ending its AI.
         if let Some(rules) = rules
-            && sim.remove_aircraft_off_map(stable_id, rules, overlay_registry)
+            && sim.remove_aircraft_off_map(stable_id, rules, overlay_registry, object_ctx.effects)
         {
             return Ok(outcome);
         }
@@ -1144,6 +1196,7 @@ impl Simulation {
                     crate::sim::combat::world_receiver::FireVisit::UnitTarget(stable_id),
                     rules,
                     overlay_registry,
+                    object_ctx.effects,
                 );
                 outcome.bridge_state_changed |= receipt.bridge_state_changed;
                 outcome.destroyed_structure |= receipt.structure_destroyed;

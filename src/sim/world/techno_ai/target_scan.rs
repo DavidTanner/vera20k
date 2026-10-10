@@ -638,6 +638,7 @@ impl<'r> ScanHost for WorldScan<'_, 'r> {
             self.id,
             Some(self.rules),
             None,
+            self.ctx.effects,
         );
     }
 

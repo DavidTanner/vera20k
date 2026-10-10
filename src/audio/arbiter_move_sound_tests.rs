@@ -178,8 +178,11 @@ fn queued_move_sound_admission_and_preemption_match_original_start_iteration() {
             // The native fixture begins after channel/sample admission. Give
             // Rust a channel through its existing owner at the same boundary.
             let priority = arbiter.effective_priority(arbiter.event(id).unwrap());
-            let channel =
-                (original["state"] != 4).then(|| arbiter.allocate_channel(id, priority).unwrap());
+            let channel = (original["state"] != 4).then(|| {
+                arbiter
+                    .allocate_channel(id, priority, &mut TestPlayback::default())
+                    .unwrap()
+            });
             let event = arbiter.event_mut(id).unwrap();
             event.channel = channel;
             event.flags = original["flags"].as_u64().unwrap() as u32;

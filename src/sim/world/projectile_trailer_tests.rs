@@ -88,20 +88,19 @@ fn bound_retail_rules(random_rate: Option<&str>) -> Option<RuleSet> {
     Some(rules)
 }
 
-fn rng_state(rng: &SimRng) -> Value {
-    let hex = rng.native_state_hex();
+fn rng_state(state: crate::sim::rng::SimRngLogicalState) -> Value {
+    let hex = state.native_state_hex();
     let raw: Vec<u8> = hex
         .as_bytes()
         .chunks_exact(2)
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
         .collect();
-    let state = rng.logical_state();
     json!({"cursor": [state.index_a, state.index_b],
         "sha256": crate::util::sha256::sha256_hex(&raw)})
 }
 
 fn rngs(sim: &Simulation) -> Value {
-    json!({"main": rng_state(&sim.main_rng), "scenario": rng_state(&sim.scenario_rng)})
+    json!({"main": rng_state(sim.main_rng.logical_state()), "scenario": rng_state(sim.scenario_rng.logical_state())})
 }
 
 fn anim_state(sim: &Simulation, anim: &AnimObject) -> Value {
@@ -131,7 +130,7 @@ fn counts(sim: &Simulation) -> Value {
 
 fn scene(row: &Value, terminal: bool) -> (Simulation, u64) {
     let mut sim = Simulation::with_seed(31);
-    sim.main_rng = SimRng::new(31);
+    sim.main_rng = SimRng::new(31).into();
     sim.scenario_rng = SimRng::new(31);
     sim.session.binary_frame = row["supplied"]["frame"].as_i64().unwrap() as u32;
     sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(
@@ -226,7 +225,11 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
             anim_state(&sim, sim.anim(bubble).unwrap()),
             row["after_bullet_uninit"]["anim"]
         );
-        sim.process_pending_delete_with(Some(&rules), None);
+        sim.process_pending_delete_with(
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(counts(&sim), row["after_bullet_drain"]["counts"]);
         assert_eq!(
             anim_state(&sim, sim.anim(bubble).unwrap()),
@@ -234,7 +237,12 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
         );
         for frame in row["anim_frames"].as_array().unwrap() {
             sim.session.binary_frame = frame["frame"].as_u64().unwrap() as u32;
-            sim.visit_anim(bubble, &rules, None);
+            sim.visit_anim(
+                bubble,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_eq!(
                 anim_state(&sim, sim.anim(bubble).unwrap()),
                 frame["anim"],
@@ -247,7 +255,11 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
                 "{name}: frame {}",
                 frame["frame"]
             );
-            sim.process_pending_delete_with(Some(&rules), None);
+            sim.process_pending_delete_with(
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         assert_eq!(counts(&sim), row["final_counts"]);
         assert_eq!(rngs(&sim), row["final_rng"], "{name}: lifecycle streams");
@@ -267,7 +279,12 @@ fn projectile_trailer_is_registered_before_terminal_logic_compaction() {
         // Existing live tail shares production ObjectAI, append and compacting
         // removal. Header corpus does not execute the complete native Logic loop;
         // its ordering rests on 55B613 / 55BAE0 instruction-level evidence.
-        sim.visit_combat_tail(bullet, &rules, None);
+        sim.visit_combat_tail(
+            bullet,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let bubble = only_bubble(&sim);
         assert_eq!(
             sim.anim(bubble).unwrap().runtime.first_ai_guard,
@@ -290,7 +307,8 @@ fn restored(sim: &Simulation) -> Simulation {
         .sim;
     // Production restores live process streams around the native Scenario
     // seed-zero reset. This continuation has no constructor RNG left to draw.
-    result.main_rng = sim.main_rng.clone();
+    // These loaded controls run as independent test processes.
+    result.main_rng = sim.main_rng.snapshot_for_test().into();
     result.mapgen_rng = sim.mapgen_rng.clone();
     result.restore_after_snapshot_load().unwrap();
     result
@@ -337,17 +355,30 @@ fn projectile_trailer_save_load_preserves_live_and_pending_cleanup_boundaries() 
             if !pending {
                 assert!(loaded.retire_non_entity_object(bullet));
             }
-            loaded.process_pending_delete_with(Some(&rules), None);
+            loaded.process_pending_delete_with(
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         for frame in row["anim_frames"].as_array().unwrap() {
             for loaded in [&mut first, &mut second] {
                 loaded.session.binary_frame = frame["frame"].as_u64().unwrap() as u32;
-                loaded.visit_anim(bubble, &rules, None);
+                loaded.visit_anim(
+                    bubble,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 assert_eq!(
                     anim_state(loaded, loaded.anim(bubble).unwrap()),
                     frame["anim"]
                 );
-                loaded.process_pending_delete_with(Some(&rules), None);
+                loaded.process_pending_delete_with(
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             assert_eq!(first.state_hash(), second.state_hash());
             assert_eq!(rngs(&first), rngs(&second));

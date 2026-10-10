@@ -44,6 +44,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::ground_pose::object_get_coords;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::{TeamRules, TeamScriptState, TeamTarget, script_action_at};
@@ -149,17 +150,24 @@ impl Simulation {
         &mut self,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let teams: Vec<u64> = self.team_script_vm.teams.keys().copied().collect();
         for team_id in teams {
             if self.team_script_vm.teams.contains_key(&team_id) {
-                self.team_ai(team_id, rules, registry);
+                self.team_ai(team_id, rules, registry, frame_effects);
             }
         }
     }
 
     /// `TeamClass::AI @ 0x006E9140` up to its action dispatch.
-    fn team_ai(&mut self, team_id: u64, rules: &RuleSet, registry: Option<&OverlayTypeRegistry>) {
+    fn team_ai(
+        &mut self,
+        team_id: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let current_frame = self.session.binary_frame as i32;
         let Some(team) = self.team_script_vm.teams.get_mut(&team_id) else {
             return;
@@ -173,14 +181,14 @@ impl Simulation {
         }
         // `0x006E917B`: a changed membership is recounted; an emptied team
         // that has been full is destroyed there.
-        if team.altered && !self.team_recalc(team_id, rules) {
+        if team.altered && !self.team_recalc(team_id, rules, frame_effects) {
             return;
         }
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
             return;
         };
         if team.formed && team.under_strength {
-            self.team_under_strength_retreat(team_id, rules, registry);
+            self.team_under_strength_retreat(team_id, rules, registry, frame_effects);
         }
         let vm = &mut self.team_script_vm;
         let Some(team) = vm.teams.get_mut(&team_id) else {
@@ -203,7 +211,7 @@ impl Simulation {
         if team.reforming || team.formed || team.zone.is_none() || team.closest_member.is_none() {
             self.team_calc_center(team_id, rules, registry);
         }
-        self.team_recruit_short_entries(team_id, rules, registry);
+        self.team_recruit_short_entries(team_id, rules, registry, frame_effects);
 
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
             return;
@@ -213,7 +221,7 @@ impl Simulation {
         // multiplayer game, is destroyed.
         let team_rules = TeamRules::new(&rules.general, self.session.game_mode_nonzero);
         if team.dissolves(&team_rules, current_frame) {
-            self.destroy_team(team_id, rules);
+            self.destroy_team(team_id, rules, frame_effects);
             return;
         }
         // The head member's warp-in (`vt+0x1D8`, Techno `+0x271`).
@@ -223,17 +231,17 @@ impl Simulation {
             .and_then(|head| self.substrate.entities.get(head.id))
             .is_some_and(GameEntity::is_warping_in);
         if !team.formed {
-            self.team_coordinate_move(team_id, rules, registry);
+            self.team_coordinate_move(team_id, rules, registry, frame_effects);
             return;
         }
         if team.reforming || team.under_strength || warping {
-            let regrouped = self.team_regroup(team_id, rules, registry);
+            let regrouped = self.team_regroup(team_id, rules, registry, frame_effects);
             if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
                 team.reforming = !regrouped;
             }
             return;
         }
-        self.team_step_script(team_id, rules, registry);
+        self.team_step_script(team_id, rules, registry, frame_effects);
     }
 
     /// `0x006E9227..0x006E9299`: a team still forming, or a `Reinforce=`
@@ -244,6 +252,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let vm = &self.team_script_vm;
         let Some(team) = vm.teams.get(&team_id) else {
@@ -268,7 +277,7 @@ impl Simulation {
                 return;
             };
             if super::membership::entry_short(entry.count, team.slot_counts[slot]) {
-                self.team_recruit(team_id, slot, rules, registry);
+                self.team_recruit(team_id, slot, rules, registry, frame_effects);
             }
             slot += 1;
         }
@@ -283,7 +292,12 @@ impl Simulation {
     /// members the team loses its centre and is under strength; one that has
     /// been full is destroyed (false), one that has not keeps its altered
     /// bytes, so the recount repeats every update.
-    pub(super) fn team_recalc(&mut self, team_id: u64, rules: &RuleSet) -> bool {
+    pub(super) fn team_recalc(
+        &mut self,
+        team_id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) -> bool {
         let vm = &mut self.team_script_vm;
         let Some(team) = vm.teams.get(&team_id) else {
             return false;
@@ -303,7 +317,7 @@ impl Simulation {
             team.full_strength = false;
             team.zone = None;
             if team.has_been_full {
-                self.destroy_team(team_id, rules);
+                self.destroy_team(team_id, rules, frame_effects);
                 return false;
             }
         } else {
@@ -445,6 +459,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         use crate::sim::mission::MissionType;
         let Some(team) = self.team_script_vm.teams.get(&team_id) else {
@@ -467,7 +482,7 @@ impl Simulation {
             if !entity.lifecycle.object_alive {
                 continue;
             }
-            self.team_member_join_up(team_id, member.id, rules, registry);
+            self.team_member_join_up(team_id, member.id, rules, registry, frame_effects);
             let Some(entity) = self.substrate.entities.get(member.id) else {
                 continue;
             };
@@ -486,13 +501,13 @@ impl Simulation {
                 self.team_member_queue_mission(member.id, MissionType::Move, rules);
                 regrouped = false;
                 let cell = zone.and_then(|zone| self.team_target_cell_of_coord(zone));
-                self.team_member_set_destination(member.id, cell, rules, registry);
+                self.team_member_set_destination(member.id, cell, rules, registry, frame_effects);
             } else {
                 if mission == Some(MissionType::AreaGuard) {
                     continue;
                 }
                 self.team_member_queue_mission(member.id, MissionType::Guard, rules);
-                self.team_member_set_destination(member.id, None, rules, registry);
+                self.team_member_set_destination(member.id, None, rules, registry, frame_effects);
             }
         }
         regrouped
@@ -507,6 +522,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(team) = self.team_script_vm.teams.get_mut(&team_id) else {
             return;
@@ -532,7 +548,7 @@ impl Simulation {
         if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
             team.focus = focus;
         }
-        self.team_coordinate_move(team_id, rules, registry);
+        self.team_coordinate_move(team_id, rules, registry, frame_effects);
     }
 
     /// `TeamClass::Took_Damage @ 0x006EB380`, from `FootClass::ReceiveDamage
@@ -606,6 +622,7 @@ impl Simulation {
         member: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         use crate::sim::mission::MissionType;
         let Some(entity) = self.substrate.entities.get(member) else {
@@ -626,7 +643,7 @@ impl Simulation {
         if entity.navigation.nav_com.is_none() {
             self.team_member_queue_mission(member, MissionType::Move, rules);
             self.team_member_clear_target(member, rules);
-            self.team_member_set_destination(member, zone, rules, registry);
+            self.team_member_set_destination(member, zone, rules, registry, frame_effects);
         }
         true
     }
