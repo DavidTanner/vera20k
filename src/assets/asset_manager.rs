@@ -5,6 +5,8 @@
 //! Registration appends to the search list and the first matching archive
 //! wins. Other known nested archives are catalogued for direct access and
 //! on-demand registration, but do not silently enter the global search path.
+//! The requested RA2 music extension additionally registers `theme.mix` behind
+//! `thememd.mix`; native YR otherwise selects only the latter when present.
 //! Audio selection and lifetime: [process audio owner](../../tools/audio_catalog_owner.md).
 
 use std::collections::HashMap;
@@ -330,9 +332,13 @@ impl AssetManager {
 
         manager.mount_native_map_media(media_mode)?;
         manager.mount_named_archive("multimd.mix", true)?;
-        if !manager.mount_named_archive("thememd.mix", false)? {
-            manager.mount_named_archive("theme.mix", false)?;
-        }
+        manager.mount_named_archive("thememd.mix", false)?;
+        // VERA presentation extension: native YR mounts THEME.MIX only when
+        // THEMEMD.MIX is absent. Keep MD first, then make original RA2 music
+        // available to the shared Theme catalog without displacing YR files.
+        // Preserve this user-requested parity exception during future parity
+        // work unless the user explicitly asks to change the music catalog.
+        manager.mount_named_archive("theme.mix", false)?;
         manager.mount_native_movie_media(media_mode)?;
 
         // Loose YRO archives are deliberately absent here. Retail registers
@@ -1288,6 +1294,41 @@ mod tests {
             manager.load_audio_index().unwrap().is_none(),
             "startup pair stays absent"
         );
+    }
+
+    #[test]
+    fn ra2_music_archive_preserves_yr_winners_and_optional_fallback() {
+        for (has_md, has_base) in [(true, true), (false, true), (true, false), (false, false)] {
+            let dir = audio_test_install("theme-archives");
+            if has_md {
+                dir.write_mix("thememd.mix", "shared.wav", b"YR music");
+            }
+            if has_base {
+                dir.write_mix("THEME.MIX", "shared.wav", b"RA2 music");
+            }
+            let manager = AssetManager::new(dir.path(), MediaArchiveMode::STOCK_DIGITAL).unwrap();
+            let names = manager.registered_archive_names();
+            assert_eq!(
+                names.iter().filter(|name| *name == "thememd.mix").count(),
+                usize::from(has_md)
+            );
+            assert_eq!(
+                names.iter().filter(|name| *name == "theme.mix").count(),
+                usize::from(has_base)
+            );
+            match manager.resolve_ref("shared.wav") {
+                Some(source) if has_md => {
+                    assert_eq!(source.source_archive, "thememd.mix");
+                    assert_eq!(source.bytes, b"YR music");
+                }
+                Some(source) if has_base => {
+                    assert_eq!(source.source_archive, "theme.mix");
+                    assert_eq!(source.bytes, b"RA2 music");
+                }
+                None => assert!(!has_md && !has_base),
+                _ => panic!("unexpected music source"),
+            }
+        }
     }
 
     #[test]

@@ -375,10 +375,6 @@ production_bindings! {
         => "dialogn.pal", STANDARD,
            "Validation modal background",
            "render/skirmish_shell_chrome.rs:314";
-    Name("mnscrnlcoopgamesetup.shp"), AnyArchive
-        => "mnscrnlcoopgamesetup.pal", STANDARD,
-           "Skirmish parent background",
-           "render/skirmish_shell_chrome.rs:361";
     Name("mnscrnlcustomizebattle.shp"), AnyArchive
         => "mnscrnlcustomizebattle.pal", STANDARD,
            "Choose Map modal background",
@@ -813,8 +809,6 @@ mod tests {
 //   src/render/skirmish_shell_chrome.rs:273  SIDEBTTN.SHP → SIDEBAR.PAL
 //   src/render/skirmish_shell_chrome.rs:293  MNBTTN.SHP → MAINBTTN.PAL
 //   src/render/skirmish_shell_chrome.rs:314  PUDLGBGN.SHP → DIALOGN.PAL
-//   src/render/skirmish_shell_chrome.rs:361  MnScrnLCoopGameSetup.shp →
-//           MnScrnLCoopGameSetup.PAL (palette loaded at :529)
 //   src/render/skirmish_shell_chrome.rs:375  MnScrnLCustomizeBattle.shp →
 //           MnScrnLCustomizeBattle.PAL (palette loaded at :544)
 //   src/render/skirmish_shell_chrome.rs:567  load_named_palette uses from_bytes
@@ -855,8 +849,8 @@ mod tests {
 //
 // MNSCRNS.SHP — same problem: SHELL.PAL at
 //   src/render/main_menu_shell_chrome.rs:101 and
-//   src/render/skirmish_shell_chrome.rs:352, but
-//   MnScrnLCoopGameSetup.PAL at src/render/skirmish_shell_chrome.rs:358-361.
+//   src/render/skirmish_shell_chrome.rs:395, but
+//   MnScrnLCustomizeBattle.PAL in the 640-wide Choose Map dialog.
 //   MNSCRNL.SHP has no such split and is in the table.
 //
 // Unit, infantry, building and overlay art — the palette is theater-selected

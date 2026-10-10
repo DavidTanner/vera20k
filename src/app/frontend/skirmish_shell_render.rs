@@ -57,7 +57,7 @@ use self::controls::*;
 use self::draw_order::ShellDialogChromeProfile;
 #[cfg(test)]
 use self::draw_order::{
-    LowerStripRole, ParentBackgroundRole, lower_strip_role, parent_background_role,
+    GenericBackgroundRole, LowerStripRole, generic_background_role, lower_strip_role,
 };
 use self::modals::*;
 use self::preview::*;
@@ -317,7 +317,8 @@ fn build_skirmish_shell_instances(
 
     push_lower_strip_instance(&mut instances, atlas, layout);
 
-    if let Some(background) = parent_background_entry(atlas, layout) {
+    // The RA2 skirmish skin shares the common shell's art and SHELL.PAL.
+    if let Some(background) = generic_shell_background_entry(atlas, layout) {
         push_entry_native(
             &mut instances,
             background,
@@ -1307,16 +1308,19 @@ mod tests {
     }
 
     #[test]
-    fn parent_background_role_uses_only_verified_widths() {
+    fn skirmish_background_uses_ra2_small_and_large_shell_variants() {
         assert_eq!(
-            parent_background_role(&compute_layout(640, 480)),
-            Some(ParentBackgroundRole::Mnscrns640)
+            generic_background_role(&compute_layout(640, 480)),
+            GenericBackgroundRole::Mnscrns640
         );
         assert_eq!(
-            parent_background_role(&compute_layout(800, 600)),
-            Some(ParentBackgroundRole::CoopGameSetup800)
+            generic_background_role(&compute_layout(800, 600)),
+            GenericBackgroundRole::MnscrnlLarge
         );
-        assert_eq!(parent_background_role(&compute_layout(1024, 768)), None);
+        assert_eq!(
+            generic_background_role(&compute_layout(1024, 768)),
+            GenericBackgroundRole::MnscrnlLarge
+        );
     }
 
     #[test]
@@ -1324,8 +1328,8 @@ mod tests {
         let layout = compute_fixed_800_layout(1024, 768);
 
         assert_eq!(
-            parent_background_role(&layout),
-            Some(ParentBackgroundRole::CoopGameSetup800)
+            generic_background_role(&layout),
+            GenericBackgroundRole::MnscrnlLarge
         );
     }
 
@@ -1407,7 +1411,7 @@ mod tests {
         assert_eq!(order[20], SkirmishShellDrawRole::LowerSideLwscrnl);
         assert_eq!(
             order[21],
-            SkirmishShellDrawRole::ParentBackgroundCoopGameSetup800
+            SkirmishShellDrawRole::ParentBackgroundMnscrnlLarge
         );
         assert_eq!(
             order[22],
@@ -1439,7 +1443,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_draw_order_keeps_1024_parent_blank_but_large_lower_strip() {
+    fn semantic_draw_order_keeps_ra2_large_background_and_lower_strip_at_1024() {
         let order =
             skirmish_shell_semantic_draw_order(&compute_layout(1024, 768), false, false, false, 0);
         assert_eq!(order[0], SkirmishShellDrawRole::RightPanelTopSdtp);
@@ -1447,7 +1451,7 @@ mod tests {
         assert!(order.contains(&SkirmishShellDrawRole::RightPanelTopHighlightSdtpFrame1));
         assert!(order.contains(&SkirmishShellDrawRole::RightPanelMapButtonSdmpbtn));
         assert!(!order.contains(&SkirmishShellDrawRole::ParentBackgroundMnscrns640));
-        assert!(!order.contains(&SkirmishShellDrawRole::ParentBackgroundCoopGameSetup800));
+        assert!(order.contains(&SkirmishShellDrawRole::ParentBackgroundMnscrnlLarge));
     }
 
     #[test]
@@ -1514,7 +1518,7 @@ mod tests {
             order[first_listbox + 5],
             SkirmishShellDrawRole::ChooseMapPreviewStatic
         );
-        assert!(!order.contains(&SkirmishShellDrawRole::ParentBackgroundCoopGameSetup800));
+        assert!(!order.contains(&SkirmishShellDrawRole::ParentBackgroundMnscrnlLarge));
         assert!(!order.contains(&SkirmishShellDrawRole::OwnerDrawButton));
 
         let fallback = choose_map_modal_semantic_draw_order(&layout, false);
