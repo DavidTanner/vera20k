@@ -336,6 +336,9 @@ impl AiIonCannonValues {
 /// Global gameplay constants from `[General]` that affect vision, gap generators, etc.
 #[derive(Debug, Clone)]
 pub struct GeneralRules {
+    /// `[AudioVisual]` thresholds copied to the presentation frame-rate
+    /// controller by Fill_In_Data6850F5 and the radar movie transitions.
+    pub detail: DetailRules,
     /// `[AudioVisual] PoseDir=`, Rules `+0x44`: the constructor's 0
     /// (`0x006656B9`), then ReadInteger (`0x00669268`) stored raw, without
     /// DeployDir's shift. An aircraft with no radio contact and no passengers
@@ -623,7 +626,7 @@ pub struct GeneralRules {
     /// whose on-map units also meet a `PROC` prerequisite
     /// (`sim::production::can_build`).
     pub prerequisite_proc_alternate: Option<String>,
-    /// `PrismSupportModifier=`, `PrismSupportMax=` and `PrismSupportDelay=`.
+    /// `PrismSupportModifier/Max/Delay/Duration=`.
     pub prism_support: PrismSupportRules,
     /// `GDIGateOne=`, `GDIGateTwo=`, `NodGateOne=`, `NodGateTwo=`,
     /// `WallTower=` (Rules `+0x86C..+0x87C`) and the four power plants
@@ -1737,11 +1740,45 @@ fn read_building_identity(
     }
 }
 
+/// Retained `[AudioVisual]` frame-rate thresholds. The RulesClass constructor
+/// writes 15/20/5 at +0/+4/+8 (665665..665672). ReadAudioVisual66920D..669258
+/// reads signed integers in this order with current defaults and no clamps.
+/// Native constructor/full-reader controls: rules_oracle/weapon_laser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DetailRules {
+    pub min_frame_rate_normal: i32,
+    pub min_frame_rate_movie: i32,
+    pub buffer_zone_width: i32,
+}
+
+impl Default for DetailRules {
+    fn default() -> Self {
+        Self {
+            min_frame_rate_normal: 15,
+            min_frame_rate_movie: 20,
+            buffer_zone_width: 5,
+        }
+    }
+}
+
+impl DetailRules {
+    pub(crate) fn read_pass(self, audio_visual: &IniSection) -> Self {
+        Self {
+            min_frame_rate_normal: audio_visual
+                .read_int("DetailMinFrameRateNormal", self.min_frame_rate_normal),
+            min_frame_rate_movie: audio_visual
+                .read_int("DetailMinFrameRateMovie", self.min_frame_rate_movie),
+            buffer_zone_width: audio_visual
+                .read_int("DetailBufferZoneWidth", self.buffer_zone_width),
+        }
+    }
+}
+
 /// The `[General]` Prism support keys, read by `RulesClass::ReadGeneral`
 /// (`0x0066D530`) on every rules pass that has a `[General]` section, each
 /// with its current value as the default (`0x0067114F..0x006711B8`). The
-/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds only the support
-/// laser VERA does not draw, and `PrismSupportHeight=` (`Rules+0x4AC`) has no
+/// beam's `PrismSupportDuration=` (`Rules+0x4A8`) feeds the support laser;
+/// `PrismSupportHeight=` (`Rules+0x4AC`) has no
 /// reader outside the constructor and ReadGeneral.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PrismSupportRules {
@@ -1753,6 +1790,9 @@ pub struct PrismSupportRules {
     pub max: i32,
     /// `PrismSupportDelay=` (`Rules+0x4A4`), a supporter's downtime in frames.
     pub delay: i32,
+    /// `PrismSupportDuration=` (`Rules+0x4A8`), signed support-laser lifetime
+    /// in frames. ReadInt retains the current value; no clamp or byte cast.
+    pub duration: i32,
 }
 
 impl Default for PrismSupportRules {
@@ -1763,6 +1803,7 @@ impl Default for PrismSupportRules {
             modifier: 100,
             max: 8,
             delay: 100,
+            duration: 15,
         }
     }
 }
@@ -1783,6 +1824,7 @@ impl PrismSupportRules {
             modifier,
             max: general.read_int("PrismSupportMax", self.max),
             delay: general.read_int("PrismSupportDelay", self.delay),
+            duration: general.read_int("PrismSupportDuration", self.duration),
         }
     }
 }
@@ -1790,6 +1832,7 @@ impl PrismSupportRules {
 impl Default for GeneralRules {
     fn default() -> Self {
         Self {
+            detail: DetailRules::default(),
             pose_dir: 0,
             deploy_dir: 0,
             scroll_multiplier: 0.07,
@@ -2450,6 +2493,7 @@ impl GeneralRules {
         // ReadGeneral.66B34B/66B372 pass AudioVisual to5283D0 and store raw
         // doubles in Rules+1708/+1700; a missing General section cannot skip them.
         let audio_visual = ini.section_or_empty("AudioVisual");
+        let detail = defaults.detail.read_pass(audio_visual);
         let pose_dir = audio_visual.read_int("PoseDir", defaults.pose_dir);
         let deploy_dir = audio_visual
             .read_int("DeployDir", defaults.deploy_dir >> 5)
@@ -2485,6 +2529,7 @@ impl GeneralRules {
             ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
         let Some(general) = ini.section("General") else {
             return Self {
+                detail,
                 pose_dir,
                 deploy_dir,
                 iq_production,
@@ -2552,6 +2597,7 @@ impl GeneralRules {
                 general.read_double("AmbientChangeStep", 0.2),
             );
         Self {
+            detail,
             pose_dir,
             deploy_dir,
             scroll_multiplier: audio_visual
@@ -3448,6 +3494,7 @@ impl RuleSet {
         rules.general.default_mirage_disguises = processed.default_mirage_disguises().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
+        rules.general.detail = processed.detail();
         rules.general.prism_support = processed.prism_support();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
         rules.general.prerequisite_proc_alternate =
@@ -4277,6 +4324,14 @@ impl RuleSet {
         self.type_handle(id).map(|h| self.object_by_handle(h))
     }
 
+    /// `Type == Rules+0x498` (`[General] PrismType=`, `0x0044B2F8`).
+    pub(crate) fn is_prism_type(&self, object: &ObjectType) -> bool {
+        self.general
+            .prism_type
+            .as_deref()
+            .is_some_and(|prism_type| object.id.eq_ignore_ascii_case(prism_type))
+    }
+
     /// Resolve one name within a specific native TechnoType registry.
     /// Category plus case-insensitive ID is the stable analogue of the
     /// category-distinct pointer retained by native TaskForce entries.
@@ -4522,11 +4577,12 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v14".hash(&mut hasher);
+        b"rules-simulation-config-v15".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
         self.general.gravity.hash(&mut hasher);
+        self.general.detail.hash(&mut hasher);
         self.general.prism_support.hash(&mut hasher);
         self.general.default_mirage_disguises.hash(&mut hasher);
         self.general.infantry_blink_disguise_time.hash(&mut hasher);
@@ -4568,7 +4624,23 @@ impl RuleSet {
             .hash(&mut hasher);
         self.weapons
             .iter()
-            .map(|(id, weapon)| (id.to_ascii_uppercase(), (weapon.speed, &weapon.projectile)))
+            .map(|(id, weapon)| {
+                (
+                    id.to_ascii_uppercase(),
+                    (
+                        (weapon.speed, &weapon.projectile),
+                        (
+                            weapon.is_laser,
+                            weapon.is_house_color,
+                            weapon.is_big_laser,
+                            weapon.laser_duration,
+                            weapon.laser_inner_color,
+                            weapon.laser_outer_color,
+                            weapon.laser_outer_spread,
+                        ),
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>()
             .hash(&mut hasher);
         // Selection order and duplicate references affect the scenario RNG's
@@ -5784,6 +5856,111 @@ fn parse_particle_system_types(
 
 #[cfg(test)]
 mod tests {
+    fn detail_native() -> serde_json::Value {
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/rules_oracle/weapon_laser.json",
+        ))
+        .unwrap()
+    }
+
+    fn detail_state(detail: DetailRules) -> serde_json::Value {
+        serde_json::json!({
+            "min_frame_rate_normal": detail.min_frame_rate_normal,
+            "min_frame_rate_movie": detail.min_frame_rate_movie,
+            "buffer_zone_width": detail.buffer_zone_width,
+        })
+    }
+
+    fn detail_cached_ini(sections: &serde_json::Value) -> IniFile {
+        let mut ini = IniFile::empty();
+        for (name, keys) in sections.as_object().unwrap() {
+            let mut section = IniSection::new(name.clone());
+            for (key, value) in keys.as_object().unwrap() {
+                section.set(key, value.as_str().unwrap());
+            }
+            ini.replace_first_section(section);
+        }
+        ini
+    }
+
+    #[test]
+    fn detail_rules_match_original_constructor_and_signed_readers() {
+        let native = detail_native();
+        assert_eq!(
+            detail_state(DetailRules::default()),
+            native["detail"]["constructor"]
+        );
+        let rows = native["detail"]["scalar_controls"].as_array().unwrap();
+        assert_eq!(rows.len(), 15);
+        for row in rows {
+            let ini = detail_cached_ini(&row["sections"]);
+            let rules = RuleSet::from_ini(&ini).unwrap();
+            assert_eq!(detail_state(rules.general.detail), row["state"], "{row}");
+        }
+    }
+
+    #[test]
+    fn detail_rules_retain_state_through_cold_reads_process_handoffs_and_type_reset() {
+        use crate::rules::native_processing::{
+            NativeRulesRegistryState, RulesLayerStack, process_native_rules_cold_start,
+        };
+
+        let native = detail_native();
+        let rows = native["detail"]["retained_history"].as_array().unwrap();
+        assert_eq!(rows.len(), 10);
+        let mut retained = NativeRulesRegistryState::default();
+        for row in rows {
+            let pass = detail_cached_ini(&row["sections"]);
+            if row["kind"] == "audio_visual" {
+                retained =
+                    process_native_rules_cold_start(retained, &pass, &IniFile::empty(), None)
+                        .unwrap()
+                        .into_registry_state_discarding_events();
+            } else if row["kind"] == "type_reset_and_process" {
+                retained = retained.destructive_reset();
+            }
+            // The empty Process after a cold read exposes retained RulesClass
+            // fields without replaying the authored AudioVisual keys.
+            let pass = if row["kind"] == "audio_visual" {
+                IniFile::empty()
+            } else {
+                pass
+            };
+            let processed = RulesLayerStack::new(pass)
+                .process_with_fixed_art_and_registry_state(&IniFile::empty(), retained)
+                .unwrap();
+            let rules = RuleSet::from_processed_rules(&processed).unwrap();
+            assert_eq!(detail_state(rules.general.detail), row["state"], "{row}");
+            let (_, trace) = processed.into_ini_and_native_type_construction_trace();
+            retained = trace.into_registry_state_discarding_events();
+        }
+    }
+
+    #[test]
+    fn retained_detail_rules_change_configuration_identity() {
+        use crate::rules::native_processing::RulesLayerStack;
+        let mut identities = Vec::new();
+        for initial in [15, 31] {
+            let first = RulesLayerStack::new(IniFile::from_str(&format!(
+                "[AudioVisual]\nDetailMinFrameRateNormal={initial}\n"
+            )))
+            .process()
+            .unwrap();
+            let (_, trace) = first.into_ini_and_native_type_construction_trace();
+            let processed = RulesLayerStack::new(IniFile::empty())
+                .process_with_fixed_art_and_registry_state(
+                    &IniFile::empty(),
+                    trace.into_registry_state_discarding_events(),
+                )
+                .unwrap();
+            let rules = RuleSet::from_processed_rules(&processed).unwrap();
+            assert_eq!(rules.general.detail.min_frame_rate_normal, initial);
+            identities.push((rules.source_ini_hash(), rules.simulation_config_hash()));
+        }
+        assert_eq!(identities[0].0, identities[1].0);
+        assert_ne!(identities[0].1, identities[1].1);
+    }
+
     #[test]
     fn gsi_05_14_voxel_anim_registry_indexes_the_stock_list_order() {
         // `[VoxelAnims]` is a numbered registry like `[Particles]`; ids are

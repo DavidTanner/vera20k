@@ -83,6 +83,20 @@ every retained object toward the shared 100000-sample budget and preserves the
 under ASCII case folding. Absent options (or only `observe_projectiles: false`)
 add no frame fields; v1 rejects both options.
 
+Optional v2 `observe_lasers: true` adds a `lasers` snapshot at L0 and each
+committed frame. L0 reads initial state; later snapshots follow the app's
+ordered simulation handoff and FPS sample, before that frame's draw.
+`live` reads retained lasers in birth
+order: copied source/target leptons, birth frame, Z adjustment, width, support
+flag, House-color flag, resolved RGB, duration, age and timer. `detail` reads the
+process FPS counter, selected minimum/buffer, latch and sampling timer; it never
+calls the mutative minimum-frame-rate query. Each observed actor also receives
+`prism`: `null` for non-buildings, otherwise the support count, pending mode and
+payload/countdown, and rearm timer. These are owner snapshots, not inferred
+firing events or proof that a beam reached the GPU. One detail row and each live
+beam count toward the shared sample budget. False/absent adds no fields; v1
+rejects the option, and present null/nonboolean values are invalid.
+
 Optional v2 `observe_audio` records device-mixer queue pulls from requested ordinary
 SFX Players. For example:
 

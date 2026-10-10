@@ -1,10 +1,11 @@
-//! LineTrail destination edits on TerrainDrawRenderer's existing snapshot/Z.
+//! LaserDraw and LineTrail destination edits on TerrainDrawRenderer's existing snapshot/Z.
 //! Different pixels are independent; every repeated operation for one pixel
 //! retains the original registry/segment/raster order. One snapshot and resolve
 //! per bounded chunk avoid a render pass per line or pixel.
 
 use super::TerrainDrawRenderer;
-use crate::render::line_trail::{LineTrailSegment, LineTrailViewport, rasterize};
+use crate::render::line_trail::{LineTrailSegment, rasterize};
+use crate::render::surface_line::SurfaceLineViewport;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -13,6 +14,7 @@ struct Operation {
     strength: i32,
     rgb: u32,
     alpha: u32,
+    mode: u32,
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -30,7 +32,7 @@ struct Prepared {
     scissor: [u32; 4],
 }
 
-pub(super) struct LineTrailGpu {
+pub(super) struct SurfaceLineGpu {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     batches: Vec<Prepared>,
@@ -42,14 +44,14 @@ pub(super) struct LineTrailGpu {
     instances: Vec<PixelInstance>,
 }
 
-impl LineTrailGpu {
+impl SurfaceLineGpu {
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         snapshot: &wgpu::BindGroupLayout,
     ) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("LineTrail ordered pixel operations"),
+            label: Some("Surface line ordered pixel operations"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
@@ -62,20 +64,20 @@ impl LineTrailGpu {
             }],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Original LineTrail RGB565 blend"),
+            label: Some("Original surface line RGB565 operations"),
             source: wgpu::ShaderSource::Wgsl(
-                crate::render::tactical_shader::source(include_str!("terrain_line_trail.wgsl"))
+                crate::render::tactical_shader::source(include_str!("terrain_surface_lines.wgsl"))
                     .into(),
             ),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("LineTrail shared snapshot layout"),
+            label: Some("Surface line shared snapshot layout"),
             bind_group_layouts: &[snapshot, &layout],
             push_constant_ranges: &[],
         });
         let attrs = wgpu::vertex_attr_array![0=>Float32x4,1=>Uint32x2];
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("LineTrail ordered destination resolution"),
+            label: Some("Surface line ordered destination resolution"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -165,19 +167,19 @@ impl LineTrailGpu {
         }) {
             let op_capacity = op_capacity.min(limit);
             let operations = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("LineTrail ordered operations"),
+                label: Some("Surface line ordered operations"),
                 size: (op_capacity * std::mem::size_of::<Operation>()) as u64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             let instances = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("LineTrail touched pixels"),
+                label: Some("Surface line touched pixels"),
                 size: (instance_capacity * std::mem::size_of::<PixelInstance>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             let binding = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("LineTrail pixel operation binding"),
+                label: Some("Surface line pixel operation binding"),
                 layout: &self.layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
@@ -219,16 +221,18 @@ impl LineTrailGpu {
 impl TerrainDrawRenderer {
     /// Prepare only actual raster operations; empty frames allocate/upload nothing.
     /// Native exactness is zoom1. Other zooms expand the same logical pixels.
-    pub(crate) fn prepare_line_trails(
+    pub(crate) fn prepare_surface_lines(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        lasers: impl IntoIterator<Item = crate::render::laser::LaserDraw>,
         segments: &[LineTrailSegment],
-        viewport: LineTrailViewport,
+        viewport: SurfaceLineViewport,
+        mut high_detail: impl FnMut() -> bool,
         mut alpha: impl FnMut([i32; 2]) -> u16,
     ) {
-        self.line_trails.active = 0;
-        self.line_trails.work.clear();
+        self.surface_lines.active = 0;
+        self.surface_lines.work.clear();
         let Some(targets) = &self.targets else {
             return;
         };
@@ -238,11 +242,63 @@ impl TerrainDrawRenderer {
         .min(1_048_576);
         #[cfg(test)]
         let limit = self
-            .line_trails
+            .surface_lines
             .test_operation_limit
             .unwrap_or(limit)
             .clamp(1, limit);
         assert!(limit > 0);
+        // Tactical6D4669 draws LaserDraw before LineTrail6D4673. They read
+        // the same immutable Z and completed destination, so one ordered
+        // operation stream preserves both stages without another snapshot.
+        for laser in lasers {
+            if laser.duration <= 0 {
+                continue;
+            }
+            laser.lines(viewport.camera, high_detail(), |line| {
+                let (rgb, mode) = match line.blend {
+                    crate::render::laser::LaserBlend::Add(rgb) => (
+                        u32::from(rgb[0]) | (u32::from(rgb[1]) << 8) | (u32::from(rgb[2]) << 16),
+                        1,
+                    ),
+                    crate::render::laser::LaserBlend::Replace(word) => (u32::from(word), 2),
+                };
+                crate::render::surface_line::rasterize_z_clipped(
+                    line.from,
+                    line.to,
+                    line.z_adjust,
+                    viewport.clip,
+                    viewport.z_origin_y,
+                    |pixel| {
+                        // Original additive4BDF00 advances the A pointer
+                        // only on Y changes (4BE6FA), never on X (4BE769).
+                        // Packed4BFD30 advances both axes like LineTrail.
+                        let sample = if mode == 1 {
+                            [pixel.clipped_start_x, pixel.point[1]]
+                        } else {
+                            pixel.point
+                        };
+                        let a = alpha(sample);
+                        if a == 0 {
+                            return;
+                        }
+                        self.surface_lines.work.push((
+                            pixel.point,
+                            Operation {
+                                z: u32::from(pixel.z),
+                                strength: 0,
+                                rgb,
+                                alpha: u32::from(a),
+                                mode,
+                            },
+                        ));
+                        if self.surface_lines.work.len() == limit {
+                            self.surface_lines
+                                .upload(device, queue, viewport.zoom, size);
+                        }
+                    },
+                );
+            });
+        }
         for &segment in segments {
             let projected = segment.project(viewport.camera);
             let rgb = u32::from(segment.color[0])
@@ -253,27 +309,30 @@ impl TerrainDrawRenderer {
                 if a == 0 {
                     return;
                 }
-                self.line_trails.work.push((
+                self.surface_lines.work.push((
                     pixel.point,
                     Operation {
                         z: u32::from(pixel.z),
                         strength: segment.strength,
                         rgb,
                         alpha: u32::from(a),
+                        mode: 0,
                     },
                 ));
-                if self.line_trails.work.len() == limit {
-                    self.line_trails.upload(device, queue, viewport.zoom, size);
+                if self.surface_lines.work.len() == limit {
+                    self.surface_lines
+                        .upload(device, queue, viewport.zoom, size);
                 }
             });
         }
-        self.line_trails.upload(device, queue, viewport.zoom, size);
+        self.surface_lines
+            .upload(device, queue, viewport.zoom, size);
     }
 
     /// Draw after the app's global shroud multiply: native lines consume an
     /// already-shaded destination and perform their own ABuffer multiplication.
     /// Reuses the SAME snapshot and live depth as ordinary tactical drawing.
-    pub(crate) fn draw_line_trails(
+    pub(crate) fn draw_surface_lines(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         color: &wgpu::TextureView,
@@ -281,7 +340,7 @@ impl TerrainDrawRenderer {
         let Some(targets) = &self.targets else {
             return;
         };
-        for batch in &self.line_trails.batches[..self.line_trails.active] {
+        for batch in &self.surface_lines.batches[..self.surface_lines.active] {
             let [x, y, w, h] = batch.scissor;
             if w == 0 || h == 0 {
                 continue;
@@ -299,7 +358,7 @@ impl TerrainDrawRenderer {
             };
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("LineTrail shared color/Z snapshot"),
+                    label: Some("Surface line shared color/Z snapshot"),
                     color_attachments: &[attachment(&targets.words), attachment(&targets.depth)],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
@@ -312,14 +371,14 @@ impl TerrainDrawRenderer {
             }
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("LineTrail original ordered blends"),
+                    label: Some("Surface line original ordered blends"),
                     color_attachments: &[attachment(color)],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 });
                 pass.set_scissor_rect(x, y, w, h);
-                pass.set_pipeline(&self.line_trails.pipeline);
+                pass.set_pipeline(&self.surface_lines.pipeline);
                 pass.set_bind_group(0, &targets.snapshot, &[]);
                 pass.set_bind_group(1, &batch.binding, &[]);
                 pass.set_vertex_buffer(0, batch.instances.slice(..));
@@ -333,3 +392,7 @@ impl TerrainDrawRenderer {
 #[cfg(test)]
 #[path = "line_trail_gpu_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "laser_tests.rs"]
+mod laser_tests;

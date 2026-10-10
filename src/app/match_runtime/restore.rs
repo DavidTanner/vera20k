@@ -68,6 +68,15 @@ pub(crate) fn commit_prepared_load(
         .clear();
     crate::app::loading::transitions::sync_in_game_options_speed_from_sim(state);
     state.match_state.match_presentation.combat_lights.clear();
+    state.match_state.match_presentation.lasers.clear_on_load();
+    if let Some(runtime) = state.match_state.sim_runtime.as_ref() {
+        state
+            .match_state
+            .match_presentation
+            .detail
+            .borrow_mut()
+            .configure_normal(&runtime.resources.rules.general.detail);
+    }
     state
         .match_state
         .match_presentation

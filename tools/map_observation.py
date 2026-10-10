@@ -73,7 +73,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types',
                               'observe_projectiles', 'observe_anim_types', 'observe_action_line_inputs',
-                              'observe_disguise_inputs',
+                              'observe_disguise_inputs', 'observe_lasers',
                               'observe_audio', 'allow_load_segments',
                               'camera_cell', 'cursor_position', 'terrain_cells',
                               'observe_super_weapons', 'observe_sidebar_steps'))
@@ -423,6 +423,8 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         raise ValidationError('profile.observe_action_line_inputs must be a boolean')
     if 'observe_disguise_inputs' in profile and type(profile['observe_disguise_inputs']) is not bool:
         raise ValidationError('profile.observe_disguise_inputs must be a boolean')
+    if 'observe_lasers' in profile and type(profile['observe_lasers']) is not bool:
+        raise ValidationError('profile.observe_lasers must be a boolean')
     if 'observe_super_weapons' in profile and type(profile['observe_super_weapons']) is not bool:
         raise ValidationError('profile.observe_super_weapons must be a boolean')
     if 'cursor_position' in profile:
@@ -817,9 +819,70 @@ def _disguise_inputs(value: Any, category: str, label: str) -> None:
     _bounded_int(draw['native_selector_bits'], f'{label}.draw.native_selector_bits', 0, 14)
 
 
+def _prism(value: Any, category: str, label: str) -> None:
+    if category != 'Structure':
+        require_value(value, None, label)
+        return
+    row = require_object(value, label)
+    require_exact_keys(row, ('support_count', 'pending', 'rearm'), label)
+    _bounded_int(row['support_count'], f'{label}.support_count', -(1 << 31), (1 << 31) - 1)
+    rearm = require_object(row['rearm'], f'{label}.rearm')
+    require_exact_keys(rearm, ('start', 'duration', 'remaining'), f'{label}.rearm')
+    for key in rearm:
+        _bounded_int(rearm[key], f'{label}.rearm.{key}', -(1 << 31), (1 << 31) - 1)
+    if row['pending'] is not None:
+        pending = require_object(row['pending'], f'{label}.pending')
+        require_exact_keys(pending, ('mode', 'payload', 'remaining'), f'{label}.pending')
+        mode = _bounded_int(pending['mode'], f'{label}.pending.mode', 1, 2)
+        _bounded_int(pending['remaining'], f'{label}.pending.remaining', -(1 << 31), (1 << 31) - 1)
+        payload = require_object(pending['payload'], f'{label}.pending.payload')
+        require_exact_keys(payload, ('weapon',) if mode == 1 else ('to',), f'{label}.pending.payload')
+        if mode == 1:
+            if payload['weapon'] not in ('Primary', 'Secondary'):
+                raise ValidationError(f'{label}.pending.payload.weapon is unknown')
+        else:
+            _coordinate(payload['to'], f'{label}.pending.payload.to', leptons=True)
+
+
+def _lasers(value: Any, label: str) -> int:
+    snapshot = require_object(value, label)
+    require_exact_keys(snapshot, ('detail', 'live'), label)
+    detail = require_object(snapshot['detail'], f'{label}.detail')
+    require_exact_keys(detail, ('frame_rate', 'minimum', 'buffer', 'reduced', 'logic_visits',
+                                'sample_start', 'sample_duration', 'initialized'), f'{label}.detail')
+    for key in ('frame_rate', 'minimum', 'buffer', 'logic_visits'):
+        _bounded_int(detail[key], f'{label}.detail.{key}', 0, (1 << 32) - 1)
+    for key in ('sample_start', 'sample_duration'):
+        _bounded_int(detail[key], f'{label}.detail.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('reduced', 'initialized'):
+        if type(detail[key]) is not bool:
+            raise ValidationError(f'{label}.detail.{key} must be a boolean')
+    live = require_array(snapshot['live'], f'{label}.live')
+    for index, value in enumerate(live):
+        beam_label = f'{label}.live[{index}]'
+        beam = require_object(value, beam_label)
+        require_exact_keys(beam, ('birth_frame', 'from', 'to', 'z_adjust', 'width', 'supported',
+                                 'house_color', 'rgb', 'duration', 'age', 'timer_start',
+                                 'timer_duration'), beam_label)
+        for key in ('birth_frame', 'z_adjust', 'width', 'duration', 'age', 'timer_start', 'timer_duration'):
+            _bounded_int(beam[key], f'{beam_label}.{key}', -(1 << 31), (1 << 31) - 1)
+        for key in ('from', 'to'):
+            _coordinate(beam[key], f'{beam_label}.{key}', leptons=True)
+        for key in ('supported', 'house_color'):
+            if type(beam[key]) is not bool:
+                raise ValidationError(f'{beam_label}.{key} must be a boolean')
+        rgb = require_array(beam['rgb'], f'{beam_label}.rgb')
+        if len(rgb) != 3:
+            raise ValidationError(f'{beam_label}.rgb must contain three channels')
+        for channel, value in enumerate(rgb):
+            _bounded_int(value, f'{beam_label}.rgb[{channel}]', 0, 255)
+    return 1 + len(live)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
            docking_state: bool = True, walk_state: bool = True,
-           action_line_inputs: bool = False, disguise_inputs: bool = False) -> tuple[int, str]:
+           action_line_inputs: bool = False, disguise_inputs: bool = False,
+           lasers: bool = False) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -831,6 +894,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('retask',) if 'retask' in actor else ()),
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('disguise_inputs',) if disguise_inputs else ()),
+                              *(('prism',) if lasers else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -843,6 +907,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         _action_line_inputs(actor['action_line_inputs'], category, f'{label}.action_line_inputs')
     if disguise_inputs:
         _disguise_inputs(actor['disguise_inputs'], category, f'{label}.disguise_inputs')
+    if lasers:
+        _prism(actor['prism'], category, f'{label}.prism')
     if docking_state:
         _docking_state(actor, label)
     if building_state:
@@ -1646,6 +1712,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                                  'total_simulation_ms', 'actors', 'missing_actor_ids', 'terrain',
                                  *(('input',) if gesture_input else ()),
                                  *(('effects',) if effects else ()),
+                                 *(('lasers',) if profile.get('observe_lasers', False) else ()),
                                  *(('audio_state',) if 'observe_audio' in profile else ()),
                                  *(('houses',) if docking_state else ())), row_label)
         tick, binary_frame = _segment_clock(step, segments)
@@ -1668,7 +1735,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
             identity, owner = _actor(value, actor_label, building_state=building_state,
                                      docking_state=docking_state, walk_state=walk_state,
                                      action_line_inputs=profile.get('observe_action_line_inputs', False),
-                                     disguise_inputs=profile.get('observe_disguise_inputs', False))
+                                     disguise_inputs=profile.get('observe_disguise_inputs', False),
+                                     lasers=profile.get('observe_lasers', False))
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
@@ -1693,6 +1761,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
         sample_count += len(actors) + len(missing) + len(terrain)
         if effects:
             sample_count += _effects(row['effects'], profile, f'{row_label}.effects')
+        if profile.get('observe_lasers', False):
+            sample_count += _lasers(row['lasers'], f'{row_label}.lasers')
         if gesture_input:
             sample_count += _input_observation(row['input'], f'{row_label}.input',
                                                 local_input=_observes_local_input(profile))

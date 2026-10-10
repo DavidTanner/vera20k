@@ -754,6 +754,16 @@ fn advance_in_game_runtime_mode(
         crate::app::input::camera::commit_camera_scroll(state, request);
     }
 
+    // MainThrottle55E33B publishes Logic visits per60 wall-clock buckets,
+    // including the path where the pacer admitted no simulation frame.
+    let wall_ms = state.radar_presentation_ms(Instant::now());
+    state
+        .match_state
+        .match_presentation
+        .detail
+        .borrow_mut()
+        .throttle_tail(wall_ms);
+
     // Ordered native source/global operations were applied with the frame
     // output. Reconcile the detail option and any explicit tool mutations.
     refresh_cell_lighting(state);
@@ -1013,6 +1023,48 @@ fn advance_one_simulation_frame(
         // direct attachment or retained audio handle.
         for output in drained_lifecycle_outputs {
             match output {
+                LifecycleOutput::LogicVisit => {
+                    state
+                        .match_state
+                        .match_presentation
+                        .detail
+                        .borrow_mut()
+                        .record_logic_visit();
+                }
+                LifecycleOutput::LaserUpdate { frame } => {
+                    state.match_state.match_presentation.lasers.update(frame);
+                }
+                LifecycleOutput::LaserCreated(birth) => {
+                    let runtime = state.match_state.sim_runtime.as_ref();
+                    let presentation = &mut state.match_state.match_presentation;
+                    let colors = &presentation.house_color_map;
+                    presentation.lasers.create(birth, |owner| {
+                        let Some(runtime) = runtime else {
+                            return [0; 3];
+                        };
+                        let name = runtime.simulation.interner.resolve(owner);
+                        // CreateHouses initializes the two literal special
+                        // houses without ComputeRemap; their +56FC stays0.
+                        if runtime.simulation.session.game_mode_nonzero
+                            && (name.eq_ignore_ascii_case("Neutral")
+                                || name.eq_ignore_ascii_case("Special"))
+                        {
+                            return [0; 3];
+                        }
+                        let index = colors.get(name).copied().or_else(|| {
+                            colors
+                                .iter()
+                                .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+                                .map(|(_, &color)| color)
+                        });
+                        index.map_or([0; 3], |index| {
+                            crate::render::palette_light::house_laser_rgb(
+                                &runtime.resources.rules.house_color_ramps,
+                                index,
+                            )
+                        })
+                    });
+                }
                 LifecycleOutput::LineTrailConstructed { stable_id, style } => {
                     let presentation = &mut state.match_state.match_presentation;
                     presentation.line_trails.attach(

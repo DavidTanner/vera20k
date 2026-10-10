@@ -14,7 +14,7 @@ use crate::rules::object_type::ObjectCategory;
 use crate::rules::powerups::{PowerupTable, PowerupsAccumulator};
 use crate::rules::prerequisite::{Prerequisite, PrerequisiteGroup, parse_prerequisites};
 use crate::rules::projectile_type::ProjectileArtState;
-use crate::rules::ruleset::{GeneralBuildingTypes, PrismSupportRules};
+use crate::rules::ruleset::{DetailRules, GeneralBuildingTypes, PrismSupportRules};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
@@ -497,6 +497,12 @@ impl ProcessedRulesLayers {
             .rules_gravity
     }
 
+    pub(crate) fn detail(&self) -> DetailRules {
+        self.native_type_construction_trace
+            .registry_state()
+            .rules_detail
+    }
+
     pub(crate) fn prism_support(&self) -> PrismSupportRules {
         self.native_type_construction_trace
             .registry_state()
@@ -753,11 +759,12 @@ impl NativeTypeConstructionTrace {
 /// been read so far. The receipt is deliberately move-only: preview, Start, and
 /// fresh Full_Init must hand off one authority instead of recounting a merged
 /// INI. Tiberium slots are included even though their constructors spend no ID.
-/// RulesClass Gravity shares this process lifetime, but survives Type resets.
+/// RulesClass scalars share this process lifetime and survive Type resets.
 #[derive(Debug)]
 pub(crate) struct NativeRulesRegistryState {
     families: HashMap<RulesTypeFamily, Vec<ProcessedType>>,
     tiberiums: Vec<ProcessedType>,
+    rules_detail: DetailRules,
     rules_gravity: i32,
     rules_missile_rot_var: f64,
     rules_safety_altitude: i32,
@@ -777,6 +784,7 @@ impl Default for NativeRulesRegistryState {
         Self {
             families: HashMap::new(),
             tiberiums: Vec::new(),
+            rules_detail: DetailRules::default(),
             // RulesClass665650 initializes +16B8 before any AudioVisual read.
             rules_gravity: 3,
             rules_missile_rot_var: 0.25,
@@ -813,7 +821,8 @@ impl NativeRulesRegistryState {
 
     /// Consume the pre-reset registry owner at Full_Init's destructive Rules
     /// reset and return an owner with empty Type registries. RulesClass itself
-    /// survives 6686C0, so its Gravity is retained for the first postpass.
+    /// survives 6686C0, retaining Gravity, detail thresholds and its other
+    /// scalar values for the first postpass.
     ///
     /// Original reset retires every referenced Type: LightningWarhead detaches
     /// to null, while these Rules Anim references/list retain freed addresses.
@@ -826,6 +835,7 @@ impl NativeRulesRegistryState {
     /// cannot be rewound by this operation.
     pub(crate) fn destructive_reset(self) -> Self {
         Self {
+            rules_detail: self.rules_detail,
             rules_gravity: self.rules_gravity,
             rules_missile_rot_var: self.rules_missile_rot_var,
             rules_safety_altitude: self.rules_safety_altitude,
@@ -1020,6 +1030,7 @@ struct RulesPassProcessor {
     native_type_construction_events: Vec<NativeTypeConstructionEvent>,
     tiberiums: Vec<ProcessedType>,
     colors: Vec<(String, String)>,
+    rules_detail: DetailRules,
     rules_gravity: i32,
     rules_missile_rot_var: f64,
     rules_safety_altitude: i32,
@@ -1044,6 +1055,7 @@ impl Default for RulesPassProcessor {
             native_type_construction_events: Vec::new(),
             tiberiums: Vec::new(),
             colors: Vec::new(),
+            rules_detail: DetailRules::default(),
             rules_gravity: NativeRulesRegistryState::default().rules_gravity,
             rules_missile_rot_var: NativeRulesRegistryState::default().rules_missile_rot_var,
             rules_safety_altitude: NativeRulesRegistryState::default().rules_safety_altitude,
@@ -1064,6 +1076,7 @@ impl RulesPassProcessor {
         Self {
             families: registry_state.families,
             tiberiums: registry_state.tiberiums,
+            rules_detail: registry_state.rules_detail,
             rules_gravity: registry_state.rules_gravity,
             rules_missile_rot_var: registry_state.rules_missile_rot_var,
             rules_safety_altitude: registry_state.rules_safety_altitude,
@@ -2100,6 +2113,9 @@ impl RulesPassProcessor {
         let Some(section) = pass.section("AudioVisual") else {
             return;
         };
+        // Original 66920D..669258 reads these first, including the cold
+        // startup's same AudioVisual call before any complete Process.
+        self.rules_detail = self.rules_detail.read_pass(section);
         // Full AudioVisual6691E0's 66B3C4 read uses the retained signed dword
         // default. Cold startup52D132 calls the same reader before Process.
         self.rules_gravity = section.read_int("Gravity", self.rules_gravity);
@@ -2260,6 +2276,7 @@ impl RulesPassProcessor {
                 registry_state: NativeRulesRegistryState {
                     families: self.families,
                     tiberiums: self.tiberiums,
+                    rules_detail: self.rules_detail,
                     rules_gravity: self.rules_gravity,
                     rules_missile_rot_var: self.rules_missile_rot_var,
                     rules_safety_altitude: self.rules_safety_altitude,

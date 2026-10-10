@@ -50,6 +50,7 @@ class MapObservationTests(unittest.TestCase):
                            for name, identity in [('GACNST', 40), ('GAPOWR', 41), ('GAPILE', 42)]]
         self.terrain_frames = {}
         self.effect_frames = {}
+        self.laser_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
         self.keyboard_bindings = []
@@ -131,6 +132,8 @@ class MapObservationTests(unittest.TestCase):
                 if 'observe_anim_types' in self.profile:
                     effects['animations'] = []
                 frames[-1]['effects'] = deepcopy(self.effect_frames.get(step, effects))
+            if self.profile.get('observe_lasers', False):
+                frames[-1]['lasers'] = deepcopy(self.laser_frames.get(step, self.laser_snapshot()))
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
             'rule_types': deepcopy(self.rule_types),
@@ -1351,6 +1354,84 @@ class MapObservationTests(unittest.TestCase):
         for value in (None, 0, 1, 'true', [], {}):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 observation._profile_extensions(dict(self.profile, observe_disguise_inputs=value))
+
+    @staticmethod
+    def laser_snapshot():
+        # Protocol fixture only: native lifetime/FPS results live in building_prism.json.
+        return {'detail': {'frame_rate': 44, 'minimum': 15, 'buffer': 5, 'reduced': False,
+                           'logic_visits': 0, 'sample_start': 60, 'sample_duration': 60,
+                           'initialized': True}, 'live': []}
+
+    @staticmethod
+    def laser_beam():
+        return {'birth_frame': 37, 'from': [9694, 12254, 378], 'to': [11776, 12544, 0],
+                'z_adjust': -58, 'width': 5, 'supported': True, 'house_color': True,
+                'rgb': [0, 0, 255], 'duration': 15, 'age': 1,
+                'timer_start': 38, 'timer_duration': 1}
+
+    def test_lasers_round_trip_live_beams_detail_and_prism_with_explicit_opt_in(self):
+        self.scripted_profile()
+        self.profile['observe_lasers'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.actor_frames = {step: [self.actor(category='Structure')] for step in range(4)}
+        for step, actors in self.actor_frames.items():
+            actors[0]['prism'] = {
+                'support_count': -1,
+                'pending': None if step == 0 else {
+                    'mode': 1 if step == 1 else 2,
+                    'payload': {'weapon': 'Primary'} if step == 1 else {'to': [-1, 2, 378]},
+                    'remaining': -3},
+                'rearm': {'start': -1, 'duration': 45, 'remaining': 45}}
+        self.laser_frames[2] = self.laser_snapshot()
+        self.laser_frames[2]['live'] = [self.laser_beam()]
+        self.laser_frames[2]['detail']['minimum'] = (1 << 32) - 1
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frames = report['capture']['observations']['frames']
+        self.assertEqual(frames[2]['lasers'], self.laser_frames[2])
+        self.assertEqual(frames[2]['actors'][0]['prism'], self.actor_frames[2][0]['prism'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        with self.assertRaises(ValidationError):
+            observation._actor(self.actor_frames[2][0], 'actor')
+        self.assertEqual(observation._lasers(self.laser_frames[2], 'lasers'), 2)
+
+    def test_lasers_profile_rejects_legacy_presence_and_wrong_types(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_lasers=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_lasers=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_lasers=value))
+        actor = dict(self.actor(), prism=None)
+        observation._actor(actor, 'actor', lasers=True)
+        actor['prism'] = {}
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor', lasers=True)
+
+    def test_lasers_reject_malformed_owner_values_and_charge_the_sample_budget(self):
+        for key, value in (('minimum', -1), ('frame_rate', 1 << 32), ('reduced', 1),
+                           ('sample_start', 1 << 31)):
+            row = self.laser_snapshot()
+            row['detail'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                observation._lasers(row, 'lasers')
+        for key, value in (('from', [1, 2]), ('duration', True), ('rgb', [1, 2, 256]),
+                           ('supported', 1), ('age', 1 << 31)):
+            row = self.laser_snapshot()
+            row['live'] = [dict(self.laser_beam(), **{key: value})]
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                observation._lasers(row, 'lasers')
+        self.profile.update(schema_version=observation.PROFILE_V2, observe_lasers=True, ticks=0)
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.laser_frames[0] = self.laser_snapshot()
+        self.laser_frames[0]['live'] = [self.laser_beam(), self.laser_beam()]
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 2):
+            report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('sample budget' in error for error in report['errors']), report['errors'])
 
     def test_action_line_inputs_require_exact_presence_and_keep_structure_null(self):
         actor = self.actor()
