@@ -11,8 +11,13 @@ use crate::skirmish_launch::{LaunchStartPosition, PreFillHouseRoster, SkirmishLa
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+#[path = "map_observation/command_bindings.rs"]
+mod command_bindings;
+use command_bindings::{MapScheduledCommand, production_type_names};
+
 const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
 const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
+const PROFILE_V3: &str = "vera20k.map-observation-profile.v3";
 const CHILD_SCHEMA: &str = "vera20k.map-observation.v7";
 const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v4";
 const MAX_COMMANDS: usize = 1024;
@@ -63,15 +68,6 @@ impl MapAudioProfile {
         );
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct MapScheduledCommand {
-    issue_after_step: u32,
-    owner: String,
-    #[serde(deserialize_with = "deserialize_command")]
-    payload: Command,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -228,24 +224,6 @@ fn sidebar_tab_name(tab: crate::ui::sidebar::SidebarTab) -> &'static str {
         SidebarTab::Infantry => "infantry",
         SidebarTab::Vehicle => "vehicle",
     }
-}
-
-// Reuse Command's one serde schema, but reject fields that its permissive
-// enum deserializer would otherwise discard. No second command parser here.
-fn deserialize_command<'de, D>(deserializer: D) -> std::result::Result<Command, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-    let command: Command =
-        serde_json::from_value(value.clone()).map_err(serde::de::Error::custom)?;
-    let canonical = serde_json::to_value(&command).map_err(serde::de::Error::custom)?;
-    if value != canonical {
-        return Err(serde::de::Error::custom(
-            "command payload has unrecognized or noncanonical fields",
-        ));
-    }
-    Ok(command)
 }
 
 /// The observed House's Supers in interned-id order: the id a profile's
@@ -421,7 +399,10 @@ impl MapCaptureProfile {
 
     fn validate(&self) -> Result<()> {
         ensure!(
-            matches!(self.schema_version.as_str(), PROFILE_V1 | PROFILE_V2),
+            matches!(
+                self.schema_version.as_str(),
+                PROFILE_V1 | PROFILE_V2 | PROFILE_V3
+            ),
             "unsupported map observation schema"
         );
         if self.schema_version == PROFILE_V1 {
@@ -469,7 +450,18 @@ impl MapCaptureProfile {
             "too many scheduled commands"
         );
         let mut previous = 0;
+        let mut symbolic_count = 0;
         for command in self.commands() {
+            let count = command.symbolic_count();
+            ensure!(
+                count == 0 || self.schema_version == PROFILE_V3,
+                "symbolic commands require map observation profile v3"
+            );
+            symbolic_count += count;
+            ensure!(
+                symbolic_count <= MAX_COMMANDS,
+                "profile exceeds 1024 symbolic command bindings"
+            );
             ensure!(
                 command.issue_after_step >= previous && command.issue_after_step < self.ticks,
                 "commands must be ordered by issue_after_step before the final step"
@@ -827,6 +819,8 @@ struct MapCommandReceipt {
     envelope_execute_tick: u64,
     owner: String,
     payload: Command,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bindings: Option<std::collections::BTreeMap<String, Value>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2119,12 +2113,7 @@ impl TacticalCaptureSession {
             // an interner entry or translating a production command.
             let rules = state.rules().context("loaded rules absent")?;
             let mut rule_types = Vec::new();
-            for (category, names) in [
-                ("Infantry", &rules.infantry_ids),
-                ("Unit", &rules.vehicle_ids),
-                ("Aircraft", &rules.aircraft_ids),
-                ("Structure", &rules.building_ids),
-            ] {
+            for (category, names) in production_type_names(rules) {
                 for name in names {
                     let handle = sim
                         .interner
@@ -2319,13 +2308,32 @@ impl TacticalCaptureSession {
                 issued_tick == self.map_state()?.expected_clock(completed_steps, true).0,
                 "command issue is outside exact-step boundary"
             );
+            // Resolve against the current owner state at this issue boundary,
+            // including objects produced by earlier ordinary commands.
+            let sim = &state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .context("command simulation absent")?
+                .simulation;
+            let rules = state.rules().context("command rules absent")?;
+            let (payload, bindings) = command.resolve(sim, rules)?;
+            let sample_count = self
+                .map_state()?
+                .sample_count
+                .checked_add(bindings.as_ref().map_or(0, std::collections::BTreeMap::len))
+                .context("command binding sample count overflow")?;
+            ensure!(
+                sample_count <= MAX_OBSERVATION_SAMPLES,
+                "command bindings exceed observation sample budget"
+            );
             // The sole ordinary input producer owns envelope encoding, stamping
             // and queuing. This diagnostic does not add the input-delay setting
             // or bypass ordinary House/actor admission in the next frame.
             let execute_tick = crate::app::input::commands::try_schedule_command(
                 state,
                 &command.owner,
-                command.payload.clone(),
+                payload.clone(),
             )
             .context("ordinary command producer refused scheduled input")?;
             ensure!(
@@ -2333,13 +2341,15 @@ impl TacticalCaptureSession {
                 "ordinary producer changed the issue stamp"
             );
             let map = self.map_state_mut()?;
+            map.sample_count = sample_count;
             map.commands.push(MapCommandReceipt {
                 ordinal: map.commands.len(),
                 issue_after_step: command.issue_after_step,
                 issued_simulation_tick: issued_tick,
                 envelope_execute_tick: execute_tick,
                 owner: command.owner,
-                payload: command.payload,
+                payload,
+                bindings,
             });
         }
     }
@@ -3862,6 +3872,44 @@ mod tests {
     }
 
     #[test]
+    fn symbolic_commands_require_v3_preserve_source_and_bound_total_bindings() {
+        let mut value = serde_json::to_value(example()).unwrap();
+        value["schema_version"] = json!(PROFILE_V3);
+        value["ticks"] = json!(3);
+        value["commands"] = json!([
+            {"issue_after_step": 0, "owner": "Computer1",
+                "payload": {"QueueProduction": {"type_id": "MTNK"}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"Stop": {"entity_id": {
+                    "type_id": "MTNK", "owner": "Computer1", "cell": [10, 11]}}}}
+        ]);
+        let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+        profile.validate().unwrap();
+        assert_eq!(serde_json::to_value(profile).unwrap(), value);
+        for version in [PROFILE_V1, PROFILE_V2] {
+            value["schema_version"] = json!(version);
+            let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+            assert!(profile.validate().is_err());
+        }
+        value["schema_version"] = json!(PROFILE_V3);
+        let selector = json!({"type_id": "MTNK", "owner": "Computer1"});
+        let command = json!({"issue_after_step": 0, "owner": "Computer1",
+            "payload": {"Select": {"entity_ids": vec![selector; 256], "additive": false}}});
+        value["commands"] = json!(vec![command.clone(); 4]);
+        serde_json::from_value::<MapCaptureProfile>(value.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        value["commands"] = json!(vec![command; 5]);
+        assert!(
+            serde_json::from_value::<MapCaptureProfile>(value)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
     fn cursor_position_requires_integer_screen_coordinates_away_from_the_outermost_pixel() {
         let mut profile = example();
         profile.schema_version = PROFILE_V2.to_owned();
@@ -4506,11 +4554,13 @@ mod tests {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
                 payload: Command::Stop { entity_id: 1 },
+                symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
                 payload: Command::DeployMcv { entity_id: 2 },
+                symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 2,
@@ -4520,6 +4570,7 @@ mod tests {
                     target_rx: 87,
                     target_ry: 53,
                 },
+                symbolic: None,
             },
         ]);
         profile.validate().unwrap();
@@ -4535,6 +4586,7 @@ mod tests {
                 envelope_execute_tick: 0,
                 owner: command.owner,
                 payload: command.payload,
+                bindings: None,
             });
         }
         assert!(map.pending_command(&profile, 1).unwrap().is_none());
@@ -4580,7 +4632,10 @@ mod tests {
         for invalid_id in [json!("GAPOWR"), json!(true), json!(1.5), json!(u64::MAX)] {
             let mut invalid = value.clone();
             invalid["commands"][0]["payload"]["QueueProduction"]["type_id"] = invalid_id;
-            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+            assert!(
+                serde_json::from_value::<MapCaptureProfile>(invalid)
+                    .map_or(true, |profile| profile.validate().is_err())
+            );
         }
         for invalid_id in [json!("ENGINEER"), json!(true), json!(1.5), json!(-1)] {
             let mut invalid = value.clone();

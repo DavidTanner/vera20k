@@ -2136,6 +2136,121 @@ class MapObservationTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'INVALID', report)
                 self.assertTrue(any('observations.commands' in error for error in report['errors']))
 
+    def symbolic_profile(self):
+        self.scripted_profile()
+        self.profile['schema_version'] = 'vera20k.map-observation-profile.v3'
+        self.profile['commands'] = [
+            {'issue_after_step': 0, 'owner': 'Computer1', 'payload': {
+                'Stop': {'entity_id': {'owner': 'Computer1', 'type_id': 'E1', 'cell': [87, 53]}}}},
+            {'issue_after_step': 1, 'owner': 'Computer1', 'payload': {
+                'QueueProduction': {'type_id': 'GAPOWR'}}},
+            {'issue_after_step': 2, 'owner': 'Computer1', 'payload': {
+                'LaunchSuperWeapon': {'sw_type_id': 'IronCurtainSpecial', 'target_rx': 87, 'target_ry': 53}}}]
+        self.profile_path.write_text(json.dumps(self.profile))
+
+    @staticmethod
+    def resolve_symbolic_receipt(manifest):
+        rows = manifest['observations']['commands']
+        rows[0]['payload']['Stop']['entity_id'] = 1
+        rows[0]['bindings'] = {'/Stop/entity_id': {
+            'stable_id': 1, 'owner': 'Computer1', 'type_id': 'E1', 'cell': [87, 53]}}
+        rows[1]['payload']['QueueProduction']['type_id'] = 41
+        rows[1]['bindings'] = {'/QueueProduction/type_id': {
+            'type_id': 'GAPOWR', 'interned_id': 41, 'category': 'Structure'}}
+        # Adding an unrelated type may shift this handle. The profile names the
+        # section; the captured binding retains the value actually scheduled.
+        rows[2]['payload']['LaunchSuperWeapon']['sw_type_id'] = 31
+        rows[2]['bindings'] = {'/LaunchSuperWeapon/sw_type_id': {
+            'type_id': 'IronCurtainSpecial', 'interned_id': 31, 'category': 'SuperWeapon'}}
+
+    def test_symbolic_commands_retain_requested_names_and_checked_resolved_handles(self):
+        self.symbolic_profile()
+        self.change = self.resolve_symbolic_receipt
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report.get('errors'))
+        self.assertEqual(report['capture']['observations']['commands'][2]['payload']
+                         ['LaunchSuperWeapon']['sw_type_id'], 31)
+        self.assertEqual(json.loads((self.output / 'profile.json').read_text())['commands'][2]
+                         ['payload']['LaunchSuperWeapon']['sw_type_id'], 'IronCurtainSpecial')
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_symbolic_receipts_reject_wrong_binding_or_unbound_argument_changes(self):
+        self.symbolic_profile()
+        mutations = [
+            lambda rows: rows[0]['bindings']['/Stop/entity_id'].update(owner='Computer2'),
+            lambda rows: rows[0]['bindings']['/Stop/entity_id'].update(type_id='MTNK'),
+            lambda rows: rows[0]['bindings']['/Stop/entity_id'].update(cell=[88, 53]),
+            lambda rows: rows[0]['bindings']['/Stop/entity_id'].update(stable_id=True),
+            lambda rows: rows[0]['bindings']['/Stop/entity_id'].update(extra=1),
+            lambda rows: rows[0]['payload']['Stop'].update(entity_id=2),
+            lambda rows: rows[0].pop('bindings'),
+            lambda rows: rows[1]['bindings']['/QueueProduction/type_id'].update(interned_id=42),
+            lambda rows: rows[1]['bindings']['/QueueProduction/type_id'].update(category='SuperWeapon'),
+            lambda rows: rows[2]['bindings']['/LaunchSuperWeapon/sw_type_id'].update(type_id='NukeSpecial'),
+            lambda rows: rows[2]['payload']['LaunchSuperWeapon'].update(target_rx=88),
+            lambda rows: rows[2]['bindings'].update({'/LaunchSuperWeapon/target_rx': {
+                'type_id': 'IronCurtainSpecial', 'interned_id': 87, 'category': 'SuperWeapon'}}),
+        ]
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                self.output = self.root / f'bad-binding-{index}'
+                def change(manifest):
+                    self.resolve_symbolic_receipt(manifest)
+                    mutate(manifest['observations']['commands'])
+                self.change = change
+                report = self.run_capture()
+                self.assertEqual(report['status'], 'INVALID', report)
+
+    def test_symbolic_bindings_cost_samples_and_cannot_enter_legacy_profiles(self):
+        self.symbolic_profile()
+        self.change = self.resolve_symbolic_receipt
+        # Four actor, House and terrain samples, plus three binding witnesses.
+        for budget, status in ((14, 'INVALID'), (15, 'VALID')):
+            self.output = self.root / f'binding-budget-{budget}'
+            with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', budget):
+                self.assertEqual(self.run_capture()['status'], status)
+        self.profile['schema_version'] = observation.PROFILE_V2
+        with self.assertRaisesRegex(ValidationError, 'require profile v3'):
+            observation._profile_extensions(self.profile)
+
+    def test_inspect_cli_checks_bytes_and_distinguishes_outcomes_from_queued_commands(self):
+        self.scripted_profile()
+        self.actor_frames[2][0]['health'] = 75
+        self.actor_frames[3][0]['health'] = 75
+        self.assertEqual(self.run_capture()['status'], 'VALID')
+        expected = self.root / 'expect.json'
+        spec = {'schema_version': 'vera20k.map-observation-expectations.v1', 'assertions': [{
+            'name': 'observed health', 'subject': {'actor': {'stable_id': 1}},
+            'eventually': {'from_step': 0, 'through_step': 3},
+            'field': 'health', 'op': 'eq', 'value': 75}]}
+        expected.write_text(json.dumps(spec))
+        result = self.root / 'inspection.json'
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = observation.main(['inspect', '--run', str(self.output), '--expect', str(expected),
+                                     '--max-rows', '1', '--output', str(result)])
+        self.assertEqual(code, 0)
+        report = json.loads(result.read_text())
+        self.assertEqual((report['status'], report['run_validity']), ('PASS', 'VALID'))
+        self.assertTrue(report['timeline']['truncated'])
+        self.assertEqual(report['assertions']['pass_count'], 1)
+        self.assertEqual(report['coverage']['command_outcomes'], 'NOT_OBSERVED')
+        self.assertEqual(observation.inspect_run(self.output)['status'], 'INSPECTED')
+        spec['assertions'][0]['value'] = 999
+        expected.write_text(json.dumps(spec))
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = observation.main(['inspect', '--run', str(self.output), '--expect', str(expected),
+                                     '--output', str(self.root / 'failed-outcome.json')])
+        self.assertEqual(code, 1)
+        expected.write_text('{"not_an_expectation_schema":true}')
+        bad_input = observation.inspect_run(self.output, expectations_path=expected)
+        self.assertEqual((bad_input['status'], bad_input['run_validity']), ('INVALID', 'VALID'))
+        (self.output / 'child-output/frame.bgra').write_bytes(b'corrupt frame')
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = observation.main(['inspect', '--run', str(self.output), '--output', str(self.root / 'invalid.json')])
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads((self.root / 'invalid.json').read_text())['status'], 'INVALID')
+
+
     def test_terrain_resource_extension_accepts_native_frame_and_rejects_invalid_values(self):
         cell = self.unallocated_cell([74, 32])
         cell['overlay'] = {'id': None, 'density': 3}
