@@ -162,6 +162,11 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
             });
     state.match_state.match_presentation.combat_lights.clear();
     state.match_state.match_presentation.lasers.clear_on_load();
+    state
+        .match_state
+        .match_presentation
+        .electric_bolts
+        .clear_on_load();
     if let Some(runtime) = state.match_state.sim_runtime.as_ref() {
         state
             .match_state

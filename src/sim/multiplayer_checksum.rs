@@ -378,7 +378,6 @@ mod tests {
     use crate::sim::timer::CdTimer;
     use crate::sim::wave::Wave;
     use crate::sim::world::Simulation;
-    use crate::util::fixed_math::SimFixed;
     use glam::IVec3;
 
     const FAMILY_COUNT: usize = 6;
@@ -446,22 +445,14 @@ mod tests {
         sim.substrate.anims.insert(test_anim(anim_id, 77, 731, -29));
 
         let particle_id = sim.allocate_stable_id();
-        sim.substrate.particle_systems.insert(ParticleSystem {
-            stable_id: particle_id,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords: IVec3::new(-311, 912, 0),
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
+        sim.substrate.particle_systems.insert({
+            let mut system = ParticleSystem::test_fixture(
+                particle_id,
+                ParticleSystemTypeId(0),
+                IVec3::new(-311, 912, 0),
+            );
+            system.facing = 0;
+            system
         });
 
         let terrain_id = sim.allocate_stable_id();

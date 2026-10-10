@@ -9,10 +9,7 @@ use crate::render::skirmish_shell_chrome::{SkirmishShellChromeAtlas, SkirmishShe
 use crate::ui::shell::slide::{column_draw_origin, panel_art_origin};
 use crate::ui::skirmish_shell::{RectPx, SkirmishShellLayout, SkirmishShellState};
 
-use super::draw_order::{
-    LowerStripRole, ParentBackgroundRole, ShellDialogChromeProfile, lower_strip_role,
-    parent_background_role,
-};
+use super::draw_order::{LowerStripRole, ShellDialogChromeProfile, lower_strip_role};
 use super::{
     BUTTON_DISABLED_ALPHA, OWNERDRAW_BEVEL_DARK_RGB_FROM_PACKED_00807A68,
     OWNERDRAW_BEVEL_LIGHT_RGB_FROM_PACKED_00C5BEA7, PRESSED_BUTTON_CONTENT_OFFSET_Y,
@@ -582,16 +579,6 @@ pub(super) fn push_ownerdraw_two_pixel_bevel_frame(
     depth: f32,
 ) {
     push_ownerdraw_two_pixel_bevel_frame_px(out, atlas.white_pixel, rect, depth);
-}
-
-pub(super) fn parent_background_entry(
-    atlas: &SkirmishShellChromeAtlas,
-    layout: &SkirmishShellLayout,
-) -> Option<SkirmishShellChromeEntry> {
-    match parent_background_role(layout)? {
-        ParentBackgroundRole::Mnscrns640 => atlas.background_640_mnscrns,
-        ParentBackgroundRole::CoopGameSetup800 => atlas.background_800_coop_game_setup,
-    }
 }
 
 pub(super) fn lower_strip_entry(

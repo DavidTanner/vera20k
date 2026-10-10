@@ -51,6 +51,7 @@ class MapObservationTests(unittest.TestCase):
         self.terrain_frames = {}
         self.effect_frames = {}
         self.laser_frames = {}
+        self.electric_frames = {}
         self.bomb_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
@@ -135,6 +136,8 @@ class MapObservationTests(unittest.TestCase):
                 frames[-1]['effects'] = deepcopy(self.effect_frames.get(step, effects))
             if self.profile.get('observe_lasers', False):
                 frames[-1]['lasers'] = deepcopy(self.laser_frames.get(step, self.laser_snapshot()))
+            if self.profile.get('observe_electric_bolts', False):
+                frames[-1]['electric_bolts'] = deepcopy(self.electric_frames.get(step, self.electric_snapshot()))
             if self.profile.get('observe_bombs', False):
                 frames[-1]['bombs'] = deepcopy(self.bomb_frames.get(step, {'carriers': [], 'records': []}))
         manifest['observations'] = {
@@ -147,6 +150,13 @@ class MapObservationTests(unittest.TestCase):
                          for index, request in enumerate(self.profile.get('commands', []))],
             'frames': frames,
         }
+        if self.profile.get('observe_electric_bolts', False):
+            manifest['observations']['electric_bolt_draws'] = {
+                'policy': 'electric-bolt-after-each-tactical-composite-v1',
+                'frames': [{'ordinal': index, 'completed_steps': min(index + 1, ticks),
+                            'simulation_tick': min(index + 1, ticks), 'binary_frame': min(index + 1, ticks),
+                            'effects': deepcopy(self.electric_frames.get(min(index + 1, ticks), self.electric_snapshot()))}
+                           for index in range(max(1, ticks))]}
         if 'observe_types' in self.profile:
             manifest['observations']['type_filter'] = deepcopy(self.profile['observe_types'])
         if 'gestures' in self.profile:
@@ -1344,6 +1354,61 @@ class MapObservationTests(unittest.TestCase):
                 actor['foot']['pending_entry_500'] = value
                 observation._actor(actor, 'actor')
 
+    def test_lifecycle_projection_preserves_independent_bits_and_legacy_omission(self):
+        actor = self.actor(category='Structure')
+        observation._actor(actor, 'actor')
+        for marked in (False, True):
+            for logic in (False, True):
+                observation._actor(dict(actor, cell_marked=marked, in_logic_vector=logic), 'actor')
+        for extra in ({'cell_marked': True}, {'in_logic_vector': False},
+                      {'cell_marked': 1, 'in_logic_vector': True},
+                      {'cell_marked': True, 'in_logic_vector': None},
+                      {'cell_marked': False, 'in_logic_vector': 'false'}):
+            with self.subTest(extra=extra), self.assertRaises(ValidationError):
+                observation._actor(dict(actor, **extra), 'actor')
+
+    def test_path_grid_projection_accepts_missing_grid_and_rejects_partial_or_inferred_states(self):
+        cell = self.unallocated_cell([87, 53])
+        observation._terrain(cell, [87, 53], 'terrain')
+        observation._terrain(dict(cell, path_grid=None), [87, 53], 'terrain')
+        for ground in (False, True):
+            for bridge in (False, True):
+                observation._terrain(dict(cell, path_grid={
+                    'ground_walkable': ground, 'bridge_walkable': bridge}), [87, 53], 'terrain')
+        for path in ({}, {'ground_walkable': True}, {'bridge_walkable': False},
+                     {'ground_walkable': 1, 'bridge_walkable': False},
+                     {'ground_walkable': True, 'bridge_walkable': None},
+                     {'ground_walkable': True, 'bridge_walkable': False, 'derived': True}, []):
+            with self.subTest(path=path), self.assertRaises(ValidationError):
+                observation._terrain(dict(cell, path_grid=path), [87, 53], 'terrain')
+
+    def test_lifecycle_and_path_grid_are_retained_and_compared_in_sealed_receipts(self):
+        self.production_profile()
+        for actors in self.actor_frames.values():
+            actors[0].update(cell_marked=True, in_logic_vector=True)
+        for step in range(4):
+            self.terrain_frames[step] = [dict(self.unallocated_cell([87, 53]),
+                path_grid={'ground_walkable': False, 'bridge_walkable': False})]
+        before = self.valid_capture('marked-blocked-before')
+        def change(manifest):
+            frame = manifest['observations']['frames'][1]
+            frame['actors'][0].update(cell_marked=False, in_logic_vector=False)
+            frame['terrain'][0]['path_grid']['ground_walkable'] = True
+        self.change = change
+        after = self.valid_capture('unmarked-open-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual({row['field'] for row in report['differences']}, {
+            'observations.frames[1].actors[0].cell_marked',
+            'observations.frames[1].actors[0].in_logic_vector',
+            'observations.frames[1].terrain[0].path_grid.ground_walkable'})
+        checked = observation.validate_run(after)
+        self.assertEqual(checked['status'], 'VALID', checked['errors'])
+        row = checked['capture']['observations']['frames'][1]
+        self.assertFalse(row['actors'][0]['cell_marked'])
+        self.assertFalse(row['actors'][0]['in_logic_vector'])
+        self.assertTrue(row['terrain'][0]['path_grid']['ground_walkable'])
+
     def test_retask_projection_round_trips_tagged_references_and_historical_omission(self):
         self.scripted_profile()
         for step, actors in self.actor_frames.items():
@@ -1491,6 +1556,79 @@ class MapObservationTests(unittest.TestCase):
                 'rgb': [0, 0, 255], 'duration': 15, 'age': 1,
                 'timer_start': 38, 'timer_duration': 1}
 
+    @staticmethod
+    def electric_snapshot():
+        # Protocol fixture only; numeric parity comes from electric_bolt.json.
+        return {'detail': MapObservationTests.laser_snapshot()['detail'],
+                'live': [], 'lights': [], 'particle_systems': [], 'native_id_cursor': 1000,
+                'rng': {name: {'disabled': 0, 'index_a': 0, 'index_b': 103, 'words': [0] * 250}
+                        for name in ('main', 'scenario', 'mapgen')}}
+
+    def test_electric_observations_preserve_owner_ids_and_all_rng_words(self):
+        self.scripted_profile()
+        self.profile['observe_electric_bolts'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        snapshot = self.electric_snapshot()
+        snapshot['live'] = [{'birth_frame': 1, 'from': [1, 2, 300], 'to': [30, 40, 0],
+                             'z_adjust': -41, 'alternate_color': False, 'phase': 256, 'decay': 65536}]
+        snapshot['lights'] = [{'coord': [30, 40, 0], 'stage': 8, 'base_size': 65536,
+                               'flags': 0, 'surface_index': 46080}]
+        snapshot['particle_systems'] = [{'stable_id': 10, 'native_id': -2147483648, 'type_id': 'SparkSys',
+            'coord': [30, 40, 0], 'lifetime': -1, 'spawn_frames': -1, 'done_spawning': True,
+            'in_logic_vector': True, 'owner_entity': None, 'attached_entity': None,
+            'particles': [{'native_id': -2147483647, 'type_id': 'Spark', 'coord': [30, 40, 0],
+                           'lifetime': 2, 'damage_counter': 0, 'marked_for_deletion': False}]}]
+        snapshot['rng']['main']['words'][249] = 0xffffffff
+        self.electric_frames[2] = snapshot
+        for actors in self.actor_frames.values():
+            for actor in actors:
+                actor['prism'] = ({'support_count': 0, 'pending': None,
+                                   'rearm': {'start': -1, 'duration': 0, 'remaining': 0}}
+                                  if actor['category'] == 'Structure' else None)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        observed = report['capture']['observations']
+        self.assertEqual(observed['frames'][2]['electric_bolts'], snapshot)
+        self.assertEqual(observed['electric_bolt_draws']['frames'][1]['effects'], snapshot)
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_electric_profiles_and_rng_schema_reject_malformed_evidence(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_electric_bolts=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_electric_bolts=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_electric_bolts=value))
+        for field, value in (('words', [0] * 249), ('words', [-1] * 250), ('index_a', 250), ('disabled', True)):
+            snapshot = self.electric_snapshot()
+            snapshot['rng']['main'][field] = value
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                observation._electric_bolts(snapshot, 'electric')
+        snapshot = self.electric_snapshot()
+        snapshot['native_id_cursor'] = 1 << 32
+        with self.assertRaises(ValidationError):
+            observation._electric_bolts(snapshot, 'electric')
+
+    def test_electric_draws_include_same_frame_tail_and_charge_sample_budget(self):
+        self.profile.update(schema_version=observation.PROFILE_V2, observe_electric_bolts=True, ticks=0)
+        self.profile_path.write_text(json.dumps(self.profile))
+        value = {'policy': 'electric-bolt-after-each-tactical-composite-v1', 'frames': [
+            {'ordinal': index, 'completed_steps': 0, 'simulation_tick': 0, 'binary_frame': 0,
+             'effects': self.electric_snapshot()} for index in range(3)]}
+        self.assertEqual(observation._electric_bolt_draws(value, self.profile, [], 2), 12)
+        with self.assertRaises(ValidationError):
+            observation._electric_bolt_draws(value, self.profile, [], 0)
+        value['frames'][2]['simulation_tick'] = 1
+        with self.assertRaises(ValidationError):
+            observation._electric_bolt_draws(value, self.profile, [], 2)
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', 7):
+            report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('sample budget' in error for error in report['errors']), report['errors'])
+
     def test_lasers_round_trip_live_beams_detail_and_prism_with_explicit_opt_in(self):
         self.scripted_profile()
         self.profile['observe_lasers'] = True
@@ -1583,6 +1721,29 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'VALID', report['errors'])
         self.assertTrue(all('bombs' not in frame and 'fire' not in frame['actors'][0]
                             for frame in report['capture']['observations']['frames']))
+
+    def test_electric_and_bomb_observations_keep_both_actor_extensions(self):
+        self.scripted_profile()
+        self.profile.update(observe_electric_bolts=True, observe_bombs=True)
+        self.profile_path.write_text(json.dumps(self.profile))
+        for actors in self.actor_frames.values():
+            actors[0].update(prism=None, fire=self.fire_state())
+        self.bomb_frames[1] = {'carriers': [8], 'records': [self.bomb_record()]}
+        self.electric_frames[1] = self.electric_snapshot()
+        self.electric_frames[1]['rng']['main']['words'][249] = 0xffffffff
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frame = report['capture']['observations']['frames'][1]
+        self.assertEqual(frame['electric_bolts'], self.electric_frames[1])
+        self.assertEqual(frame['bombs'], self.bomb_frames[1])
+        self.assertIsNone(frame['actors'][0]['prism'])
+        self.assertEqual(frame['actors'][0]['fire'], self.fire_state())
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        self.output = self.root / 'combined-missing-fire'
+        del self.actor_frames[1][0]['fire']
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('fire' in error for error in report['errors']), report['errors'])
 
     def test_bomb_snapshot_shape_identity_order_and_signed_values_are_strict(self):
         valid = {'carriers': [8], 'records': [self.bomb_record()]}

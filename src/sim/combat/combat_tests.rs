@@ -2831,34 +2831,25 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
 
     let effects = &sim.combat_light_requests;
     assert_eq!(effects.len(), 3);
-    assert_eq!(
-        effects
-            .iter()
-            .filter_map(|effect| effect.target_id)
-            .collect::<Vec<_>>(),
-        protected,
-        "the dedicated combat-light handoff preserves receiver order"
-    );
-    assert_eq!(
-        effects
-            .iter()
-            .map(|effect| effect.damage)
-            .collect::<Vec<_>>(),
-        vec![20, 40, 60]
-    );
-    assert_eq!(
-        effects
-            .iter()
-            .map(|effect| effect.flags)
-            .collect::<Vec<_>>(),
-        vec![1, 6, 1],
-        "native selector flags distinguish IC from ForceShield"
-    );
     for (index, effect) in effects.iter().enumerate() {
-        assert_eq!(effect.warhead_ref, hit_wh);
-        assert!(effect.force_create);
+        let CombatLightRequest::Impact {
+            target_id,
+            damage,
+            warhead_ref,
+            coord,
+            force_create,
+            flags,
+        } = effect
+        else {
+            panic!("receiver must produce an impact light");
+        };
+        assert_eq!(*target_id, Some(protected[index]), "receiver order");
+        assert_eq!(*damage, [20, 40, 60][index]);
+        assert_eq!(*flags, [1, 6, 1][index], "IC versus ForceShield");
+        assert_eq!(*warhead_ref, hit_wh);
+        assert!(*force_create);
         assert_eq!(
-            effect.coord,
+            *coord,
             ProjectileCoord::new((8 + index as i32) * 256 + 128, 5 * 256 + 128, 0),
             "the helper receives the protected target coordinate, not source/impact"
         );
@@ -5145,10 +5136,19 @@ fn a_bright_shot_lights_its_detonation() {
         let lights = &result.consequences.effects().combat_light_requests;
         if bright {
             assert_eq!(lights.len(), 1);
-            assert_eq!(lights[0].damage, 90);
-            assert_eq!(lights[0].flags, 4, "CLDisableGreen");
-            assert!(lights[0].force_create);
-            assert_eq!(lights[0].target_id, None);
+            assert!(
+                matches!(
+                    lights[0],
+                    CombatLightRequest::Impact {
+                        damage: 90,
+                        flags: 4,
+                        force_create: true,
+                        target_id: None,
+                        ..
+                    }
+                ),
+                "Bright impact / CLDisableGreen"
+            );
         } else {
             assert!(lights.is_empty());
         }

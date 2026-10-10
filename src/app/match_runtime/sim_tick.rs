@@ -910,6 +910,11 @@ fn advance_one_simulation_frame(
                         combat_lights,
                         Some(&resources.rules),
                         &sim.interner,
+                        state
+                            .match_state
+                            .match_presentation
+                            .in_game_options
+                            .detail_level as u32,
                     );
             }
             // Parity capture, if requested. The sim has already finalized all
@@ -1071,6 +1076,13 @@ fn advance_one_simulation_frame(
                             )
                         })
                     });
+                }
+                LifecycleOutput::ElectricBoltCreated(birth) => {
+                    state
+                        .match_state
+                        .match_presentation
+                        .electric_bolts
+                        .create(birth);
                 }
                 LifecycleOutput::LineTrailConstructed { stable_id, style } => {
                     let presentation = &mut state.match_state.match_presentation;

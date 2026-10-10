@@ -25,10 +25,9 @@
 //! - Gravity (Z velocity = -2.0 - RulesClass.Gravity).
 
 use super::wind::{GAS_WIND_DX, GAS_WIND_DY};
-use super::{Particle, ParticleSystem, make_particle};
+use super::{Particle, ParticleSystem};
 use crate::rules::particle_type::{ParticleType, ParticleTypeId};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use glam::IVec3;
@@ -89,7 +88,7 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
             break;
         }
         let pt = rules.particle_type(spec.next_id);
-        sys.particles.push(make_child(spec, pt, sim.particle_rng()));
+        sys.particles.push(make_child(spec, pt, sim));
     }
 
     // `AI_Gas` ends here. There is no Phase 3 and no Phase 4: the periodic
@@ -174,8 +173,8 @@ struct ChildSpec {
     drift_z: i32,
 }
 
-fn make_child(spec: ChildSpec, pt: &ParticleType, rng: &mut SimRng) -> Particle {
-    let mut p = make_particle(spec.next_id, spec.coords, pt, rng);
+fn make_child(spec: ChildSpec, pt: &ParticleType, sim: &mut Simulation) -> Particle {
+    let mut p = Particle::new(spec.next_id, spec.coords, pt, sim);
     p.velocity = spec.velocity;
     p.translucency = spec.translucency;
     p.drift_x = spec.drift_x;
@@ -193,23 +192,9 @@ mod tests {
     use glam::IVec3;
 
     fn fake_system(type_id: ParticleSystemTypeId) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 0,
-            in_logic_vector: false,
-            type_id,
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(1),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        let mut system = ParticleSystem::test_fixture(0, type_id, IVec3::ZERO);
+        system.spawn_timer = SimFixed::from_num(1);
+        system
     }
 
     fn parse(ini_text: &str) -> RuleSet {
@@ -241,12 +226,8 @@ mod tests {
         let mut sim = Simulation::new();
         let mut sys = fake_system(ParticleSystemTypeId(0));
         let pt_a = rules.particle_type(ParticleTypeId(0));
-        let mut parent = make_particle(
-            ParticleTypeId(0),
-            IVec3::new(1000, 2000, 0),
-            pt_a,
-            sim.particle_rng(),
-        );
+        let mut parent =
+            Particle::new(ParticleTypeId(0), IVec3::new(1000, 2000, 0), pt_a, &mut sim);
         parent.lifetime_remaining = 1;
         parent.velocity = SimFixed::from_num(3);
         parent.drift_x = 7;
@@ -285,8 +266,8 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
-        // make_particle initializes damage_counter = pt.max_dc.
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::ZERO, pt, &mut sim);
+        // The shared constructor initializes damage_counter = pt.max_dc.
         assert_eq!(p.damage_counter, 5);
         for _ in 0..5 {
             tick_particle(&mut p, pt, 0);
@@ -313,7 +294,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(ParticleTypeId(0), IVec3::ZERO, pt, sim.particle_rng());
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::ZERO, pt, &mut sim);
         move_gas_with_wind(&mut p, pt, 5, 3);
         assert_eq!(p.coords.x, 1, "GAS_WIND_DX[3] == 1");
         assert_eq!(p.coords.y, 2, "GAS_WIND_DY[3] == 2");

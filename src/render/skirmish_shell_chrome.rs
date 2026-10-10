@@ -4,6 +4,10 @@
 //! into a GPU texture for batched drawing. Assets without direct active
 //! Skirmish evidence are research candidates and must not be rendered by the
 //! default shell path.
+//! Skirmish setup intentionally uses RA2's MNSCRNS/MNSCRNL backgrounds
+//! through SHELL.PAL as a presentation preference.
+//! User-requested YR parity exception: preserve this RA2 background during
+//! future parity work unless the user explicitly asks to change it.
 
 use std::collections::HashMap;
 
@@ -69,8 +73,6 @@ pub struct SkirmishShellChromeAtlas {
     /// SDWRNTMP.SHP frames 0..=5: the top panel's warning display moving while
     /// the slide engine runs (SHELL.PAL, `0x0072E280`).
     pub sd_warning_frames: [Option<SkirmishShellChromeEntry>; 6],
-    pub background_640_mnscrns: Option<SkirmishShellChromeEntry>,
-    pub background_800_coop_game_setup: Option<SkirmishShellChromeEntry>,
     pub choose_map_background_800_customize_battle: Option<SkirmishShellChromeEntry>,
     /// Choose Map at 640 wide: MNSCRNS through MnScrnLCustomizeBattle.PAL.
     pub choose_map_background_640_customize_battle: Option<SkirmishShellChromeEntry>,
@@ -246,7 +248,6 @@ pub fn build_skirmish_shell_chrome_atlas(
     let sdbtnanm_palette = load_named_palette(assets, "SDBTNANM.PAL");
     let main_button_palette = load_named_palette(assets, "MAINBTTN.PAL");
     let neutral_dialog_palette = load_named_palette(assets, "DIALOGN.PAL");
-    let parent_background_palette = load_parent_background_palette(assets);
     let choose_map_background_palette = load_choose_map_background_palette(assets);
 
     let mut rendered = Vec::new();
@@ -402,19 +403,6 @@ pub fn build_skirmish_shell_chrome_atlas(
         );
     }
 
-    if let Some(parent_background_palette) = parent_background_palette.as_ref() {
-        for name in ["MNSCRNS.SHP", "MnScrnLCoopGameSetup.shp"] {
-            push_optional(
-                &mut rendered,
-                render_shp_entry(assets, name, parent_background_palette, 0),
-                name,
-            );
-        }
-    } else {
-        log::warn!(
-            "Skipping verified Skirmish parent backgrounds because MnScrnLCoopGameSetup.PAL is missing or invalid"
-        );
-    }
     if let Some(choose_map_background_palette) = choose_map_background_palette.as_ref() {
         push_optional(
             &mut rendered,
@@ -554,8 +542,6 @@ pub fn build_skirmish_shell_chrome_atlas(
         sd_warning_frames: std::array::from_fn(|frame| {
             by_label.get(&format!("sdwrntmp.shp#{frame}")).copied()
         }),
-        background_640_mnscrns: by_label.get("mnscrns.shp").copied(),
-        background_800_coop_game_setup: by_label.get("mnscrnlcoopgamesetup.shp").copied(),
         choose_map_background_800_customize_battle: by_label
             .get("mnscrnlcustomizebattle.shp")
             .copied(),
@@ -611,21 +597,6 @@ pub fn build_skirmish_shell_chrome_atlas(
     })
 }
 
-fn load_parent_background_palette(assets: &AssetManager) -> Option<Palette> {
-    let Some(palette_bytes) = assets.get_ref("MnScrnLCoopGameSetup.PAL") else {
-        log::warn!("Missing verified Skirmish parent-background palette MnScrnLCoopGameSetup.PAL");
-        return None;
-    };
-    Palette::from_bytes(palette_bytes)
-        .map_err(|err| {
-            log::warn!(
-                "Could not parse verified Skirmish parent-background palette MnScrnLCoopGameSetup.PAL: {err:#}"
-            );
-            err
-        })
-        .ok()
-}
-
 fn load_choose_map_background_palette(assets: &AssetManager) -> Option<Palette> {
     let Some(palette_bytes) = assets.get_ref("MnScrnLCustomizeBattle.PAL") else {
         log::warn!("Missing verified Choose Map modal palette MnScrnLCustomizeBattle.PAL");
@@ -661,9 +632,7 @@ fn load_named_palette(assets: &AssetManager, name: &str) -> Option<Palette> {
 #[cfg(test)]
 fn classify_shell_asset(name: &str) -> ShellAssetRole {
     match name.to_ascii_lowercase().as_str() {
-        "mnscrns.shp" | "mnscrnl.shp" | "mnscrnlcoopgamesetup.shp" => {
-            ShellAssetRole::VerifiedParentBackground
-        }
+        "mnscrns.shp" | "mnscrnl.shp" => ShellAssetRole::VerifiedParentBackground,
         "mnscrnlcustomizebattle.shp" => ShellAssetRole::VerifiedChooseMapBackground,
         "startbut.shp" => ShellAssetRole::VerifiedOfflineStartMarker,
         "mmpb.shp" => ShellAssetRole::AssignedPlayerMarker,
@@ -1103,8 +1072,8 @@ mod tests {
         AssetManager, OWNER_DRAW_FLAG_TRANSPARENT_RGB, PRIMITIVE_BEVEL_COLOR_A_RGB,
         PRIMITIVE_BEVEL_COLOR_B_RGB, RenderedShellEntry, ShellAssetRole, TRACKBAR_FRAME_BORDER,
         average_rgb, classify_shell_asset, draw_axis_line_inclusive_clipped, load_named_palette,
-        load_parent_background_palette, render_primitive_bevel_entry, render_shp_entry,
-        render_trackbar_frame_geometry, rgba_color, trackbar_frame_rgba,
+        render_primitive_bevel_entry, render_shp_entry, render_trackbar_frame_geometry, rgba_color,
+        trackbar_frame_rgba,
     };
     use crate::assets::asset_manager::MediaArchiveMode;
 
@@ -1139,7 +1108,7 @@ mod tests {
         );
         assert_eq!(
             classify_shell_asset("MnScrnLCoopGameSetup.shp"),
-            ShellAssetRole::VerifiedParentBackground
+            ShellAssetRole::Other
         );
         assert_eq!(
             classify_shell_asset("STARTBUT.SHP"),
@@ -1418,18 +1387,6 @@ mod tests {
         assert_eq!((mnbttn2.width, mnbttn2.height), (126, 25));
         assert_eq!((lwscrns.width, lwscrns.height), (472, 32));
         assert_eq!((lwscrnl.width, lwscrnl.height), (632, 32));
-    }
-
-    #[test]
-    #[ignore]
-    fn retail_parent_backgrounds_decode_with_verified_palette() {
-        let assets = retail_assets();
-        let palette = load_parent_background_palette(&assets).expect("parent palette");
-        let mnscrns = render_shp_entry(&assets, "MNSCRNS.SHP", &palette, 0).expect("MNSCRNS");
-        let coop = render_shp_entry(&assets, "MnScrnLCoopGameSetup.shp", &palette, 0)
-            .expect("MnScrnLCoopGameSetup");
-        assert_eq!((mnscrns.width, mnscrns.height), (472, 448));
-        assert_eq!((coop.width, coop.height), (632, 568));
     }
 
     #[test]

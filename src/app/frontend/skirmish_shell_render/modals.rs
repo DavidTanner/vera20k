@@ -243,7 +243,7 @@ pub(super) fn push_eject_box_instances(
 
 /// The generic shell background (MNSCRNS/MNSCRNL through SHELL.PAL): the
 /// random-map dialog `0x105`'s and the empty backdrop's
-/// (`0x0072AB49..0x0072AB7E`).
+/// (`0x0072AB49..0x0072AB7E`), also selected for the RA2 skirmish skin.
 pub(super) fn generic_shell_background_entry(
     atlas: &SkirmishShellChromeAtlas,
     layout: &SkirmishShellLayout,

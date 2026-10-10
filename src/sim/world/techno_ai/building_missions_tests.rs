@@ -12,6 +12,7 @@ use super::*;
 use crate::map::resolved_terrain::test_flat_ground_grid;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::combat::AttackTarget;
+use crate::sim::combat::receiver_fixture::with_building_fire_stub;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionDispatchTimer;
@@ -331,13 +332,24 @@ fn mission_attack_matches_the_original() {
         cloak.state = 2;
         entity.cloak = Some(cloak);
 
-        let returns = with_draws(&mut sim, row, |sim| {
-            let Some((target, weapon)) = attack_prelude(sim, building, &rules) else {
-                return 1;
-            };
-            assert_eq!(weapon, 0, "{name}");
-            let code = CODES[input["errors"][0].as_u64().unwrap() as usize];
-            attack_arm(sim, building, &rules, target, weapon, code)
+        let (returns, fire_calls) = with_building_fire_stub(None, || {
+            with_draws(&mut sim, row, |sim| {
+                let Some((target, weapon)) = attack_prelude(sim, building, &rules) else {
+                    return 1;
+                };
+                assert_eq!(weapon, 0, "{name}");
+                let code = CODES[input["errors"][0].as_u64().unwrap() as usize];
+                attack_arm(
+                    sim,
+                    building,
+                    &rules,
+                    target,
+                    weapon,
+                    code,
+                    ObjectAiCtx::default(),
+                    &mut false,
+                )
+            })
         });
         assert_eq!(
             i64::from(returns),
@@ -348,7 +360,7 @@ fn mission_attack_matches_the_original() {
 
         let entity = sim.substrate.entities.get(building).unwrap();
         assert_eq!(
-            sim.fire_requests.buildings.contains_key(&building),
+            fire_calls.iter().any(|(id, _, _)| *id == building),
             called(row, "fire_at"),
             "{name} FireAt"
         );

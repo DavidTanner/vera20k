@@ -244,6 +244,7 @@ impl Scene {
             self.depot,
             Some(&self.rules),
             ObjectAiCtx::default(),
+            &mut false,
         );
     }
 

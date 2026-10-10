@@ -445,7 +445,13 @@ fn stock_opening_matches_original_building_and_same_pass_anim_visits() {
                         sim.visit_building_operational(stable_id, &rules, None);
                         update_animation(sim, stable_id, Some(&rules));
                         ready_commence(sim, stable_id, true);
-                        dispatch(sim, stable_id, Some(&rules), ObjectAiCtx::default());
+                        dispatch(
+                            sim,
+                            stable_id,
+                            Some(&rules),
+                            ObjectAiCtx::default(),
+                            &mut false,
+                        );
                         ready_commence(sim, stable_id, false);
                         apply_queued_body(sim, stable_id);
                     }

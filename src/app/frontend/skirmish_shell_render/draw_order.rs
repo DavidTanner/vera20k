@@ -3,17 +3,7 @@
 //! This module is app-layer render planning only. It preserves the verified
 //! relative paint order used by the sprite construction path.
 
-use std::sync::Once;
-
 use crate::ui::skirmish_shell::SkirmishShellLayout;
-
-static HIGH_RES_PARENT_BACKGROUND_LOG: Once = Once::new();
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ParentBackgroundRole {
-    Mnscrns640,
-    CoopGameSetup800,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericBackgroundRole {
@@ -48,7 +38,7 @@ impl ShellDialogChromeProfile {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkirmishShellDrawRole {
     ParentBackgroundMnscrns640,
-    ParentBackgroundCoopGameSetup800,
+    ParentBackgroundMnscrnlLarge,
     ChooseMapBackgroundCustomizeBattle800,
     ChooseMapModalBackdrop,
     ChooseMapListbox,
@@ -75,23 +65,6 @@ pub enum SkirmishShellDrawRole {
     StartMarker,
     StartMarkerLabel,
     Flag,
-}
-
-pub(super) fn parent_background_role(layout: &SkirmishShellLayout) -> Option<ParentBackgroundRole> {
-    match layout.screen.w {
-        640 => Some(ParentBackgroundRole::Mnscrns640),
-        800 => Some(ParentBackgroundRole::CoopGameSetup800),
-        width => {
-            if width > 800 {
-                HIGH_RES_PARENT_BACKGROUND_LOG.call_once(|| {
-                    log::info!(
-                        "Skirmish shell parent background skipped for {width}px width; Ghidra verifies no fresh >800 parent substitution"
-                    );
-                });
-            }
-            None
-        }
-    }
 }
 
 pub(super) const fn generic_background_role(layout: &SkirmishShellLayout) -> GenericBackgroundRole {
@@ -155,14 +128,10 @@ pub fn skirmish_shell_semantic_draw_order(
 ) -> Vec<SkirmishShellDrawRole> {
     let mut roles = Vec::new();
     push_base_shell_roles(&mut roles, layout, overlay_frame10_active);
-    if let Some(role) = parent_background_role(layout) {
-        roles.push(match role {
-            ParentBackgroundRole::Mnscrns640 => SkirmishShellDrawRole::ParentBackgroundMnscrns640,
-            ParentBackgroundRole::CoopGameSetup800 => {
-                SkirmishShellDrawRole::ParentBackgroundCoopGameSetup800
-            }
-        });
-    }
+    roles.push(match generic_background_role(layout) {
+        GenericBackgroundRole::Mnscrns640 => SkirmishShellDrawRole::ParentBackgroundMnscrns640,
+        GenericBackgroundRole::MnscrnlLarge => SkirmishShellDrawRole::ParentBackgroundMnscrnlLarge,
+    });
     push_steady_optional_roles(&mut roles, ShellDialogChromeProfile::SkirmishSetup0x102);
     roles.extend(std::iter::repeat(SkirmishShellDrawRole::OwnerDrawButton).take(3));
     if preview_surface_available {

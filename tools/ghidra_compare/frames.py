@@ -130,7 +130,7 @@ class NativeFrames:
         out = {}
         for site, depth in result['depth'].items():
             instruction = self.image.instruction(site)
-            for operand in instruction.operands if site != entry else ():
+            for operand in instruction.operands:
                 if operand.type != X.X86_OP_MEM or operand.mem.index or not operand.mem.base:
                     continue
                 base = instruction.reg_name(operand.mem.base)

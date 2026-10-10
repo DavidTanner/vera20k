@@ -648,7 +648,7 @@ pub(super) fn ground_strike(
     if let Some(warhead) = warhead {
         let warhead_ref = sim.interner.intern(&general.lightning_warhead);
         sim.combat_light_requests
-            .push(crate::sim::combat::CombatLightRequest {
+            .push(crate::sim::combat::CombatLightRequest::Impact {
                 target_id: None,
                 damage: general.lightning_damage,
                 warhead_ref,

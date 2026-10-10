@@ -522,10 +522,11 @@ pub struct GameEntity {
     pub is_voxel: bool,
 
     // --- Bool markers (were zero-size ECS components) ---
-    /// Whether this entity is currently selected by the local player.
-    /// App-layer state — NOT part of authoritative simulation. Never read by sim logic.
-    /// Mutations: `Command::Select` → `apply_selection_snapshot()` in world_commands.rs;
-    /// combat.rs sets `selected = false` on death/transport entry.
+    /// Committed ObjectClass selection membership in simulation state.
+    /// `Command::Select` updates it through `apply_selection_snapshot`; lifecycle,
+    /// transport and combat paths also clear or restore it. Combat reads it for
+    /// selected-unit effects and parasite reselect. The app keeps input order and
+    /// pending commands separately, then reconciles that ledger after the frame.
     pub selected: bool,
     /// A building's repair byte (`BuildingClass+0x6E8`), which only
     /// `production::toggle_repair` sets; the repair step pays for each

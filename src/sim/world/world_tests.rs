@@ -294,41 +294,20 @@ fn particle_frame_boundary_fixture(frame_count: u16) -> (Simulation, RuleSet) {
 
     let mut sim = Simulation::with_seed(0xEFFE_C705);
     let stable_id = sim.allocate_stable_id();
-    let particle = Particle {
-        type_id: ParticleTypeId(0),
-        coords: IVec3::ZERO,
-        origin: IVec3::ZERO,
-        direction: [SIM_ZERO; 3],
-        velocity: SIM_ZERO,
-        lifetime_remaining: 100,
-        damage_counter: 0,
-        state_ai_advance: 0,
-        animation_state: 0,
-        translucency: 0,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        spark: None,
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
+    let particle = {
+        let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::ZERO);
+        particle.origin = IVec3::ZERO;
+        particle.lifetime_remaining = 100;
+        particle
     };
-    sim.particle_systems_mut().insert(ParticleSystem {
-        stable_id,
-        in_logic_vector: false,
-        type_id: ParticleSystemTypeId(0),
-        coords: IVec3::ZERO,
-        offset: IVec3::ZERO,
-        particles: vec![particle],
-        spawn_timer: SIM_ZERO,
-        lifetime: 100,
-        spark_spawn_frames: 0,
-        facing: 0,
-        attached_entity: None,
-        owner_entity: None,
-        target_coords: IVec3::ZERO,
-        owner_house: None,
-        done_spawning: true,
+    sim.particle_systems_mut().insert({
+        let mut system =
+            ParticleSystem::test_fixture(stable_id, ParticleSystemTypeId(0), IVec3::ZERO);
+        system.particles = vec![particle];
+        system.lifetime = 100;
+        system.facing = 0;
+        system.done_spawning = true;
+        system
     });
     assert!(sim.reveal_particle_system(stable_id, None));
     (sim, rules)

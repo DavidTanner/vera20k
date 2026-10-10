@@ -6133,6 +6133,29 @@ SpawnCount=3
         assert_eq!(general.scold_sound.as_deref(), Some("MenuScold"));
     }
 
+    /// RulesClass constructor @ 0x00667588 stores 0x280 leptons; ReadGeneral
+    /// @ 0x00670EDD calls ReadRange @ 0x00474620 for [General] CloseEnough.
+    /// This pins the Rust reader against the absent key and physical retail
+    /// input; the arithmetic claim is still instruction-level native evidence.
+    #[test]
+    fn close_enough_keeps_constructor_default_and_reads_retail_range() {
+        let absent = RuleSet::from_ini(&IniFile::from_str("[General]\n"))
+            .expect("rules with absent CloseEnough parse");
+        assert_eq!(absent.general.close_enough, 0x280);
+
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        assert!(
+            ini.section("General")
+                .and_then(|section| section.get_for_test("CloseEnough"))
+                .is_some(),
+            "retail General CloseEnough key is present"
+        );
+        let retail = RuleSet::from_ini(&ini).expect("retail rules parse");
+        assert_eq!(retail.general.close_enough, 576);
+    }
+
     /// `[CombatDamage] PsychicRevealRadius=` (ReadInteger at `0x0066C665`)
     /// and `[AudioVisual] AllyReveal=` (ReadBool at `0x0066B318`) keep the
     /// constructor's 3 and 1 (`0x00666BCA`, `0x0066773F`) when absent;

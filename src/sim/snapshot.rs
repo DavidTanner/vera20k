@@ -920,7 +920,10 @@ use crate::sim::world::Simulation;
 // serialize the competing OrderIntent::Guard anchor. Old commands cannot resume.
 // 319 -> 320: Mirage disguise owns the constructor-anchored timer and drops
 // the invented +1E4 packed-cell word. Prior bincode records cannot resume.
-const SNAPSHOT_VERSION: u32 = 320;
+// 320 -> 321: ParticleSystem and each owned Particle retain AbstractClass+10
+// identities; constructors now advance the shared Scenario native-ID cursor.
+// Old snapshots cannot recover those checksum inputs or resume the cursor.
+const SNAPSHOT_VERSION: u32 = 321;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3971,7 +3974,8 @@ mod tests {
         // 316 -> 317: the local owner's retained sidebar insertion history.
         // 318 -> 319: Guard carries its native post, with one mission owner.
         // 319 -> 320: Mirage retains only its established timer words.
-        assert_eq!(super::SNAPSHOT_VERSION, 320);
+        // 320 -> 321: particle constructors retain native IDs and their cursor.
+        assert_eq!(super::SNAPSHOT_VERSION, 321);
     }
 
     #[test]
@@ -5877,25 +5881,18 @@ mod tests {
                 13,
                 7,
             ));
-        sim.substrate
-            .particle_systems
-            .insert(crate::sim::particles::ParticleSystem {
-                stable_id: 2,
-                in_logic_vector: false,
-                type_id: crate::rules::particle_system_type::ParticleSystemTypeId(0),
-                coords: glam::IVec3::ZERO,
-                offset: glam::IVec3::ZERO,
-                particles: Vec::new(),
-                spawn_timer: crate::util::fixed_math::SimFixed::from_num(1),
-                lifetime: -1,
-                spark_spawn_frames: 0,
-                facing: 0x1D,
-                attached_entity: None,
-                owner_entity: Some(entity_id),
-                target_coords: glam::IVec3::ZERO,
-                owner_house: None,
-                done_spawning: false,
-            });
+        sim.substrate.particle_systems.insert({
+            let mut system = crate::sim::particles::ParticleSystem::test_fixture(
+                2,
+                crate::rules::particle_system_type::ParticleSystemTypeId(0),
+                glam::IVec3::ZERO,
+            );
+            system.offset = glam::IVec3::ZERO;
+            system.spawn_timer = crate::util::fixed_math::SimFixed::from_num(1);
+            system.owner_entity = Some(entity_id);
+            system.target_coords = glam::IVec3::ZERO;
+            system
+        });
         sim.substrate.next_stable_object_id = 5;
         let owner = sim.interner.intern("ComputerIQ");
         let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, false, 0, 51);
@@ -6919,7 +6916,6 @@ mod tests {
         use crate::rules::particle_system_type::ParticleSystemTypeId;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::particles::ParticleSystem;
-        use crate::util::fixed_math::SimFixed;
         use glam::IVec3;
 
         let mut sim = Simulation::new();
@@ -6939,22 +6935,13 @@ mod tests {
         sim.add_entity_occupancy(entity_id);
 
         let particle_id = sim.allocate_stable_id();
-        sim.substrate.particle_systems.insert(ParticleSystem {
-            stable_id: particle_id,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1d,
-            attached_entity: Some(entity_id),
-            owner_entity: Some(entity_id),
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
+        sim.substrate.particle_systems.insert({
+            let mut system =
+                ParticleSystem::test_fixture(particle_id, ParticleSystemTypeId(0), IVec3::ZERO);
+            system.facing = 0x1d;
+            system.attached_entity = Some(entity_id);
+            system.owner_entity = Some(entity_id);
+            system
         });
         sim.set_logic_order_for_test(vec![particle_id, entity_id]);
 
@@ -7017,7 +7004,6 @@ mod tests {
         use crate::rules::particle_system_type::ParticleSystemTypeId;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::particles::ParticleSystem;
-        use crate::util::fixed_math::SimFixed;
         use glam::IVec3;
 
         let mut sim = Simulation::new();
@@ -7030,22 +7016,13 @@ mod tests {
         sim.substrate.entities.insert(entity);
 
         let particle_id = sim.allocate_stable_id();
-        sim.substrate.particle_systems.insert(ParticleSystem {
-            stable_id: particle_id,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1d,
-            attached_entity: Some(999),
-            owner_entity: Some(entity_id),
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
+        sim.substrate.particle_systems.insert({
+            let mut system =
+                ParticleSystem::test_fixture(particle_id, ParticleSystemTypeId(0), IVec3::ZERO);
+            system.facing = 0x1d;
+            system.attached_entity = Some(999);
+            system.owner_entity = Some(entity_id);
+            system
         });
 
         assert_eq!(

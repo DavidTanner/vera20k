@@ -19,7 +19,6 @@ use crate::rules::particle_type::{ParticleBehavesLike, ParticleType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::rng::{RANDOM_RANGED_UNIT_SCALE, SimRng};
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::SIM_ZERO;
 use crate::util::native_x87::{
     NativeF32Bits, NativeF64Bits, NativeX87Error, X87Chop53, X87Ordering, X87Value, sqrt_approx_f32,
 };
@@ -227,27 +226,30 @@ pub(super) fn spark_spawn_pass(
                 spark.velocity_z = vz;
             }
         }
+        // Original62EBF2..62EC60, inside the admitted burst and before the
+        // countdown/facing draw. Detail==2 is the client presentation gate;
+        // the shared CombatLight owner receives the full signed LightSize.
+        // SpotLight5FF250 neither allocates an Abstract ID nor consumes RNG.
+        // Executed boundary: procedural_drawing_oracle/electric_bolt spark_cases.
+        if sys.spark_spawn_frames == pst.spark_spawn_frames as i32
+            && pst.light_size > 0
+            && !pst.one_frame_light
+        {
+            sim.combat_light_requests
+                .push(crate::sim::combat::CombatLightRequest::Spark {
+                    coord: crate::sim::projectile::ProjectileCoord::new(
+                        sys.coords.x,
+                        sys.coords.y,
+                        sys.coords.z,
+                    ),
+                    base_size: pst.light_size,
+                });
+        }
     }
 
-    // RESIDUAL (GSI-05.13) — the per-system light is not spawned. Native
-    // follows the burst with a light-source allocation at
-    // `0x0062EBF2`..`0x0062EC5B`, under four gates, all read this session:
-    // `OptionsClass::Detail` (`0x00A8EB78`, the in-game Detail slider,
-    // default 2 from `OptionsClass::SetDefaults @ 0x005FA370`) must be 2;
-    // the instance counter must still equal the type's `SparkSpawnFrames`
-    // (`psType+0x300`), so this fires on the FIRST spawning tick only;
-    // `LightSize` (`psType+0x304`) must be positive; and `OneFrameLight`
-    // (`psType+0x30C`) must be FALSE. `LightSize` and `one_frame_light` are
-    // parsed here already and have no consumer.
-    // - Trigger: the first tick of a Spark system on default detail.
-    // - Player effect: sparks cast no light on the ground around them.
-    // - Frequency: bounded by whatever produces Spark systems; two of the four
-    //   stock Spark systems (`WeldingSys`, `LGSparkSys`) set
-    //   `OneFrameLight=true` and are excluded from this persistent-light path
-    //   anyway, leaving `SparkSys` and `FirestormSparkSys`.
-    // - Downstream risk: it needs a dynamic light source in the render layer,
-    //   which is a different subsystem from this loop and consumes no RNG, so
-    //   it neither blocks nor is blocked by the spawn arithmetic here.
+    // OneFrameLight excludes this persistent SpotLight admission. Its separate
+    // draw route remains outside this ordinary SparkSys chain; do not create a
+    // persistent light for WeldingSys/LGSparkSys, which author that flag.
 
     // (5) The spawn countdown and the facing walk run even when the burst gate
     // refused — the gate's `JZ` at `0x0062E898` lands on `0x0062EC60`, which is
@@ -319,11 +321,9 @@ fn construct_spark_particle_with_ground<F>(
 where
     F: FnMut(&Simulation, i32, i32) -> Result<Option<i32>, SparkSpawnError>,
 {
-    // `if (ptype+0x314 == 4) |Next() % 10| else |Next() % MaxEC|`, then
-    // `+ MaxEC`. Spark is not behaviour 4, so it always takes the MaxEC arm.
-    let base = (particle_type.max_ec as u32).max(1);
-    let lifetime_extra = sim.particle_rng().next_raw_abs_modulo(base) as i16;
-    let lifetime_remaining = (particle_type.max_ec as i16).saturating_add(lifetime_extra);
+    // The shared constructor allocates AbstractClass+10 before its lifetime
+    // draw, as original62B5E0 does for every particle behavior.
+    let mut particle = Particle::new(particle_type_id, system_coords, particle_type, sim);
 
     // `CellClass::GetGroundHeight` floor: native queries once for the compare,
     // then repeats the same lookup only when `nZ <= ground` and assigns that
@@ -354,35 +354,19 @@ where
         )?
     };
 
-    Ok(Particle {
-        type_id: particle_type_id,
-        coords,
-        // Both constructor coordinate arguments are the system's own coord, so
-        // the constructor's direction delta is zero and its normalise is a
-        // no-op — the velocity assigned by the caller is the whole story.
-        origin: coords,
-        direction: [SIM_ZERO; 3],
-        velocity: particle_type.velocity,
-        lifetime_remaining,
-        damage_counter: particle_type.max_dc as i16,
-        state_ai_advance: particle_type.state_ai_advance,
-        animation_state: particle_type.start_state_ai,
-        translucency: particle_type.translucency,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        spark: Some(SparkRuntimeState {
-            velocity_x: NativeF32Bits::POSITIVE_ZERO,
-            velocity_y: NativeF32Bits::POSITIVE_ZERO,
-            velocity_z: NativeF32Bits::POSITIVE_ZERO,
-            start_rgb,
-            color_index: 0,
-            color_accumulator: NativeF64Bits::POSITIVE_ZERO,
-        }),
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
-    })
+    particle.coords = coords;
+    particle.origin = coords;
+    // Both coordinate arguments are the system's own coordinate, so direction
+    // normalization is a no-op; the caller supplies the Spark velocity.
+    particle.spark = Some(SparkRuntimeState {
+        velocity_x: NativeF32Bits::POSITIVE_ZERO,
+        velocity_y: NativeF32Bits::POSITIVE_ZERO,
+        velocity_z: NativeF32Bits::POSITIVE_ZERO,
+        start_rgb,
+        color_index: 0,
+        color_accumulator: NativeF64Bits::POSITIVE_ZERO,
+    });
+    Ok(particle)
 }
 
 fn floor_constructor_coords_with<E, F>(
@@ -506,28 +490,11 @@ mod tests {
     }
 
     fn spark_system(spawn_frames: i32) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 1,
-            in_logic_vector: false,
-            type_id: ParticleSystemTypeId(0),
-            coords: IVec3::new(2048, 2048, 0),
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SIM_ZERO,
-            lifetime: 200,
-            spark_spawn_frames: spawn_frames,
-            facing: 0x1D,
-            // Irrelevant to Spark: the `ParticleSystem+0xF9` arm this models
-            // has no setter in the image, so the fold always takes
-            // `SpawnDirection`. Kept true because that is what
-            // `spawn_particle_system` derives for a system with no authored
-            // `SpawnDirection`, which every stock Spark system is.
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        let mut system =
+            ParticleSystem::test_fixture(1, ParticleSystemTypeId(0), IVec3::new(2048, 2048, 0));
+        system.lifetime = 200;
+        system.spark_spawn_frames = spawn_frames;
+        system
     }
 
     #[test]

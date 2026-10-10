@@ -16,7 +16,7 @@ use crate::sim::world::Simulation;
 /// No RNG draws or state writes occur in this query.
 ///
 /// `tarcom` is the caller's existing authority: live actor TarCom for drawing
-/// and Unit/Infantry FireAt, the visit-local BuildingShot target for deferred
+/// and Unit/Infantry FireAt, the call-local BuildingShot target for live
 /// Building FireAt. FireAt's independent argument is never an input here.
 /// A null TarCom returns native CoordStruct::Empty (70BCCA..70BCD5).
 /// A non-null entity must stay resolvable until ObjectUnInit's PointerExpired

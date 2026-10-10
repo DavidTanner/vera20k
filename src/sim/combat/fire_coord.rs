@@ -6,6 +6,8 @@
 //! (`0x006FF3C2`). This module is that one owner for VERA: the projectile
 //! origin, the muzzle `AnimClass` and the report sound position all read it.
 //! The app used to recompute a second coordinate in `f32`.
+//! Residual: aimed retail TESLA X is one lepton below original GetFLH in
+//! electric_bolt.json; this subpixel source difference retains the shared owner.
 //!
 //! ## Dependency rules
 //! - Part of sim/ — depends on rules/, util/, sim/combat, sim/movement.
@@ -41,6 +43,52 @@ pub(crate) struct FireCoordinate {
     /// so this is the difference `Fire_At` takes for a building's `ZAdjust`
     /// whichever arm produced the shot.
     pub offset_y: i32,
+}
+
+/// The target virtual shared by SpawnLaser6FD210 and CreateElectricBolt6FD460.
+/// Techno+A4 and Object+58 coincide for ordinary ground targets. A building's
+/// coordinate is its foundation centre, not raw Location. Nonzero shipyard
+/// TargetCoordOffset remains the existing separate getter residual.
+pub(crate) fn effect_target_coordinate(
+    world: &Simulation,
+    target: TargetKind,
+) -> Option<ProjectileCoord> {
+    match target {
+        TargetKind::Entity(id) => {
+            let target = world.substrate.entities.get(id)?;
+            let point = crate::sim::movement::ground_pose::object_get_coords(
+                target,
+                world.resolved_terrain.as_ref(),
+            );
+            Some(ProjectileCoord::new(point.x, point.y, point.z))
+        }
+        TargetKind::Cell(x, y) => Some(crate::sim::projectile::cell_target_coord(
+            world.resolved_terrain.as_ref(),
+            x,
+            y,
+        )),
+    }
+}
+
+/// Both beam constructors subtract the projected Building+AC origin from
+/// their projected FLH and clamp positive deltas to zero (6FD210/6FD460).
+/// Each projection stays with the existing native world-to-screen owner.
+pub(crate) fn effect_z_adjust(
+    world: &Simulation,
+    source: &GameEntity,
+    from: ProjectileCoord,
+) -> i32 {
+    if source.category != EntityCategory::Structure {
+        return 0;
+    }
+    let location =
+        crate::sim::movement::ground_pose::object_location(source, world.resolved_terrain.as_ref());
+    let base =
+        crate::sim::movement::ground_pose::building_render_order_parts(location, false, false).0;
+    let project_y = |x, y, z| crate::util::lepton::absolute_leptons_to_screen(x, y, z).1 as i32;
+    project_y(from.x, from.y, from.z)
+        .wrapping_sub(project_y(base.x, base.y, base.z))
+        .min(0)
 }
 
 /// The firer facts the fire coordinate reads.

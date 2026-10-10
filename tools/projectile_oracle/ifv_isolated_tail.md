@@ -63,15 +63,15 @@ false, so the ordinary CombatLight body is not exercised. Sound binding is
 absent. The test stops at Detonate return with one admitted animation and a
 live Bullet; later scheduling, rendering and retirement are separate witnesses.
 
-The production Rust composition passes all 6 controls on the final focused
-candidate, SHA256
-`e12b7834225b63dcef6b0f6c8d5b596a9bcfc0b1cb3c930bdcfefd32bc76ef20`
-(1.21 s). It uses production AreaDamage and Bullet effect delivery with physical
-HE/IRONFX configuration, comparing the receipt, animation type/constructor
-fields, Scenario RNG bytes and native cursor delta. The partial registry prefix
-remains a fixture boundary, not a whole-game identity. Rust executes its actual
-receiver, so the native supplied ReceiveDamage result does not establish
-receiver health or kills. The `EMEffect=yes` rows are explicit controls, not a
-claim that retail HE enables the key. Existing `ifv_select_anim` and
-`ifv_area_receipt` fixtures remain unchanged. Final chain-wide validation is
-recorded separately in the [IFV ledger](ifv_launch.md).
+The Rust comparison uses production AreaDamage and Bullet effect delivery with
+physical HE/IRONFX configuration. It compares the receipt, animation type and
+constructor fields, and full Scenario RNG bytes. Rust executes its actual FV
+receiver: at the supplied health100 boundary, damage crosses the yellow
+threshold and synchronously admits `SmallGreySSys` before the impact animation.
+That receiver body is excluded from this native harness. The test explicitly
+asserts the one extra system, its ID34, empty child list and owner link, then
+accounts for that allocation when comparing the subsequent animation and
+cursor. Empty and Iron Curtain cases admit no smoke and retain direct cursor
+equality. These bounds do not establish native receiver health, kills or a
+whole-game identity prefix. The `EMEffect=yes` rows are explicit controls, not
+a claim that retail HE enables the key.

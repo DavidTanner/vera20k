@@ -305,6 +305,7 @@ pub(crate) enum LifecycleOutput {
     },
     /// Copied LaserDraw54FE60 birth; no source/target pointer to detach.
     LaserCreated(crate::sim::combat::laser::LaserBirth),
+    ElectricBoltCreated(crate::sim::combat::electric_bolt::ElectricBoltBirth),
     /// ObjectUnlimbo5F517A/5F5207 constructs and attaches a presentation trail.
     LineTrailConstructed {
         stable_id: u64,
@@ -1383,6 +1384,12 @@ impl Simulation {
         }
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::CellMarked);
+        // Building Mark43F180 -> PlaceDown5683C0 publishes AddContent and
+        // Cell Recalc47D2B0 before returning. Keep the derived path view at
+        // that boundary too; the marked structures remain its authority.
+        if let Some(rules) = context.rules {
+            self.publish_recalculated_cells(rules, &cells);
+        }
         self.substrate
             .entities
             .get(stable_id)
@@ -1694,6 +1701,17 @@ impl Simulation {
             if !cells.is_empty() {
                 self.trace_lifecycle_for_test(LifecycleTestEvent::RawOccupationCleared);
             }
+        }
+        // Building Mark43F180 -> PlaceUp5687F0 unlinks each Cell47EA90,
+        // clears occupation453DC0 and recalculates47D2B0 before Conceal
+        // resumes at5F4D73. Fatal Bullet receivers can remove Logic here,
+        // so no later object/frame visit may be required to release the path.
+        // Executed shared death path: tools/spatial_oracle/
+        // building_death_anims_joined_stock_smudges.json (building_mark).
+        // This projects current marked owners, retaining overlapping or
+        // still-marked dying structures; it adds no RNG/timer/detach work.
+        if let Some(rules) = context.rules {
+            self.publish_recalculated_cells(rules, &cells);
         }
         true
     }
