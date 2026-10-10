@@ -823,6 +823,43 @@ fn a_killing_hit_spawns_the_building_crew_in_the_same_receiver_call() {
     assert!(spawned > 0);
 }
 
+/// The production rules reader and death receiver must use each side's
+/// `*Crew=` name, rather than the stock E1/E2/INIT assignment. Reusing the
+/// fixture's registered infantry types keeps this test about the binding.
+#[test]
+fn renamed_general_crew_types_spawn_through_the_building_death_receiver() {
+    let renamed = RULES
+        .replace("AlliedCrew=E1", "AlliedCrew=E2")
+        .replace("SovietCrew=E2", "SovietCrew=INIT")
+        .replace("ThirdCrew=INIT", "ThirdCrew=E1");
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &IniFile::from_str(&renamed),
+        &IniFile::from_str(ART),
+    )
+    .expect("renamed crew rules");
+
+    for (owner, expected) in [
+        ("Americans", "E2"),
+        ("Russians", "INIT"),
+        ("YuriCountry", "E1"),
+    ] {
+        let mut spawned = 0;
+        for seed in 1..=8 {
+            let mut sim = sim_with_houses(seed);
+            let plant = spawn(&mut sim, &rules, "GAPOWR", owner, 10, 10);
+            let before = sim.substrate.entities.keys_sorted();
+            kill(&mut sim, &rules, plant, ORDINARY);
+            for id in new_ids(&sim, &before) {
+                let crewman = sim.substrate.entities.get(id).unwrap();
+                assert_eq!(crewman.category, EntityCategory::Infantry);
+                assert_eq!(type_name(&sim, id), expected, "owner {owner}, seed {seed}");
+                spawned += 1;
+            }
+        }
+        assert!(spawned > 0, "no {owner} crew reached the receiver");
+    }
+}
+
 /// Through the production receiver: the dying vehicle leaves its cell before
 /// the crewman is placed there; arg6 keeps the crew inside.
 #[test]
