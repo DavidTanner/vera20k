@@ -314,7 +314,10 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // fixture's vectors are empty, but qualifying Foot visits retain countdown3
 // while inactive (4DAA87; foot_move_sound.json empty_qualifies). No sound is
 // selected and no Main draw is paid. This remains a Rust regression pin.
-const SLICE6_BASELINE_HASH: u64 = 0xAC83_DE99_92A0_6D2D;
+// Snapshot320 retains native Techno constructor disguise identity/timer state
+// for every actor, replacing the absent component. These fixtures acquire no
+// disguise; their gameplay and absolute RNG pins remain the independent gates.
+const SLICE6_BASELINE_HASH: u64 = 0x8C85_319B_7E81_7B48;
 
 #[test]
 fn replay_hash_stable_through_slice6() {

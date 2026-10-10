@@ -2301,11 +2301,9 @@ fn gsi_04_07_should_retaliate_world_refusals() {
         .entities
         .get_mut(GATE_SOURCE)
         .unwrap()
-        .disguise = Some(crate::sim::cloak_disguise::DisguiseRuntime {
-        disguised: true,
-        disguised_as_house: Some(victim_owner),
-        ..Default::default()
-    });
+        .disguise
+        .get_or_insert_with(Default::default)
+        .acquire(0, None, Some(victim_owner));
     assert!(!should_retaliate(&sim, &rules, GATE_VICTIM, GATE_SOURCE));
     // `0x00708905..0x007089A5`: a human's C4 infantryman leaves a building
     // alone; a computer's does not.

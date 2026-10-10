@@ -1317,6 +1317,41 @@ class MapObservationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 observation._profile_extensions(dict(self.profile, observe_action_line_inputs=value))
 
+    def test_disguise_inputs_require_opt_in_and_preserve_signed_timer_and_null_house(self):
+        self.scripted_profile()
+        self.profile['observe_disguise_inputs'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        # Synthetic protocol rows, not native gameplay expected values.
+        self.actor_frames = {step: [self.actor(category='Unit')] for step in range(4)}
+        for actors in self.actor_frames.values():
+            actors[0]['disguise_inputs'] = {
+                'active': True, 'creation_frame': 123, 'type_id': 'TREE01', 'house': None,
+                'reveal_start': -1, 'reveal_duration': -3,
+                'draw': {'type_id': 'TREE01', 'voxel': False, 'shp_frame': 0,
+                         'terrain_pair_available': True, 'draw_state_visible': True,
+                         'native_selector_bits': 4}}
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        actor = next(iter(self.actor_frames.values()))[0]
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor')
+        observation._actor(actor, 'actor', disguise_inputs=True)
+        actor['disguise_inputs']['reveal_duration'] = 1 << 31
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor', disguise_inputs=True)
+
+    def test_disguise_inputs_profile_rejects_legacy_presence_and_wrong_types(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_disguise_inputs=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_disguise_inputs=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_disguise_inputs=value))
+
     def test_action_line_inputs_require_exact_presence_and_keep_structure_null(self):
         actor = self.actor()
         with self.assertRaises(ValidationError):

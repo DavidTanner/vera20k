@@ -325,7 +325,10 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // fixture's vectors are empty, but qualifying Foot visits retain countdown3
 // while inactive (4DAA87; foot_move_sound.json empty_qualifies). No sound is
 // selected and no Main draw is paid. This remains a Rust regression pin.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x5610_C044_743D_56BA;
+// Snapshot320 retains native Techno constructor disguise identity/timer state
+// for every actor, replacing the absent component. These fixtures acquire no
+// disguise; their gameplay and absolute RNG pins remain the independent gates.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0xE598_15E1_D803_4937;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so

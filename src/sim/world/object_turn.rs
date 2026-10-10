@@ -1011,6 +1011,18 @@ impl Simulation {
             sim.parasite_ai_for_victim(stable_id, rules, overlay_registry);
         }
 
+        // Unit73649C follows the complete Foot tail. Its disguise pick must
+        // follow Foot's own Scenario draws and precede Unit's firing suffix.
+        if let Some(rules) = rules {
+            sim.update_unit_disguise(stable_id, rules)
+                .map_err(|cause| super::FrameAdvanceError {
+                    tick: sim.session.tick,
+                    binary_frame: sim.session.binary_frame,
+                    entity_id: stable_id,
+                    cause,
+                })?;
+        }
+
         let cell_after_movement = sim
             .substrate
             .entities

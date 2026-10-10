@@ -663,7 +663,7 @@ pub struct GeneralRules {
     /// `[General] DefaultMirageDisguises=` selection pool, in source order.
     pub default_mirage_disguises: Vec<String>,
     /// `[General] InfantryBlinkDisguiseTime=` reveal duration in frames.
-    pub infantry_blink_disguise_time: u32,
+    pub infantry_blink_disguise_time: i32,
     /// Whether the attack cursor appears on trees/terrain
     /// (`TreeTargeting=` in `[CombatDamage]`).
     /// Default false in vanilla RA2.
@@ -2773,12 +2773,11 @@ impl GeneralRules {
             tiberium_spreads: general.read_bool("TiberiumSpreads", true),
             growth_rate_minutes: general.read_double("GrowthRate", 2.0) as f32,
             attack_cursor_on_disguise: general.read_bool("AttackCursorOnDisguise", false),
-            default_mirage_disguises: general
-                .read_list("DefaultMirageDisguises", 0x80)
-                .map(|tokens| tokens.into_iter().map(str::to_ascii_uppercase).collect())
-                .unwrap_or_default(),
-            infantry_blink_disguise_time: general.read_int("InfantryBlinkDisguiseTime", 0).max(0)
-                as u32,
+            // Filled from the native ordered TerrainType list owner after
+            // processing, including allocation/none-token/retention semantics.
+            default_mirage_disguises: Vec::new(),
+            // Rules671D80: signed ReadInt, constructor665650 defaults0.
+            infantry_blink_disguise_time: general.read_int("InfantryBlinkDisguiseTime", 0),
             tree_targeting: combat_damage.read_bool("TreeTargeting", false),
             tree_strength: general.read_int("TreeStrength", defaults.tree_strength),
             condition_yellow: condition_yellow_native,
@@ -3409,6 +3408,9 @@ pub struct RuleSet {
     /// this rules-owned resource directly; presentation cannot replace timing
     /// on an individual frame.
     animation_sequences: BTreeMap<String, crate::rules::animation_sequence::SequenceSet>,
+    /// Original UnitType fixed-ART read state. The animation catalog derives
+    /// its supported frame projection here; asset installation never rereads it.
+    unit_shp_read_states: BTreeMap<String, crate::rules::shp_vehicle_sequence::UnitShpReadState>,
     /// Per-mission behaviour table parsed from the `[<MissionName>]` sections
     /// (Rate/AARate + NoThreat/Zombie/Recruitable/Paralyzed/Retaliate/Scatter).
     pub mission_control: MissionControl,
@@ -3443,6 +3445,7 @@ impl RuleSet {
         rules.general.sov_paradrop.infantry = sov;
         rules.general.yuri_paradrop.infantry = yuri;
         rules.general.anim_to_infantry = processed.anim_to_infantry().to_vec();
+        rules.general.default_mirage_disguises = processed.default_mirage_disguises().to_vec();
         rules.bridge_rules.explosions = processed.bridge_explosions().to_vec();
         rules.general.gravity = processed.gravity();
         rules.general.prism_support = processed.prism_support();
@@ -3514,6 +3517,10 @@ impl RuleSet {
         rules.anim_type_art_read_states = processed
             .anim_type_art_read_states()
             .map(|(name, read)| (name.to_owned(), read))
+            .collect();
+        rules.unit_shp_read_states = processed
+            .unit_shp_read_states()
+            .map(|(name, state)| (name.to_owned(), *state))
             .collect();
         // Building ctor45DF13 / ReadINI461225..46125D: the process-resident
         // owner retained +EF0 across reached rules passes and exact ART reads.
@@ -4225,6 +4232,7 @@ impl RuleSet {
             terrain_spawner_assets:
                 crate::rules::terrain_asset_catalog::TerrainSpawnerAssetCatalog::default(),
             animation_sequences: BTreeMap::new(),
+            unit_shp_read_states: BTreeMap::new(),
             mission_control,
             // Single-source callers hash their one parsed INI. Production
             // ordered-stack callers replace this with the boundary-sensitive
@@ -4514,12 +4522,33 @@ impl RuleSet {
     /// slices and are not claimed by this hash yet.
     pub fn simulation_config_hash(&self) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        b"rules-simulation-config-v13".hash(&mut hasher);
+        b"rules-simulation-config-v14".hash(&mut hasher);
         self.source_ini_hash.hash(&mut hasher);
         // Process-resident Gravity and Weapon postpass results can differ for
         // identical current source stacks because earlier passes retained them.
         self.general.gravity.hash(&mut hasher);
         self.general.prism_support.hash(&mut hasher);
+        self.general.default_mirage_disguises.hash(&mut hasher);
+        self.general.infantry_blink_disguise_time.hash(&mut hasher);
+        // The native type reader retains these flags through missing keys
+        // and later process passes. Equal current source text can therefore
+        // yield different disguise admission, reveal and observer behavior.
+        b"retained-type-disguise-v1".hash(&mut hasher);
+        self.object_list
+            .iter()
+            .map(|object| {
+                (
+                    (object.category, object.id.to_ascii_uppercase()),
+                    (
+                        object.can_disguise,
+                        object.perma_disguise,
+                        object.detect_disguise,
+                        object.disguise_when_still,
+                    ),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .hash(&mut hasher);
         self.general.missile_rot_var.to_bits().hash(&mut hasher);
         self.general.safety_altitude.hash(&mut hasher);
         self.general.line_trail_color_override.hash(&mut hasher);
@@ -4549,6 +4578,7 @@ impl RuleSet {
         self.general.weather_con_bolts.hash(&mut hasher);
         self.bridge_rules.explosions.hash(&mut hasher);
         self.animation_sequences.hash(&mut hasher);
+        self.unit_shp_read_states.hash(&mut hasher);
         self.effect_assets.hash(&mut hasher);
         self.buildup_assets.hash(&mut hasher);
         self.terrain_spawner_assets.hash(&mut hasher);
@@ -5377,6 +5407,14 @@ impl RuleSet {
     ) -> Option<&crate::rules::animation_sequence::SequenceSet> {
         let canonical = self.object(type_id)?.id.as_str();
         self.animation_sequences.get(canonical)
+    }
+
+    pub(crate) fn unit_shp_read_state(
+        &self,
+        type_id: &str,
+    ) -> Option<&crate::rules::shp_vehicle_sequence::UnitShpReadState> {
+        let object = self.object(type_id)?;
+        self.unit_shp_read_states.get(&object.id)
     }
 
     #[cfg(test)]

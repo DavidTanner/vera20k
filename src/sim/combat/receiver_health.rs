@@ -34,6 +34,7 @@ pub(super) fn commit_receiver_health(
     attacker_owner: Option<InternedId>,
     live_source_owner: Option<InternedId>,
     receiver_outcome: Option<ResolvedReceiveDamage>,
+    binary_frame: u32,
 ) -> Option<ReceiverHealthCommit> {
     let target_id = event.target_id;
     let mut building_entry_frame = None;
@@ -103,6 +104,31 @@ pub(super) fn commit_receiver_health(
             },
         );
         let receive_state = Some(state);
+        // Object owns CanC4 rewriting and the overkill cap. Every subsequent
+        // Techno reader consumes this same final packet, never the authored hit.
+        let final_packet = if receive_outcome.apply_object_damage {
+            packet
+        } else {
+            receive_outcome.post_object_damage.unwrap_or(packet)
+        };
+        //701FCB..70202E precedes the exact-zero override below. Native0/4
+        //skip; admitted result1/2/3/5 resets the reveal block even if the
+        //actor is already revealed. No RNG is drawn by this consequence.
+        if reached_survivor_postlude
+            && !matches!(
+                state,
+                damage::DamageState::Unaffected | damage::DamageState::Dead
+            )
+            && target_type.can_disguise
+            && !target_type.perma_disguise
+        {
+            target
+                .disguise
+                .get_or_insert_with(|| {
+                    crate::sim::cloak_disguise::DisguiseRuntime::new(binary_frame)
+                })
+                .receive_damage_reveal(binary_frame, final_packet, target.category);
+        }
         // Techno70202E tests exact0 after Object returns. Negative healed HP
         // remains on its ordinary tail; ObjectAlive/result5 is a different gate.
         entered_techno_death =
@@ -121,13 +147,6 @@ pub(super) fn commit_receiver_health(
                 )
             });
         if reached_survivor_postlude && let Some(source_owner) = live_source_owner {
-            // An Object early gate leaves the prepared packet intact. Otherwise
-            // commit owns CanC4 rewriting and the positive overkill cap.
-            let final_packet = if !receive_outcome.apply_object_damage {
-                receive_outcome.post_object_damage.unwrap_or(packet)
-            } else {
-                packet
-            };
             threat_feedback = Some((
                 target.owner(),
                 source_owner,

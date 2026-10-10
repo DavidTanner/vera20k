@@ -157,6 +157,8 @@ pub(crate) mod area_guard_tests;
 #[cfg(test)]
 mod ini_token_readers_tests;
 #[cfg(test)]
+mod mirage_disguise_tests;
+#[cfg(test)]
 pub(crate) mod move_sound_tests;
 #[cfg(test)]
 mod path_delay_rules_tests;

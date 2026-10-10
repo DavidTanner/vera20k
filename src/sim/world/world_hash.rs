@@ -1583,13 +1583,7 @@ impl Simulation {
             }
             if let Some(disguise) = entity.disguise.as_ref() {
                 1u8.hash(hasher);
-                disguise.disguised.hash(hasher);
-                disguise.disguise_creation_frame.hash(hasher);
-                disguise.disguise_type.hash(hasher);
-                disguise.disguised_as_house.hash(hasher);
-                disguise.reveal.timer.start_frame().hash(hasher);
-                disguise.reveal.neighbor_cell_packed.hash(hasher);
-                disguise.reveal.timer.duration().hash(hasher);
+                disguise.hash_state(hasher);
             } else {
                 0u8.hash(hasher);
             }
