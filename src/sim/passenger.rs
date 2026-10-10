@@ -443,9 +443,28 @@ pub fn can_entity_enter_garrison(
     )
 }
 
-/// Maximum cell distance for a passenger to be considered "at" the transport.
-/// Chebyshev distance in cells — 1 means same cell or adjacent.
+/// Maximum cell distance for a passenger to be considered "at" a vehicle or
+/// aircraft transport. Chebyshev distance in cells — 1 means same cell or
+/// adjacent. A garrison does not use it: see [`passenger_stands_on_garrison`].
 const BOARD_DISTANCE: u32 = 1;
+
+/// `InfantryClass::PerCellProcess` `0x0051A258..0x0051A2A7`: with the
+/// building as NavCom (or Target) and mission Enter, the infantry boards the
+/// moment `CellClass::GetBuilding` of its *current* cell is that building,
+/// which is any cell of the foundation. The walk itself targets the
+/// building's `+0x4C` coordinate, the foundation centre for a garrison
+/// (`building_coordinate::navigation_coordinate`), so a passenger that stops
+/// at the centre of a 4x4 is two cells from the origin and never adjacent to
+/// it. Vehicle transports take the other arm (`0x0051A3A0..0x0051A3DF`, same
+/// cell as the transport's `GetMapCoords`).
+fn passenger_stands_on_garrison(passenger_cell: (u16, u16), building: &GameEntity) -> bool {
+    let (width, height) = crate::rules::foundation::foundation_dimensions(&building.foundation);
+    let (rx, ry) = (building.position.rx, building.position.ry);
+    passenger_cell.0 >= rx
+        && u32::from(passenger_cell.0) < u32::from(rx) + u32::from(width)
+        && passenger_cell.1 >= ry
+        && u32::from(passenger_cell.1) < u32::from(ry) + u32::from(height)
+}
 
 /// Advance passenger boarding each tick. For entities with `boarding_state`, check if they arrived at
 /// the transport's cell. If so, execute boarding. If the transport is
@@ -526,14 +545,18 @@ fn process_boarding_passenger(
         Some(e) => (e.position.rx, e.position.ry),
         None => return,
     };
-    let (trx, try_) = match sim.substrate.entities.get(transport_id) {
-        Some(e) => (e.position.rx, e.position.ry),
+    let arrived = match sim.substrate.entities.get(transport_id) {
+        Some(e) if e.category == EntityCategory::Structure => {
+            passenger_stands_on_garrison((pax_rx, pax_ry), e)
+        }
+        Some(e) => {
+            let dx = (pax_rx as i32 - e.position.rx as i32).unsigned_abs();
+            let dy = (pax_ry as i32 - e.position.ry as i32).unsigned_abs();
+            dx.max(dy) <= BOARD_DISTANCE
+        }
         None => return,
     };
-
-    let dx = (pax_rx as i32 - trx as i32).unsigned_abs();
-    let dy = (pax_ry as i32 - try_ as i32).unsigned_abs();
-    if dx.max(dy) > BOARD_DISTANCE {
+    if !arrived {
         return;
     }
 
@@ -690,11 +713,14 @@ fn process_boarding_passenger(
             // `0x007104F0`). VERA boards from the adjacent cell, so the rider
             // takes the transport's coordinate here.
             //
-            // RESIDUAL: native boards only once the passenger stands in the
-            // transport's own cell (`0x0051A3A0..0x0051A3DF`), where the rider
-            // keeps its own spot until the transport first moves; VERA boards
-            // within `BOARD_DISTANCE`. Trigger: every boarding. Effect: the
-            // passenger vanishes a cell early, and a parked open-topped
+            // RESIDUAL: native boards a vehicle only once the passenger
+            // stands in the transport's own cell (`0x0051A3A0..0x0051A3DF`),
+            // where the rider keeps its own spot until the transport first
+            // moves; VERA boards a vehicle within `BOARD_DISTANCE`. A garrison
+            // already boards from its own foundation cells
+            // (`passenger_stands_on_garrison`). Trigger: every vehicle
+            // boarding. Effect: the passenger vanishes a cell early, and a
+            // parked open-topped
             // transport's riders measure range from its centre rather than
             // their spot, under half a cell apart. Frequency: every boarding.
             // Risk: a target at the edge of a parked rider's reach is in range
@@ -1293,6 +1319,35 @@ ConditionYellow=50%
         assert_eq!(cargo.total_size, 0);
     }
 
+    /// `InfantryClass::PerCellProcess` `0x0051A27F..0x0051A292`: the
+    /// building found in the infantry's own cell must be the NavCom building.
+    /// A 4x4 garrison's walk ends at its foundation centre, two cells from the
+    /// origin; the far foundation cell boards and the cell just outside does
+    /// not. Native behavior established by instruction reading; the headless
+    /// retail walk into CASTL03 (XMP03T4) stops at the centre cell.
+    #[test]
+    fn occupier_boards_from_any_foundation_cell_and_not_from_outside() {
+        let rules = garrison_test_rules();
+        for (cell, expected) in [
+            ((13u16, 13u16), true),
+            ((11, 12), true),
+            ((14, 14), false),
+            ((9, 10), false),
+        ] {
+            let mut sim = Simulation::new();
+            let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
+            sim.substrate.entities.get_mut(bldg).unwrap().foundation = "4x4".to_string();
+            let pax =
+                spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, cell.0, cell.1);
+            tick_boarding(&mut sim, &rules);
+            let inside = matches!(
+                sim.substrate.entities.get(pax).unwrap().passenger_role,
+                PassengerRole::Inside { .. }
+            );
+            assert_eq!(inside, expected, "occupier at {cell:?} on a 4x4 at (10,10)");
+        }
+    }
+
     #[test]
     fn test_board_and_count() {
         let mut cargo = PassengerCargo::new(3, 0);
@@ -1384,7 +1439,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         let changed = tick_boarding(&mut sim, &rules);
 
@@ -1401,7 +1456,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         tick_boarding(&mut sim, &rules);
 
         sim.object_ai_visit_one(
@@ -1418,7 +1473,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         sim.set_logic_order_for_test(vec![pax, bldg]);
         tick_passenger_system(&mut sim, &rules, None);
         assert_eq!(owner_name(&sim, bldg), "Neutral");
@@ -1439,7 +1494,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         sim.object_ai_visit_one(
             bldg,
             Some(&rules),
@@ -1461,7 +1516,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let first = spawn_boarding_occupier(&mut sim, &rules, "E1", "Russians", bldg, 10, 11);
+        let first = spawn_boarding_occupier(&mut sim, &rules, "E1", "Russians", bldg, 10, 10);
         let second = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 11, 10);
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
@@ -1549,7 +1604,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         let neutral = sim.interner.intern("Neutral");
         let americans = sim.interner.intern("Americans");
 
@@ -1659,7 +1714,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         assert!(sim.live_object_order_snapshot().contains(&pax));
 
         tick_boarding(&mut sim, &rules);
@@ -1776,7 +1831,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         tick_boarding(&mut sim, &rules);
         assert!(!sim.live_object_order_snapshot().contains(&pax));
@@ -1807,7 +1862,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         {
             let building = sim
@@ -1829,7 +1884,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         let passenger = sim.substrate.entities.get(pax).expect("passenger exists");
         let transport = sim.substrate.entities.get(bldg).expect("building exists");
         let mut passenger_obj = rules.object("E1").expect("E1 exists").clone();
@@ -1858,7 +1913,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         {
             let building = sim
@@ -1884,7 +1939,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Russians", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         assert!(
             !can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1899,7 +1954,7 @@ ConditionYellow=50%
             let rules = garrison_test_rules();
             insert_stamped_house(&mut sim, &rules, owner, owner);
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", owner, 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
             assert!(
                 can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1935,7 +1990,7 @@ ConditionYellow=50%
         // from `Country=Neutral`, not from the house's own name.
         insert_stamped_house(&mut sim, &rules, "CivHouse", "Neutral");
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "CivHouse", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         assert!(
             can_enter_garrison_fixture(&sim, &rules, pax, bldg),
@@ -1951,7 +2006,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         sim.substrate.entities.get_mut(bldg).unwrap().mind_control =
             crate::sim::capture_manager::MindControlLink::controlled_by_for_test(999);
         assert!(
@@ -1971,7 +2026,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
         let grid = crate::sim::pathfinding::PathGrid::new(5, 5);
         sim.install_fixture_path_grid(Some(&grid));
 
@@ -1988,7 +2043,7 @@ ConditionYellow=50%
         {
             let mut sim = Simulation::new();
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
             let building = sim
                 .substrate
                 .entities
@@ -2008,7 +2063,7 @@ ConditionYellow=50%
         {
             let mut sim = Simulation::new();
             let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+            let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
             let building = sim
                 .substrate
                 .entities
@@ -2037,7 +2092,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
-        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         tick_boarding(&mut sim, &rules);
 
@@ -2115,7 +2170,7 @@ ConditionYellow=50%
         let mut sim = Simulation::new();
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
-        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         sim.substrate
             .entities
@@ -2164,7 +2219,7 @@ ConditionYellow=50%
                 cargo.board(9999, 1);
             }
         }
-        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
+        let _pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 10);
 
         tick_boarding(&mut sim, &rules);
 
