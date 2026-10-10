@@ -246,6 +246,35 @@ class MapObservationTests(unittest.TestCase):
         self.assertEqual(report['capture']['camera']['requested_cell'], [87, 53])
         self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
 
+    def test_object_alive_projection_preserves_retained_death_and_legacy_absence(self):
+        self.scripted_profile()
+        # Synthetic owner snapshots test independent receipt fields, not death
+        # timing: native-alive and the transitional active gate differ in Die1.
+        retained = self.actor()
+        retained.update(health=0, active=False, dying=True, object_alive=True)
+        retained['foot']['infantry_doing'] = 11
+        expired = deepcopy(retained)
+        expired['object_alive'] = False
+        self.actor_frames = {0: [self.actor()], 1: [retained], 2: [expired]}
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frames = report['capture']['observations']['frames']
+        self.assertNotIn('object_alive', frames[0]['actors'][0])
+        self.assertIs(frames[1]['actors'][0]['object_alive'], True)
+        self.assertIs(frames[1]['actors'][0]['active'], False)
+        self.assertEqual(frames[1]['actors'][0]['health'], 0)
+        self.assertIs(frames[2]['actors'][0]['object_alive'], False)
+        self.assertEqual(frames[3]['missing_actor_ids'], [1])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_object_alive_projection_rejects_present_nonboolean_values(self):
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value):
+                actor = self.actor()
+                actor['object_alive'] = value
+                with self.assertRaisesRegex(ValidationError, 'object_alive'):
+                    observation._actor(actor, 'actor')
+
     def cursor_profile(self):
         self.profile.update(schema_version=observation.PROFILE_V2,
                             width=4, height=4, cursor_position=[2, 1])
@@ -849,6 +878,54 @@ class MapObservationTests(unittest.TestCase):
                         manifest['observations']['frames'][0]['input'] if where == 'frame' else
                         manifest['observations']['gesture_input']['receipts'][0]['after'])['local_input'])
                     self.assertEqual(self.run_capture()['status'], 'INVALID')
+
+    def test_selection_scope_and_hud_rows_preserve_optional_owner_projections(self):
+        self.keyboard_profile()
+        local = self.gesture_receipts[0]['after']['local_input']
+        scope = {'mode': 'type', 'across_map': True, 'last_outcome_key': 'MSG:SelAcrossMap'}
+        local.update(selection_scope=scope, hud_messages=['Units selected across SCREEN.',
+                                                       'Units selected across MAP.'])
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        actual = report['capture']['observations']['gesture_input']['receipts'][0]['after']['local_input']
+        self.assertEqual(actual['selection_scope'], scope)
+        self.assertEqual(actual['hud_messages'], local['hud_messages'])
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        historical = self.local_input_observation()
+        self.assertEqual(observation._local_input_observation(historical, 'historical'), 0)
+        for projection in ({'selection_scope': scope}, {'hud_messages': []}):
+            observation._local_input_observation(dict(historical, **projection), 'single-extension')
+        self.assertEqual(observation._local_input_observation(local, 'extended'),
+                         len(local['selection_voice_requests']) + 1 + len(local['hud_messages']))
+
+    def test_selection_scope_and_hud_projection_reject_malformed_or_unbounded_rows(self):
+        local = dict(self.local_input_observation(),
+                     selection_scope={'mode': 'ordinary', 'across_map': False, 'last_outcome_key': None},
+                     hud_messages=[])
+        mutations = [lambda row: row.update(selection_scope=None),
+                     lambda row: row['selection_scope'].update(mode='invented'),
+                     lambda row: row['selection_scope'].update(mode=[]),
+                     lambda row: row['selection_scope'].update(across_map=1),
+                     lambda row: row['selection_scope'].update(last_outcome_key='MSG:Invented'),
+                     lambda row: row['selection_scope'].pop('last_outcome_key'),
+                     lambda row: row['selection_scope'].update(extra=True),
+                     lambda row: row.update(hud_messages=None),
+                     lambda row: row.update(hud_messages=[None]),
+                     lambda row: row.update(hud_messages=['row'] * 15)]
+        for index, mutation in enumerate(mutations):
+            candidate = deepcopy(local)
+            mutation(candidate)
+            with self.subTest(case=index), self.assertRaises(ValidationError):
+                observation._local_input_observation(candidate, 'local-input')
+        self.keyboard_profile()
+        self.gesture_receipts[0]['after']['local_input'].update(local)
+        # Use the complete wrapper output so no policy fields are duplicated here.
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        transcript = report['capture']['observations']['gesture_input']
+        count = observation._gesture_observations(transcript, self.profile)
+        with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', count - 1), self.assertRaises(ValidationError):
+            observation._gesture_observations(transcript, self.profile)
 
     def test_voice_requests_count_toward_retained_sample_budget(self):
         self.keyboard_profile()

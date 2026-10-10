@@ -859,6 +859,25 @@ struct MapTargetingObservation {
     type_id: String,
 }
 
+/// Projection of the shared TypeSelect/CombatantSelect/HealthNav scope owner.
+#[derive(Debug, Serialize)]
+struct MapSelectionScopeObservation {
+    mode: &'static str,
+    across_map: bool,
+    last_outcome_key: Option<&'static str>,
+}
+
+impl MapSelectionScopeObservation {
+    fn capture(scope: &crate::app::types::TypeSelectInputState) -> Self {
+        let (mode, across_map, last_outcome_key) = scope.selection_scope_view();
+        Self {
+            mode,
+            across_map,
+            last_outcome_key,
+        }
+    }
+}
+
 /// Read-only values from the current input, sidebar, simulation and audio owners.
 /// Pending voice requests are observed before playback, not evidence of audible output.
 #[derive(Debug, Serialize)]
@@ -872,6 +891,9 @@ struct MapLocalInputObservation {
     main_rng_cursor: [i32; 2],
     selection_voice_enabled: bool,
     selection_voice_requests: Vec<MapSelectionVoiceRequest>,
+    selection_scope: MapSelectionScopeObservation,
+    /// Actual localized rows in insertion order; observing never posts/expires a row.
+    hud_messages: Vec<String>,
 }
 
 impl MapLocalInputObservation {
@@ -914,6 +936,15 @@ impl MapLocalInputObservation {
                     _ => None,
                 })
                 .collect(),
+            selection_scope: MapSelectionScopeObservation::capture(&input.type_select),
+            hud_messages: state
+                .match_state
+                .match_presentation
+                .message_list
+                .messages()
+                .iter()
+                .map(|message| message.text.clone())
+                .collect(),
         }
     }
 }
@@ -943,10 +974,9 @@ impl MapInputObservation {
 
     fn sample_count(&self) -> usize {
         self.selected_ids.len()
-            + self
-                .local_input
-                .as_ref()
-                .map_or(0, |input| input.selection_voice_requests.len())
+            + self.local_input.as_ref().map_or(0, |input| {
+                input.selection_voice_requests.len() + 1 + input.hud_messages.len()
+            })
     }
 }
 
@@ -2793,6 +2823,7 @@ impl TacticalCaptureSession {
                     "cell": [entity.position.rx, entity.position.ry],
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
                     "health": entity.health.current, "active": entity.is_active(),
+                    "object_alive": entity.is_object_alive(),
                     "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
                     "mission": {"current": entity.mission.current().raw(),
                         "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
@@ -3671,6 +3702,63 @@ mod tests {
         );
         assert_eq!(observation.sample_count, MAX_OBSERVATION_SAMPLES - 1);
         assert!(observation.frames.is_empty());
+    }
+
+    #[test]
+    fn selection_scope_projection_and_hud_rows_serialize_and_charge_samples() {
+        let mut scope = crate::app::types::TypeSelectInputState::default();
+        assert_eq!(
+            serde_json::to_value(MapSelectionScopeObservation::capture(&scope)).unwrap(),
+            json!({"mode": "ordinary", "across_map": false, "last_outcome_key": null})
+        );
+        scope.finish_tap(crate::app::types::TypeSelectOutcome::Map, true);
+        let input = MapInputObservation {
+            selected_ids: vec![7, 9],
+            selection_pending: true,
+            target_line_remaining: 0,
+            target_line_active: false,
+            local_input: Some(MapLocalInputObservation {
+                camera_top_left: [0.0, 0.0],
+                camera_zoom: 1.0,
+                follow_target: None,
+                repair_mode: false,
+                sell_mode: false,
+                targeting: None,
+                main_rng_cursor: [0, 103],
+                selection_voice_enabled: true,
+                selection_voice_requests: vec![MapSelectionVoiceRequest {
+                    speaker_id: 7,
+                    sound_id: "SelectVoice".into(),
+                }],
+                selection_scope: MapSelectionScopeObservation::capture(&scope),
+                hud_messages: vec![
+                    "Units selected across SCREEN.".into(),
+                    "Units selected across MAP.".into(),
+                ],
+            }),
+        };
+        assert_eq!(
+            input.sample_count(),
+            6,
+            "two selections, one voice, one scope and two HUD rows"
+        );
+        let observed = serde_json::to_value(&input).unwrap();
+        assert_eq!(
+            observed["local_input"]["selection_scope"],
+            json!({"mode": "type", "across_map": true, "last_outcome_key": "MSG:SelAcrossMap"})
+        );
+        assert_eq!(
+            observed["local_input"]["hud_messages"],
+            json!([
+                "Units selected across SCREEN.",
+                "Units selected across MAP."
+            ])
+        );
+        assert_eq!(
+            scope.selection_scope_view(),
+            ("type", true, Some("MSG:SelAcrossMap")),
+            "read-only observation preserves the shared owner"
+        );
     }
 
     #[test]

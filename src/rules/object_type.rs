@@ -1605,6 +1605,13 @@ pub struct ObjectType {
     /// read passes that seed as its default.
     pub selectable: bool,
 
+    /// `IsSelectableCombatant=` (TechnoType+DBC): P selection reads this
+    /// independently of weapons and `Selectable`. Constructor710AF0 writes
+    /// false at71164B; ReadINI71574E..715769 uses the current byte as its
+    /// ReadBool default across reached rules layers. Executed controls:
+    /// tools/input_oracle/selection_navigation.{json,meta.json,md}.
+    pub is_selectable_combatant: bool,
+
     // -- Naval flags --
     /// Building requires water placement (WaterBound=yes in INI).
     /// When set, the placement validator checks the water speed column instead
@@ -2728,6 +2735,7 @@ impl ObjectType {
             // the field true and only the 67 stock types that spell out
             // `Selectable=no` turn it off.
             selectable: section.read_bool("Selectable", true),
+            is_selectable_combatant: section.read_bool("IsSelectableCombatant", false),
 
             // Naval flags
             water_bound: {
@@ -2980,6 +2988,89 @@ mod infantry_speed_type_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn combatant_type_default_and_retained_layer_reads_match_original_execution() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::ruleset::RuleSet;
+        use std::fmt::Write;
+
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/input_oracle/selection_navigation.json",
+        ))
+        .unwrap();
+        let family = &native["combatant_type_histories"];
+        assert_eq!(family["key"], "IsSelectableCombatant");
+        assert_eq!(family["field_offset"], 0xDBC);
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[VehicleTypes]\n0=AUTHORED\n[AUTHORED]\nStrength=100\n",
+        ));
+        assert!(
+            !RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("AUTHORED")
+                .unwrap()
+                .is_selectable_combatant
+        );
+        for constructor in family["constructors"].as_array().unwrap() {
+            assert_eq!(constructor["value_before"], 0xA5);
+            assert_eq!(
+                constructor["value_after"], false,
+                "original {} constructor",
+                constructor["type_id"]
+            );
+        }
+        let mut previous = false;
+        for row in family["authored_history"].as_array().unwrap() {
+            assert_eq!(row["before"].as_bool().unwrap(), previous);
+            let mut text = String::new();
+            for (section, values) in row["sections"].as_object().unwrap() {
+                writeln!(text, "[{section}]").unwrap();
+                for (key, value) in values.as_object().unwrap() {
+                    writeln!(text, "{key}={}", value.as_str().unwrap()).unwrap();
+                }
+            }
+            layers.push(RulesLayerKind::Scenario, IniFile::from_str(&text));
+            let rules =
+                RuleSet::from_rules_layers(&layers).expect("native retained-reader history");
+            previous = rules.object("AUTHORED").unwrap().is_selectable_combatant;
+            assert_eq!(
+                previous,
+                row["after"].as_bool().unwrap(),
+                "original {}",
+                row["id"]
+            );
+            for read in row["reads"].as_array().unwrap() {
+                assert_eq!(read["key"], "IsSelectableCombatant");
+                assert_eq!(read["reader"], "0x5295f0");
+            }
+        }
+    }
+
+    #[test]
+    fn combatant_retail_rules_mode_map_reads_match_original_execution() {
+        let Some(retail) =
+            crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+        else {
+            return;
+        };
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/input_oracle/selection_navigation.json",
+        ))
+        .unwrap();
+        let rows = native["combatant_type_histories"]["retail_histories"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows.len(), 8);
+        for row in rows {
+            let name = row["type_id"].as_str().unwrap();
+            assert_eq!(
+                retail.rules.object(name).unwrap().is_selectable_combatant,
+                row["final"].as_bool().unwrap(),
+                "{name}: physical retail startup -> Battle -> XMP03T4 layers",
+            );
+        }
+    }
+
     #[test]
     fn flight_level_reader_and_fallback_match_original_executable() {
         #[derive(serde::Deserialize)]
