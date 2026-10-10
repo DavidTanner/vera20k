@@ -1596,12 +1596,20 @@ def _sound_state(value: Any, label: str) -> int:
     previous = 0
     for actor in actors:
         row = require_object(actor, f'{label}.actors[]')
-        require_exact_keys(row, ('stable_id', 'body_counter', 'active', 'countdown'), f'{label}.actors[]')
+        gattling_fields = ('gattling_stage', 'gattling_value')
+        observes_gattling = any(key in row for key in gattling_fields)
+        require_exact_keys(row, ('stable_id', 'body_counter', 'active', 'countdown',
+                                 *(gattling_fields if observes_gattling else ())), f'{label}.actors[]')
         previous = _bounded_int(row['stable_id'], f'{label}.stable_id', previous + 1, (1 << 64) - 1)
         _bounded_int(row['body_counter'], f'{label}.body_counter', -(1 << 31), (1 << 32) - 1)
         _bounded_int(row['countdown'], f'{label}.countdown', -(1 << 31), (1 << 31) - 1)
         if type(row['active']) is not bool:
             raise ValidationError(f'{label}.active must be a boolean')
+        if observes_gattling:
+            # Techno +140/+144 owner values, independent of animation +F8.
+            # Historical receipts may omit the pair; no state is inferred.
+            for key in gattling_fields:
+                _bounded_int(row[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
     return len(actors) + 2
 
 

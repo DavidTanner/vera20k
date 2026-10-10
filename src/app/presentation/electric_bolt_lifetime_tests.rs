@@ -7,7 +7,7 @@ use crate::sim::combat::TargetKind;
 use crate::sim::combat::world_receiver::FireVisit;
 use crate::sim::house_state::HouseState;
 use crate::sim::projectile::ProjectileCoord;
-use crate::sim::rng::SimRng;
+use crate::sim::rng::{MainRng, SimRng};
 use crate::sim::world::Simulation;
 use serde_json::{Value, json};
 
@@ -65,9 +65,10 @@ fn native_tactical_visits_own_lifetime_reverse_order_and_clear() {
             // and last-decay values, independent of the normal constructor.
             bolts.live.last_mut().unwrap().decay = int(&birth["decay"]);
         }
-        let mut main = SimRng::from_native_state_hex_for_test(
+        let main: MainRng = SimRng::from_native_state_hex_for_test(
             row["birth_rng_after"]["main"].as_str().unwrap(),
-        );
+        )
+        .into();
         for (ordinal, visit) in row["visits"].as_array().unwrap().iter().enumerate() {
             let at = format!("{name} visit{ordinal}");
             assert_eq!(
@@ -79,11 +80,7 @@ fn native_tactical_visits_own_lifetime_reverse_order_and_clear() {
                 bolts.clear_on_load();
                 assert!(bolts.lines.is_empty(), "{at} retained geometry cleared");
             } else {
-                let lines = bolts.composite(
-                    viewport,
-                    Some(palette),
-                    &mut MainRngDraws::borrow(&mut main),
-                );
+                let lines = bolts.composite(viewport, Some(palette), &mut main.draws());
                 let expected = visit["segments"]
                     .as_array()
                     .unwrap()
@@ -240,7 +237,7 @@ fn accepted_bolt_composites_preserve_the_next_actual_bullet_identity() {
             },
             rules,
             None,
-        );
+         crate::sim::world::FrameEffects::default(),);
         assert_eq!(sim.projectiles.len(), 1, "retail MTNK emitted its shell");
         let (_, bullet) = sim.projectiles.iter().next().unwrap();
         assert_eq!(bullet.source_id, source);

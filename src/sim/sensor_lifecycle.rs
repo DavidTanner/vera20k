@@ -583,6 +583,7 @@ mod tests {
                 0,
                 crate::sim::world::PlacementEvidence::EvaluateMark,
                 &rules,
+                crate::sim::world::FrameEffects::default(),
             )
             .is_some()
         );

@@ -185,8 +185,13 @@ impl SimRuntime {
         commands: &[crate::sim::command::CommandEnvelope],
         tick_ms: u32,
     ) -> Result<(), crate::sim::world::FrameAdvanceError> {
-        self.advance_frame(commands, tick_ms, crate::sim::world::TickLane::Ordinary)
-            .map(|_| ())
+        self.advance_frame(
+            commands,
+            tick_ms,
+            crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .map(|_| ())
     }
 
     /// The production frame transaction: advance one lane-tagged frame using
@@ -198,6 +203,7 @@ impl SimRuntime {
         commands: &[crate::sim::command::CommandEnvelope],
         tick_ms: u32,
         lane: crate::sim::world::TickLane,
+        effects: crate::sim::world::FrameEffects<'_>,
     ) -> Result<crate::sim::world::SimFrameOutput, crate::sim::world::FrameAdvanceError> {
         self.simulation.advance_app_frame(
             commands,
@@ -213,6 +219,7 @@ impl SimRuntime {
                 waypoints: &self.resources.waypoints,
                 rules: Some(&self.resources.rules),
             }),
+            effects,
         )
     }
 }
@@ -272,7 +279,12 @@ mod tests {
         let before_first_frame = GameSnapshot::save(&runtime.simulation, 0, 0, "trigger_owner", 0);
         let run = |runtime: &mut SimRuntime| {
             runtime
-                .advance_frame(&[], 67, TickLane::Ordinary)
+                .advance_frame(
+                    &[],
+                    67,
+                    TickLane::Ordinary,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .expect("bound production frame")
                 .trigger_effects
         };
@@ -397,7 +409,12 @@ mod tests {
         };
 
         let _ = runtime
-            .advance_frame(&[], 33, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                33,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
 
         assert_ne!(

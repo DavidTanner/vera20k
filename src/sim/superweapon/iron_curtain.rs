@@ -71,6 +71,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
 use crate::sim::superweapon::invulnerability::{InvulnKind, apply_invulnerability};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// What [`launch`] called, in the oracle's terms (observation only).
@@ -105,7 +106,7 @@ fn observe(call: Observed) {
 
 /// Launch case 1 for `owner`'s Super of type `sw_type` at (target_rx,
 /// target_ry): see the module doc. Returns whether the Super was charged.
-pub fn launch(
+pub(crate) fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -113,6 +114,7 @@ pub fn launch(
     target_ry: u16,
     sw_type: InternedId,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if !super::is_charged(sim, owner, sw_type) {
         return false;
@@ -157,10 +159,25 @@ pub fn launch(
                 let duration = rules.general.iron_curtain_duration;
                 match category {
                     EntityCategory::Infantry => {
-                        receive_strength_as_c4(sim, rules, overlay_registry, id, Some(owner), true);
+                        receive_strength_as_c4(
+                            sim,
+                            rules,
+                            overlay_registry,
+                            id,
+                            Some(owner),
+                            true,
+                            frame_effects,
+                        );
                     }
                     EntityCategory::Unit | EntityCategory::Aircraft => {
-                        foot_iron_curtain(sim, rules, overlay_registry, id, duration);
+                        foot_iron_curtain(
+                            sim,
+                            rules,
+                            overlay_registry,
+                            id,
+                            duration,
+                            frame_effects,
+                        );
                     }
                     _ => {
                         let frame = sim.session.binary_frame;
@@ -200,6 +217,7 @@ fn foot_iron_curtain(
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
     duration: i32,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(organic) = sim
         .substrate
@@ -211,7 +229,7 @@ fn foot_iron_curtain(
         return;
     };
     if organic {
-        receive_strength_as_c4(sim, rules, overlay_registry, id, None, false);
+        receive_strength_as_c4(sim, rules, overlay_registry, id, None, false, frame_effects);
         return;
     }
     if let Some(eater) = sim
@@ -226,6 +244,7 @@ fn foot_iron_curtain(
             eater,
             crate::sim::combat::parasite::FORCED_RELEASE_SUPPRESSION_FRAMES,
             rules,
+            frame_effects,
         );
     }
     let frame = sim.session.binary_frame;
@@ -248,6 +267,7 @@ fn receive_strength_as_c4(
     id: u64,
     house: Option<InternedId>,
     ignore_defenses: bool,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(event) = super::strength_receiver_event(
         sim,
@@ -261,5 +281,5 @@ fn receive_strength_as_c4(
     };
     #[cfg(test)]
     observe(Observed::ReceiveDamage(event));
-    sim.commit_direct_damage_receiver(rules, overlay_registry, event);
+    sim.commit_direct_damage_receiver(rules, overlay_registry, event, frame_effects);
 }

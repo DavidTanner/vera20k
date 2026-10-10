@@ -58,6 +58,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_base_building::{self, BuildingExit};
 use crate::sim::intern::InternedId;
 use crate::sim::timer::CdTimer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::factory::{FactoryHolder, PRODUCTION_STEPS};
@@ -73,11 +74,12 @@ pub(crate) fn factory_ai(
     building: u64,
     factory_type: FactoryType,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(owner) = sim.substrate.entities.get(building).map(|b| b.owner()) else {
         return;
     };
-    exit_finished_object(sim, rules, building, owner, overlay_registry);
+    exit_finished_object(sim, rules, building, owner, overlay_registry, effects);
 
     // `0x00450248..0x0045028C`.
     let Some(entity) = sim.substrate.entities.get(building) else {
@@ -96,10 +98,10 @@ pub(crate) fn factory_ai(
         .building_factory(building)
         .is_some()
     {
-        abandon_stopped_factory(sim, rules, building, owner);
+        abandon_stopped_factory(sim, rules, building, owner, effects);
         return;
     }
-    start_factory(sim, rules, building, owner, factory_type);
+    start_factory(sim, rules, building, owner, factory_type, effects);
 }
 
 /// `0x004500FA..0x00450242`: the finished object's exit once the wait is
@@ -110,6 +112,7 @@ fn exit_finished_object(
     building: u64,
     owner: InternedId,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(object) = sim
         .production
@@ -130,9 +133,9 @@ fn exit_finished_object(
         return;
     };
     let exit = if product_type.category == ObjectCategory::Building {
-        ai_base_building::exit_building(sim, rules, building, product, overlay_registry)
+        ai_base_building::exit_building(sim, rules, building, product, overlay_registry, effects)
     } else {
-        let exit = exit_produced_object(sim, rules, building, product, overlay_registry);
+        let exit = exit_produced_object(sim, rules, building, product, overlay_registry, effects);
         if exit == BuildingExit::Placed {
             sim.mission_spawned_entities = true;
         }
@@ -161,7 +164,7 @@ fn exit_finished_object(
             if naval_building && let Some(house) = sim.houses.get_mut(&owner) {
                 house.ai_production.forbid_naval();
             }
-            abandon(sim, rules, building, owner);
+            abandon(sim, rules, building, owner, effects);
         }
     }
 }
@@ -173,6 +176,7 @@ fn abandon_stopped_factory(
     rules: &RuleSet,
     building: u64,
     owner: InternedId,
+    effects: FrameEffects<'_>,
 ) {
     if !placement_wait_over(sim, building) {
         return;
@@ -185,7 +189,7 @@ fn abandon_stopped_factory(
             factory.step_rate_frames == 0 || factory.suspended || factory.manual
         });
     if stopped {
-        abandon(sim, rules, building, owner);
+        abandon(sim, rules, building, owner, effects);
     }
 }
 
@@ -197,6 +201,7 @@ fn start_factory(
     building: u64,
     owner: InternedId,
     factory_type: FactoryType,
+    effects: FrameEffects<'_>,
 ) {
     if crate::sim::credit_income::available_money(sim, owner) <= 10 {
         return;
@@ -228,7 +233,15 @@ fn start_factory(
         insertion_seq,
         cost,
     );
-    if start_active_production(sim, rules, FactoryHolder::Building(building), type_id).is_none() {
+    if start_active_production(
+        sim,
+        rules,
+        FactoryHolder::Building(building),
+        type_id,
+        effects,
+    )
+    .is_none()
+    {
         // `0x004503A7 -> 0x004502DC`: deleted, nothing held to abandon.
         sim.production.factories.remove_building_factory(building);
     }
@@ -245,9 +258,15 @@ fn placement_wait_over(sim: &Simulation, building: u64) -> bool {
 
 /// AbandonProduction and the delete of building `building`'s factory, whose
 /// owner is `owner` (the factory's house, `+0x6C`).
-fn abandon(sim: &mut Simulation, rules: &RuleSet, building: u64, owner: InternedId) {
+fn abandon(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    building: u64,
+    owner: InternedId,
+    effects: FrameEffects<'_>,
+) {
     if let Some(abandoned) = sim.production.factories.abandon_building_factory(building) {
-        settle_abandoned(sim, rules, owner, abandoned);
+        settle_abandoned(sim, rules, owner, abandoned, effects);
     }
 }
 
@@ -256,13 +275,18 @@ fn abandon(sim: &mut Simulation, rules: &RuleSet, building: u64, owner: Interned
 /// (`0x004486DF..0x00448701`): the building's factory is abandoned, its
 /// object refunded and destroyed, and deleted. Without rules (fixtures) the
 /// object is destroyed unrefunded.
-pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building: u64) {
+pub(crate) fn detach_all(
+    sim: &mut Simulation,
+    rules: Option<&RuleSet>,
+    building: u64,
+    effects: FrameEffects<'_>,
+) {
     let Some(factory) = sim.production.factories.building_factory(building) else {
         return;
     };
     let owner = factory.owner;
     match rules {
-        Some(rules) => abandon(sim, rules, building, owner),
+        Some(rules) => abandon(sim, rules, building, owner, effects),
         None => {
             let object = sim
                 .production
@@ -270,7 +294,7 @@ pub(crate) fn detach_all(sim: &mut Simulation, rules: Option<&RuleSet>, building
                 .abandon_building_factory(building)
                 .and_then(|abandoned| abandoned.entity_id);
             if let Some(object) = object {
-                let _ = sim.discard_constructed_limbo(object, rules);
+                let _ = sim.discard_constructed_limbo(object, rules, effects);
             }
         }
     }

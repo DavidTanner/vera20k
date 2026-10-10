@@ -84,6 +84,7 @@ fn live_bridge_recalc_publishes_retained_attributes_before_connectivity() {
     let ids_before = base.zone_ids.clone();
     let rows_before = base.raw_zone_ids_by_row.clone();
     let mut host = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: Some(&registry),
@@ -160,6 +161,7 @@ fn live_bridge_constructor_matches_original_and_drains_at_admitted_tick() {
             original["requested"][1].as_i64().unwrap() as i16,
         );
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: Some(&registry),
@@ -237,6 +239,7 @@ fn live_bridge_constructor_side_cells_restore_deck_without_overlay_sprites() {
         assert_eq!(original["kind"], "success");
         let (mut sim, rules, registry) = fixture();
         LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: Some(&registry),
@@ -334,6 +337,7 @@ fn constructor_side_admission_matches_original_foot_receiver() {
             "[InfantryTypes]\n0=ENGINEER\n[ENGINEER]\nEngineer=yes\nSpeedType=Foot\n",
         );
         LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: Some(&registry),
@@ -454,6 +458,7 @@ fn live_bridge_constructor_queue_respects_terminal_admission_and_other_objects()
     let (mut sim, rules, registry) = fixture();
     for (index, requested) in [(16, 16), (17, 16)].into_iter().enumerate() {
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: Some(&registry),
@@ -509,6 +514,7 @@ fn live_bridge_constructor_restamp_updates_the_state_byte_axis() {
     };
     {
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: Some(&registry),
@@ -518,6 +524,7 @@ fn live_bridge_constructor_restamp_updates_the_state_byte_axis() {
     }
     assert_eq!(render(&sim).map(|(_, axis)| axis), Some(Axis::EW));
     let mut host = LivePublication {
+        frame_effects: crate::sim::world::FrameEffects::default(),
         sim: &mut sim,
         rules: &rules,
         registry: Some(&registry),

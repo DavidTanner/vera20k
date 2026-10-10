@@ -581,7 +581,7 @@ mod tests {
             runtime.resources.overlay_registry =
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
-                .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary)
+                .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             let detonate = !source_present || shared_wall;
             assert_eq!(
@@ -667,7 +667,7 @@ mod tests {
             runtime.resources.overlay_registry =
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             let saved = runtime.simulation.projectiles.get(id).unwrap().clone();
             assert_eq!(saved.arm_timer.start_frame(), 100);
@@ -732,10 +732,10 @@ mod tests {
             resumed.resources.overlay_registry =
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             let _ = resumed
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             assert!(
                 runtime.simulation.projectiles.get(id).is_some(),
@@ -859,7 +859,7 @@ mod tests {
                 let mut runtime = SimRuntime::from_simulation(sim);
                 runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
                 let output = runtime
-                    .advance_frame(&[], 16, TickLane::Ordinary)
+                    .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                     .expect("fixture frame must complete");
                 assert_eq!(
                     runtime.simulation.projectiles.len(),
@@ -969,7 +969,7 @@ mod tests {
             assert_eq!(projectile.acceleration, inputs["acceleration"]);
             assert_eq!(rules.general.gravity, inputs["gravity"]);
             let output = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             assert_eq!(
                 runtime.simulation.projectiles.len(),
@@ -1071,7 +1071,7 @@ mod tests {
                         runtime.resources.rules.general.gravity =
                             row["gravity_sequence"][frame].as_i64().unwrap() as i32;
                         let _ = runtime
-                            .advance_frame(&[], 16, TickLane::Ordinary)
+                            .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                             .expect("fixture frame must complete");
                     }
                 }
@@ -1155,7 +1155,7 @@ mod tests {
             .unwrap();
         for expected in row["frames"].as_array().unwrap().iter().take(3) {
             let _ = runtime
-                .advance_frame(&[], 16, TickLane::Ordinary)
+                .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
                 .expect("fixture frame must complete");
             let projectile = runtime
                 .simulation
@@ -1229,7 +1229,7 @@ mod tests {
         runtime.resources.overlay_registry =
             crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
         let _ = runtime
-            .advance_frame(&[], 16, TickLane::Ordinary)
+            .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("fixture frame must complete");
         assert!(runtime.simulation.projectiles.get(100).is_none());
         let overlays = runtime.simulation.overlay_grid.as_ref().unwrap();
@@ -1283,7 +1283,7 @@ mod tests {
         // admission and Z=0 selection. Exact reflected stores have their own
         // original-byte comparisons; this checks the real AI-to-damage delivery.
         let _ = runtime
-            .advance_frame(&[], 16, TickLane::Ordinary)
+            .advance_frame(&[], 16, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("fixture frame must complete");
         assert!(runtime.simulation.projectiles.get(100).is_none());
         assert_eq!(

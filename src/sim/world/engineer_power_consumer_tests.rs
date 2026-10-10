@@ -339,10 +339,20 @@ fn settled_repair_native_health_sample_factory_cadence_radar_and_later_advice() 
                     if row["prior_power_dirty_at_repair"] == true {
                         sim.invalidate_house_power(owner, false);
                     }
-                    production::update_repair_and_power(&mut sim, &rules, PLANT, None);
+                    production::update_repair_and_power(
+                        &mut sim,
+                        &rules,
+                        PLANT,
+                        None,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                 }
                 "actual_global_factory_then_house_prefix" => {
-                    production::revalidate_and_step_factories(&mut sim, &rules);
+                    production::revalidate_and_step_factories(
+                        &mut sim,
+                        &rules,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                     sim.assess_house_derived_state(owner, &rules);
                 }
                 "later_local_house_advice" => house_eva::update_house_eva(&mut sim, &rules, owner),

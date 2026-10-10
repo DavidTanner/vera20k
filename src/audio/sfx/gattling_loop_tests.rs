@@ -328,6 +328,7 @@ fn apply_native_stage_report(
             assert_eq!(index, 2, "original stage1 ground weapon slot");
             Some(reports.len() as i32)
         },
+        || {},
         || {
             assert_eq!(observer.main.native_state_hex(), request["state_before"]);
             let word = retained.next_u32();
@@ -780,6 +781,430 @@ fn native_exact_source_end_waits_for_next_positive_capacity_fill() {
 #[test]
 fn native_hard_stage_stop_cancels_old_ring_before_loop2() {
     replay("stock_loop1_hard_stage_stop_then_loop2_control");
+}
+
+fn recorded_boundary<'a>(row: &'a Value, label: &str) -> &'a Value {
+    row["boundaries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|boundary| boundary["label"] == label)
+        .unwrap()
+}
+
+fn native_gattling_sound_facts(row: &Value, boundary: &Value) -> Vec<&'static str> {
+    row["ordered_calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|call| call["phase"] == boundary["label"])
+        .filter_map(|call| match call["kind"].as_str() {
+            // These returns follow the two +4A4 Stop calls, at70DF74 and
+            //70DF9C. The quiet +4C0 handle's70DF07 call is a different owner.
+            Some("HandleStopClear")
+                if matches!(call["return_pc"].as_u64(), Some(0x70df79 | 0x70dfa1)) =>
+            {
+                Some("stop")
+            }
+            Some("HandleRelease") if call["return_pc"] == 0x70e013_u64 => Some("release"),
+            Some("PlayAtPosition") if call["return_pc"] == 0x70dfe2_u64 => Some("loop"),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Fixture PCM transport through the actual load, playlist and ring owners,
+/// using the Simulation's retained Main capability rather than another RNG.
+fn start_sim_ring(
+    sim: &crate::sim::world::Simulation,
+    row: &Value,
+    boundary: &Value,
+    entry: &SoundEntry,
+) -> HeadlessOutput {
+    assert_main(&sim.main_rng, row, &boundary["before"], "before ring start");
+    let retained = sim.presentation_main_draws();
+    let mut draws = PlaybackDraws::new(move |low, high| retained.ranged(low, high));
+    let shifts = PlayShifts::draw(entry, &mut draws);
+    let loaded = LoadedPlayback::load(entry, &mut draws, fixture_clip).unwrap();
+    let compact_slots = loaded
+        .clips
+        .keys()
+        .copied()
+        .enumerate()
+        .map(|(compact, index)| (index, compact))
+        .collect();
+    let mut cursor = PlaylistCursor::new(
+        loaded.selected.clone(),
+        entry.control,
+        entry.delay_ms.0,
+        entry.loop_count,
+    );
+    cursor.prepare(&mut draws, true).unwrap();
+    let initial = cursor.prepare(&mut draws, true).unwrap();
+    let rate = shifts.shifted_sample_rate(loaded.clips[&initial].sample_rate);
+    let (source, control) = RingSource::new(
+        loaded,
+        cursor,
+        initial,
+        draws,
+        rate,
+        PAN_CENTRE,
+        Some(&entry.sounds),
+    )
+    .unwrap();
+    let fill = row["native_ring_fills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|fill| fill["phase"] == boundary["label"])
+        .unwrap();
+    let mut output = HeadlessOutput {
+        source,
+        control,
+        backend: fill["backend"].as_u64().unwrap(),
+        compact_slots,
+        names: entry.sounds.clone(),
+    };
+    output.assert_fill(&sim.main_rng, row, fill);
+    assert!(output.pull_quarter() > 0, "retained actual attack PCM");
+    assert_main(&sim.main_rng, row, &boundary["after"], "after ring start");
+    output
+}
+
+/// A device-free boundary consumer: it records facts and calls only the real
+/// retained source's controls when Simulation reaches Stop/Release. It neither
+/// chooses a sample nor pre-cancels the source. SfxPlayer's device transport and
+/// arbiter retirement are independently covered by their owner regressions.
+struct RecordingBoundary<'a> {
+    delivered: std::cell::Cell<usize>,
+    calls: std::cell::Cell<usize>,
+    source: std::cell::RefCell<HeadlessOutput>,
+    owner: u64,
+    entity: u64,
+    row: &'a Value,
+    boundary: &'a Value,
+    release: bool,
+}
+
+impl crate::sim::world::SoundBoundary for RecordingBoundary<'_> {
+    fn consume(
+        &self,
+        sim: &crate::sim::world::Simulation,
+        _rules: &crate::rules::ruleset::RuleSet,
+        events: &[crate::sim::world::SimSoundEvent],
+    ) {
+        use crate::sim::world::SimSoundEvent;
+        assert!(self.delivered.get() <= events.len());
+        for event in &events[self.delivered.get()..] {
+            let reached = match event {
+                SimSoundEvent::GattlingLoopStop { owner } => {
+                    assert!(!self.release, "soft boundary must not hard stop");
+                    assert_eq!(*owner, self.owner);
+                    true
+                }
+                SimSoundEvent::GattlingLoopRelease { owner } => {
+                    assert!(self.release, "hard boundary must not release");
+                    assert_eq!(*owner, self.owner);
+                    true
+                }
+                _ => false,
+            };
+            if !reached {
+                continue;
+            }
+            self.calls.set(self.calls.get() + 1);
+            assert_main(
+                &sim.main_rng,
+                self.row,
+                &self.boundary["before"],
+                "native Stop/Release before later Main report",
+            );
+            let mut output = self.source.borrow_mut();
+            if self.release {
+                // Original Update70E000 reaches Release406060 before clearing
+                // the report latch or subtracting RateDown from the value.
+                let before = &self.boundary["before"]["gattling"];
+                let state = sim.substrate.entities.get(self.entity).unwrap().gattling;
+                assert_eq!(i64::from(state.stage()), before["stage"].as_i64().unwrap());
+                assert_eq!(i64::from(state.value()), before["value"].as_i64().unwrap());
+                assert_eq!(state.report_latch(), before["latch"].as_i64().unwrap() != 0);
+                output.control.update_no_replay(|| true);
+                assert_eq!(output.source.native_snapshot()["no_replay"], true);
+                assert_eq!(output.source.native_snapshot()["cancelled"], false);
+            } else {
+                output.control.cancel();
+                let quarter = output.source.native_snapshot()["quarter_samples"]
+                    .as_u64()
+                    .unwrap() as usize;
+                assert_eq!(
+                    output.source.by_ref().take(quarter + 2).count(),
+                    0,
+                    "reached Stop must prevent cached PCM and later refill draws",
+                );
+                assert!(
+                    !output.control.release_to_decay(),
+                    "old Stop cannot turn into decay"
+                );
+            }
+            assert_main(
+                &sim.main_rng,
+                self.row,
+                &self.boundary["before"],
+                "control has no Main draw",
+            );
+        }
+        self.delivered.set(events.len());
+    }
+
+    fn delivered(&self) -> usize {
+        self.delivered.get()
+    }
+}
+
+#[test]
+fn production_gattling_stop_and_release_reach_retained_source_at_native_boundaries() {
+    use crate::sim::combat::gattling::{GattlingState, gattling_sound_owner};
+    use crate::sim::world::{FrameEffects, SimSoundEvent, Simulation};
+
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let rules = &retail.rules;
+    let row = history("stock_loop1_hard_stage_stop_then_loop2_control");
+    let registry = registry(&native()["retail"]);
+    assert_reader(&registry, &native()["retail"]);
+    let mut sim = Simulation::new();
+    let id = sim
+        .spawn_object("YTNK", "Americans", 13, 14, 0, rules)
+        .unwrap();
+    let owner = gattling_sound_owner(id);
+    let initial = recorded_boundary(row, "original_admitted_Unit_fire_tail");
+    sim.main_rng = SimRng::from_native_state_hex_for_test(main_hex(row, &initial["before"])).into();
+    sim.substrate.entities.get_mut(id).unwrap().gattling = GattlingState::from_fields(0, 0, false);
+    let (_, raw) = trace_draws(|| sim.gattling_increase(id, rules, 1, FrameEffects::default()));
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0]["value"], initial["requests"][0]["result"]);
+    assert_main(
+        &sim.main_rng,
+        row,
+        &initial["after"],
+        "initial production report",
+    );
+    let initial_reports: Vec<_> = sim
+        .sound_events
+        .iter()
+        .filter(|event| matches!(event, SimSoundEvent::GattlingLoop { .. }))
+        .collect();
+    assert_eq!(
+        initial_reports.len(),
+        1,
+        "sole initial report without a sink"
+    );
+    assert_eq!(
+        initial_reports.len(),
+        native_gattling_sound_facts(row, initial)
+            .iter()
+            .filter(|&&fact| fact == "loop")
+            .count()
+    );
+    assert!(
+        matches!(initial_reports[0], SimSoundEvent::GattlingLoop { owner: actual, sound_id, .. }
+        if *actual == owner && sound_id == "GattlingGunAttackLoop1")
+    );
+    let old = start_sim_ring(
+        &sim,
+        row,
+        recorded_boundary(row, "audio_pump_1034"),
+        registry.get("GattlingGunAttackLoop1").unwrap(),
+    );
+    let threshold = recorded_boundary(row, "original_Increase_threshold_component_ticks199");
+    let (_, raw) = trace_draws(|| sim.gattling_increase(id, rules, 199, FrameEffects::default()));
+    assert!(
+        raw.is_empty(),
+        "original retained latch crosses no new report"
+    );
+    assert_main(
+        &sim.main_rng,
+        row,
+        &threshold["after"],
+        "threshold component",
+    );
+    let transition = recorded_boundary(row, "original_Unit_tail_hard_stage_transition");
+    let native_transition_facts = native_gattling_sound_facts(row, transition);
+    let transition_prefix = sim.sound_events.len();
+    let hard = RecordingBoundary {
+        delivered: std::cell::Cell::new(transition_prefix),
+        calls: std::cell::Cell::new(0),
+        source: std::cell::RefCell::new(old),
+        owner,
+        entity: id,
+        row,
+        boundary: transition,
+        release: false,
+    };
+    let (_, raw) =
+        trace_draws(|| sim.gattling_increase(id, rules, 1, FrameEffects::for_sound(&hard)));
+    assert_eq!(
+        hard.calls.get(),
+        native_transition_facts
+            .iter()
+            .filter(|&&fact| fact == "stop")
+            .count(),
+        "production increase must reach both native Stops before drawing its report"
+    );
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0]["value"], transition["requests"][0]["result"]);
+    assert_main(
+        &sim.main_rng,
+        row,
+        &transition["after"],
+        "production stage1 report",
+    );
+    assert_eq!(
+        sim.sound_events[transition_prefix..]
+            .iter()
+            .map(|event| match event {
+                SimSoundEvent::GattlingLoopStop { owner: stopped } => {
+                    assert_eq!(*stopped, owner);
+                    "stop"
+                }
+                SimSoundEvent::GattlingLoop {
+                    owner: started,
+                    sound_id,
+                    ..
+                } => {
+                    assert_eq!(*started, owner);
+                    assert_eq!(sound_id, "GattlingGunAttackLoop2");
+                    "loop"
+                }
+                other => panic!("unexpected production stage-transition fact: {other:?}"),
+            })
+            .collect::<Vec<_>>(),
+        native_transition_facts,
+        "native Stop/Stop/Loop2 order after the retained prefix"
+    );
+    let state = sim.substrate.entities.get(id).unwrap().gattling;
+    assert_eq!(
+        i64::from(state.stage()),
+        transition["after"]["gattling"]["stage"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(state.value()),
+        transition["after"]["gattling"]["value"].as_i64().unwrap()
+    );
+    assert_eq!(
+        state.report_latch(),
+        transition["after"]["gattling"]["latch"].as_i64().unwrap() != 0
+    );
+    let new = start_sim_ring(
+        &sim,
+        row,
+        recorded_boundary(row, "audio_pump_1094"),
+        registry.get("GattlingGunAttackLoop2").unwrap(),
+    );
+    assert_eq!(
+        hard.source.borrow_mut().pull_quarter(),
+        0,
+        "old source stays cancelled across real Loop2 draws"
+    );
+    let release = recorded_boundary(row, "original_Unit_no_target_soft_release");
+    let soft = RecordingBoundary {
+        delivered: std::cell::Cell::new(sim.sound_events.len()),
+        calls: std::cell::Cell::new(0),
+        source: std::cell::RefCell::new(new),
+        owner,
+        entity: id,
+        row,
+        boundary: release,
+        release: true,
+    };
+    let (_, raw) =
+        trace_draws(|| sim.gattling_update(id, rules, 1, FrameEffects::for_sound(&soft)));
+    assert_eq!(
+        soft.calls.get(),
+        native_gattling_sound_facts(row, release)
+            .iter()
+            .filter(|&&fact| fact == "release")
+            .count(),
+        "production decay must reach Release before changing the owner"
+    );
+    assert!(raw.is_empty());
+    assert_main(
+        &sim.main_rng,
+        row,
+        &release["after"],
+        "production soft release",
+    );
+    let state = sim.substrate.entities.get(id).unwrap().gattling;
+    let after = &release["after"]["gattling"];
+    assert_eq!(i64::from(state.stage()), after["stage"].as_i64().unwrap());
+    assert_eq!(i64::from(state.value()), after["value"].as_i64().unwrap());
+    assert_eq!(state.report_latch(), after["latch"].as_i64().unwrap() != 0);
+}
+
+#[test]
+fn production_limbo_preserves_frame_sound_scope_without_local_rules() {
+    use crate::sim::combat::gattling::{GattlingState, gattling_sound_owner};
+    use crate::sim::world::{ConcealOutcome, FrameEffects, Simulation, UninitContext};
+
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let rules = &retail.rules;
+    let row = history("stock_loop1_hard_stage_stop_then_loop2_control");
+    let registry = registry(&native()["retail"]);
+    let playback = recorded_boundary(row, "audio_pump_1094");
+    let release = recorded_boundary(row, "original_Unit_no_target_soft_release");
+    let mut sim = Simulation::new();
+    let id = sim
+        .spawn_object("YTNK", "Americans", 13, 14, 0, rules)
+        .unwrap();
+    let before = &release["before"]["gattling"];
+    sim.substrate.entities.get_mut(id).unwrap().gattling = GattlingState::from_fields(
+        before["stage"].as_i64().unwrap() as i32,
+        before["value"].as_i64().unwrap() as i32,
+        before["latch"].as_i64().unwrap() != 0,
+    );
+    sim.main_rng =
+        SimRng::from_native_state_hex_for_test(main_hex(row, &playback["before"])).into();
+    let source = start_sim_ring(
+        &sim,
+        row,
+        playback,
+        registry.get("GattlingGunAttackLoop2").unwrap(),
+    );
+    let boundary = RecordingBoundary {
+        delivered: std::cell::Cell::new(sim.sound_events.len()),
+        calls: std::cell::Cell::new(0),
+        source: std::cell::RefCell::new(source),
+        owner: gattling_sound_owner(id),
+        entity: id,
+        row,
+        boundary: release,
+        release: true,
+    };
+    // Rust lifecycle regression: recorded Loop2/Main inputs and real PCM
+    // controls, through a rules-free nested context. Limbo6F6C6B's Release
+    // before6F6C76 is instruction-established; this is not an executed native
+    // comparison of the complete Limbo transaction.
+    let effects = FrameEffects::for_sound(&boundary).with_rules(Some(rules));
+    let context = UninitContext::new(None, None).with_effects(effects);
+    assert!(context.rules().is_none());
+    let (outcome, raw) = trace_draws(|| sim.techno_limbo_with_context(id, context));
+    assert_eq!(outcome, ConcealOutcome::Concealed);
+    assert!(raw.is_empty());
+    assert_eq!(boundary.calls.get(), 1);
+    let entity = sim.substrate.entities.get(id).unwrap();
+    assert!(entity.lifecycle.in_limbo);
+    assert!(!entity.gattling.report_latch());
+    assert_eq!(
+        i64::from(entity.gattling.stage()),
+        before["stage"].as_i64().unwrap()
+    );
+    assert_eq!(
+        i64::from(entity.gattling.value()),
+        before["value"].as_i64().unwrap()
+    );
 }
 
 #[test]

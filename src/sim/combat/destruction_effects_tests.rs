@@ -390,7 +390,12 @@ fn kill_with(
             arg6: false,
         },
     );
-    sim.commit_noncombat_aoe_hits(rules, None, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        rules,
+        None,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 }
 
 /// Through the production receiver: an infantryman's InfDeath anim is built
@@ -731,7 +736,12 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
                     arg6: input["arg6"].as_bool().unwrap(),
                 },
             );
-            sim.commit_direct_damage_receiver(&rules, None, direct_hit);
+            sim.commit_direct_damage_receiver(
+                &rules,
+                None,
+                direct_hit,
+                crate::sim::world::FrameEffects::default(),
+            );
             let retained = sim.substrate.entities.get(ship).unwrap();
             assert_eq!(i64::from(retained.health.current), repeat["health"]);
             assert_eq!(u64::from(retained.lifecycle.object_alive), repeat["alive"]);
@@ -757,7 +767,12 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
                 .unwrap()
                 .position
                 .exact_z_leptons = Some(-400);
-            assert!(sim.tick_ship_sinking(ship, &rules, None));
+            assert!(sim.tick_ship_sinking(
+                ship,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default()
+            ));
             assert_eq!(sim.houses[&owner].stats.units_lost(), 3);
             assert!(sim.substrate.pending_delete.contains(&ship));
             assert!(!sim.substrate.entities.get(ship).unwrap().in_logic_vector);
@@ -998,7 +1013,12 @@ fn retail_dustbowl_death_anims_use_the_types_lists() {
                     arg6: false,
                 },
             );
-            sim.commit_noncombat_aoe_hits(rules, Some(&resources.overlay_registry), &[hit]);
+            sim.commit_noncombat_aoe_hits(
+                rules,
+                Some(&resources.overlay_registry),
+                &[hit],
+                crate::sim::world::FrameEffects::default(),
+            );
             // (type, coordinate, delay, flags, zAdjust, launch bits), in
             // construction order.
             sim.substrate

@@ -674,6 +674,55 @@ class MapObservationTests(unittest.TestCase):
         legacy['outputs'][0].pop('owner_role', None)
         observation._audio_observation(legacy, self.profile)
 
+    def test_audio_actor_gattling_pair_preserves_historical_rows_and_shared_budget(self):
+        state = {'main_rng_cursor': [0, 103], 'scenario_rng_cursor': [0, 103],
+                 'actors': [{'stable_id': 1, 'body_counter': 7, 'active': False, 'countdown': 0}]}
+        historical = deepcopy(state)
+        self.assertEqual(observation._sound_state(state, 'audio_state'), 3)
+        for stage, value in ((0, 0), (1, 201), (-(1 << 31), (1 << 31) - 1)):
+            with self.subTest(stage=stage, value=value):
+                state['actors'][0].update(gattling_stage=stage, gattling_value=value)
+                retained = deepcopy(state)
+                self.assertEqual(observation._sound_state(state, 'audio_state'), 3)
+                self.assertEqual(state, retained, 'read-only validation must not rewrite owner values')
+        self.assertEqual(observation._sound_state(historical, 'audio_state'), 3)
+
+    def test_audio_actor_gattling_pair_rejects_partial_null_bool_and_out_of_range_values(self):
+        base = {'stable_id': 1, 'body_counter': 7, 'active': False, 'countdown': 0}
+        extras = [{'gattling_stage': 1}, {'gattling_value': 201}]
+        for key in ('gattling_stage', 'gattling_value'):
+            for value in (None, False, True, 1.0, '1', -(1 << 31) - 1, 1 << 31):
+                extras.append({'gattling_stage': 1, 'gattling_value': 201, key: value})
+        for extra in extras:
+            with self.subTest(extra=extra), self.assertRaises(ValidationError):
+                observation._sound_state({'main_rng_cursor': [0, 103], 'scenario_rng_cursor': [0, 103],
+                                          'actors': [dict(base, **extra)]}, 'audio_state')
+
+    def test_audio_actor_gattling_values_are_retained_and_compared_in_sealed_receipts(self):
+        self.scripted_profile()
+        self.audio_profile()
+        add_audio = self.change
+
+        def add_actor(manifest):
+            add_audio(manifest)
+            for frame in manifest['observations']['frames']:
+                frame['audio_state']['actors'] = [{'stable_id': 1, 'body_counter': 7,
+                    'active': False, 'countdown': 0, 'gattling_stage': 0, 'gattling_value': 199}]
+        self.change = add_actor
+        before = self.valid_capture('gattling-stage-before')
+
+        def stage_change(manifest):
+            add_actor(manifest)
+            manifest['observations']['frames'][1]['audio_state']['actors'][0].update(
+                gattling_stage=1, gattling_value=200)
+        self.change = stage_change
+        after = self.valid_capture('gattling-stage-after')
+        report = observation.compare_runs(before, after)
+        self.assertEqual(report['status'], 'MISMATCH', report['errors'])
+        self.assertEqual({row['field'] for row in report['differences']}, {
+            'observations.frames[1].audio_state.actors[0].gattling_stage',
+            'observations.frames[1].audio_state.actors[0].gattling_value'})
+
     def audio_finish_metadata(self):
         self.audio_receipt.update(live_event_count_at_finish=0, busy_channel_count_at_finish=0)
         self.audio_receipt['outputs'][0].update(

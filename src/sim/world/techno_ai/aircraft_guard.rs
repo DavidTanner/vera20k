@@ -213,6 +213,7 @@ impl GuardHost for WorldGuard<'_> {
             self.id,
             Some(NavTargetRef::cell(x as u16, y as u16)),
             self.rules,
+            self.ctx.effects,
         );
     }
 
@@ -222,6 +223,7 @@ impl GuardHost for WorldGuard<'_> {
             self.id,
             self.rules,
             self.ctx.overlay_registry,
+            self.ctx.effects,
         );
     }
 
@@ -230,7 +232,8 @@ impl GuardHost for WorldGuard<'_> {
     }
 
     fn find_dock(&mut self) -> Option<u64> {
-        self.sim.aircraft_find_docking_bay(self.id, self.rules)
+        self.sim
+            .aircraft_find_docking_bay(self.id, self.rules, self.ctx.effects)
     }
 
     fn assign_dock(&mut self, dock: u64) {
@@ -238,6 +241,7 @@ impl GuardHost for WorldGuard<'_> {
             self.id,
             Some(NavTargetRef::Building { id: dock }),
             self.rules,
+            self.ctx.effects,
         );
     }
 
@@ -299,8 +303,15 @@ impl GuardHost for WorldGuard<'_> {
 
     fn foot_guard(&mut self) -> i32 {
         let mission = self.current();
-        mission_handlers::evaluate_foot_guard_cadence(self.sim, self.rules, self.id, mission, false)
-            .delay()
+        mission_handlers::evaluate_foot_guard_cadence(
+            self.sim,
+            self.rules,
+            self.id,
+            mission,
+            false,
+            self.ctx.effects,
+        )
+        .delay()
     }
 
     fn foot_area_guard(&mut self) -> i32 {

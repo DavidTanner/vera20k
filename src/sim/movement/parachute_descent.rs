@@ -18,6 +18,7 @@
 
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::entity_store::EntityStore;
+use crate::sim::world::FrameEffects;
 
 /// Per-entity parachute descent state. Set by [`begin_parachute_descent`],
 /// cleared on landing. This mirrors gamemd's object-level falling state:
@@ -192,6 +193,7 @@ impl crate::sim::world::Simulation {
         max_fall_rate: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
@@ -205,7 +207,7 @@ impl crate::sim::world::Simulation {
         )
         .wrapping_add(rate);
         let marked = entity.lifecycle.cell_marked;
-        let context = crate::sim::world::UninitContext::new(rules, registry);
+        let context = crate::sim::world::UninitContext::new(rules, registry).with_effects(effects);
         if marked {
             self.unmark_entity_remove(stable_id, context);
         }
@@ -229,7 +231,7 @@ impl crate::sim::world::Simulation {
         // SetHeight(0) (`0x005F3F7A`) runs before the falling byte clears
         // (`0x005F3F86`). Descent does not displace the locomotor, so there
         // is no piggyback to unwind here.
-        self.set_object_height(stable_id, 0, rules, registry);
+        self.set_object_height(stable_id, 0, rules, registry, effects);
         let Some(entity) = self.substrate.entities.get_mut(stable_id) else {
             return true;
         };
@@ -362,7 +364,13 @@ mod tests {
     }
 
     fn fall(sim: &mut Simulation, id: u64) -> bool {
-        sim.advance_fall(id, RULES_PARACHUTE_MAX_FALL_RATE, None, None)
+        sim.advance_fall(
+            id,
+            RULES_PARACHUTE_MAX_FALL_RATE,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
     }
 
     fn z(sim: &Simulation, id: u64) -> i32 {
@@ -507,7 +515,13 @@ mod tests {
         let mut observed: Vec<i32> = Vec::new();
         for _ in 0..4 {
             observed.push(rate(&sim, id));
-            sim.advance_fall(id, -1, None, None);
+            sim.advance_fall(
+                id,
+                -1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         assert_eq!(
             observed,
@@ -690,7 +704,13 @@ mod canopy_tests {
 
         // A few frames of descent: the canopy comes down with the object.
         for _ in 0..6 {
-            sim.advance_fall(id, -3, None, None);
+            sim.advance_fall(
+                id,
+                -3,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let lower = sim.anim_owner_coords(id).unwrap().z;
         assert!(lower < 600);

@@ -626,9 +626,12 @@ fn native_pending_entry_and_radio_lifecycle_use_shared_command_owners() {
         scene.compare(&row["before"], name);
         match entry {
             "unit_null" => {
-                scene
-                    .sim
-                    .set_unit_null_destination(scene.tank, Some(&scene.rules), None);
+                scene.sim.set_unit_null_destination(
+                    scene.tank,
+                    Some(&scene.rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             "unit_cell" => {
                 scene.sim.set_unit_destination(
@@ -636,12 +639,16 @@ fn native_pending_entry_and_radio_lifecycle_use_shared_command_owners() {
                     NavTargetRef::cell(13, 13),
                     &scene.rules,
                     true,
+                    crate::sim::world::FrameEffects::default(),
                 );
             }
             "unit_idle" => {
-                let _ = scene
-                    .sim
-                    .unit_enter_idle_mode(scene.tank, Some(&scene.rules), false);
+                let _ = scene.sim.unit_enter_idle_mode(
+                    scene.tank,
+                    Some(&scene.rules),
+                    false,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             "megamission_clear" => {
                 // The native packet stops before mission translation/Queue.
@@ -649,6 +656,7 @@ fn native_pending_entry_and_radio_lifecycle_use_shared_command_owners() {
                     scene.tank,
                     MissionType::Move,
                     Some(&scene.rules),
+                    crate::sim::world::FrameEffects::default(),
                 );
             }
             "idle_event_calls"
@@ -898,6 +906,7 @@ fn native_unit_radio_repair_payment_heal_and_responses() {
             RadioMessage::RepairTick,
             RadioPayload::default(),
             Some(&scene.rules),
+            crate::sim::world::FrameEffects::default(),
         );
         let step = &row["steps"][0];
         assert_eq!(
@@ -968,9 +977,12 @@ fn native_unit_destination_power_tail_uses_raw_cell_and_shared_setters() {
         // Native741970 is a void setter; EAX is retained for reproducibility
         // but the Rust acceptance Boolean is not its native return contract.
         if row["input"]["null"] == true {
-            scene
-                .sim
-                .set_unit_null_destination(scene.tank, Some(&scene.rules), None);
+            scene.sim.set_unit_null_destination(
+                scene.tank,
+                Some(&scene.rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         } else {
             let destination = if row["input"]["target"] == "depot" {
                 NavTargetRef::Building { id: scene.depot }
@@ -982,6 +994,7 @@ fn native_unit_destination_power_tail_uses_raw_cell_and_shared_setters() {
                 destination,
                 &scene.rules,
                 row["input"]["flag"] != 0,
+                crate::sim::world::FrameEffects::default(),
             );
         }
         scene.compare(&row["steps"][0]["after"], name);
@@ -1069,6 +1082,7 @@ fn native_ready_prerequisites_use_the_building_commence_owner() {
                         RadioMessage::DockNow,
                         RadioPayload::default(),
                         Some(&scene.rules),
+                        crate::sim::world::FrameEffects::default(),
                     );
                     assert_eq!(
                         u64::from(reply.code()),
@@ -1098,6 +1112,7 @@ fn native_paid_retry_full_release_histories_run_mission_dispatch_every_frame() {
                 RadioMessage::DockNow,
                 RadioPayload::default(),
                 Some(&scene.rules),
+                crate::sim::world::FrameEffects::default(),
             );
             let native = steps.next().unwrap();
             assert_eq!(

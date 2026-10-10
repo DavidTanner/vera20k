@@ -456,9 +456,12 @@ fn kill(s: &mut SlaveScene, target: u64, attacker: Option<u64>) {
                 arg6: false,
             },
         );
-        s.scene
-            .sim
-            .commit_noncombat_aoe_hits(&s.scene.rules, Some(registry()), &[hit]);
+        s.scene.sim.commit_noncombat_aoe_hits(
+            &s.scene.rules,
+            Some(registry()),
+            &[hit],
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     panic!("{target} survived ten hits");
 }
@@ -719,7 +722,15 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     let slaves = pool(&sim, smin);
     assert_eq!(slaves, vec![2, 3, 4, 5, 6]);
 
-    assert!(sim.deploy_mcv(smin, &rules, None), "deploy to YAREFN");
+    assert!(
+        sim.deploy_mcv(
+            smin,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ),
+        "deploy to YAREFN"
+    );
     let yarefn = sim
         .substrate
         .entities
@@ -765,7 +776,12 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
     refinery.finish_building_construction_for_test();
     crate::sim::combat::veterancy::set_elite(refinery);
     assert!(
-        sim.undeploy_building(yarefn, &rules, Some(registry())),
+        sim.undeploy_building(
+            yarefn,
+            &rules,
+            Some(registry()),
+            crate::sim::world::FrameEffects::default()
+        ),
         "undeploy to SMIN"
     );
     sim.substrate
@@ -773,7 +789,12 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
         .get_mut(yarefn)
         .unwrap()
         .finish_pack_up_for_test();
-    sim.visit_building_down(yarefn, Some(&rules), None);
+    sim.visit_building_down(
+        yarefn,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         std::mem::take(&mut sim.mission_spawned_entities),
         "converted"
@@ -999,13 +1020,23 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
         let _ = expected.next_u32();
     }
 
-    assert!(sim.undeploy_building(refinery, &rules, Some(registry())));
+    assert!(sim.undeploy_building(
+        refinery,
+        &rules,
+        Some(registry()),
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.substrate
         .entities
         .get_mut(refinery)
         .unwrap()
         .finish_pack_up_for_test();
-    sim.visit_building_down(refinery, Some(&rules), None);
+    sim.visit_building_down(
+        refinery,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         std::mem::take(&mut sim.mission_spawned_entities),
         "converted"

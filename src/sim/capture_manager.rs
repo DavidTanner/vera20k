@@ -82,6 +82,7 @@
 //!   before Record_The_Kill); VERA frees them in the crushed object's UnInit
 //!   a moment later in the same frame.
 
+use crate::sim::world::FrameEffects;
 use serde::{Deserialize, Serialize};
 
 use crate::map::entities::EntityCategory;
@@ -396,6 +397,7 @@ impl Simulation {
         target_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if !self.can_capture(controller_id, target_id, rules) {
             return false;
@@ -410,7 +412,7 @@ impl Simulation {
             .map(|manager| manager.victims().rev().collect())
             .unwrap_or_default();
         for victim in released {
-            self.free_unit(controller_id, victim, rules, registry);
+            self.free_unit(controller_id, victim, rules, registry, frame_effects);
         }
         let (Some(controller_owner), Some(original_owner)) = (
             self.substrate
@@ -426,7 +428,7 @@ impl Simulation {
         };
         // 0x00471DB8: ChangeOwner(controller's house, 1). It refuses only an
         // unchanged house, which CanCapture already excluded.
-        self.change_owner_with_rules(target_id, controller_owner, rules, registry);
+        self.change_owner_with_rules(target_id, controller_owner, rules, registry, frame_effects);
         if let Some(manager) = self
             .substrate
             .entities
@@ -441,8 +443,8 @@ impl Simulation {
         if let Some(target) = self.substrate.entities.get_mut(target_id) {
             target.mind_control.controller = Some(controller_id);
         }
-        self.reset_captured_orders(target_id, rules);
-        self.decide_unit_fate(controller_id, target_id, rules, registry);
+        self.reset_captured_orders(target_id, rules, frame_effects);
+        self.decide_unit_fate(controller_id, target_id, rules, registry, frame_effects);
         if let Some(ring) = rules.mind_control.controlled_anim.as_deref() {
             self.attach_control_ring(target_id, ring, rules);
         }
@@ -489,6 +491,7 @@ impl Simulation {
         house: InternedId,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if let Some(controller) = self
             .substrate
@@ -496,9 +499,9 @@ impl Simulation {
             .get(id)
             .and_then(|object| object.mind_control.controller)
         {
-            self.free_unit(controller, id, rules, registry);
+            self.free_unit(controller, id, rules, registry, frame_effects);
         }
-        self.change_owner_with_rules(id, house, rules, registry);
+        self.change_owner_with_rules(id, house, rules, registry, frame_effects);
         if let Some(object) = self.substrate.entities.get_mut(id) {
             object.mind_control.permanent = true;
         }
@@ -523,6 +526,7 @@ impl Simulation {
         target: Option<u64>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(firer) = self.substrate.entities.get(firer_id) else {
             return;
@@ -542,7 +546,7 @@ impl Simulation {
         else {
             return;
         };
-        if !self.capture_unit(firer_id, target_id, rules, registry) {
+        if !self.capture_unit(firer_id, target_id, rules, registry, frame_effects) {
             return;
         }
         let Some(sound) = rules.mind_control.mind_control_sound.clone() else {
@@ -561,7 +565,12 @@ impl Simulation {
     /// Gate `0x00471E55..0x00471E9F`, then `vt+0x3D0` at471EA5: unless a Simple Deployer
     /// is deploying (Unload) or the object is Selling or under Construction,
     /// the captive's orders reset to Guard ([`Simulation::reset_orders_to_guard`]).
-    fn reset_captured_orders(&mut self, target_id: u64, rules: &RuleSet) {
+    fn reset_captured_orders(
+        &mut self,
+        target_id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(target) = self.substrate.entities.get(target_id) else {
             return;
         };
@@ -573,7 +582,7 @@ impl Simulation {
         if simple_deployer_unloading || target.constructing_or_selling() {
             return;
         }
-        self.reset_orders_to_guard(target_id, rules);
+        self.reset_orders_to_guard(target_id, rules, frame_effects);
     }
 
     /// The ring (`0x00471EB8..0x00471F6D`): `ControlledAnimationType=` at the
@@ -663,6 +672,7 @@ impl Simulation {
         victim_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(manager) = self
             .substrate
@@ -701,11 +711,11 @@ impl Simulation {
                     self.sound_events.push(event);
                 }
             }
-            self.change_owner_with_rules(victim_id, original_owner, rules, registry);
+            self.change_owner_with_rules(victim_id, original_owner, rules, registry, frame_effects);
             // DecideUnitFate runs while `+0x2C0` still names the controller.
             // Back with its own house, the unit cannot join the controller's
             // team, so its fate needs no map overlays.
-            self.decide_unit_fate(controller_id, victim_id, rules, None);
+            self.decide_unit_fate(controller_id, victim_id, rules, None, frame_effects);
             if let Some(victim) = self.substrate.entities.get_mut(victim_id) {
                 victim.mind_control.controller = None;
             }
@@ -729,6 +739,7 @@ impl Simulation {
         controller_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let victims: Vec<u64> = self
             .substrate
@@ -738,7 +749,7 @@ impl Simulation {
             .map(|manager| manager.victims().rev().collect())
             .unwrap_or_default();
         for victim in victims {
-            self.free_unit(controller_id, victim, rules, registry);
+            self.free_unit(controller_id, victim, rules, registry, frame_effects);
         }
     }
 
@@ -757,13 +768,14 @@ impl Simulation {
         unit_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(unit) = self.substrate.entities.get(unit_id) else {
             return;
         };
         let unit_is_foot = unit.category != EntityCategory::Structure;
         if unit_is_foot {
-            self.leave_team(unit_id, false, Some(rules));
+            self.leave_team(unit_id, false, Some(rules), frame_effects);
         }
         // 0x004723E4..0x004723F3: a unit holding a Temporal target lets go.
         self.temporal_release_if_warping(unit_id);
@@ -826,7 +838,7 @@ impl Simulation {
             && !changed_house
             && unit_is_foot
             && let Some(team_id) = controller_team
-            && self.team_add_member(team_id, unit_id, true, rules, registry)
+            && self.team_add_member(team_id, unit_id, true, rules, registry, frame_effects)
         {
             return;
         }
@@ -892,6 +904,7 @@ impl Simulation {
         controller_id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let table = &rules.mind_control;
         let Some(entity) = self.substrate.entities.get_mut(controller_id) else {
@@ -946,7 +959,7 @@ impl Simulation {
                 arg6: false,
             },
         );
-        self.commit_direct_damage_receiver(rules, overlay_registry, event);
+        self.commit_direct_damage_receiver(rules, overlay_registry, event, frame_effects);
         if !sound_played {
             if let Some(sound) = rules.mind_control.overload_sound.clone() {
                 self.sound_events

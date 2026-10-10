@@ -156,7 +156,12 @@ fn place(sim: &mut Simulation, rules: &RuleSet, id: u64, (x, y): (i32, i32)) {
     if infantry {
         assert!(sim.object_raw_receiver_at(id, old, false));
     }
-    assert!(sim.foot_mark_remove(id, Some(rules), None));
+    assert!(sim.foot_mark_remove(
+        id,
+        Some(rules),
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let coord = crate::sim::components::DriveCoord { x, y, z: 0 };
     crate::sim::movement::ground_pose::foot_set_location(
         &mut sim.substrate.entities,
@@ -165,7 +170,12 @@ fn place(sim: &mut Simulation, rules: &RuleSet, id: u64, (x, y): (i32, i32)) {
         Some(rules),
         &sim.interner,
     );
-    assert!(sim.foot_mark_put(id, Some(rules), None));
+    assert!(sim.foot_mark_put(
+        id,
+        Some(rules),
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     if infantry {
         assert!(sim.object_raw_receiver_at(id, coord, true));
     }
@@ -187,7 +197,7 @@ fn kill(sim: &mut Simulation, rules: &RuleSet, id: u64) {
             arg6: false,
         },
     );
-    sim.commit_direct_damage_receiver(rules, None, hit);
+    sim.commit_direct_damage_receiver(rules, None, hit, crate::sim::world::FrameEffects::default());
     assert_eq!(entity(sim, id).health.current, 0);
 }
 
@@ -579,7 +589,12 @@ fn check_world_case(case: &NativeBombCase, name: &str, section: &str, delay: i32
         "expiry" => {
             let carrier = ids[0];
             let had = bomb(&sim, carrier).is_some();
-            sim.bomb_fuse_step(carrier, &rules, None);
+            sim.bomb_fuse_step(
+                carrier,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let detonated = had && bomb(&sim, carrier).is_none();
             let native = case.events.iter().any(|event| event[0] == "detonate");
             assert_eq!(detonated, native, "{name}");
@@ -862,7 +877,12 @@ fn the_fuse_waits_while_the_carrier_is_in_limbo() {
         .unwrap()
         .lifecycle
         .in_limbo = true;
-    sim.bomb_fuse_step(tank, &rules, None);
+    sim.bomb_fuse_step(
+        tank,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(bomb(&sim, tank).is_some(), "waits in limbo");
     sim.substrate
         .entities
@@ -870,7 +890,12 @@ fn the_fuse_waits_while_the_carrier_is_in_limbo() {
         .unwrap()
         .lifecycle
         .in_limbo = false;
-    sim.bomb_fuse_step(tank, &rules, None);
+    sim.bomb_fuse_step(
+        tank,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(bomb(&sim, tank).is_none());
     assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
 }
@@ -890,7 +915,12 @@ fn a_bomb_outlives_its_planter_and_credits_no_one() {
     assert_eq!(bomb(&sim, tank).unwrap().planter, None);
 
     sim.session.binary_frame = 100 + 451;
-    sim.bomb_fuse_step(tank, &rules, None);
+    sim.bomb_fuse_step(
+        tank,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let tank = entity(&sim, tank);
     assert_eq!(tank.health.current, 0, "450 kills the 300-strength tank");
     assert!(tank.killed_by.is_none(), "no kill credit");
@@ -915,17 +945,35 @@ fn removal_and_capture_defuse_silently() {
 
     sim.uninit_with_rules(sold, &rules);
     assert!(bomb(&sim, sold).is_none());
-    sim.change_owner_with_rules(captured, russians, &rules, None);
+    sim.change_owner_with_rules(
+        captured,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         bomb(&sim, captured).is_none(),
         "an engineer's capture defuses"
     );
-    sim.change_owner_with_rules(garrison, russians, &rules, None);
+    sim.change_owner_with_rules(
+        garrison,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         bomb(&sim, garrison).is_some(),
         "an occupied building keeps it"
     );
-    sim.change_owner_with_rules(tank, russians, &rules, None);
+    sim.change_owner_with_rules(
+        tank,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(bomb(&sim, tank).is_some(), "a unit changing hands keeps it");
     assert_eq!(
         sim.bomb_carriers().iter().copied().collect::<Vec<_>>(),
@@ -1001,7 +1049,12 @@ fn the_blast_is_centred_on_the_carrier() {
     sim.session.binary_frame = 100;
     sim.bomb_attach(ivan, Some(tank), &rules);
     sim.session.binary_frame = 100 + 451;
-    sim.bomb_fuse_step(tank, &rules, None);
+    sim.bomb_fuse_step(
+        tank,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
     let engineer = entity(&sim, engineer);
     assert_eq!(engineer.health.current, 0);
@@ -1026,7 +1079,12 @@ fn a_blast_sets_off_the_bombs_it_kills() {
     sim.session.binary_frame = 200;
     sim.bomb_attach(ivan, Some(second), &rules);
     sim.session.binary_frame = 100 + 451;
-    sim.bomb_fuse_step(first, &rules, None);
+    sim.bomb_fuse_step(
+        first,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(entity(&sim, second).health.current, 0);
     assert!(sim.bomb_carriers().is_empty(), "both went off");
     assert_eq!(entity(&sim, first).health.current, 1000 - 2 * 450);

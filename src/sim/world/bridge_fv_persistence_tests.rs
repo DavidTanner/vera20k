@@ -134,7 +134,12 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
     for _ in 0..96 {
         let output = scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let sim = scene.sim();
         let actor = sim.substrate.entities.get(source).unwrap();
@@ -243,7 +248,12 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
             for _ in 0..2 {
                 scene
                     .runtime
-                    .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+                    .advance_frame(
+                        &[],
+                        SIM_TICK_MS,
+                        TickLane::Ordinary,
+                        crate::sim::world::FrameEffects::default(),
+                    )
                     .unwrap();
                 std::mem::swap(&mut scene.runtime.simulation, &mut second);
             }

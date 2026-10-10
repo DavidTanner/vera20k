@@ -33,6 +33,7 @@ use crate::rules::infantry_sequence::{action_kind, action_record};
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 pub(crate) const DO_READY: i32 = 0;
@@ -125,6 +126,7 @@ impl Simulation {
         requested: i32,
         force: bool,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let actor = self
             .substrate
@@ -139,7 +141,7 @@ impl Simulation {
             movement_zone: object.movement_zone,
             crawls: object.crawls,
         };
-        self.apply_infantry_do_action(id, requested, force, &facts, rules)
+        self.apply_infantry_do_action(id, requested, force, &facts, rules, effects)
     }
 
     /// `InfantryClass::Do_Action` 0x0051D6F0 with a random-frame argument 0.
@@ -182,6 +184,7 @@ impl Simulation {
         force: bool,
         facts: &DoActionType<'_>,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         //51D701: -1 returns before the type record or water-state reads.
         if requested == -1 {
@@ -354,7 +357,7 @@ impl Simulation {
         // re-enters Stop_Driver, whose own Do_Action finds the action it
         // just wrote. The Can_Enter_Cell it runs reads no overlay here.
         if actor.health.current == 0
-            && let Err(cause) = self.infantry_stop_driver(id, rules, None)
+            && let Err(cause) = self.infantry_stop_driver(id, rules, None, effects)
         {
             log::debug!("infantry {id} Do_Action Stop_Driver: {cause}");
         }
@@ -399,6 +402,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -425,12 +429,12 @@ impl Simulation {
                 .expect("retained action receiver")
                 .mission_leaf
                 .set_foot_firing_sequence(0);
-            self.infantry_do_action(id, requested, false, rules)?;
+            self.infantry_do_action(id, requested, false, rules, effects)?;
         }
         self.object_ai_post_movement_promote_one(id, Some(rules));
         //51BF0B is after Process and the second Ready/Commence, including a
         // retained death sequence. Shared DoAction decides stance refusal.
-        let mut bridge_changed = self.infantry_fear_turn(id, rules, registry)?;
+        let mut bridge_changed = self.infantry_fear_turn(id, rules, registry, effects)?;
         //51BF59 owns all Infantry firing; its new Bullet/Anim objects join
         // the current dynamic Logic suffix before the next actor visit.
         bridge_changed |= self
@@ -438,6 +442,7 @@ impl Simulation {
                 crate::sim::combat::world_receiver::FireVisit::InfantryTarget(id),
                 rules,
                 registry,
+                effects,
             )
             .bridge_state_changed;
         if self
@@ -448,10 +453,10 @@ impl Simulation {
         {
             return Ok(bridge_changed);
         }
-        if self.infantry_sequencer(id, rules) {
+        if self.infantry_sequencer(id, rules, effects) {
             return Ok(bridge_changed);
         }
-        self.infantry_movement_actions(id, rules, registry);
+        self.infantry_movement_actions(id, rules, registry, effects);
         Ok(bridge_changed)
     }
 
@@ -470,7 +475,12 @@ impl Simulation {
     ///
     /// Die1..5, Deploy, Undeploy, Paradrop and Shovel use their own class
     /// completion receivers. Answers true when it UnInit the infantryman.
-    pub(crate) fn infantry_sequencer(&mut self, id: u64, rules: &RuleSet) -> bool {
+    pub(crate) fn infantry_sequencer(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
@@ -495,7 +505,7 @@ impl Simulation {
             match doing {
                 DO_AIR_DEATH_START => {
                     if let Err(cause) =
-                        self.infantry_do_action(id, DO_AIR_DEATH_FALLING, true, rules)
+                        self.infantry_do_action(id, DO_AIR_DEATH_FALLING, true, rules, effects)
                     {
                         log::debug!("infantry {id} AirDeathFalling: {cause}");
                     }
@@ -503,7 +513,10 @@ impl Simulation {
                 }
                 0x14 | 0x15 | DO_AIR_DEATH_FINISH => {
                     // UnInit owns Limbo and eventual Foot sound release.
-                    self.uninit_with_rules(id, rules);
+                    self.uninit_with_context(
+                        id,
+                        crate::sim::world::UninitContext::with_rules(rules).with_effects(effects),
+                    );
                     true
                 }
                 action if takes_default_arm(action) => {
@@ -523,18 +536,21 @@ impl Simulation {
                             self.session.binary_frame,
                         );
                     }
-                    self.infantry_default_action(id, action, rules);
+                    self.infantry_default_action(id, action, rules, effects);
                     false
                 }
                 DO_DEPLOY | 31 => {
-                    if let Err(cause) = self.infantry_deploy_completion(id, doing, rules) {
+                    if let Err(cause) = self.infantry_deploy_completion(id, doing, rules, effects) {
                         log::debug!("infantry {id} deployment completion: {cause}");
                     }
                     false
                 }
                 11..=15 => {
                     self.leave_dead_body(id, rules);
-                    self.uninit_with_rules(id, rules);
+                    self.uninit_with_context(
+                        id,
+                        crate::sim::world::UninitContext::with_rules(rules).with_effects(effects),
+                    );
                     true
                 }
                 38 => {
@@ -548,7 +564,8 @@ impl Simulation {
                     } else {
                         DO_READY
                     };
-                    if let Err(cause) = self.infantry_do_action(id, requested, true, rules) {
+                    if let Err(cause) = self.infantry_do_action(id, requested, true, rules, effects)
+                    {
                         log::debug!("infantry {id} Shovel completion: {cause}");
                     }
                     false
@@ -566,7 +583,7 @@ impl Simulation {
                 .is_some_and(|leaf| leaf.doing() == DO_PARADROP)
                 && !actor.is_falling_down()
         }) {
-            if let Err(cause) = self.infantry_do_action(id, DO_READY, true, rules) {
+            if let Err(cause) = self.infantry_do_action(id, DO_READY, true, rules, effects) {
                 log::debug!("infantry {id} Paradrop completion: {cause}");
             }
         }
@@ -591,6 +608,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
@@ -620,8 +638,9 @@ impl Simulation {
             },
             Some(rules),
             registry,
+            effects,
         );
-        if let Err(cause) = self.infantry_do_action(id, DO_AIR_DEATH_FINISH, true, rules) {
+        if let Err(cause) = self.infantry_do_action(id, DO_AIR_DEATH_FINISH, true, rules, effects) {
             log::debug!("infantry {id} AirDeathFinish: {cause}");
         }
     }
@@ -659,6 +678,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let stopped_move = self.substrate.entities.get(id).is_some_and(|actor| {
             actor.category == EntityCategory::Infantry
@@ -673,7 +693,8 @@ impl Simulation {
                 .get(id)
                 .and_then(|actor| actor.navigation.nav_com);
             if let Some(destination) = destination {
-                if let Err(cause) = self.set_infantry_destination(id, destination, rules, registry)
+                if let Err(cause) =
+                    self.set_infantry_destination(id, destination, rules, registry, effects)
                 {
                     log::debug!("Infantry {id} stopped Move destination: {cause}");
                 }
@@ -683,7 +704,7 @@ impl Simulation {
                         .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
                 }
             } else {
-                self.infantry_enter_idle_mode(id, rules, registry);
+                self.infantry_enter_idle_mode(id, rules, registry, effects);
             }
         }
         let Some(actor) = self.substrate.entities.get(id) else {
@@ -732,7 +753,7 @@ impl Simulation {
                 _ => return,
             }
         };
-        if let Err(cause) = self.infantry_do_action(id, requested, false, rules) {
+        if let Err(cause) = self.infantry_do_action(id, requested, false, rules, effects) {
             log::debug!("infantry {id} locomotion action: {cause}");
         }
     }
@@ -768,7 +789,15 @@ impl Simulation {
             .expect("target-change receiver was borrowed above")
             .mission_leaf
             .set_foot_firing_sequence(0);
-        if let Err(cause) = self.infantry_do_action(id, requested, false, rules) {
+        // This target receiver admits only positive Health above, so the
+        // health-zero Stop_Driver callback cannot run here.
+        if let Err(cause) = self.infantry_do_action(
+            id,
+            requested,
+            false,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        ) {
             log::debug!("infantry {id} target change action: {cause}");
         }
     }
@@ -778,7 +807,12 @@ impl Simulation {
     /// to an idle action, unforced: Prone when prone, else Deployed after a
     /// deploy action, else Ready. Run for an infantryman whose Doing owns its
     /// sequence, through the same Do_Action admission as its other callers.
-    pub(crate) fn infantry_fire_refused_action(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn infantry_fire_refused_action(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
@@ -801,7 +835,7 @@ impl Simulation {
             .expect("retained refused-fire receiver")
             .mission_leaf
             .set_foot_firing_sequence(0);
-        if let Err(cause) = self.infantry_do_action(id, requested, false, rules) {
+        if let Err(cause) = self.infantry_do_action(id, requested, false, rules, effects) {
             log::debug!("infantry {id} refused fire action: {cause}");
         }
     }
@@ -818,7 +852,13 @@ impl Simulation {
     /// The sequencer applies the completion facing hint first. RESIDUAL:
     /// the actual AirstrikeClass+294 secondary-fire repeat at520D7E..520E00
     /// needs that manager's lifecycle; ordinary GI has no such manager.
-    fn infantry_default_action(&mut self, id: u64, action: i32, rules: &RuleSet) {
+    fn infantry_default_action(
+        &mut self,
+        id: u64,
+        action: i32,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
         };
@@ -838,7 +878,7 @@ impl Simulation {
         } else {
             DO_READY
         };
-        let result = self.infantry_do_action(id, requested, true, rules);
+        let result = self.infantry_do_action(id, requested, true, rules, effects);
         if let Err(cause) = result {
             log::debug!("infantry {id} action {action} completion: {cause}");
         }

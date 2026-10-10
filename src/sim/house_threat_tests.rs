@@ -132,7 +132,16 @@ fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_do
         PlacementEvidence::MarkFailed,
     ] {
         assert_eq!(
-            sim.reveal_constructed_object_at_height(id, 13, 15, 0, 0, placement, &rules),
+            sim.reveal_constructed_object_at_height(
+                id,
+                13,
+                15,
+                0,
+                0,
+                placement,
+                &rules,
+                crate::sim::world::FrameEffects::default()
+            ),
             None
         );
         assert_eq!(
@@ -158,7 +167,8 @@ fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_do
             0,
             0,
             PlacementEvidence::EvaluateMark,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         ),
         Some(id)
     );
@@ -214,6 +224,7 @@ fn foot_bucket_transition_uses_old_history_then_refreshes_cached_live_threat() {
         crate::sim::movement::PerCellReason::Arrival,
         Some(&changed_rules),
         Some(&registry),
+        crate::sim::world::FrameEffects::default(),
     )
     .unwrap();
     assert_eq!(
@@ -247,6 +258,7 @@ fn foot_bucket_transition_uses_old_history_then_refreshes_cached_live_threat() {
         crate::sim::movement::PerCellReason::Arrival,
         Some(&changed_rules),
         Some(&registry),
+        crate::sim::world::FrameEffects::default(),
     )
     .unwrap();
     assert_eq!(
@@ -286,7 +298,13 @@ fn owner_transfer_removes_old_contribution_before_recomputing_for_new_house() {
     let id = actor(&mut sim, &rules, (13, 15));
     let russians = sim.interner.get("Russians").unwrap();
     let rng = sim.rng_state();
-    sim.change_owner_with_rules(id, russians, &rules, None);
+    sim.change_owner_with_rules(
+        id,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -374,7 +392,8 @@ fn required_read_of_dead_unlimbo_uninitialized_contribution_faults_explicitly() 
             0,
             0,
             PlacementEvidence::EvaluateMark,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         ),
         Some(id)
     );
@@ -537,7 +556,16 @@ fn foot_coefficient_is_copied_only_after_admitted_unlimbo() {
         PlacementEvidence::MarkFailed,
     ] {
         assert_eq!(
-            sim.reveal_constructed_object_at_height(id, 13, 15, 0, 0, placement, &rules),
+            sim.reveal_constructed_object_at_height(
+                id,
+                13,
+                15,
+                0,
+                0,
+                placement,
+                &rules,
+                crate::sim::world::FrameEffects::default()
+            ),
             None
         );
         assert_eq!(
@@ -558,7 +586,8 @@ fn foot_coefficient_is_copied_only_after_admitted_unlimbo() {
             0,
             0,
             PlacementEvidence::EvaluateMark,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         ),
         Some(id)
     );
@@ -602,7 +631,12 @@ fn real_garrison_append_and_complete_ejection_refresh_the_existing_building_cach
         .passenger_role = crate::sim::passenger::PassengerRole::Boarding {
         target_transport_id: building,
     };
-    crate::sim::passenger::tick_passenger_system(&mut sim, &rules, Some(&registry));
+    crate::sim::passenger::tick_passenger_system(
+        &mut sim,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -639,7 +673,13 @@ fn real_garrison_append_and_complete_ejection_refresh_the_existing_building_cach
         .unwrap()
         .navigation
         .retain_threat_avoidance_after_unlimbo(crate::util::native_x87::NativeF64Bits::ONE);
-    crate::sim::production::sell_building_occupants(&mut sim, &rules, Some(&registry), building);
+    crate::sim::production::sell_building_occupants(
+        &mut sim,
+        &rules,
+        Some(&registry),
+        building,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities

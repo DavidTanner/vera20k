@@ -76,6 +76,7 @@ fn engineer_family_selector_matches_original_boundary_and_dummy() {
             sim.mapgen_rng.logical_state(),
         );
         let mut live = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: None,

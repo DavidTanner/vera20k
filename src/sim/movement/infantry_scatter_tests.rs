@@ -118,8 +118,14 @@ fn forced_gates_and_draw_match_original_hut_caller() {
         let mut sim = sim_with(man);
         sim.scenario_rng = crate::sim::rng::SimRng::new(31);
         assert!(
-            !sim.infantry_scatter_null(1, ScatterFlags::new(true, true), &rules, None)
-                .unwrap()
+            !sim.infantry_scatter_null(
+                1,
+                ScatterFlags::new(true, true),
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default()
+            )
+            .unwrap()
         );
         let state = sim.scenario_rng.logical_state();
         assert_eq!(
@@ -191,7 +197,14 @@ fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
                 let mut sim = sim_with(man);
                 let rng = sim.scenario_rng.state();
                 let flags = ScatterFlags::new(flag("first_bool"), flag("second_bool"));
-                let admitted = sim.infantry_scatter_admitted(1, flags, &rules).unwrap();
+                let admitted = sim
+                    .infantry_scatter_admitted(
+                        1,
+                        flags,
+                        &rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
+                    .unwrap();
                 assert_eq!(admitted, flag("gate_admitted"), "{row} adapter={adapter}");
                 assert_eq!(sim.scenario_rng.state(), rng, "{row}");
                 assert_eq!(
@@ -270,7 +283,12 @@ fn damage_gates_match_original_execution() {
             sim.team_script_vm.create_team(owner, type_ref, vec![1], 0);
         }
         let admitted = sim
-            .infantry_scatter_admitted(1, ScatterFlags::new(false, false), &rules)
+            .infantry_scatter_admitted(
+                1,
+                ScatterFlags::new(false, false),
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_eq!(admitted, row["admitted"].as_bool().unwrap(), "{input}");
         checked += 1;
@@ -306,7 +324,14 @@ fn deploy_doing_head_refuses_a_human_owner_without_both_flags() {
             sim.houses
                 .insert(owner, HouseState::new(owner, 0, None, human, 0, 10));
             sim.session.game_mode_nonzero = true;
-            let admitted = sim.infantry_scatter_admitted(1, flags, &rules).unwrap();
+            let admitted = sim
+                .infantry_scatter_admitted(
+                    1,
+                    flags,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
+                .unwrap();
             assert_eq!(admitted, !human, "human={human} flags={flags:?}");
         }
     }

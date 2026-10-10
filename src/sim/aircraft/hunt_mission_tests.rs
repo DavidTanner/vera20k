@@ -150,7 +150,13 @@ fn a_hunting_computer_aircraft_strikes_storage_in_multiplayer_only() {
         let storage = sim
             .spawn_object(quarry, "Russians", 34, 26, 0, &rules)
             .expect(quarry);
-        crate::sim::house_strategy::all_to_hunt(&mut sim, &rules, owners[0], None);
+        crate::sim::house_strategy::all_to_hunt(
+            &mut sim,
+            &rules,
+            owners[0],
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let mut hunted = false;
         let mut targets = Vec::new();
         let mut fired = false;

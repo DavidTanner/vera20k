@@ -148,7 +148,13 @@ fn the_strategy_timer_and_its_gates_match_native() {
             expected.next_range_i32_inclusive(1, 7);
         }
 
-        update_strategy(&mut sim, &rules, owner, None);
+        update_strategy(
+            &mut sim,
+            &rules,
+            owner,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let timer = sim.houses[&owner].strategy_timer;
         assert_eq!(
@@ -249,7 +255,13 @@ fn the_strategy_matches_native() {
 
         use crate::sim::superweapon::ai_fire::{AI_FIRE_LOG, AiFireEvent};
         AI_FIRE_LOG.set(Some(Vec::new()));
-        let delay = building_strategy(&mut sim, &rules, owner, None);
+        let delay = building_strategy(
+            &mut sim,
+            &rules,
+            owner,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let tried = AI_FIRE_LOG
             .take()
             .unwrap()
@@ -331,7 +343,13 @@ fn the_fire_sale_matches_native() {
         let house = sim.houses.get_mut(&owner).unwrap();
         house.tracking.set_buildings_for_test(int(&row["current"]));
 
-        fire_sale(&mut sim, &rules, owner, None);
+        fire_sale(
+            &mut sim,
+            &rules,
+            owner,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let sold: Vec<i32> = (0..slots.len())
             .filter(|&slot| slots[slot].is_some_and(|id| selling(&sim, id)))
@@ -427,7 +445,13 @@ fn all_to_hunt_matches_native() {
             slots.push((slot as i32, id, health));
         }
 
-        all_to_hunt(&mut sim, &rules, owner, None);
+        all_to_hunt(
+            &mut sim,
+            &rules,
+            owner,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let hunting: Vec<i32> = slots
             .iter()

@@ -1,6 +1,6 @@
 //! EBolt subdivision4C1F20 and the manager4C2830 projection/clip gate.
 //!
-//! Geometry consumes the borrowed process Main cursor once per actual tactical
+//! Geometry consumes the retained process Main capability once per actual tactical
 //! visit. Lifetime, registry order and scene cleanup belong to app presentation;
 //! this producer returns immutable DSurface4BFD30 lines to the shared compositor.
 //! Native comparisons: tools/procedural_drawing_oracle/electric_bolt.json.
@@ -67,7 +67,7 @@ impl ElectricBoltDraw {
         self,
         viewport: SurfaceLineViewport,
         palette: ElectricBoltPalette,
-        main: &mut MainRngDraws<'_>,
+        main: &mut MainRngDraws,
         mut emit: impl FnMut(SurfaceLine),
     ) -> bool {
         let from = [self.from.x, self.from.y, self.from.z];

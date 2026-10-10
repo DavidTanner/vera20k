@@ -738,7 +738,12 @@ fn gsi_04_05_building_attack_frame_remains_live_after_world_receiver_dispatch() 
     let warhead = sim.interner.intern("HITWH");
 
     let event = EntityDamageEvent::area(target_id, 10, 0, source_id, Some(source_owner), warhead);
-    sim.commit_noncombat_aoe_hits(&rules, None, &[event, event]);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[event, event],
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(
         sim.houses[&victim_owner]
@@ -2800,7 +2805,12 @@ fn gsi_04_07_damage_invulnerability_impact_precedes_warping_and_postlude() {
         ),
     ];
 
-    sim.commit_noncombat_aoe_hits(&rules, None, &hits);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &hits,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     for id in protected {
         let victim = sim.substrate.entities.get(id).unwrap();
@@ -2921,6 +2931,7 @@ fn gsi_04_07_damage_receiver_smoke_creation_precedes_retaliation() {
             Some(source_owner),
             hit_wh,
         )],
+        crate::sim::world::FrameEffects::default(),
     );
 
     let victim = sim.substrate.entities.get(victim_id).unwrap();
@@ -2969,6 +2980,7 @@ fn gsi_04_07_damage_receiver_smoke_creation_precedes_retaliation() {
             Some(source_owner),
             hit_wh,
         )],
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(
         sim.particle_systems().len(),
@@ -2995,6 +3007,7 @@ fn gsi_04_07_damage_receiver_smoke_creation_precedes_retaliation() {
             Some(source_owner),
             hit_wh,
         )],
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(
         sim.substrate
@@ -3833,6 +3846,7 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
             EntityDamageEvent::area(middle, 10, 512, RAD_NO_ATTACKER, None, oil_wh),
             EntityDamageEvent::area(edge, 10, 1024, RAD_NO_ATTACKER, None, oil_wh),
         ],
+        crate::sim::world::FrameEffects::default(),
     );
 
     let pending = |sim: &crate::sim::world::Simulation, id| {
@@ -3877,7 +3891,12 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
     );
 
     sim.session.binary_frame = 4;
-    sim.tick_pending_building_detonation(center, &rules, Some(&registry));
+    sim.tick_pending_building_detonation(
+        center,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(sim.substrate.entities.get(center).is_some());
     assert_eq!(
         sim.overlay_grid.as_ref().unwrap().cell(8, 5).overlay_id,
@@ -3885,7 +3904,12 @@ fn gsi_04_07_damage_postmortem_stock_barrel_delay_and_nested_order() {
     );
 
     sim.session.binary_frame = 5;
-    sim.tick_pending_building_detonation(center, &rules, Some(&registry));
+    sim.tick_pending_building_detonation(
+        center,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     let expired = sim
         .substrate
         .entities
@@ -3971,6 +3995,7 @@ fn gsi_04_07_damage_postmortem_exact_zero_callbacks_precede_restore() {
                 Some(source_owner),
                 delay_wh,
             )],
+            crate::sim::world::FrameEffects::default(),
         );
     };
     hit(&mut sim);
@@ -4161,6 +4186,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
             EntityDamageEvent::area(expiry_target, 10, 0, source_a, Some(owner_a), delay_wh),
             EntityDamageEvent::area(later_target, 10, 0, source_a, Some(owner_a), delay_wh),
         ],
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(sim.houses[&owner_a].stats.buildings_killed(), 2);
     assert_eq!(sim.houses[&owner_a].economy.score(), 1_400);
@@ -4184,6 +4210,7 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
             Some(owner_b),
             ordinary_wh,
         )],
+        crate::sim::world::FrameEffects::default(),
     );
     let later = sim.substrate.entities.get(later_target).unwrap();
     assert_eq!(later.health.current, 0);
@@ -4196,7 +4223,12 @@ fn gsi_04_07_damage_postmortem_fresh_null_expiry_does_not_recredit_initial_kille
         sim.houses[&owner_a].economy.score(),
     );
     sim.session.binary_frame = 5;
-    sim.tick_pending_building_detonation(expiry_target, &rules, None);
+    sim.tick_pending_building_detonation(
+        expiry_target,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let expired = sim.substrate.entities.get(expiry_target).unwrap();
     assert_eq!(expired.health.current, 0);
     assert_eq!(expired.killed_by, None);
@@ -7023,6 +7055,7 @@ fn a_buildings_death_weapon_detonates_at_its_foundation_centre() {
             None,
             kill_wh,
         )],
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 0);
     assert_eq!(
@@ -8221,7 +8254,13 @@ fn gsi_04_07_damage_hostile_building_hit_latches_was_attacked_for_ai_repair() {
     // Each building's UpdateRepairAndPower, in its LogicVector visit.
     let repair_and_power = |sim: &mut crate::sim::world::Simulation| {
         for id in [hostile_target, allied_target, null_target] {
-            crate::sim::production::update_repair_and_power(sim, &rules, id, None);
+            crate::sim::production::update_repair_and_power(
+                sim,
+                &rules,
+                id,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
     };
     let low_iq_rng = sim.scenario_rng.logical_state();
@@ -8350,7 +8389,12 @@ fn deployed_desolator_self_irradiates_and_refires_below_third() {
             Some(&rules),
             crate::sim::world::ObjectAiCtx::default(),
         );
-        sim.visit_combat_tail(first_tail, &rules, None);
+        sim.visit_combat_tail(
+            first_tail,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         sim.fire_events.clone()
     };
 
@@ -9564,7 +9608,12 @@ fn gsi_04_10_near_center_iron_curtain_isolates_earlier_terrain_receiver() {
             }),
             AreaDamageReceiver::Entity(entity_event),
         ];
-        sim.commit_noncombat_aoe_receivers(&rules, None, &receivers);
+        sim.commit_noncombat_aoe_receivers(
+            &rules,
+            None,
+            &receivers,
+            crate::sim::world::FrameEffects::default(),
+        );
         sim.production.terrain_objects[&terrain_id].health
     }
 
@@ -9646,7 +9695,12 @@ fn gsi_04_10_entity_fatal_hook_and_later_terrain_share_raw_occupation() {
             near_center_ic_isolation_eligible: false,
         }),
     ];
-    sim.commit_noncombat_aoe_receivers(&rules, None, &receivers);
+    sim.commit_noncombat_aoe_receivers(
+        &rules,
+        None,
+        &receivers,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(4, 5),

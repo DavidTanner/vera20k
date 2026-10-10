@@ -746,6 +746,7 @@ pub(crate) fn resolve_attacker_fire(
                 binary_frame,
                 has_active_wave,
                 out,
+                crate::sim::world::FrameEffects::default(),
             );
         },
     )
@@ -866,7 +867,12 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
             // The same frame's tail: the shots' bullets take their first AI
             // (an Inviso one detonates). Bullets still in flight are handed
             // back as their admission records.
-            world.visit_combat_tail(first_tail_id, rules, overlay_registry);
+            world.visit_combat_tail(
+                first_tail_id,
+                rules,
+                overlay_registry,
+                crate::sim::world::FrameEffects::default(),
+            );
             for (mut effects, under_attack_events) in
                 std::mem::take(&mut world.receiver_fixture.as_mut().unwrap().tail_effects)
             {

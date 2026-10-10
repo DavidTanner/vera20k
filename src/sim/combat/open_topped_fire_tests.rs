@@ -117,7 +117,12 @@ fn retail_dustbowl_battle_fortress_boarded(riders: u16) -> Fortress {
         })
         .collect();
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules, None);
+    crate::sim::passenger::tick_passenger_system(
+        sim,
+        rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     Fortress {
         scenario,
         bfrt,
@@ -134,6 +139,7 @@ fn retail_frame(scenario: &mut HeadlessScenario, orders: Vec<CommandEnvelope>) -
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("retail frame")
 }

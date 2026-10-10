@@ -9,6 +9,7 @@ use crate::sim::bridge_state::ordinary_damage::{self, OrdinaryDamageHost};
 use crate::sim::bridge_state::ordinary_repair::OrdinaryRepairHost;
 use crate::sim::bridge_state::ramp_repair::{Family, HutCells, Rect, RepairHost};
 use crate::sim::bridge_state::{ordinary_repair, ramp_repair};
+use crate::sim::world::FrameEffects;
 
 /// Already-admitted57BAA0/57CCF0 receiver. The area-damage caller owns strength RNG
 /// and detaches the original impact cell only when this driver returns true.
@@ -18,12 +19,14 @@ pub(crate) fn damage_ordinary(
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     input: CellCoord,
     family: Family,
+    frame_effects: FrameEffects<'_>,
 ) -> Result<BodyResult, String> {
     let mut live = LivePublication {
         sim,
         rules,
         registry,
         collapsed: false,
+        frame_effects,
     };
     let returned = ordinary_damage::damage(
         &mut LiveOrdinary {
@@ -45,12 +48,14 @@ pub(crate) fn repair_from_engineer(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     engineer: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> Result<bool, String> {
     let mut live = LivePublication {
         sim,
         rules,
         registry,
         collapsed: false,
+        frame_effects,
     };
     let (input, family) = engineer_repair_family(&mut live, engineer)?;
     let mut host = LiveOrdinary {

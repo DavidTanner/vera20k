@@ -127,7 +127,13 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
         let (mut sim, rules, owner) = world(0xfac7_0010);
         let before = counts(&sim, owner);
         let mut expected = sim.scenario_rng.clone();
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            crate::sim::world::FrameEffects::default()
+        ));
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         assert_eq!(child_ids.len(), if parent_type == "MTNK" { 3 } else { 2 });
@@ -137,7 +143,13 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
             (before.0, before.1 + 1 + child_ids.len() as u32)
         );
         let allocated = sim.substrate.next_stable_object_id;
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            crate::sim::world::FrameEffects::default()
+        ));
         assert_eq!(sim.substrate.next_stable_object_id, allocated);
         // ABANDON removes the queued copy first (`0x004FAAEE`), then the active build.
         assert!(cancel_by_type_for_owner(
@@ -145,7 +157,8 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
             &rules,
             "Americans",
             parent_type,
-            false
+            false,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(held_id(&sim, owner, ProductionCategory::Vehicle), parent);
         assert_eq!(children(&sim, parent), child_ids);
@@ -157,7 +170,8 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
             &rules,
             "Americans",
             parent_type,
-            false
+            false,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_gone(&sim, parent, &child_ids);
         assert_eq!(counts(&sim, owner), before);
@@ -170,7 +184,13 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
                 .is_none()
         );
 
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            crate::sim::world::FrameEffects::default()
+        ));
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         assert_constructor_words(&sim, parent, &mut expected);
@@ -183,14 +203,16 @@ fn manager_factory_cancellation_finishes_graph_accounting_and_promotion() {
             &mut sim,
             &rules,
             "Americans",
-            successor_type
+            successor_type,
+            crate::sim::world::FrameEffects::default()
         ));
         assert!(cancel_by_type_for_owner(
             &mut sim,
             &rules,
             "Americans",
             parent_type,
-            false
+            false,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_gone(&sim, parent, &child_ids);
         let successor = held_id(&sim, owner, ProductionCategory::Vehicle);
@@ -227,7 +249,13 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
             .get_mut(1)
             .unwrap()
             .set_archive_target(Some(crate::sim::combat::TargetKind::Cell(30, 30)));
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", unit_type));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            unit_type,
+            crate::sim::world::FrameEffects::default()
+        ));
         let produced = held_id(&sim, owner, ProductionCategory::Vehicle);
         assert!(
             sim.production
@@ -272,7 +300,13 @@ fn produced_infantry_retains_its_barracks_rally_until_exit_handoff() {
         };
         assert!(sim.apply_command("Americans", &command, Some(&rules)));
     }
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
     let produced = held_id(&sim, owner, ProductionCategory::Infantry);
     assert!(
         sim.production
@@ -319,7 +353,13 @@ fn a_captured_factory_loses_its_rally_point() {
         Some((40, 12))
     );
     let russians = sim.interner.intern("Russians");
-    sim.change_owner_with_rules(1, russians, &rules, None);
+    sim.change_owner_with_rules(
+        1,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(sim.substrate.entities.get(1).unwrap().rally_cell(), None);
 }
 
@@ -327,7 +367,13 @@ fn a_captured_factory_loses_its_rally_point() {
 fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     let (mut sim, rules, owner) = world(0xfac7_0011);
     let before = counts(&sim, owner);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "YAREFN"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "YAREFN",
+        crate::sim::world::FrameEffects::default()
+    ));
     let parent = held_id(&sim, owner, ProductionCategory::Building);
     let child_ids = children(&sim, parent);
     assert_eq!(child_ids.len(), 2);
@@ -346,7 +392,13 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     // A PRODUCE of the type waiting finished takes Begin_Production's resume
     // branch (0x004FA5A8..0x004FA5C4), which the build start refuses at stage 54
     // (0x004C9ECD): nothing is queued or charged.
-    assert!(!enqueue_by_type(&mut sim, &rules, "Americans", "YAREFN"));
+    assert!(!enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "YAREFN",
+        crate::sim::world::FrameEffects::default()
+    ));
     assert_eq!(held_id(&sim, owner, ProductionCategory::Building), parent);
     assert!(
         sim.production
@@ -358,13 +410,20 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     );
     assert_eq!(sim.houses[&owner].economy.credits(), credits);
     // A different queued type does not intercept cancellation of the ready head.
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "GAPOWR"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(cancel_by_type_for_owner(
         &mut sim,
         &rules,
         "Americans",
         "YAREFN",
-        false
+        false,
+        crate::sim::world::FrameEffects::default()
     ));
     assert_gone(&sim, parent, &child_ids);
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 1000);
@@ -397,8 +456,20 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
 #[test]
 fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_later() {
     let (mut sim, rules, owner) = world(0xfac7_0012);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "SMIN"));
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "SMIN",
+        crate::sim::world::FrameEffects::default()
+    ));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "MTNK",
+        crate::sim::world::FrameEffects::default()
+    ));
     let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
     let child_ids = children(&sim, parent);
     for _ in 0..40 {
@@ -469,8 +540,20 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
 #[test]
 fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     let (mut sim, rules, owner) = world(0xfac7_0013);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held = held_id(&sim, owner, ProductionCategory::Infantry);
     assert!(
         sim.production
@@ -524,12 +607,25 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
 fn active_cancel_without_house_does_not_create_refund_account() {
     for all in [false, true] {
         let (mut sim, rules, owner) = world(0xfac7_0014);
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", "SMIN"));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            "SMIN",
+            crate::sim::world::FrameEffects::default()
+        ));
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         sim.houses.remove(&owner);
         let rng = sim.scenario_rng.logical_state();
-        let cancelled = cancel_by_type_for_owner(&mut sim, &rules, "Americans", "SMIN", all);
+        let cancelled = cancel_by_type_for_owner(
+            &mut sim,
+            &rules,
+            "Americans",
+            "SMIN",
+            all,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(cancelled);
         assert_gone(&sim, parent, &child_ids);
         assert!(!sim.houses.contains_key(&owner));
@@ -541,8 +637,20 @@ fn active_cancel_without_house_does_not_create_refund_account() {
 fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
     for parent_type in ["MTNK", "SMIN"] {
         let (mut sim, rules, owner) = world(0xfac7_0016);
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
-        assert!(enqueue_by_type(&mut sim, &rules, "Americans", parent_type));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            crate::sim::world::FrameEffects::default()
+        ));
+        assert!(enqueue_by_type(
+            &mut sim,
+            &rules,
+            "Americans",
+            parent_type,
+            crate::sim::world::FrameEffects::default()
+        ));
         let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
         let child_ids = children(&sim, parent);
         for _ in 0..40 {
@@ -580,13 +688,23 @@ fn factory_loss_revalidation_disposes_parent_and_children_before_returning() {
 #[test]
 fn revalidation_without_house_disposes_held_graph_without_creating_account() {
     let (mut sim, rules, owner) = world(0xfac7_0017);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "SMIN"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "SMIN",
+        crate::sim::world::FrameEffects::default()
+    ));
     let parent = held_id(&sim, owner, ProductionCategory::Vehicle);
     let child_ids = children(&sim, parent);
     sim.substrate.entities.remove(1);
     sim.houses.remove(&owner);
     let rng = sim.scenario_rng.logical_state();
-    super::revalidate_and_step_factories(&mut sim, &rules);
+    super::revalidate_and_step_factories(
+        &mut sim,
+        &rules,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_gone(&sim, parent, &child_ids);
     assert!(!sim.houses.contains_key(&owner));
     assert_eq!(sim.scenario_rng.logical_state(), rng);
@@ -596,8 +714,20 @@ fn revalidation_without_house_disposes_held_graph_without_creating_account() {
 fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     let (mut sim, rules, owner) = world(0xfac7_0018);
     spawn_structure(&mut sim, &rules, 5, "Americans", "GAAIRC", 26, 10);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "ORCA"));
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "ORCA"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "ORCA",
+        crate::sim::world::FrameEffects::default()
+    ));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "ORCA",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held = held_id(&sim, owner, ProductionCategory::Aircraft);
     assert!(
         sim.production
@@ -647,7 +777,13 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
 #[test]
 fn a_ready_building_goes_with_the_last_construction_yard() {
     let (mut sim, rules, owner) = world(0xfac7_0019);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "GAPOWR"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "GAPOWR",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held = held_id(&sim, owner, ProductionCategory::Building);
     assert!(
         sim.production
@@ -663,11 +799,19 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
     let credits = sim.houses[&owner].economy.credits();
 
     // With a Construction Yard standing, the ready building waits.
-    super::revalidate_and_step_factories(&mut sim, &rules);
+    super::revalidate_and_step_factories(
+        &mut sim,
+        &rules,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(sim.substrate.entities.contains(held));
 
     sim.substrate.entities.remove(3);
-    super::revalidate_and_step_factories(&mut sim, &rules);
+    super::revalidate_and_step_factories(
+        &mut sim,
+        &rules,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(!sim.substrate.entities.contains(held));
     assert_eq!(sim.houses[&owner].tracking.buildings(), tracked - 1);
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 800);
@@ -687,7 +831,13 @@ fn a_ready_building_goes_with_the_last_construction_yard() {
 #[test]
 fn a_held_vehicle_goes_with_the_last_war_factory() {
     let (mut sim, rules, owner) = world(0xfac7_001a);
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "MTNK"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "MTNK",
+        crate::sim::world::FrameEffects::default()
+    ));
     let held = held_id(&sim, owner, ProductionCategory::Vehicle);
     let child_ids = children(&sim, held);
     assert!(
@@ -699,7 +849,11 @@ fn a_held_vehicle_goes_with_the_last_war_factory() {
     let credits = sim.houses[&owner].economy.credits();
 
     sim.substrate.entities.remove(1);
-    super::revalidate_and_step_factories(&mut sim, &rules);
+    super::revalidate_and_step_factories(
+        &mut sim,
+        &rules,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_gone(&sim, held, &child_ids);
     assert_eq!(sim.houses[&owner].tracking.units_for_test(), 0);
     assert_eq!(sim.houses[&owner].economy.credits(), credits + 700);
@@ -750,7 +904,13 @@ fn a_build_starts_without_money_owing_its_cost_of() {
         .expect("the tank is offered");
     assert!(tank.enabled);
     assert_eq!(tank.cost, 675);
-    assert!(enqueue_by_type(&mut sim, &rules, "Russians", "HTNK"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Russians",
+        "HTNK",
+        crate::sim::world::FrameEffects::default()
+    ));
     for _ in 0..30 {
         sim.advance_tick(&[], Some(&rules), None, None, 67);
     }
@@ -769,7 +929,13 @@ fn a_build_starts_without_money_owing_its_cost_of() {
 #[test]
 fn a_cancel_refunds_the_cost_of_at_cancel_time() {
     let (mut sim, rules, owner) = plant_world();
-    assert!(enqueue_by_type(&mut sim, &rules, "Russians", "HTNK"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Russians",
+        "HTNK",
+        crate::sim::world::FrameEffects::default()
+    ));
     crate::sim::credit_income::add_credits(&mut sim, owner, 1000);
     let progress = |sim: &mut Simulation| {
         let factory = sim
@@ -790,7 +956,12 @@ fn a_cancel_refunds_the_cost_of_at_cancel_time() {
     spawn_plant(&mut sim, &rules);
     let before = sim.houses[&owner].economy.credits();
     assert!(cancel_by_type_for_owner(
-        &mut sim, &rules, "Russians", "HTNK", false
+        &mut sim,
+        &rules,
+        "Russians",
+        "HTNK",
+        false,
+        crate::sim::world::FrameEffects::default()
     ));
     assert_eq!(sim.houses[&owner].economy.credits(), before + 675 - 884);
 }
@@ -810,7 +981,13 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     let cost = sim.cost_of(owner, rules.object("E1").unwrap(), &rules);
     assert!(cost > 0);
 
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
     let first = held_id(&sim, owner, category);
     // Supply the paid-completion wallet and Balance0 through their existing
     // owners. The actual constructor, publication, PLACE and HELLO2/9 tail run.
@@ -843,8 +1020,20 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
             .is_none()
     );
 
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
-    assert!(enqueue_by_type(&mut sim, &rules, "Americans", "E1"));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
+    assert!(enqueue_by_type(
+        &mut sim,
+        &rules,
+        "Americans",
+        "E1",
+        crate::sim::world::FrameEffects::default()
+    ));
     let refused = held_id(&sim, owner, category);
     assert_ne!(refused, first);
     // This completed second head and post-payment wallet are supplied test

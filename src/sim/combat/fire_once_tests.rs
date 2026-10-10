@@ -383,8 +383,17 @@ fn fire_once_tail_matches_12_original_retained_state_and_rng_boundaries() {
         assert!(weapon.fire_once, "stock caller's reader");
         weapon.fire_once = row["supplied"]["fire_once"].as_bool().unwrap();
         let bullet = row["return_bullet"].as_bool().unwrap().then_some(u64::MAX);
-        let (_, draws) =
-            trace_draws(|| fireat_tail(&mut sim, &retail.rules, &snap, &weapon, bullet, None));
+        let (_, draws) = trace_draws(|| {
+            fireat_tail(
+                &mut sim,
+                &retail.rules,
+                &snap,
+                &weapon,
+                bullet,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
+        });
         assert!(draws.is_empty());
         assert_boundary(&sim, row, &members, targets, team);
         if row["name"] == "ivan_team_clear_old_focus" {
@@ -395,7 +404,11 @@ fn fire_once_tail_matches_12_original_retained_state_and_rng_boundaries() {
             // FireOnce retained-state comparison.
             restored.scenario_rng = sim.scenario_rng.clone();
             assert_boundary(&restored, row, &members, targets, team);
-            restored.run_team_ai_pass(&retail.rules, None);
+            restored.run_team_ai_pass(
+                &retail.rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let state = restored.team_script_vm.team(team.unwrap()).unwrap();
             assert_eq!(state.cursor(), 1);
             assert!(

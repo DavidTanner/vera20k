@@ -419,6 +419,7 @@ fn search_for_tiberium_matches_the_original_search_and_move() {
             Some(registry()),
             s.miner,
             input["range"].as_i64().unwrap() as i32,
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
             u64::from(ok),

@@ -379,7 +379,7 @@ impl HeadlessScenario {
     pub fn tick(&mut self) {
         let _ = self
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(&[], SIM_TICK_MS, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("simulation frame failed; prior world mutations remain");
     }
 }

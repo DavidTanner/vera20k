@@ -25,8 +25,8 @@
 //! hard-stops the loop (`VocHandle::StopAndClear @ 0x00405D40`) and clears the
 //! latch, so the next loop starts in the same call; every decay releases it
 //! (`SoundEvent::Release @ 0x00406060`, the loop plays out its `decay` tail)
-//! and clears the latch. The draw is simulation state whatever the sound
-//! settings: it precedes `VocClass::PlayAt`'s sound-enabled test. A gattling
+//! and clears the latch. The process Main draw precedes `VocClass::PlayAt`'s
+//! sound-enabled test, whatever the settings. Main is outside Scenario/hash/save. A gattling
 //! type plays no per-shot report (`TechnoClass::Fire`, `0x006FF349`).
 //!
 //! The dead latch `+0x4D4` is only ever written 0 in YR (`0x006F30EE`,
@@ -168,6 +168,7 @@ impl GattlingState {
         elite: bool,
         ticks: i32,
         report_count: impl Fn(i32) -> Option<i32>,
+        mut stop: impl FnMut(),
         next_random: impl FnOnce() -> u32,
     ) -> Increase {
         let stages = table.weapon_stages();
@@ -187,12 +188,14 @@ impl GattlingState {
             self.stage = stage;
             self.report_latch = false;
             effects.stage_up = true;
+            stop(); // 70DF74: stage-change Stop405D40.
         }
         if !self.report_latch {
             let weapon_index = stage.wrapping_mul(2);
             // `JLE` at `0x0070DF92`: an empty or negative count skips the
             // draw and leaves the latch clear.
             if let Some(count) = report_count(weapon_index).filter(|&count| count > 0) {
+                stop(); // 70DF9C: report-entry Stop405D40, before Main.
                 // `DIV`: unsigned.
                 let item = next_random() % count as u32;
                 self.report_latch = true;
@@ -202,13 +205,20 @@ impl GattlingState {
         effects
     }
 
-    /// `UpdateGattlingStage(ticks) @ 0x0070E000`. Returns whether a loop was
-    /// live (the latch was set) and is released.
-    pub(crate) fn update(&mut self, table: &GattlingStages, elite: bool, ticks: i32) -> bool {
+    /// `UpdateGattlingStage(ticks) @ 0x0070E000`. Returns whether the report
+    /// latch was set. Release is reached unconditionally before owner writes.
+    pub(crate) fn update(
+        &mut self,
+        table: &GattlingStages,
+        elite: bool,
+        ticks: i32,
+        release: impl FnOnce(),
+    ) -> bool {
         // The release and the latch clear come first, unconditionally. The
         // handle holds a loop only while the latch is set: every writer that
         // clears the latch also stops or releases the handle.
         let released = self.report_latch;
+        release(); // Update70E000: Release406060 precedes the latch/value writes.
         self.report_latch = false;
         let step = table.rate_down().wrapping_mul(ticks);
         let value = self.value.wrapping_sub(step);
@@ -221,8 +231,9 @@ impl GattlingState {
     }
 
     /// TechnoClass::Limbo's `+0x4A4` release and latch clear (`0x006F6C6B`,
-    /// `0x006F6C76`). Returns whether a loop was live.
-    pub(crate) fn limbo(&mut self) -> bool {
+    /// `0x006F6C76`). Returns the prior report latch; Release is unconditional.
+    pub(crate) fn limbo(&mut self, release: impl FnOnce()) -> bool {
+        release(); // 6F6C6B: release before 6F6C76 clears the latch.
         std::mem::take(&mut self.report_latch)
     }
 
@@ -316,6 +327,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         outcome: UnitFireOutcome,
         rules: &crate::rules::ruleset::RuleSet,
+        effects: crate::sim::world::FrameEffects<'_>,
     ) {
         let Some((is_gattling, slot0)) = self.substrate.entities.get(id).and_then(|entity| {
             let obj = self.object_type(entity.type_ref(), rules)?;
@@ -336,8 +348,8 @@ impl crate::sim::world::Simulation {
         };
         if is_gattling {
             match unit_fire_tail(outcome) {
-                StageCall::Increase => self.gattling_increase(id, rules, 1),
-                StageCall::Update => self.gattling_update(id, rules, 1),
+                StageCall::Increase => self.gattling_increase(id, rules, 1, effects),
+                StageCall::Update => self.gattling_update(id, rules, 1, effects),
             }
         }
         if let Some(entity) = self.substrate.entities.get_mut(id)
@@ -353,6 +365,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
         ticks: i32,
+        frame_effects: crate::sim::world::FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -368,21 +381,27 @@ impl crate::sim::world::Simulation {
             crate::sim::combat::combat_weapon::weapon_for_index(obj, veterancy, index)
                 .map(|(weapon_id, _)| rules.weapon(weapon_id))
         };
-        let main_rng = &mut self.main_rng;
+        let owner = gattling_sound_owner(id);
+        // Share the process owner's draw capability without retaining its
+        // mutex across Stop. The retained source locks output gate -> Main.
+        let main_draws = self.main_rng.draws();
         let effects = state.increase(
             &obj.gattling_stages,
             elite,
             ticks,
             |index| weapon(index).map(|weapon| weapon.map_or(0, |weapon| weapon.report_count())),
-            || main_rng.next_u32(),
+            || {
+                // Native70DF74 and70DF9C finish Stop405D40, including the
+                // driver endpoint and handle clear, before Report's65C780.
+                // Source: tools/input_oracle/gattling_loop.json.
+                self.sound_events
+                    .push(crate::sim::world::SimSoundEvent::GattlingLoopStop { owner });
+                frame_effects.flush_sound(self, Some(rules));
+            },
+            || main_draws.next_u32(),
         );
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.gattling = state;
-        }
-        let owner = gattling_sound_owner(id);
-        if effects.stage_up {
-            self.sound_events
-                .push(crate::sim::world::SimSoundEvent::GattlingLoopStop { owner });
         }
         if let Some(report) = effects.report
             && let Some(sound) = weapon(report.weapon_index)
@@ -395,6 +414,7 @@ impl crate::sim::world::Simulation {
                     sound_id: sound.to_owned(),
                     world,
                 });
+            frame_effects.flush_sound(self, Some(rules));
         }
     }
 
@@ -404,6 +424,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
         ticks: i32,
+        frame_effects: crate::sim::world::FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -412,29 +433,43 @@ impl crate::sim::world::Simulation {
             return;
         };
         let elite = is_elite(entity);
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
-            return;
-        };
-        if entity.gattling.update(&obj.gattling_stages, elite, ticks) {
+        let mut state = entity.gattling;
+        state.update(&obj.gattling_stages, elite, ticks, || {
+            // Update70E013 reaches Release406060 before latch/value writes,
+            // including an already cleared handle. The sound owner validates
+            // Type0/stale handles. Source: gattling_loop.json's Unit release.
             self.sound_events
                 .push(crate::sim::world::SimSoundEvent::GattlingLoopRelease {
                     owner: gattling_sound_owner(id),
                 });
+            frame_effects.flush_sound(self, Some(rules));
+        });
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            entity.gattling = state;
         }
     }
 
     /// TechnoClass::Limbo's `+0x4A4` release and latch clear.
-    pub(crate) fn gattling_limbo(&mut self, id: u64) {
-        if self
-            .substrate
-            .entities
-            .get_mut(id)
-            .is_some_and(|entity| entity.gattling.limbo())
-        {
+    pub(crate) fn gattling_limbo(
+        &mut self,
+        id: u64,
+        context: crate::sim::world::UninitContext<'_>,
+    ) {
+        let Some(entity) = self.substrate.entities.get(id) else {
+            return;
+        };
+        let mut state = entity.gattling;
+        state.limbo(|| {
+            // TechnoLimbo6F6C6B releases4A4 before6F6C76 clears the latch.
+            // Nested cleanup retains the frame rules even when it needs none.
             self.sound_events
                 .push(crate::sim::world::SimSoundEvent::GattlingLoopRelease {
                     owner: gattling_sound_owner(id),
                 });
+            context.effects().flush_sound(self, context.rules());
+        });
+        if let Some(entity) = self.substrate.entities.get_mut(id) {
+            entity.gattling = state;
         }
     }
 }

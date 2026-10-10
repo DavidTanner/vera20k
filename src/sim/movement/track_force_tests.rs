@@ -391,7 +391,14 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
         // First compare the production generic call against the captured
         // return boundary. No test-side setter stands in for the caller.
         let mut direct = fixture(case);
-        assert!(direct.force_track(UNIT, selector, supplied(case), None, None));
+        assert!(direct.force_track(
+            UNIT,
+            selector,
+            supplied(case),
+            None,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         assert_eq!(
             mirrored_state(direct.substrate.entities.get(UNIT).unwrap()),
             stage(case, "bunker_after_force_before_owner_speed").unwrap()["state"]
@@ -437,7 +444,12 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
             installing_unit: Some(UNIT),
         });
         sim.substrate.entities.insert(building);
-        tick_bunker_install(&mut sim, &rules, None);
+        tick_bunker_install(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let entity = sim.substrate.entities.get(UNIT).unwrap();
         assert_eq!(
             mirrored_state(entity),

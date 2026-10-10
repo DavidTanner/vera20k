@@ -11,6 +11,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::SequenceKind;
 use crate::sim::movement::infantry_action::DO_PARADROP;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::world::FrameEffects;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) enum InfantryDeathSequence {
@@ -317,6 +318,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         immediate_uninit_ids: &mut Vec<u64>,
+        effects: super::FrameEffects<'_>,
     ) -> InfantryDeathPostlude {
         if self
             .substrate
@@ -324,10 +326,13 @@ impl Simulation {
             .get(id)
             .is_some_and(crate::sim::movement::infantry_action::uses_jumpjet_locomotor)
         {
-            if let Err(cause) = self.infantry_stop_driver(id, rules, overlay_registry) {
+            if let Err(cause) = self.infantry_stop_driver(id, rules, overlay_registry, effects) {
                 log::debug!("infantry {id} death Stop_Driver: {cause}");
             }
-            self.techno_death_stun(id, super::UninitContext::new(Some(rules), overlay_registry));
+            self.techno_death_stun(
+                id,
+                super::UninitContext::new(Some(rules), overlay_registry).with_effects(effects),
+            );
         }
         // `InfantryClass::ReceiveDamage 0x0051810E..0x0051812E`, before the
         // death ladder: Queue_Mission(-1) (refused), Queue_Mission(Guard),
@@ -357,27 +362,32 @@ impl Simulation {
         };
         let recipe = match self.infantry_death_arm(entity, inf_death, rules) {
             InfantryDeathArm::JumpJetExplode { crashable } => {
-                if crashable && self.foot_crash(id, None, rules, overlay_registry) {
+                if crashable && self.foot_crash(id, None, rules, overlay_registry, effects) {
                     ReceiverDeathRecipe::CrashExplode
                 } else {
                     ReceiverDeathRecipe::ExternalAnim(INFANTRY_EXPLODE_INF_DEATH)
                 }
             }
             InfantryDeathArm::NotHuman => {
-                self.begin_infantry_death_sequence(id, InfantryDeathSequence::Die1, rules);
+                self.begin_infantry_death_sequence(id, InfantryDeathSequence::Die1, rules, effects);
                 ReceiverDeathRecipe::Sequence
             }
             InfantryDeathArm::Table(INFANTRY_MUTATE_INF_DEATH) => {
                 if self.infantry_mutation_admits(id, rules) {
                     ReceiverDeathRecipe::Mutate
                 } else {
-                    self.begin_infantry_death_sequence(id, InfantryDeathSequence::Die2, rules);
+                    self.begin_infantry_death_sequence(
+                        id,
+                        InfantryDeathSequence::Die2,
+                        rules,
+                        effects,
+                    );
                     ReceiverDeathRecipe::Sequence
                 }
             }
             InfantryDeathArm::Table(inf_death) => {
                 if let Some(sequence) = InfantryDeathSequence::for_inf_death(inf_death) {
-                    self.begin_infantry_death_sequence(id, sequence, rules);
+                    self.begin_infantry_death_sequence(id, sequence, rules, effects);
                     ReceiverDeathRecipe::Sequence
                 } else if crate::sim::animation::inf_death_spawns_anim(inf_death) {
                     ReceiverDeathRecipe::ExternalAnim(inf_death)
@@ -434,6 +444,7 @@ impl Simulation {
         id: u64,
         sequence: InfantryDeathSequence,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) {
         //ReceiveDamage51850F/5185DF/51863F dispatches DoAction(11/12,1,0).
         // Its unchanged/absent-sequence refusal retains the whole Stage;
@@ -441,7 +452,7 @@ impl Simulation {
         let action = i32::from(crate::rules::infantry_sequence::action_id(
             sequence.animation(),
         ));
-        if let Err(cause) = self.infantry_do_action(id, action, true, rules) {
+        if let Err(cause) = self.infantry_do_action(id, action, true, rules, effects) {
             log::debug!("infantry {id} death Do_Action: {cause}");
         }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -482,7 +493,7 @@ impl Simulation {
                     return outcome;
                 };
                 super::techno_ai::dying_infantry_techno_ai(self, id, rules, ctx);
-                match self.infantry_action_turn(id, rules, ctx.overlay_registry) {
+                match self.infantry_action_turn(id, rules, ctx.overlay_registry, ctx.effects) {
                     Ok(changed) => outcome.bridge_state_changed = changed,
                     Err(cause) => log::debug!("infantry {id} terminal action turn: {cause}"),
                 }
@@ -493,7 +504,8 @@ impl Simulation {
         if let Some(rules) = rules {
             self.uninit_with_context(
                 id,
-                super::UninitContext::new(Some(rules), ctx.overlay_registry),
+                super::UninitContext::new(Some(rules), ctx.overlay_registry)
+                    .with_effects(ctx.effects),
             );
         } else {
             self.uninit(id);

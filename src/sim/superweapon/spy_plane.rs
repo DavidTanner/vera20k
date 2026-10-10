@@ -17,6 +17,7 @@ use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::MissionType;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// The plane. gamemd holds the literal (`0x00842560`, looked up at
@@ -49,6 +50,7 @@ pub(super) fn launch(
     owner: InternedId,
     sw_type: InternedId,
     (rx, ry): (u16, u16),
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     sim.sound_events.push(SimSoundEvent::SuperWeaponLaunched {
         owner,
@@ -81,6 +83,7 @@ pub(super) fn launch(
                 MissionType::SpyplaneApproach,
                 (rx, ry),
                 None,
+                frame_effects,
             );
         }
     }

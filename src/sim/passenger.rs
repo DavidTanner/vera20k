@@ -30,7 +30,7 @@ use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::{InternedId, StringInterner};
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::world::{ConcealOutcome, SimSoundEvent, Simulation};
+use crate::sim::world::{ConcealOutcome, FrameEffects, SimSoundEvent, Simulation, UninitContext};
 
 /// Passenger cargo state, attached as `Option<PassengerCargo>` on transport entities.
 ///
@@ -461,10 +461,11 @@ const BOARD_DISTANCE: u32 = 1;
 /// therefore give its garrison ownership one frame sooner than this scheduler.
 /// Moving that arrival is excluded movement work; do not simulate a second
 /// Building AI tail here to conceal the missing integration.
-pub fn tick_passenger_system(
+pub(crate) fn tick_passenger_system(
     sim: &mut Simulation,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let order = sim.live_object_order_snapshot();
     for entity_id in order {
@@ -486,7 +487,7 @@ pub fn tick_passenger_system(
                 .get(entity_id)
                 .is_some_and(|e| matches!(e.passenger_role, PassengerRole::Boarding { .. }))
         {
-            process_boarding_passenger(sim, rules, entity_id, registry);
+            process_boarding_passenger(sim, rules, entity_id, registry, effects);
         }
     }
 }
@@ -496,6 +497,7 @@ fn process_boarding_passenger(
     rules: &RuleSet,
     pax_id: u64,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let transport_id = match sim
         .substrate
@@ -585,7 +587,7 @@ fn process_boarding_passenger(
             .get(pax_id)
             .and_then(|pax| pax.mind_control.controller())
         {
-            sim.free_unit(controller, pax_id, rules, registry);
+            sim.free_unit(controller, pax_id, rules, registry, effects);
         }
         //Infantry51A37C/Unit73A30E invalidates positive ExtraPower
         //absorbers before AddPassenger. Ordinary mobile transports do not
@@ -610,7 +612,8 @@ fn process_boarding_passenger(
         // CargoClass::AddPassenger conceals the passenger before splicing it
         // into the cargo chain. Techno Limbo owns BREAK, Mark removal, and
         // LogicVector removal in that order.
-        if sim.techno_limbo_with_rules(pax_id, rules, registry) != ConcealOutcome::Concealed {
+        let context = UninitContext::new(Some(rules), registry).with_effects(effects);
+        if sim.techno_limbo_with_context(pax_id, context) != ConcealOutcome::Concealed {
             return;
         }
         let boarded = sim
@@ -624,7 +627,7 @@ fn process_boarding_passenger(
             // No mutation can race the single-threaded transaction, but recover
             // the passenger rather than stranding a concealed object if an
             // invariant is broken.
-            let _ = sim.reveal_entity_with_rules(pax_id, rules);
+            let _ = sim.reveal_entity_with_context(pax_id, context);
             return;
         }
 
@@ -678,7 +681,7 @@ fn process_boarding_passenger(
             // Infantry Limbo51DF10 keeps TarCom: 51A441 ->51A45E ->710484
             // reaches the class NULL setter with the former target intact.
             // Clearing it above would bypass the changed-target effects.
-            sim.reset_orders_to_guard(pax_id, rules);
+            sim.reset_orders_to_guard(pax_id, rules, effects);
             let registered = sim.register_open_topped_passenger(pax_id);
             debug_assert!(
                 registered,
@@ -870,6 +873,7 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     building_id: u64,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let Some(building) = sim.substrate.entities.get(building_id) else {
         return false;
@@ -888,7 +892,7 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
         object.strength,
         rules.general.condition_red,
     ) {
-        crate::sim::production::sell_building_occupants(sim, rules, registry, building_id);
+        crate::sim::production::sell_building_occupants(sim, rules, registry, building_id, effects);
     }
     //458265/4582F2 re-read the live vector after ejection.
     let Some(building) = sim.substrate.entities.get(building_id) else {
@@ -917,7 +921,7 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
             return false;
         };
         sim.refresh_garrison_anims(building_id, rules);
-        sim.change_owner_with_rules(building_id, new_owner, rules, registry);
+        sim.change_owner_with_rules(building_id, new_owner, rules, registry, effects);
         return new_owner != current_owner;
     }
 
@@ -940,7 +944,7 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
             });
         }
         sim.refresh_garrison_anims(building_id, rules);
-        sim.change_owner_with_rules(building_id, civilian_owner, rules, registry);
+        sim.change_owner_with_rules(building_id, civilian_owner, rules, registry, effects);
         return true;
     }
 
@@ -964,7 +968,13 @@ fn tick_boarding(sim: &mut Simulation, rules: &RuleSet) -> bool {
         .collect();
     for id in boarding_ids {
         // This direct boarding fixture declares no overlay context.
-        process_boarding_passenger(sim, rules, id, None);
+        process_boarding_passenger(
+            sim,
+            rules,
+            id,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     false
 }
@@ -1420,7 +1430,12 @@ ConditionYellow=50%
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Neutral", 10, 10);
         let pax = spawn_boarding_occupier(&mut sim, &rules, "E1", "Americans", bldg, 10, 11);
         sim.set_logic_order_for_test(vec![pax, bldg]);
-        tick_passenger_system(&mut sim, &rules, None);
+        tick_passenger_system(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(owner_name(&sim, bldg), "Neutral");
 
         // Arrival still runs in the legacy passenger phase. Its migration to
@@ -1470,7 +1485,13 @@ ConditionYellow=50%
             assert!(cargo.board(second, 1));
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Russians");
@@ -1494,7 +1515,11 @@ ConditionYellow=50%
         let old_owner = sim.substrate.entities.get(building).unwrap().owner();
 
         assert!(!reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, None, building
+            &mut sim,
+            &rules,
+            None,
+            building,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(
             sim.substrate.entities.get(building).unwrap().owner(),
@@ -1520,7 +1545,11 @@ ConditionYellow=50%
             sim.session.house_order.push(owner);
         }
         assert!(reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, None, building
+            &mut sim,
+            &rules,
+            None,
+            building,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(owner_name(&sim, building), "Town");
     }
@@ -1531,7 +1560,13 @@ ConditionYellow=50%
         let rules = garrison_test_rules();
         let bldg = spawn_garrison_building(&mut sim, &rules, "CAGAS01", "Americans", 10, 10);
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert!(changed);
         assert_eq!(owner_name(&sim, bldg), "Neutral");
@@ -1574,7 +1609,11 @@ ConditionYellow=50%
         );
 
         assert!(reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, None, bldg
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(sim.houses[&neutral].tracking.buildings(), 0);
         assert_eq!(sim.houses[&americans].tracking.buildings(), 1);
@@ -1588,7 +1627,11 @@ ConditionYellow=50%
                 .disembark(pax)
         );
         assert!(reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, None, bldg
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(sim.houses[&neutral].tracking.buildings(), 1);
         assert_eq!(sim.houses[&americans].tracking.buildings(), 0);
@@ -1609,7 +1652,13 @@ ConditionYellow=50%
             }
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert!(
             changed,
@@ -1708,7 +1757,12 @@ ConditionYellow=50%
             vec![transport, passenger, tail]
         );
 
-        tick_passenger_system(&mut sim, &rules, None);
+        tick_passenger_system(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let passenger_entity = sim
             .substrate
@@ -1727,7 +1781,12 @@ ConditionYellow=50%
             vec![transport, tail, passenger]
         );
 
-        tick_passenger_system(&mut sim, &rules, None);
+        tick_passenger_system(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.live_object_order_snapshot(),
             vec![transport, tail, passenger],
@@ -1756,7 +1815,13 @@ ConditionYellow=50%
             }
         }
 
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
+        let changed = reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(changed);
         assert!(matches!(
             sim.substrate.entities.get(pax).unwrap().passenger_role,
@@ -1787,7 +1852,13 @@ ConditionYellow=50%
                 cargo.garrison_fire_index = 3;
             }
         }
-        reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, bldg);
+        reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            bldg,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let order = sim.live_object_order_snapshot();
         assert_eq!(
@@ -2283,7 +2354,12 @@ ConditionYellow=50%
             Some(&rules),
             crate::sim::world::ObjectAiCtx::default(),
         );
-        tick_passenger_system(&mut sim, &rules, None);
+        tick_passenger_system(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.sound_events
                 .iter()
@@ -2569,6 +2645,7 @@ ConditionYellow=50%
                 sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::None;
                 Err(departure::DepartureFailure::Placement)
             },
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(result, Err(departure::DepartureFailure::Placement));
         let transport = sim.substrate.entities.get(transport_id).unwrap();

@@ -507,7 +507,13 @@ mod tests {
         entity.locomotor = Some(make_fly_loco());
         sim.substrate.entities.insert(entity);
 
-        let ok = sim.issue_air_cell_destination(1, (20, 15), SimFixed::from_num(10), None);
+        let ok = sim.issue_air_cell_destination(
+            1,
+            (20, 15),
+            SimFixed::from_num(10),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(ok);
 
         // MoveTo retains the cell's centre as the Fly destination and marks
@@ -551,9 +557,13 @@ mod tests {
             .spawn_object("SHAD", "Americans", 10, 10, 0, &rules)
             .expect("Jumpjet Unit");
 
-        assert!(
-            sim.issue_air_cell_destination(id, (20, 15), SimFixed::from_num(10), Some(&rules),)
-        );
+        assert!(sim.issue_air_cell_destination(
+            id,
+            (20, 15),
+            SimFixed::from_num(10),
+            Some(&rules),
+            crate::sim::world::FrameEffects::default(),
+        ));
 
         let e = sim.substrate.entities.get(id).expect("has entity");
         assert_eq!(
@@ -592,7 +602,13 @@ mod tests {
         entity.locomotor = Some(make_fly_loco());
         sim.substrate.entities.insert(entity);
 
-        let ok = sim.issue_air_cell_destination(1, (10, 10), SimFixed::from_num(10), None);
+        let ok = sim.issue_air_cell_destination(
+            1,
+            (10, 10),
+            SimFixed::from_num(10),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(ok);
         // Native MoveTo accepts a nonnull destination even at the owner cell.
         let e = sim.substrate.entities.get(1).expect("has entity");

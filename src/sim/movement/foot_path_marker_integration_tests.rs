@@ -53,7 +53,14 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
                 .contains_entity(start.0, start.1, id)
         );
         assert!(matches!(
-            sim.search_foot_path(&request, None, goal, &rules, Some(&registry)),
+            sim.search_foot_path(
+                &request,
+                None,
+                goal,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default()
+            ),
             Ok(Ok(()))
         ));
         assert_eq!(sim.rng_state(), rng);
@@ -97,7 +104,14 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
             )
             .unwrap();
             assert!(matches!(
-                sim.search_foot_path(&next, None, goal, &rules, Some(&registry)),
+                sim.search_foot_path(
+                    &next,
+                    None,
+                    goal,
+                    &rules,
+                    Some(&registry),
+                    crate::sim::world::FrameEffects::default()
+                ),
                 Ok(Ok(()))
             ));
             let actor = sim.substrate.entities.get(id).unwrap();

@@ -434,11 +434,22 @@ fn execute(
             //Original class EAX is register residue (e.g.100), not a Bool
             //contract. Compare the owned state/query/fullRNG below instead.
             let _ = sim
-                .set_infantry_destination(id, NavTargetRef::cell(rx, ry), rules, registry)
+                .set_infantry_destination(
+                    id,
+                    NavTargetRef::cell(rx, ry),
+                    rules,
+                    registry,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
         }
         "stop_moving" => sim
-            .locomotor_stop_moving(id, Some(rules), registry)
+            .locomotor_stop_moving(
+                id,
+                Some(rules),
+                registry,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap(),
         "queue_mission" => {
             sim.mission_queue_exact(
@@ -763,7 +774,8 @@ fn two_ordinary_cleg_moves_publish_class_destinations_before_process() {
                 queue: false
             },
             Some(&rules),
-            None
+            None,
+            crate::sim::world::FrameEffects::default()
         ));
         let entity = sim.substrate.entities.get(id).unwrap();
         let runtime = entity
@@ -829,8 +841,14 @@ fn overlay_destination_without_registered_inputs_is_atomic() {
             "Teleport Cell admission requires registered overlay inputs before mutation"
         );
         assert!(
-            sim.set_infantry_destination(id, target, &rules, missing)
-                .is_err()
+            sim.set_infantry_destination(
+                id,
+                target,
+                &rules,
+                missing,
+                crate::sim::world::FrameEffects::default()
+            )
+            .is_err()
         );
         assert_eq!(
             (
@@ -863,8 +881,14 @@ fn teleport_admission_input_error_restores_physical_occupation() {
         .speed_costs = crate::rules::terrain_rules::SpeedCostProfile::default();
     let raw = bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap();
     assert!(
-        !sim.set_infantry_destination(id, NavTargetRef::cell(12, 10), &rules, None)
-            .unwrap()
+        !sim.set_infantry_destination(
+            id,
+            NavTargetRef::cell(12, 10),
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
     );
     let actor = sim.substrate.entities.get(id).unwrap();
     let runtime = actor
@@ -988,6 +1012,7 @@ fn cleg_overlay_cell_requests_match_every_original_command_boundary() {
                             },
                             Some(&rules),
                             Some(&registry),
+                            crate::sim::world::FrameEffects::default(),
                         ),
                         boundary["query_al"].as_u64().unwrap() != 0,
                         "{context}: request acceptance"

@@ -278,7 +278,14 @@ fn mission_guard_matches_the_original() {
             aim_at(&mut sim, building, target);
         }
         sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
-        let returns = with_draws(&mut sim, row, |sim| mission_guard(sim, building, &rules));
+        let returns = with_draws(&mut sim, row, |sim| {
+            mission_guard(
+                sim,
+                building,
+                &rules,
+                crate::sim::world::ObjectAiCtx::default(),
+            )
+        });
         assert_eq!(
             i64::from(returns),
             row["returns"].as_i64().unwrap(),
@@ -883,6 +890,7 @@ pub(super) fn retail_frame(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("retail frame")
 }

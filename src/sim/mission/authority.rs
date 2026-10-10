@@ -23,6 +23,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 #[cfg(test)]
@@ -709,7 +710,8 @@ impl Simulation {
         if !self.substrate.entities.contains(receiver) {
             return Err(MissionAuthorityError::MissingReceiver(receiver));
         }
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, None);
+        let mut effects =
+            RepresentedConcreteMissionEffects::new(rules, None, FrameEffects::default());
         let prepared =
             effects.preflight(self, receiver, ConcreteSetterRequest::Target { requested })?;
         effects.apply_target(self, &prepared, requested);
@@ -725,11 +727,13 @@ impl Simulation {
         requested: Option<NavTargetRef>,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), MissionAuthorityError> {
         if !self.substrate.entities.contains(receiver) {
             return Err(MissionAuthorityError::MissingReceiver(receiver));
         }
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
+        let mut effects =
+            RepresentedConcreteMissionEffects::new(rules, overlay_registry, frame_effects);
         let prepared = effects.preflight(
             self,
             receiver,
@@ -756,8 +760,10 @@ impl Simulation {
         receiver: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, MissionAuthorityError> {
-        let mut effects = RepresentedConcreteMissionEffects::new(rules, overlay_registry);
+        let mut effects =
+            RepresentedConcreteMissionEffects::new(rules, overlay_registry, frame_effects);
         self.mission_restore_exact_with_effects(receiver, &mut effects)
     }
 
@@ -776,13 +782,14 @@ impl Simulation {
         receiver: u64,
         attacker: u64,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if !self.substrate.entities.contains(attacker)
             || !self.substrate.entities.contains(receiver)
         {
             return false;
         }
-        let mut effects = RepresentedConcreteMissionEffects::new(Some(rules), None);
+        let mut effects = RepresentedConcreteMissionEffects::new(Some(rules), None, frame_effects);
         //7013CB dispatches the class target setter AFTER the mission writes.
         // A dying source or a refused Building target still takes the override;
         // target admission belongs to that live setter, not this caller.
@@ -810,11 +817,12 @@ impl Simulation {
         mover: u64,
         target: TargetKind,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if !self.substrate.entities.contains(mover) {
             return false;
         }
-        let mut effects = RepresentedConcreteMissionEffects::new(Some(rules), None);
+        let mut effects = RepresentedConcreteMissionEffects::new(Some(rules), None, frame_effects);
         // The locomotor caller owns its later head/Stop suffix. A refused
         // class destination must retain navigation through this transaction.
         self.mission_override_exact_with_effects(
@@ -1654,9 +1662,19 @@ mod tests {
                 assert_eq!(sim.scenario_rng.native_state_hex(), row["rng_before"]);
 
                 let ran = if damage_response {
-                    sim.override_mission_on_damage_response(1, 2, rules)
+                    sim.override_mission_on_damage_response(
+                        1,
+                        2,
+                        rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
                 } else {
-                    sim.mission_override_movement_blocker(1, TargetKind::Entity(2), rules)
+                    sim.mission_override_movement_blocker(
+                        1,
+                        TargetKind::Entity(2),
+                        rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
                 };
                 assert!(ran, "{name}, damage={damage_response}");
                 let actor = sim.substrate.entities.get(1).unwrap();

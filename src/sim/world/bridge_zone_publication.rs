@@ -219,6 +219,7 @@ mod tests {
         sim.path_grid = Some(Arc::new(path.clone()));
         let before = edge_state(&sim);
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: None,
@@ -231,6 +232,7 @@ mod tests {
             |state: &Vec<Vec<Vec<(u16, u8)>>>| state.iter().flatten().map(Vec::len).sum::<usize>();
         assert_eq!(count(&after), count(&before) + 18);
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: None,
@@ -246,6 +248,7 @@ mod tests {
         );
         assert_eq!(sim.path_grid().unwrap().cell(7, 7), path.cell(7, 7));
         let mut host = LivePublication {
+            frame_effects: crate::sim::world::FrameEffects::default(),
             sim: &mut sim,
             rules: &rules,
             registry: None,

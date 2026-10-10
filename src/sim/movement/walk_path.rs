@@ -15,6 +15,7 @@ use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// Infantry 0x51DAF6..0x51DB44: the action the failed-path receiver requests
@@ -38,6 +39,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -50,7 +52,7 @@ impl Simulation {
             .ok_or("Walk Stop requires a locomotor")?
             .stop_walk();
         if invoke_callback {
-            self.infantry_pending_deploy_stop_callback(id, rules)?;
+            self.infantry_pending_deploy_stop_callback(id, rules, frame_effects)?;
         }
         Ok(())
     }
@@ -64,6 +66,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let rules = rules.ok_or("Walk path request requires rules")?;
         let id = request.entity_id;
@@ -76,7 +79,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        match self.foot_find_path(request, held, rules, registry)? {
+        match self.foot_find_path(request, held, rules, registry, frame_effects)? {
             FindPathResult::Route => {
                 //75B2DF..E2 is the success caller's retry reset. Existing
                 //head production resumes at its ordinary shared owner.
@@ -105,7 +108,7 @@ impl Simulation {
                 {
                     locomotor.stop_movement_animation();
                 }
-                self.finish_failed_walk_process(id, rules, registry)?;
+                self.finish_failed_walk_process(id, rules, registry, frame_effects)?;
                 Ok(false)
             }
         }
@@ -128,6 +131,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -158,7 +162,7 @@ impl Simulation {
         let facing = i32::from(actor.body_facing_current(self.session.binary_frame));
         let direction = (((facing >> 12) + 1) >> 1) & 7;
         let requested = failed_path_requested_action(doing, prone);
-        self.apply_infantry_do_action(id, requested, false, &facts, rules)?;
+        self.apply_infantry_do_action(id, requested, false, &facts, rules, frame_effects)?;
 
         let terrain = self
             .resolved_terrain
@@ -203,7 +207,7 @@ impl Simulation {
             return Err("Stop_Driver requires a locomotor".into());
         }
         //0x4D55C0 -> ILocomotion +0x48.
-        self.locomotor_stop_moving(id, Some(rules), registry)
+        self.locomotor_stop_moving(id, Some(rules), registry, frame_effects)
     }
 
     fn finish_failed_walk_process(
@@ -211,6 +215,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         _registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         //ESI points into the live Walk destination, not a copy retained before
         //FindPath. Infantry+500 can have cleared it, and House can replace it.
@@ -222,12 +227,12 @@ impl Simulation {
             .and_then(|l| l.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if !self.foot_path_zone_precheck(id, destination, rules)? {
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), None, frame_effects);
         } else {
             //75AFEE..75B083: +4F4 precedes a fresh read of physical+48 and
             //the live destination. CloseEnough is independent from code6's
             //radio/height/land guards; this arm tests Techno+418 tether only.
-            self.walk_failed_path_receiver(id, rules)?;
+            self.walk_failed_path_receiver(id, rules, frame_effects)?;
             let actor = self
                 .substrate
                 .entities
@@ -245,7 +250,7 @@ impl Simulation {
                 current.z.wrapping_sub(destination.z),
             ) < rules.general.close_enough;
             if close && actor.dock_entered_with.is_none() {
-                self.assign_null_destination(id, Some(rules), None);
+                self.assign_null_destination(id, Some(rules), None, frame_effects);
             } else if actor.navigation.path_runtime.retries_left != 0 {
                 //The test is before the decrement: 1->0 does not run the
                 //exhaustion tail until a later failed Process invocation.
@@ -257,7 +262,7 @@ impl Simulation {
                     .path_runtime
                     .retries_left -= 1;
             } else {
-                self.finish_exhausted_walk_retry(id, rules)?;
+                self.finish_exhausted_walk_retry(id, rules, frame_effects)?;
             }
         }
         let actor = self
@@ -270,7 +275,7 @@ impl Simulation {
         actor
             .foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
-        self.walk_stop_moving(id, Some(rules))?;
+        self.walk_stop_moving(id, Some(rules), frame_effects)?;
         let actor = self
             .substrate
             .entities
@@ -290,7 +295,12 @@ impl Simulation {
     ///The two Map56D100 calls share the Foot navigation/bridge-layer query
     ///owner but deliberately bypass+2CC's MZ/Cell0 early exits. No RNG draw.
     ///The optional ScoldSound and unconditional latch clear precede these reads.
-    fn finish_exhausted_walk_retry(&mut self, id: u64, rules: &RuleSet) -> Result<(), String> {
+    fn finish_exhausted_walk_retry(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) -> Result<(), String> {
         self.play_foot_path_scold(id, rules);
         self.substrate
             .entities
@@ -310,7 +320,7 @@ impl Simulation {
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if actor.in_playfield && !self.foot_can_reach_navigation_cell(id, destination, rules)? {
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), None, frame_effects);
         }
         //75B18A asks a nonnull target's+4C even when3D5 will then be false.
         let target = self

@@ -77,6 +77,7 @@ use crate::sim::combat::world_receiver::apply_area_damage;
 use crate::sim::intern::InternedId;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
 use crate::sim::superweapon::cell_grid::{live_successor, native_cells_3x3, selected_cell_list};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// Case 9's area damage (`MOV EDX, 0x2710`, `0x006CD903`).
@@ -113,7 +114,7 @@ fn observe(call: Observed) {
 
 /// Launch case 9 for `owner`'s Super of type `sw_type` at (target_rx,
 /// target_ry): see the module doc. Returns whether the Super was charged.
-pub fn launch(
+pub(crate) fn launch(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -121,6 +122,7 @@ pub fn launch(
     target_ry: u16,
     sw_type: InternedId,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if !super::is_charged(sim, owner, sw_type) {
         return false;
@@ -161,6 +163,7 @@ pub fn launch(
             MUTATE_EXPLOSION_DAMAGE,
             warhead,
             origin,
+            frame_effects,
         );
         return true;
     }
@@ -194,7 +197,7 @@ pub fn launch(
             ) {
                 #[cfg(test)]
                 observe(Observed::ReceiveDamage((x, y), event));
-                sim.commit_direct_damage_receiver(rules, overlay_registry, event);
+                sim.commit_direct_damage_receiver(rules, overlay_registry, event, frame_effects);
             }
         }
     }

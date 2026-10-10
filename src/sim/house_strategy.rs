@@ -58,6 +58,7 @@
 //! - The own-coordinate test against the empty coordinate
 //!   (`0x004FD5B9..0x004FD5E5`) is dormant: no cell's coordinate is zero.
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
@@ -90,6 +91,7 @@ pub(crate) fn update_strategy(
     rules: &RuleSet,
     owner: InternedId,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let frame = sim.session.binary_frame as i32;
     let Some(house) = sim.houses.get(&owner) else {
@@ -101,7 +103,7 @@ pub(crate) fn update_strategy(
     {
         return;
     }
-    let delay = building_strategy(sim, rules, owner, registry);
+    let delay = building_strategy(sim, rules, owner, registry, frame_effects);
     if let Some(house) = sim.houses.get_mut(&owner) {
         house.strategy_timer.start(frame, delay);
     }
@@ -114,6 +116,7 @@ fn building_strategy(
     rules: &RuleSet,
     owner: InternedId,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> i32 {
     pick_enemy(sim, owner);
     forget_defeated_enemy(sim, owner);
@@ -124,7 +127,7 @@ fn building_strategy(
             .get(&owner)
             .is_some_and(|house| house.current_iq >= rules.general.iq_super_weapons)
     {
-        crate::sim::superweapon::ai_fire::try_fire(sim, rules, owner, registry);
+        crate::sim::superweapon::ai_fire::try_fire(sim, rules, owner, registry, frame_effects);
     }
 
     // Available_Money (IHouse vt+0x18) is a pure read; the block's second
@@ -135,7 +138,7 @@ fn building_strategy(
         advance_emergency_state(&mut house.strategy_emergency, frame, || money)
     });
     if emergency {
-        sell_off_and_hunt(sim, rules, owner, "state four", registry);
+        sell_off_and_hunt(sim, rules, owner, "state four", registry, frame_effects);
     }
 
     // `0x004FD848..0x004FD911`: urgency slot 0 is the missing factory; slot
@@ -146,7 +149,7 @@ fn building_strategy(
             .get(&owner)
             .is_none_or(|house| house.strategy_emergency.mode == 3);
         if !suppressed && !has_live_factory(sim, rules, owner) {
-            sell_off_and_hunt(sim, rules, owner, "no factory", registry);
+            sell_off_and_hunt(sim, rules, owner, "no factory", registry, frame_effects);
         }
     }
 
@@ -162,13 +165,14 @@ fn sell_off_and_hunt(
     owner: InternedId,
     why: &str,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     log::debug!(
         "{} sells off and hunts ({why})",
         sim.interner.resolve(owner)
     );
-    fire_sale(sim, rules, owner, registry);
-    all_to_hunt(sim, rules, owner, registry);
+    fire_sale(sim, rules, owner, registry, frame_effects);
+    all_to_hunt(sim, rules, owner, registry, frame_effects);
 }
 
 /// `0x004FD538..0x004FD71E`: see the module doc.
@@ -263,6 +267,7 @@ pub(crate) fn fire_sale(
     rules: &RuleSet,
     owner: InternedId,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let Some(house) = sim.houses.get(&owner) else {
         return;
@@ -283,7 +288,7 @@ pub(crate) fn fire_sale(
                 !building.lifecycle.in_limbo && building.health.current > 0
             });
         if sells {
-            sell_back(sim, rules, id, SellOrder::Computer, registry);
+            sell_back(sim, rules, id, SellOrder::Computer, registry, frame_effects);
         }
     }
 }
@@ -310,6 +315,7 @@ pub(crate) fn all_to_hunt(
     rules: &RuleSet,
     owner: InternedId,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     let technos: Vec<u64> = sim
         .substrate
@@ -344,13 +350,13 @@ pub(crate) fn all_to_hunt(
                     arg6: true,
                 },
             );
-            sim.commit_direct_damage_receiver(rules, registry, event);
+            sim.commit_direct_damage_receiver(rules, registry, event, frame_effects);
             continue;
         }
         if techno.category == EntityCategory::Structure {
             continue;
         }
-        sim.leave_team(id, false, Some(rules));
+        sim.leave_team(id, false, Some(rules), frame_effects);
         let _ = sim.mission_queue_exact(
             id,
             hunt,

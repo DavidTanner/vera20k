@@ -145,7 +145,13 @@ fn an_owner_change_moves_the_counter_between_houses() {
     let hospital = spawn(&mut sim, &rules, "CAHOSP");
     assert_eq!(sim.houses[&owner].self_heal_infantry(), 1);
 
-    sim.change_owner_with_rules(hospital, new_owner, &rules, None);
+    sim.change_owner_with_rules(
+        hospital,
+        new_owner,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(
         sim.houses[&owner].self_heal_infantry(),
@@ -223,7 +229,12 @@ fn losing_one_of_three_hospitals_releases_one_share() {
                 arg6: false,
             },
         );
-        sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+        sim.commit_noncombat_aoe_hits(
+            &rules,
+            None,
+            &[hit],
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     assert_eq!(
         sim.houses[&owner].self_heal_infantry(),
@@ -645,9 +656,14 @@ fn the_mechanism_runs_on_a_real_map() {
                 rules,
             )
             .expect("spawn the hospital on an admitted site");
-        runtime
-            .simulation
-            .grand_opening(hospital, false, false, rules, None);
+        runtime.simulation.grand_opening(
+            hospital,
+            false,
+            false,
+            rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         // Let the production spawn decide where a G.I. is admitted: try the
         // hospital's own cell and near neighbours at the same terrain level.
         let mut infantry = None;
@@ -709,6 +725,7 @@ fn the_mechanism_runs_on_a_real_map() {
                 &due,
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("frame");
         let after = runtime.simulation.session.binary_frame;

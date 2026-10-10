@@ -18,6 +18,7 @@ use crate::sim::combat::veterancy;
 use crate::sim::components::DriveCoord;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::ground_pose::position_world_coord;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::sim::world::display_layers::DisplayLayer;
 use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF64Bits, distance_3d_leptons};
@@ -156,6 +157,7 @@ pub(super) fn apply_heal_base_crate(
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     owner: InternedId,
+    frame_effects: FrameEffects<'_>,
 ) {
     let buildings: Vec<(u64, i32)> = sim
         .substrate
@@ -189,6 +191,7 @@ pub(super) fn apply_heal_base_crate(
                     arg6: true,
                 },
             ),
+            frame_effects,
         );
     }
 }
@@ -342,6 +345,7 @@ pub(super) fn place_unit_crate(
     type_id: &str,
     cell: (i16, i16),
     center: DriveCoord,
+    frame_effects: FrameEffects<'_>,
 ) -> UnitCrateOutcome {
     use crate::sim::find_nearby_cell::{
         NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
@@ -366,6 +370,7 @@ pub(super) fn place_unit_crate(
             PlacementEvidence::EvaluateMark,
             rules,
             Some(registry),
+            frame_effects,
         )
         .is_some()
     {
@@ -421,12 +426,13 @@ pub(super) fn place_unit_crate(
                 PlacementEvidence::EvaluateMark,
                 rules,
                 Some(registry),
+                frame_effects,
             )
             .is_some()
         {
             return UnitCrateOutcome::Placed;
         }
     }
-    sim.discard_constructed_limbo(id, Some(rules));
+    sim.discard_constructed_limbo(id, Some(rules), frame_effects);
     UnitCrateOutcome::FellBackToMoney
 }

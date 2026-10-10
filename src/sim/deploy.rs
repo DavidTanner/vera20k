@@ -8,11 +8,17 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{TargetKind, combat_weapon};
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// Event9 DEPLOY4C778A..4C7812. MCV conversion and simple deployment
 /// share this event; each concrete Mission_Unload branch owns its effects.
-pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> bool {
+pub(crate) fn issue_order(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    effects: FrameEffects<'_>,
+) -> bool {
     if !sim.substrate.entities.get(id).is_some_and(|e| {
         e.lifecycle.object_alive
             && !e.lifecycle.in_limbo
@@ -68,7 +74,7 @@ pub(crate) fn issue_order(sim: &mut Simulation, id: u64, rules: &RuleSet) -> boo
     // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
     // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).
     // Queue's same-mission guard keeps the handler and timer on a repeated D.
-    sim.assign_null_destination(id, Some(rules), None);
+    sim.assign_null_destination(id, Some(rules), None, effects);
     let _ = sim.assign_target_represented(id, None, Some(rules));
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     entity.order_intent = None;
@@ -135,6 +141,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -155,7 +162,7 @@ impl Simulation {
             .expect("same pending deployment receiver")
             .mission_leaf
             .take_infantry_pending_deploy();
-        self.infantry_do_action(id, 27, false, rules)?;
+        self.infantry_do_action(id, 27, false, rules, effects)?;
         Ok(())
     }
 
@@ -168,13 +175,14 @@ impl Simulation {
         id: u64,
         completed_doing: i32,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let next = match completed_doing {
             27 => 28,
             31 => 0,
             other => return Err(format!("deployment completion received Doing{other}")),
         };
-        self.infantry_do_action(id, next, true, rules)?;
+        self.infantry_do_action(id, next, true, rules, effects)?;
         //520B3B/520B9A re-read the type AFTER the concrete action receiver.
         let actor = self
             .substrate
@@ -205,6 +213,7 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<i32, String> {
         let actor = self
             .substrate
@@ -225,10 +234,10 @@ impl Simulation {
         let mut delay = -1;
         if (27..=30).contains(&doing) {
             if object.undeploy_delay <= -1 {
-                self.infantry_do_action(id, 31, true, rules)?;
+                self.infantry_do_action(id, 31, true, rules, effects)?;
             }
         } else {
-            self.infantry_do_action(id, 27, true, rules)?;
+            self.infantry_do_action(id, 27, true, rules, effects)?;
             //70E120 uses the SprayAttack slot70DD70, not GetCurrentWeapon
             //70E1A0. The existing GetWeapon owner resolves the live tier.
             let actor = self.substrate.entities.get(id).expect("same Unload actor");
@@ -272,7 +281,7 @@ impl Simulation {
             self.session.binary_frame,
         )
         .map_err(|cause| format!("Infantry Unload Guard: {cause}"))?;
-        self.assign_destination_represented(id, None, Some(rules), None)
+        self.assign_destination_represented(id, None, Some(rules), None, effects)
             .map_err(|cause| format!("Infantry Unload destination: {cause}"))?;
         Ok(if delay > -1 { delay } else { 450 })
     }

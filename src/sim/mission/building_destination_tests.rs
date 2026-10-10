@@ -125,6 +125,7 @@ fn building_destination_matches_64_native_mode_one_rows_for_all_target_shapes() 
                 target(input["requested"].as_str().unwrap(), shape),
                 Some(&rules),
                 None,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
             let actor = sim.substrate.entities.get(1).unwrap();

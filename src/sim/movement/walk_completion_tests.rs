@@ -57,8 +57,14 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
 
     // Exercise real world completion, including Mark/PerCell and navigation.
     // Original75BD70..75BF82 has no movement-turn call;75BC97 owns the next one.
-    sim.run_completed_walk_step(id, head, Some(&rules), None)
-        .unwrap();
+    sim.run_completed_walk_step(
+        id,
+        head,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     let actor = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&actor.position), head);
     assert_eq!(actor.navigation.path_replay.remaining_directions(), &[4]);
@@ -196,7 +202,8 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         );
         sim.substrate.entities.insert(actor);
 
-        sim.finish_walk_navigation(1, Some(&rules)).unwrap();
+        sim.finish_walk_navigation(1, Some(&rules), crate::sim::world::FrameEffects::default())
+            .unwrap();
 
         let actor = sim.substrate.entities.get(1).unwrap();
         // This existing native corpus ends before final Mark(PUT). Neither
@@ -315,14 +322,28 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
             "arrival_mark" => {
                 // The native golden supplies the final Mark callback. Here
                 // the real completion owner runs Mark/PerCell through it.
-                sim.run_completed_walk_step(1, head, None, None).unwrap();
+                sim.run_completed_walk_step(
+                    1,
+                    head,
+                    None,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                )
+                .unwrap();
                 assert!(sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
             }
-            "common_return" => sim.run_walk_boundary(1, head, None, None),
+            "common_return" => sim.run_walk_boundary(
+                1,
+                head,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            ),
             _ => {
                 // Supplied post-PerCell liveness is the native corpus boundary;
                 // these rows do not claim to execute a death/limbo producer.
-                sim.finish_walk_navigation(1, None).unwrap();
+                sim.finish_walk_navigation(1, None, crate::sim::world::FrameEffects::default())
+                    .unwrap();
             }
         }
         assert_eq!(

@@ -70,6 +70,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::{EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags};
 use crate::sim::intern::InternedId;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 impl Simulation {
@@ -80,7 +81,12 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        self.house_rung(rules, registry, true);
+        self.house_rung(
+            rules,
+            registry,
+            true,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
@@ -96,6 +102,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
         defeat_pass: bool,
+        frame_effects: FrameEffects<'_>,
     ) {
         let outcome_tick = self.session.tick.saturating_add(1);
         let savour_frames = crate::rules::ruleset::savour_delay_frames(
@@ -136,17 +143,28 @@ impl Simulation {
                 power.clamp_negative_totals();
             }
             if let Some(rules) = rules {
-                crate::sim::ai_team_creation::update_team_creation(self, rules, owner);
+                crate::sim::ai_team_creation::update_team_creation(
+                    self,
+                    rules,
+                    owner,
+                    frame_effects,
+                );
                 crate::sim::house_eva::update_house_eva(self, rules, owner);
             }
             if defeat_gate && self.house_holds_nothing(owner, &base_units, build_refinery_2) {
                 if let Some(rules) = rules {
-                    self.house_blowup_all(owner, rules, registry);
+                    self.house_blowup_all(owner, rules, registry, frame_effects);
                 }
                 self.mplayer_defeated(owner, outcome_tick, savour_frames);
             }
             if let Some(rules) = rules {
-                crate::sim::house_strategy::update_strategy(self, rules, owner, registry);
+                crate::sim::house_strategy::update_strategy(
+                    self,
+                    rules,
+                    owner,
+                    registry,
+                    frame_effects,
+                );
                 crate::sim::ai_base_building::update_production_choices(
                     self, rules, owner, registry,
                 );
@@ -285,6 +303,7 @@ impl Simulation {
         house: InternedId,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let c4 = self.interner.intern(&rules.bridge_warheads.c4_name);
         // The array is re-read each step (items `0x004FC6EC`, count
@@ -315,7 +334,7 @@ impl Simulation {
                     .get(id)
                     .and_then(|entity| entity.temporal.chain_head())
                 {
-                    self.temporal_release_chain_no_idle(head, rules);
+                    self.temporal_release_chain_no_idle(head, rules, frame_effects);
                 }
                 let Some(health) = self
                     .substrate
@@ -339,7 +358,7 @@ impl Simulation {
                 );
                 #[cfg(test)]
                 BLOWUP_TRACE.with(|trace| trace.borrow_mut().push(event));
-                self.commit_direct_damage_receiver(rules, registry, event);
+                self.commit_direct_damage_receiver(rules, registry, event, frame_effects);
             }
         }
     }

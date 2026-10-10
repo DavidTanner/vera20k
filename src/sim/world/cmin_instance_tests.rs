@@ -456,7 +456,8 @@ fn replay(row: &Value) {
                     scene.miner,
                     target,
                     &scene.rules,
-                    call["args"][1].as_u64().unwrap() != 0
+                    call["args"][1].as_u64().unwrap() != 0,
+                    crate::sim::world::FrameEffects::default()
                 ));
             }
             "original_stop" => {

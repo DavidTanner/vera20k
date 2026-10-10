@@ -110,7 +110,12 @@ fn removal_past_the_map_matches_native() {
             continue;
         }
         let mut sim = world(&row);
-        let removed = sim.remove_aircraft_off_map(1, &rules, None);
+        let removed = sim.remove_aircraft_off_map(
+            1,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(removed, flag(&row, "removed"), "{row}");
         // UnInit: dead, and deleted at the frame's end.
         let alive = sim
@@ -133,7 +138,12 @@ fn no_map_removes_nothing() {
     let mut sim = world(&row);
     sim.playfield_bounds = None;
     sim.playfield_size_height = None;
-    assert!(!sim.remove_aircraft_off_map(1, &rules, None));
+    assert!(!sim.remove_aircraft_off_map(
+        1,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(
         sim.substrate
             .entities
@@ -170,7 +180,12 @@ fn removal_releases_the_planes_sounds() {
     plane.in_playfield = flag(&row, "in_playfield");
     plane.move_sound = crate::sim::world::MoveSoundState::from_raw_for_test(true, 3);
     assert!(sim.aircraft_may_leave_map(1));
-    assert!(sim.remove_aircraft_off_map(1, &rules, None));
+    assert!(sim.remove_aircraft_off_map(
+        1,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(
         sim.sound_events
             .iter()

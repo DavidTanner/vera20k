@@ -223,7 +223,14 @@ fn launch_case_eight_matches_native() {
             (200, 200)
         };
         let sw_type = sim.interner.intern(SPY_PLANE);
-        let launched = super::spy_plane::launch(&mut sim, &rules, americans, sw_type, cell);
+        let launched = super::spy_plane::launch(
+            &mut sim,
+            &rules,
+            americans,
+            sw_type,
+            cell,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(spy_planes(&sim).len(), sent, "{row}");
         assert_eq!(launched, sent > 0, "{row}");
         let reports = sim
@@ -312,7 +319,12 @@ fn send_spy_planes_matches_native() {
         let expected = expected_pick(&sim, own, 1);
         let sw_type = sim.interner.intern(SPY_PLANE);
         assert!(super::spy_plane::launch(
-            &mut sim, &rules, americans, sw_type, TARGET
+            &mut sim,
+            &rules,
+            americans,
+            sw_type,
+            TARGET,
+            crate::sim::world::FrameEffects::default()
         ));
         let [id] = spy_planes(&sim)[..] else {
             panic!("one plane");
@@ -371,6 +383,7 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
             0,
             PlacementEvidence::MarkSucceeded,
             rules,
+            crate::sim::world::FrameEffects::default(),
         )
     })
     .unwrap();
@@ -675,7 +688,13 @@ fn retail_computer_sends_its_spy_plane_past_the_enemy_base() {
     sim.houses.get_mut(&americans).unwrap().base_center = Some(TARGET);
     let sw_type = charge_super(&mut sim, russians, SPY_PLANE);
 
-    super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    super::ai_fire::try_fire(
+        &mut sim,
+        &rules,
+        russians,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(!sim.super_weapons[&russians][&sw_type].is_ready);
     let [plane] = spy_planes(&sim)[..] else {

@@ -2124,7 +2124,12 @@ pub(crate) mod tests {
 
         // Even an empty receiver batch executes the production consequence settlement.
         // It must publish pending crate terrain before its next navigation reader.
-        sim.commit_noncombat_aoe_receivers(&rules, Some(&registry), &[]);
+        sim.commit_noncombat_aoe_receivers(
+            &rules,
+            Some(&registry),
+            &[],
+            crate::sim::world::FrameEffects::default(),
+        );
         for cell in cells {
             assert_eq!(
                 sim.terrain_costs[&SpeedType::Foot].cost_at(cell.0, cell.1),
@@ -2147,6 +2152,7 @@ pub(crate) mod tests {
                 67,
                 TickLane::Ordinary,
                 None,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("fixture frame must complete");
         assert_eq!(
@@ -2171,6 +2177,7 @@ pub(crate) mod tests {
                 67,
                 TickLane::Ordinary,
                 None,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("fixture frame must complete");
         assert!(second.overlay_updates.is_empty());

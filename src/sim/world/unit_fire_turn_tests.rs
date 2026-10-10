@@ -169,7 +169,12 @@ fn earlier_unit_fire_reads_later_targets_pose_before_its_movement() {
         .unwrap()
         .attack_target = None;
     let before = position(&sim, second);
-    sim.advance_live_object_pass(Some(&rules), None).unwrap();
+    sim.advance_live_object_pass(
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     assert_ne!(position(&sim, second), before);
     let bullet = sim
         .projectiles
@@ -232,6 +237,7 @@ fn global_combat_tail_cannot_fire_a_ready_foot_a_second_time() {
             &BTreeSet::new(),
             &Default::default(),
             &[],
+            crate::sim::world::FrameEffects::default(),
         );
         assert!(result.consequences.fire_events().is_empty());
         assert!(result.unit_facing.is_empty());

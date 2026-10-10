@@ -132,6 +132,7 @@ fn ground_walk_order_preserves_native_human_deploy_refusal() {
         },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     let actor = sim.substrate.entities.get(id).unwrap();
     let walk = actor.locomotor.as_ref().unwrap();

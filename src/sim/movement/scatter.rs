@@ -29,6 +29,7 @@ use crate::sim::find_nearby_cell::{
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::{InternedId, StringInterner};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -265,19 +266,28 @@ impl Simulation {
         flags: ScatterFlags,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
         };
         match entity.category {
             EntityCategory::Unit => {
-                self.unit_scatter_null(id, flags, rules);
+                self.unit_scatter_null(id, flags, rules, frame_effects);
                 Ok(false)
             }
-            EntityCategory::Infantry => self.infantry_scatter_null(id, flags, rules, registry),
+            EntityCategory::Infantry => {
+                self.infantry_scatter_null(id, flags, rules, registry, frame_effects)
+            }
             EntityCategory::Aircraft => {
                 if mission_permits_scatter(entity, rules) {
-                    crate::sim::aircraft::enter_idle_mode_for(self, id, rules, registry);
+                    crate::sim::aircraft::enter_idle_mode_for(
+                        self,
+                        id,
+                        rules,
+                        registry,
+                        frame_effects,
+                    );
                 }
                 Ok(false)
             }
@@ -292,7 +302,13 @@ impl Simulation {
     /// RNG, queues no mission and runs no Process. The setter
     /// ([`Simulation::set_unit_destination`]) reaches the Move_To of
     /// every retail Unit locomotor.
-    fn unit_scatter_null(&mut self, id: u64, flags: ScatterFlags, rules: &RuleSet) {
+    fn unit_scatter_null(
+        &mut self,
+        id: u64,
+        flags: ScatterFlags,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(unit) = self.substrate.entities.get(id) else {
             return;
         };
@@ -300,7 +316,13 @@ impl Simulation {
             return;
         }
         if let Some(cell) = self.scatter_nearby_cell(id, rules) {
-            self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true);
+            self.set_unit_destination(
+                id,
+                NavTargetRef::cell(cell.0, cell.1),
+                rules,
+                true,
+                frame_effects,
+            );
         }
     }
 
@@ -363,13 +385,14 @@ impl Simulation {
         requests: Vec<(u64, ScatterFlags)>,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(rules) = rules else {
             return Ok(false);
         };
         let mut bridge_state_changed = false;
         for (id, flags) in requests {
-            bridge_state_changed |= self.scatter_null(id, flags, rules, registry)?;
+            bridge_state_changed |= self.scatter_null(id, flags, rules, registry, frame_effects)?;
         }
         Ok(bridge_state_changed)
     }
@@ -387,6 +410,7 @@ impl Simulation {
         flags: ScatterFlags,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let occupants = self
             .substrate
@@ -403,7 +427,7 @@ impl Simulation {
         );
         let mut bridge_state_changed = false;
         for id in admitted {
-            bridge_state_changed |= self.scatter_null(id, flags, rules, registry)?;
+            bridge_state_changed |= self.scatter_null(id, flags, rules, registry, frame_effects)?;
         }
         Ok(bridge_state_changed)
     }

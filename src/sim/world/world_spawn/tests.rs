@@ -512,6 +512,7 @@ fn building_contact_constructor_matches_original_slots_before_hello() {
                     crate::sim::radio::RadioMessage::Hello,
                     crate::sim::radio::RadioPayload::default(),
                     Some(&rules),
+                    crate::sim::world::FrameEffects::default(),
                 ),
                 crate::sim::radio::RadioResponse::Roger
             );
@@ -680,7 +681,12 @@ fn discovery_owner_entry_and_lifetime_match_original_history_blocks() {
             serde_json::json!(bytes(entity.discovery)),
             row["output"]["constructor"]["object"]
         );
-        let (id, outcome) = sim.unlimbo_after_constructor_managers(entity, Some(&rules), None);
+        let (id, outcome) = sim.unlimbo_after_constructor_managers(
+            entity,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(matches!(outcome, RevealOutcome::Revealed { .. }));
         assert!(sim.substrate.occupancy.contains_entity(6, 5, id));
         assert_eq!(
@@ -709,7 +715,8 @@ fn discovery_owner_entry_and_lifetime_match_original_history_blocks() {
                 0,
                 0,
                 PlacementEvidence::EvaluateMark,
-                &rules
+                &rules,
+                crate::sim::world::FrameEffects::default()
             )
             .is_some()
         );
@@ -742,7 +749,8 @@ fn discovery_owner_entry_and_lifetime_match_original_history_blocks() {
                     0,
                     0,
                     PlacementEvidence::MarkSucceeded,
-                    &rules
+                    &rules,
+                    crate::sim::world::FrameEffects::default()
                 )
                 .is_some()
         );
@@ -818,7 +826,16 @@ fn outside_reentry_clears_current_discovery_only_after_successful_alive_mark() {
         // release callers can. Techno6F6CB8 returns after failed Object Mark
         // before the membership writer6F6CFE, retaining the prior true byte.
         // Only successful Mark reaches that writer and the mode-one query.
-        let result = sim.reveal_constructed_object_at_height(id, 5, 5, 0, 0, placement, &rules);
+        let result = sim.reveal_constructed_object_at_height(
+            id,
+            5,
+            5,
+            0,
+            0,
+            placement,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(result.is_some(), placement != PlacementEvidence::MarkFailed);
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
@@ -877,7 +894,8 @@ fn first_nonhuman_owner_entry_queues_hunt_from_ambush_but_repeat_does_not() {
             0,
             0,
             PlacementEvidence::MarkSucceeded,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         )
         .is_some()
     );
@@ -951,7 +969,12 @@ fn exact_sight_zero_survives_save_and_rules_less_reentry() {
             "all three inputs lose information in fog range"
         );
         assert_eq!(entity.sight_is_zero, sight == 0);
-        let (id, outcome) = sim.unlimbo_after_constructor_managers(entity, Some(&rules), None);
+        let (id, outcome) = sim.unlimbo_after_constructor_managers(
+            entity,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(matches!(outcome, RevealOutcome::Revealed { .. }));
         sim.object_conceal(id);
         let saved = GameSnapshot::save(&sim, 0, 0, "exact Sight predicate", 0);
@@ -1099,7 +1122,8 @@ fn building_light_allocates_only_after_authored_or_held_placement_succeeds() {
             0,
             0,
             PlacementEvidence::MarkFailed,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         )
         .is_none()
     );
@@ -1114,7 +1138,8 @@ fn building_light_allocates_only_after_authored_or_held_placement_succeeds() {
             0,
             0,
             PlacementEvidence::EvaluateMark,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         ),
         Some(held_id)
     );
@@ -1382,6 +1407,7 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
             PlacementEvidence::EvaluateMark,
             &rules,
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         )
         .is_none()
     );
@@ -1407,7 +1433,11 @@ fn techno_constructor_wall_rejection_precedes_mutation_and_keeps_graph_draws_spe
         let _ = expected.next_u32();
     }
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
-    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(
+        parent_id,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }
@@ -1710,7 +1740,11 @@ fn techno_constructor_spawn_manager_pool_draws_parent_then_children_and_cancels_
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
     let after_constructor = sim.scenario_rng.logical_state();
-    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(
+        parent_id,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), after_constructor);
 }
@@ -1755,7 +1789,11 @@ fn techno_constructor_slave_manager_pool_draws_parent_then_children_and_cancels_
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 
     let after_constructor = sim.scenario_rng.logical_state();
-    assert!(sim.discard_constructed_limbo(parent_id, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(
+        parent_id,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.substrate.entities.is_empty());
     assert_eq!(sim.scenario_rng.logical_state(), after_constructor);
 }
@@ -1807,6 +1845,7 @@ fn techno_constructor_manager_pools_survive_delivery_without_reconstruction() {
                 0,
                 PlacementEvidence::EvaluateMark,
                 &rules,
+                crate::sim::world::FrameEffects::default(),
             ),
             Some(parent_id)
         );
@@ -2187,6 +2226,7 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
             0,
             PlacementEvidence::MarkFailed,
             &rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .is_none()
     );
@@ -2196,7 +2236,11 @@ fn techno_constructor_failed_reveal_keeps_one_draw_and_reuses_identity() {
     assert_eq!(held.native_unique_id, 1001);
     assert_eq!(sim.native_unique_ids.as_ref().unwrap().current_raw(), 1001);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
-    assert!(sim.discard_constructed_limbo(stable_id, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(
+        stable_id,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(sim.substrate.entities.get(stable_id).is_none());
 }
 

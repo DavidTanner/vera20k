@@ -241,7 +241,12 @@ fn prepared_paid_scene(stage: &str) -> (HeadlessScenario, AmbientAnims) {
         }
         scene
             .runtime
-            .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                SIM_TICK_MS,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
     }
     assert!(
@@ -293,6 +298,7 @@ fn command_paid_fv(
         },
         Some(&runtime.resources.rules),
         Some(&runtime.resources.overlay_registry),
+        crate::sim::world::FrameEffects::default(),
     ));
     id
 }
@@ -350,11 +356,17 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
                             &Command::Stop { entity_id: id },
                             Some(&runtime.resources.rules),
                             Some(&runtime.resources.overlay_registry),
+                            crate::sim::world::FrameEffects::default(),
                         ));
                     }
                     scene
                         .runtime
-                        .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+                        .advance_frame(
+                            &[],
+                            SIM_TICK_MS,
+                            TickLane::Ordinary,
+                            crate::sim::world::FrameEffects::default(),
+                        )
                         .unwrap()
                 };
                 let output = if export_requested {
@@ -504,7 +516,13 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
             });
             if let Some(value) = row["input"].get("retained_nav") {
                 let (rx, ry) = cell(value);
-                assert!(sim.set_unit_destination(id, NavTargetRef::cell(rx, ry), &rules, true));
+                assert!(sim.set_unit_destination(
+                    id,
+                    NavTargetRef::cell(rx, ry),
+                    &rules,
+                    true,
+                    crate::sim::world::FrameEffects::default()
+                ));
             }
             if let Some(values) = row["input"].get("nav_queue") {
                 sim.substrate
@@ -559,7 +577,12 @@ fn retail_fv_approach_matches_native_candidates_admission_and_queue() {
             );
             let target_before = actor.attack_target.as_ref().map(|attack| attack.target);
             let result = sim
-                .approach_unit_cell_target(id, &rules, Some(&runtime.resources.overlay_registry))
+                .approach_unit_cell_target(
+                    id,
+                    &rules,
+                    Some(&runtime.resources.overlay_registry),
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             let actor = sim.substrate.entities.get(id).unwrap();
             assert_eq!(
@@ -710,10 +733,20 @@ fn retail_fv_approaches_a_firing_cell_before_its_first_paid_step() {
         },
     );
     runtime
-        .advance_frame(&[command], SIM_TICK_MS, TickLane::Ordinary)
+        .advance_frame(
+            &[command],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     runtime
-        .advance_frame(&[], SIM_TICK_MS, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let actor = runtime.simulation.substrate.entities.get(id).unwrap();
     assert_eq!(

@@ -120,6 +120,7 @@ fn capture_probe(
         },
         Some(&resources.rules),
         Some(&resources.overlay_registry),
+        crate::sim::world::FrameEffects::default(),
     ));
     let mut snapshot = zone_snapshot(sim, name);
     let actor = sim.entities().get(engineer).unwrap();
@@ -354,6 +355,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
                 },
                 crate::headless_scenario::SIM_TICK_MS,
                 TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         let actor = runtime.simulation.entities().get(engineer);
@@ -439,6 +441,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
                     &[],
                     crate::headless_scenario::SIM_TICK_MS,
                     TickLane::Ordinary,
+                    crate::sim::world::FrameEffects::default(),
                 )
                 .unwrap();
             std::mem::swap(&mut runtime.simulation, &mut second);

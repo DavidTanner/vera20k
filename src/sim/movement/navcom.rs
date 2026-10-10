@@ -9,6 +9,7 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// Pixels Walk Move_To lifts a bridge destination (`0x0075AD4D MOV ECX,0x3C`).
@@ -531,6 +532,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         use crate::sim::mission::{MissionId, MissionType};
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -542,7 +544,7 @@ impl crate::sim::world::Simulation {
             && (entity.mission.current() == attack || entity.mission.queued() == attack)
             && entity.attack_target.is_some();
         if !attacking_aircraft {
-            self.locomotor_stop_moving(id, rules, registry)
+            self.locomotor_stop_moving(id, rules, registry, frame_effects)
                 .unwrap_or_else(|cause| panic!("Foot null destination {id}: {cause}"));
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.navigation.nav_com = None;
@@ -577,6 +579,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(());
@@ -588,15 +591,15 @@ impl crate::sim::world::Simulation {
             LocomotorKind::Drive | LocomotorKind::Ship | LocomotorKind::Hover => {
                 track_stop_moving(entity);
             }
-            LocomotorKind::Walk => self.walk_stop_moving(id, rules)?,
+            LocomotorKind::Walk => self.walk_stop_moving(id, rules, frame_effects)?,
             LocomotorKind::Jumpjet => {
-                if !self.jumpjet_stop_moving(id, rules, registry) {
+                if !self.jumpjet_stop_moving(id, rules, registry, frame_effects) {
                     log::debug!("Jumpjet {id} Stop_Moving lacks the map or rules");
                 }
             }
             LocomotorKind::Teleport => super::teleport_movement::teleport_stop_moving(entity),
             LocomotorKind::Fly => {
-                if !self.fly_stop_moving(id, rules, registry) {
+                if !self.fly_stop_moving(id, rules, registry, frame_effects) {
                     log::debug!("Fly {id} Stop_Moving lacks the rules");
                 }
             }

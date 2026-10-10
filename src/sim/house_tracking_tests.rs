@@ -289,7 +289,13 @@ fn a_helipads_docks_follow_its_opening_capture_and_limbo() {
             .add_airport_docks(docks);
     };
     add_docks(&mut sim, first, -3);
-    sim.change_owner_with_rules(pad, second, &rules, None);
+    sim.change_owner_with_rules(
+        pad,
+        second,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(docks(&sim), (-3, 4));
     add_docks(&mut sim, second, -2);
     sim.uninit_with_rules(pad, &rules);
@@ -310,8 +316,16 @@ fn discarding_a_constructed_object_releases_its_tracking() {
     let tracking = &sim.houses[&house].tracking;
     assert_eq!((tracking.buildings(), tracking.units_for_test()), (1, 1));
 
-    assert!(sim.discard_constructed_limbo(building, Some(&rules)));
-    assert!(sim.discard_constructed_limbo(unit, Some(&rules)));
+    assert!(sim.discard_constructed_limbo(
+        building,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
+    assert!(sim.discard_constructed_limbo(
+        unit,
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     let tracking = &sim.houses[&house].tracking;
     assert_eq!((tracking.buildings(), tracking.units_for_test()), (0, 0));
     assert_eq!(tracking.active_for_test(), (0, 0, 0));

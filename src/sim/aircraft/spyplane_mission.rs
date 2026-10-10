@@ -26,6 +26,7 @@
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::edge_cell::Edge;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
@@ -50,7 +51,12 @@ const OVERFLY_FRAMES: i32 = 3;
 /// set (`0x00415720`) and the opposite edge's cell, unless it is the empty
 /// cell, made the destination (`0x00415727..0x0041577F`). Every path
 /// returns `SpyPlaneCameraFrames=` (`Rules+0x290`).
-pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+pub(super) fn approach(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) -> i32 {
     let frames = rules.general.spy_plane_camera_frames;
     let Some(entity) = sim.substrate.entities.get(id) else {
         return frames;
@@ -60,11 +66,11 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
     let range = weapon(sim, id, rules).map(|(range, _)| range);
     match target {
         None => {
-            sim.assign_aircraft_destination(id, None, rules);
+            sim.assign_aircraft_destination(id, None, rules, frame_effects);
             super::queue_mission(sim, id, MissionType::Retreat);
         }
         Some(target) if super::nav_com_absent(sim, id) => {
-            sim.assign_aircraft_destination(id, Some(target.into()), rules);
+            sim.assign_aircraft_destination(id, Some(target.into()), rules, frame_effects);
         }
         Some(_) => {
             if range.is_some_and(|range| distance <= range) {
@@ -77,7 +83,7 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.mission_leaf.set_aircraft_action_latch(true);
         }
-        head_for_opposite_edge(sim, id, rules);
+        head_for_opposite_edge(sim, id, rules, frame_effects);
     }
     frames
 }
@@ -86,7 +92,12 @@ pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
 /// the Target (0 with none) a snapshot without the sound
 /// (`0x004157E3..0x00415854`); with no NavCom the opposite edge's cell, as
 /// in Approach (`0x00415859..0x004158C1`). Returns 3.
-pub(super) fn overfly(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+pub(super) fn overfly(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) -> i32 {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return OVERFLY_FRAMES;
     };
@@ -96,7 +107,7 @@ pub(super) fn overfly(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
         snapshot(sim, id, rules, false);
     }
     if super::nav_com_absent(sim, id) {
-        head_for_opposite_edge(sim, id, rules);
+        head_for_opposite_edge(sim, id, rules, frame_effects);
     }
     OVERFLY_FRAMES
 }
@@ -116,10 +127,15 @@ fn weapon(sim: &Simulation, id: u64, rules: &RuleSet) -> Option<(i32, i32)> {
 /// (`PickCellOnEdge @ 0x004AA440`, criterion 4) and, unless that is the
 /// empty cell (`0x00889E68`, both words zero), the destination
 /// (`MapClass::operator[] @ 0x005657A0`, vt+0x480(cell, 1)).
-fn head_for_opposite_edge(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+fn head_for_opposite_edge(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) {
     let edge = Edge::opposite_edge(sim.aircraft_house_waypoint_edge(id));
     if let Some((rx, ry)) = sim.aircraft_edge_cell(edge).filter(|&cell| cell != (0, 0)) {
-        sim.assign_aircraft_destination(id, Some(NavTargetRef::cell(rx, ry)), rules);
+        sim.assign_aircraft_destination(id, Some(NavTargetRef::cell(rx, ry)), rules, frame_effects);
     }
 }
 

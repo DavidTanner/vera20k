@@ -362,13 +362,25 @@ mod tests {
         let rules = rules(100, "Powered=yes\nPower=-10");
         let (mut sim, id) = building(100);
         let owner = sim.entities().get(id).unwrap().owner();
-        sim.grand_opening(id, false, true, &rules, None);
+        sim.grand_opening(
+            id,
+            false,
+            true,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let anim = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
         assert!(
             sim.anim(anim).unwrap().runtime.paused,
             "4467D0 initial pause"
         );
-        sim.visit_building_operational(id, &rules, None);
+        sim.visit_building_operational(
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(!sim.anim(anim).unwrap().runtime.paused);
         sim.substrate
             .anims
@@ -384,13 +396,33 @@ mod tests {
             .frame_timer = CdTimer::started(0, 3);
         sim.power_states.entry(owner).or_default().total_drain = 100;
         sim.session.binary_frame = 20;
-        sim.visit_building_operational(id, &rules, None);
-        sim.visit_anim(anim, &rules, None);
+        sim.visit_building_operational(
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
+        sim.visit_anim(
+            anim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.anim(anim).unwrap().runtime.current_frame, 0);
         assert_eq!(sim.anim(anim).unwrap().runtime.frame_timer.start_frame(), 0);
         sim.power_states.get_mut(&owner).unwrap().total_output = 100;
-        sim.visit_building_operational(id, &rules, None);
-        sim.visit_anim(anim, &rules, None);
+        sim.visit_building_operational(
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
+        sim.visit_anim(
+            anim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.anim(anim).unwrap().runtime.current_frame, 1);
         assert_eq!(
             sim.anim(anim).unwrap().runtime.frame_timer.start_frame(),
@@ -455,7 +487,12 @@ mod tests {
                 sim.session.binary_frame,
                 i["outage"].as_u64().unwrap() as u32,
             );
-            sim.visit_building_operational(id, &rules, None);
+            sim.visit_building_operational(
+                id,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let entity = sim.entities().get(id).unwrap();
             assert_eq!(
                 entity.building_last_operational,

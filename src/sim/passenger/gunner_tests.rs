@@ -94,7 +94,7 @@ fn spawn_and_board(sim: &mut Simulation, rules: &RuleSet, passenger_type: &str) 
     ));
     // Adjacent admission runs the same boarding owner as advance_tick, before
     // any shot could accidentally supply the selected weapon to presentation.
-    tick_passenger_system(sim, rules, None);
+    tick_passenger_system(sim, rules, None, crate::sim::world::FrameEffects::default());
     assert_boarded(sim, ifv, passenger);
     (ifv, passenger)
 }
@@ -126,8 +126,18 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
                 // FootClass::RemoveFirstPassenger 4DE710 resets the gunner before
                 // UnitClass::Mission_Unload attempts the passenger's Unlimbo.
                 assert_selection(sim, ifv, (0, 0));
-                reveal_unloaded_passenger(sim, rules, ifv, departing, 16, 17, 0)
-            }
+                reveal_unloaded_passenger(
+                    sim,
+                    rules,
+                    ifv,
+                    departing,
+                    16,
+                    17,
+                    0,
+                    crate::sim::world::FrameEffects::default(),
+                )
+            },
+            crate::sim::world::FrameEffects::default()
         ),
         Ok(())
     );
@@ -218,6 +228,7 @@ fn retail_ifv_boarding_and_departure_retry_keep_one_selection_owner() {
                     assert_selection(sim, ifv, (0, 0));
                     Err(DepartureFailure::Placement)
                 },
+                crate::sim::world::FrameEffects::default(),
             ),
             Err(DepartureFailure::Placement)
         );
@@ -263,7 +274,8 @@ fn retail_empty_ifv_departure_resets_selection_without_a_passenger() {
                 None,
                 ifv,
                 DepartureRoute::Vehicle,
-                |_, _| { panic!("an empty hold must never attempt passenger placement") }
+                |_, _| { panic!("an empty hold must never attempt passenger placement") },
+                crate::sim::world::FrameEffects::default()
             ),
             Err(DepartureFailure::NoCargo)
         );

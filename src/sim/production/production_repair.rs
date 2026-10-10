@@ -60,7 +60,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::credit_income::{available_money, spend_money};
-use crate::sim::world::{SimSoundEvent, Simulation};
+use crate::sim::world::{FrameEffects, SimSoundEvent, Simulation};
 use crate::util::native_x87::{MaskedX87Chop53 as X87, MaskedX87Ordering, NativeF64Bits};
 
 use super::production_sell::{SellOrder, sell_back, undeploys};
@@ -239,6 +239,7 @@ pub(crate) fn update_repair_and_power(
     rules: &RuleSet,
     id: u64,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -252,7 +253,7 @@ pub(crate) fn update_repair_and_power(
         && can_repair_building(sim, rules, id);
     if admitted {
         if available_money(sim, owner) < rules.general.credit_reserve {
-            low_credit_sale(sim, rules, id, registry);
+            low_credit_sale(sim, rules, id, registry, effects);
         } else {
             auto_repair_start(sim, rules, id);
         }
@@ -276,6 +277,7 @@ fn low_credit_sale(
     rules: &RuleSet,
     id: u64,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -305,7 +307,7 @@ fn low_credit_sale(
     if roll >= tech_level as u32 || yard || !below_red {
         return;
     }
-    let _ = sell_back(sim, rules, id, SellOrder::Computer, registry);
+    let _ = sell_back(sim, rules, id, SellOrder::Computer, registry, effects);
 }
 
 /// The computer's auto-repair start (`0x004506B2..0x0045077C`). The owner's

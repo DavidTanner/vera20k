@@ -67,7 +67,14 @@ fn debris_contact_matches_original_tree_damage_gates_radius_and_retirement() {
             208,
         );
         assert!(
-            !sim.anim_bounce_contact(0, &config, &rules, None, position),
+            !sim.anim_bounce_contact(
+                0,
+                &config,
+                &rules,
+                None,
+                position,
+                crate::sim::world::FrameEffects::default()
+            ),
             "{label}"
         );
         let tree = &sim.production.terrain_objects[&id];

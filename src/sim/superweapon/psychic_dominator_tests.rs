@@ -227,7 +227,12 @@ fn retail_process_steps_match_native() {
         let lighting_before = global_lighting_events(&sim);
         let relights_before = relight_profiles(&sim).len();
 
-        super::psychic_dominator::process(&mut sim, &rules, None);
+        super::psychic_dominator::process(
+            &mut sim,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let state = sim.psychic_dominator;
         assert_eq!(i32::from(state.status_number()), status_after, "{row}");
@@ -795,7 +800,13 @@ fn retail_computer_aims_its_dominator_at_the_group() {
     ];
     let sw_type = charge_super(&mut sim, russians, DOMINATOR);
 
-    super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    super::ai_fire::try_fire(
+        &mut sim,
+        &rules,
+        russians,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert_eq!(sim.psychic_dominator.status_number(), 1);
     assert_eq!(sim.psychic_dominator.owner(), Some(russians));
@@ -806,7 +817,13 @@ fn retail_computer_aims_its_dominator_at_the_group() {
     );
     assert!(!sim.super_weapons[&russians][&sw_type].is_ready);
     charge_super(&mut sim, russians, DOMINATOR);
-    super::ai_fire::try_fire(&mut sim, &rules, russians, None);
+    super::ai_fire::try_fire(
+        &mut sim,
+        &rules,
+        russians,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(sim.super_weapons[&russians][&sw_type].is_ready);
     assert_eq!(sim.psychic_dominator.cell(), cell);
 
@@ -846,7 +863,13 @@ fn retail_dominator_takes_a_captive_from_its_controller() {
     sim.session.house_order.push(yuri_house);
     let yuri = spawn(&mut sim, &rules, "YURI", "YuriCountry", (37, 40));
     let tank = spawn(&mut sim, &rules, "HTNK", "Russians", TARGET);
-    assert!(sim.capture_unit(yuri, tank, &rules, None));
+    assert!(sim.capture_unit(
+        yuri,
+        tank,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert_eq!(owner_name(&sim, tank), "YuriCountry");
     assert!(attached_anim(&sim, tank, "MINDANIM"));
     charge_super(&mut sim, americans, DOMINATOR);

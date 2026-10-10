@@ -121,13 +121,19 @@ fn admission_owner_uses_actual_sparse_contact_slots() {
             crate::sim::radio::RadioMessage::CanEnter,
             crate::sim::radio::RadioPayload::default(),
             Some(&s.rules),
+            crate::sim::world::FrameEffects::default(),
         ),
         crate::sim::radio::RadioResponse::Roger,
         "CAN_LOAD must share the actual-slot Radio owner"
     );
     assert_eq!(
         crate::sim::miner::miner_system::find_docking_bay(
-            &mut s.sim, &s.rules, s.miner, false, false,
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            false,
+            false,
+            crate::sim::world::FrameEffects::default(),
         ),
         Some(s.refinery),
         "the narrow scan must share the same actual-slot predicate"

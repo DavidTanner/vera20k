@@ -258,6 +258,7 @@ fn compare(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
             signed(&input["request"]),
             input["force"].as_bool().unwrap_or(false),
             rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
     assert_eq!(accepted, row["accepted"] == 1, "{type_name}: {input}");
@@ -473,7 +474,7 @@ fn native_physical_ghost_tanya_wet_death_uses_raw_doing_and_stage() {
             .get_mut(id)
             .unwrap()
             .set_native_stage_value(frames);
-        assert!(sim.infantry_sequencer(id, &rules));
+        assert!(sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
         assert!(
             sim.substrate
                 .entities
@@ -522,6 +523,7 @@ fn physical_wet_death_advances_in_logic_and_uninitializes_without_animation() {
                 crate::sim::world::InfantryDeathSequence::Die2
             },
             &rules,
+            crate::sim::world::FrameEffects::default(),
         );
         let doing = signed(&row["after"]["doing"]);
         let frames = rules

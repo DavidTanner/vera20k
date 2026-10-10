@@ -13,6 +13,7 @@
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::radio::{self, RadioMessage};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 impl Simulation {
@@ -28,6 +29,7 @@ impl Simulation {
         id: u64,
         mission: MissionType,
         rules: Option<&crate::rules::ruleset::RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -52,7 +54,7 @@ impl Simulation {
                 .and_then(|(contact, rules)| self.object_type(contact.type_ref(), rules))
                 .is_some_and(|object| object.dock_unload);
         if !tethered || break_tether {
-            radio::transmit_to_contact(self, id, RadioMessage::Break, rules);
+            radio::transmit_to_contact(self, id, RadioMessage::Break, rules, frame_effects);
         }
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             if break_tether {
@@ -63,7 +65,7 @@ impl Simulation {
         // Native4C735D..4C7380: Foot membership removal without an idle
         // order, except Unload. The existing Team owner checks membership.
         if foot && mission != MissionType::Unload {
-            self.leave_team(id, true, rules);
+            self.leave_team(id, true, rules, frame_effects);
         }
     }
 
@@ -78,9 +80,10 @@ impl Simulation {
         &mut self,
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) {
         let now = self.session.binary_frame;
-        self.assign_null_destination(id, Some(rules), None);
+        self.assign_null_destination(id, Some(rules), None, frame_effects);
         let _ = self.assign_target_represented(id, None, Some(rules));
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.movement_target = None;
@@ -149,13 +152,14 @@ impl Simulation {
     /// blocked step or by the retaliation at 0x00702B41, then retasked, then
     /// losing its new target, marched back to the destination the player had
     /// cancelled or re-latched the cancelled target.
-    pub fn queue_megamission(
+    pub(crate) fn queue_megamission(
         &mut self,
         id: u64,
         mission: MissionType,
         rules: Option<&crate::rules::ruleset::RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) {
-        self.begin_megamission_retask(id, mission, rules);
+        self.begin_megamission_retask(id, mission, rules, frame_effects);
         self.queue_order_mission(id, mission);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.suspended_attack_target = None;
@@ -168,7 +172,7 @@ impl Simulation {
         if mission != MissionType::Attack
             && let Some(rules) = rules
         {
-            self.reset_slave_manager(id, rules);
+            self.reset_slave_manager(id, rules, frame_effects);
         }
         // Event4C7446 tests the Foot receiver; non-Foot actors skip this
         // call. Raw mission11 uses AreaGuard's separate Archive assignment

@@ -1177,7 +1177,13 @@ mod tests {
         let second = sim
             .spawn_object("SECOND", "Americans", 13, 9, 0, &rules)
             .unwrap();
-        sim.change_owner_with_rules(first, new, &rules, None);
+        sim.change_owner_with_rules(
+            first,
+            new,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.houses[&old].tracking.buildings(), 1);
         assert_eq!(sim.houses[&new].tracking.buildings(), 1);
         assert_eq!(sim.houses[&old].base_projection.buildings(), [second]);
@@ -1423,7 +1429,13 @@ mod tests {
             [plant]
         );
         assert!(plant_fold(&sim));
-        sim.change_owner_with_rules(plant, allies, &rules, None);
+        sim.change_owner_with_rules(
+            plant,
+            allies,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(costs(&sim), (675, 450));
         assert!(
             sim.houses[&soviets]

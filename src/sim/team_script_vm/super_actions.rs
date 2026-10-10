@@ -37,6 +37,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::superweapon_type::SuperWeaponKind;
 use crate::sim::intern::InternedId;
 use crate::sim::superweapon::{super_nearly_ready, super_types_with_type};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::TeamTarget;
@@ -63,6 +64,7 @@ impl Simulation {
         team_id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let checked = self.team_leader(team_id, rules).and_then(|leader| {
             // The leader's house (`+0x21C`).
@@ -81,6 +83,7 @@ impl Simulation {
                         centre,
                         rules,
                         registry,
+                        frame_effects,
                     );
                 }
             }
@@ -107,6 +110,7 @@ impl Simulation {
         quarry: i32,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let checked = self.team_leader(team_id, rules).and_then(|leader| {
             let owner = self.substrate.entities.get(leader)?.owner();
@@ -130,6 +134,7 @@ impl Simulation {
                         centre,
                         rules,
                         registry,
+                        frame_effects,
                     );
                     self.team_fire_super(
                         owner,
@@ -137,12 +142,14 @@ impl Simulation {
                         (x, y),
                         rules,
                         registry,
+                        frame_effects,
                     );
                     self.team_assign_mission_target(
                         team_id,
                         Some(TeamTarget::Object(target)),
                         rules,
                         registry,
+                        frame_effects,
                     );
                 }
             }
@@ -200,6 +207,7 @@ impl Simulation {
         (x, y): (i16, i16),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(name) = usize::try_from(kind.native_index())
             .ok()
@@ -208,7 +216,14 @@ impl Simulation {
             return;
         };
         let sw_type_id = self.interner.intern(name);
-        self.fire_super_weapon(rules, owner, sw_type_id, (x as u16, y as u16), registry);
+        self.fire_super_weapon(
+            rules,
+            owner,
+            sw_type_id,
+            (x as u16, y as u16),
+            registry,
+            frame_effects,
+        );
     }
 }
 

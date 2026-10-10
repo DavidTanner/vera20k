@@ -20,7 +20,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::world::{Simulation, UninitContext};
+use crate::sim::world::{FrameEffects, Simulation, UninitContext};
 
 impl Simulation {
     /// The removal block, after the class AI's sinking and trailer steps.
@@ -39,6 +39,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -66,7 +67,10 @@ impl Simulation {
         if (passes_playfield && self.map_cell_in_bounds(cell)) || !self.aircraft_may_leave_map(id) {
             return false;
         }
-        self.uninit_with_context(id, UninitContext::new(Some(rules), registry));
+        self.uninit_with_context(
+            id,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
         true
     }
 

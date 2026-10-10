@@ -110,12 +110,23 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
         },
     )];
 
-    let ingress_count = sim.apply_due_frame_ingress_commands(&commands, None, 1);
+    let ingress_count = sim.apply_due_frame_ingress_commands(
+        &commands,
+        None,
+        1,
+        crate::sim::world::FrameEffects::default(),
+    );
     let selected_before_logic = sim.entities().get(1).unwrap().selected;
     sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
     sim.object_destroy_callback(1, UninitContext::default());
     assert!(!sim.entities().get(1).unwrap().selected);
-    let (tail_count, spawned) = sim.apply_due_commands(&commands, None, 1, None);
+    let (tail_count, spawned) = sim.apply_due_commands(
+        &commands,
+        None,
+        1,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(
         !sim.entities().get(1).unwrap().selected,
@@ -138,11 +149,27 @@ fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
     let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
 
     let result = sim
-        .advance_master_frame(&[command], None, None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(
+            &[command],
+            None,
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete")
         .into_tick();
     let control_result = control
-        .advance_master_frame(&[], None, None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(
+            &[],
+            None,
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -234,7 +261,15 @@ fn network_modal_does_not_execute_game_speed_ingress() {
     let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
 
     let result = sim
-        .advance_master_frame(&[command], None, None, 67, TickLane::NetworkModal, None)
+        .advance_master_frame(
+            &[command],
+            None,
+            None,
+            67,
+            TickLane::NetworkModal,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -265,7 +300,8 @@ fn animation_boundary_fixture() -> (Simulation, RuleSet) {
             id,
             crate::sim::movement::infantry_action::DO_IDLE1,
             true,
-            &rules
+            &rules,
+            crate::sim::world::FrameEffects::default()
         )
         .unwrap()
     );
@@ -318,7 +354,15 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
     let (mut sim, rules) = animation_boundary_fixture();
 
     let result = sim
-        .advance_master_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(
+            &[],
+            Some(&rules),
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -335,7 +379,15 @@ fn app_and_headless_frames_hash_identically_for_animation_progress() {
     let (mut headless_sim, _) = animation_boundary_fixture();
 
     let app = app_sim
-        .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &[],
+            Some(&rules),
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     let headless = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
@@ -364,7 +416,15 @@ fn app_and_headless_frames_hash_identically_for_particle_frame_timing() {
 
     for frame in 1..=4 {
         let app = app_sim
-            .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
+            .advance_app_frame(
+                &[],
+                Some(&rules),
+                None,
+                67,
+                TickLane::Ordinary,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
         let headless = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
@@ -680,6 +740,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
         id,
         super::infantry_terminal::InfantryDeathSequence::Die1,
         &rules,
+        crate::sim::world::FrameEffects::default(),
     );
     let corpse = sim.substrate.entities.get(id).expect("Die1 receiver");
     assert_eq!(corpse.mission_leaf.as_infantry().unwrap().doing(), 11);
@@ -739,7 +800,15 @@ fn terminal_master_frame_visits_class_sequence_before_exit_without_frame_commit(
     let exit = CommandEnvelope::new(owner, 1, Command::ExitMatch);
 
     let result = sim
-        .advance_master_frame(&[exit], Some(&rules), None, 67, TickLane::Ordinary, None)
+        .advance_master_frame(
+            &[exit],
+            Some(&rules),
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete")
         .into_tick();
 
@@ -775,7 +844,15 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
     });
 
     let first = sim
-        .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &[],
+            None,
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(matches!(
         first.sound_events.as_slice(),
@@ -784,7 +861,15 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
     assert_eq!(first.tick.state_hash, sim.state_hash());
 
     let second = sim
-        .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &[],
+            None,
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(second.sound_events.is_empty());
     assert_eq!(second.tick.state_hash, sim.state_hash());
@@ -804,7 +889,15 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
         .place_owned_wall(2, 2, 2, 0x23, owner);
 
     let deferred = sim
-        .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &[],
+            Some(&rules),
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(deferred.overlay_updates.is_empty());
     assert!(
@@ -822,6 +915,7 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert_eq!(first.overlay_updates.len(), 1);
@@ -843,6 +937,7 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert!(second.overlay_updates.is_empty());
@@ -881,6 +976,7 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert!(!output.tick.frame_committed);
@@ -917,6 +1013,7 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
             67,
             TickLane::Ordinary,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert!(!next.tick.frame_committed);
@@ -1332,6 +1429,7 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
         &Command::SellWallAtCell { x: 4, y: 4 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
 
     let sold = sim.overlay_grid.as_ref().unwrap().cell(4, 4);
@@ -1547,6 +1645,7 @@ fn wall_sale_preserves_the_sold_anchor_retained_count_source() {
         &Command::SellWallAtCell { x: 2, y: 2 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
     assert_eq!(grid.cell(2, 2).overlay_id, None);
@@ -1622,6 +1721,7 @@ fn wall_sale_cleanup_reaches_fixed_stride_alias_and_reverses_that_source_only() 
         &Command::SellWallAtCell { x: 0, y: 1 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     let grid = sim.overlay_grid.as_ref().expect("overlay authority");
     assert_eq!(grid.cell(0, 1).overlay_id, None);
@@ -1740,6 +1840,7 @@ fn gsi_04_07_wall_sell_eligibility_gate_matrix_rejects_without_mutation() {
             &Command::SellWallAtCell { x: 1, y: 1 },
             Some(rules),
             Some(&overlays),
+            crate::sim::world::FrameEffects::default(),
         )
     };
 
@@ -1793,6 +1894,7 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&unsellable_rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     assert_eq!(
         sim.overlay_grid.as_ref().unwrap().cell(0, 2).overlay_id,
@@ -1805,6 +1907,7 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     assert!(sim.sound_events.is_empty());
 
@@ -1818,6 +1921,7 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     sim.houses.get_mut(&wall_owner).unwrap().is_human = true;
     assert!(sim.apply_command_with_overlays(
@@ -1825,12 +1929,14 @@ fn gsi_04_07_wall_sell_first_match_and_split_human_gate_are_exact() {
         &Command::SellWallAtCell { x: 0, y: 2 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
     assert!(!sim.apply_command_with_overlays(
         "Receiver",
         &Command::SellWallAtCell { x: 0, y: 0 },
         Some(&rules),
         Some(&overlays),
+        crate::sim::world::FrameEffects::default(),
     ));
 }
 
@@ -1963,6 +2069,7 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
             &BTreeSet::new(),
             &Default::default(),
             &[detonation],
+            crate::sim::world::FrameEffects::default(),
         );
         let rng = sim.scenario_rng.state();
         (sim, result, rng)
@@ -2150,6 +2257,7 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
         &BTreeSet::new(),
         &Default::default(),
         &[detonation],
+        crate::sim::world::FrameEffects::default(),
     );
 
     assert_eq!(
@@ -2172,9 +2280,12 @@ fn gsi_04_11_bullet_ore_reduction_precedes_outer_crater_anim_start() {
             .is_empty()
     );
     // The receiver transaction's commit constructs the AnimList anim.
-    let _ = result
-        .consequences
-        .commit(&mut sim, &rules, Some(&registry));
+    let _ = result.consequences.commit(
+        &mut sim,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         sim.smudge_grid
             .as_ref()
@@ -2246,7 +2357,12 @@ fn gsi_04_11_missile_outer_anim_precedes_per_cell_ore_reduction() {
     sim.reveal(1);
     let before_rng = sim.scenario_rng.state();
 
-    sim.process_rocket(1, &rules, Some(&registry));
+    sim.process_rocket(
+        1,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(
         !sim.substrate.entities.get(1).unwrap().is_object_alive(),
@@ -3239,7 +3355,7 @@ fn sonic_constructor_at_240_registers_then_runs_at_same_pass_tail() {
     assert!(wave.in_logic_vector);
     assert_eq!(wave.lifetime, 100, "FireAt only registers the Logic tail");
 
-    sim.visit_combat_tail(0, &rules, None);
+    sim.visit_combat_tail(0, &rules, None, crate::sim::world::FrameEffects::default());
 
     let wave = sim.waves.get(wave_id).expect("Wave survives first tail AI");
     assert_eq!(wave.lifetime, 99, "first AI belongs to the firing pass");
@@ -3308,7 +3424,7 @@ fn sonic_cell_target_uses_persistent_dummy_gettargetcoords_on_create_and_refresh
         "coordinate restamps preserve the dummy's live non-coordinate fields",
     );
 
-    sim.visit_combat_tail(0, &rules, None);
+    sim.visit_combat_tail(0, &rules, None, crate::sim::world::FrameEffects::default());
     let wave = sim.waves.get(wave_id).expect("Wave survives first live AI");
     assert_eq!(wave.lifetime, 99);
     assert_eq!(wave.target.z, 674);
@@ -3376,7 +3492,12 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
     let mut survivor = None;
     for _ in 0..600 {
         let output = runtime
-            .advance_frame(&[], 67, TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                67,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
         assert!(output.tick.frame_committed);
         let sim = &runtime.simulation;
@@ -3441,7 +3562,12 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
             break;
         }
         runtime
-            .advance_frame(&[], 67, TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                67,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
     }
     let survivor = runtime
@@ -3508,7 +3634,12 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
     runtime.resources.rules = rules;
     let output = runtime
-        .advance_frame(&[], 67, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            67,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     let sim = &runtime.simulation;
@@ -3686,7 +3817,12 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
     runtime.resources.rules = rules;
     let output = runtime
-        .advance_frame(&[], 67, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            67,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     let wave_id = *runtime
@@ -3700,7 +3836,12 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     // the next frame's.
     assert_eq!(runtime.simulation.waves.get(wave_id).unwrap().lifetime, 100);
     let output = runtime
-        .advance_frame(&[], 67, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            67,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     let sim = &runtime.simulation;
@@ -4690,7 +4831,14 @@ fn test_destroyed_bridge_snaps_unit_to_ground_when_ground_exists() {
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 5, 5, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        5,
+        5,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let e = sim
         .substrate
@@ -4742,7 +4890,14 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_water_below() {
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 5, 5, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        5,
+        5,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     // DropIn correction: unit ALIVE, snapped to ground level=0, OnBridge
     // cleared, locomotor flipped to Ground/Idle.
@@ -4800,7 +4955,14 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_overlay_blocked() {
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 5, 5, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        5,
+        5,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let e = sim
         .substrate
@@ -4850,7 +5012,14 @@ fn test_destroyed_bridge_snaps_unit_to_ground_over_terrain_object_blocked() {
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 5, 5, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        5,
+        5,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let e = sim
         .substrate
@@ -4998,7 +5167,14 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
     sim.resolve_type_handles(&rules);
     // Supplied CellClass::BlowUpBridge47DD70 callback. Ordinary concrete
     // damage57CCF0 does not enter this structural ground/deck receiver.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 5, 5, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        5,
+        5,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let e = sim
         .substrate
@@ -5177,6 +5353,7 @@ fn test_bridge_walker_collapses_full_3_cell_strip_on_single_hit() {
                 impact_z_leptons: 0,
             }],
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         );
     assert_eq!(changed, native["result"]["returned"].as_u64() == Some(1));
     assert_concrete_damage_result(&sim, &native);
@@ -5316,7 +5493,7 @@ fn test_bridge_collapse_is_deterministic_under_replay() {
                 warhead_ref: crate::sim::intern::InternedId::default(),
                 is_ion_cannon: false, impact_z_leptons: 0,
             }],
-            Some(&registry),
+            Some(&registry), crate::sim::world::FrameEffects::default(),
         ));
         assert_concrete_damage_result(&sim, &native);
         assert_ne!(sim.state_hash(), before_hash);
@@ -5421,6 +5598,7 @@ fn test_bridge_dispatcher_consumes_one_path_gate_draw_per_non_ion_event() {
                 impact_z_leptons: 0,
             }],
             Some(&registry),
+            crate::sim::world::FrameEffects::default(),
         );
     assert!(!collapsed);
     assert_concrete_damage_result(&sim, &native);
@@ -5473,6 +5651,7 @@ fn drive_water_mover(
         crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
         rules,
         true,
+        crate::sim::world::FrameEffects::default(),
     ));
     // Plain OverlayTypes 0..=25: the structural deck's anchor holds 25, and
     // Unit Can_Enter_Cell reads the type of any overlay it meets.
@@ -7187,7 +7366,8 @@ fn the_infantry_setter_moves_a_teleport_infantryman() {
             id,
             crate::sim::components::NavTargetRef::cell(8, 2),
             &rules,
-            None
+            None,
+            crate::sim::world::FrameEffects::default()
         ),
         Ok(true)
     );
@@ -7659,7 +7839,12 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
             arg6: false,
         },
     );
-    sim.commit_noncombat_aoe_hits(&rules, None, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let gi = sim
         .substrate
@@ -8825,6 +9010,7 @@ fn unit_route_beside_building(
         },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     assert_eq!(
         sim.substrate
@@ -10612,7 +10798,15 @@ fn current_rust_frame_call_order_is_preserved() {
     // leaves the queue intact, and an empty-command frame carries it forward.
     assert!(sim.take_due_commands().is_empty());
     let _ = sim
-        .advance_app_frame(&[], Some(&rules), None, 16, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &[],
+            Some(&rules),
+            None,
+            16,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
 
     // Step to the due tick with the exact app-shaped call: drained commands
@@ -10622,7 +10816,15 @@ fn current_rust_frame_call_order_is_preserved() {
     let due = sim.take_due_commands();
     assert_eq!(due.len(), 1, "the queued command is due exactly once");
     let output = sim
-        .advance_app_frame(&due, Some(&rules), None, 16, TickLane::Ordinary, None)
+        .advance_app_frame(
+            &due,
+            Some(&rules),
+            None,
+            16,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     assert_eq!(sim.session.tick, tick_before + 1);
@@ -10658,13 +10860,23 @@ fn runtime_frame_call_order_matches_the_app_seam() {
 
     assert!(runtime.simulation.take_due_commands().is_empty());
     let _ = runtime
-        .advance_frame(&[], 16, TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            16,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
 
     let due = runtime.simulation.take_due_commands();
     assert_eq!(due.len(), 1);
     let output = runtime
-        .advance_frame(&due, 16, TickLane::Ordinary)
+        .advance_frame(
+            &due,
+            16,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     assert!(

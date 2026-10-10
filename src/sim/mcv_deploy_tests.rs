@@ -582,10 +582,16 @@ fn deploy_refuses_while_any_locomotor_is_moving() {
         &mut sim,
         Some(crate::sim::components::DriveCoord::cell(24, 22, 0)),
     );
-    assert!(!sim.deploy_mcv(id, &rules, None), "a moving Hover refuses");
+    assert!(
+        !sim.deploy_mcv(id, &rules, None, crate::sim::world::FrameEffects::default()),
+        "a moving Hover refuses"
+    );
     assert_eq!(yards(&sim), 0);
     set_hover(&mut sim, None);
-    assert!(sim.deploy_mcv(id, &rules, None), "a stopped Hover deploys");
+    assert!(
+        sim.deploy_mcv(id, &rules, None, crate::sim::world::FrameEffects::default()),
+        "a stopped Hover deploys"
+    );
     assert_eq!(yards(&sim), 1);
 }
 
@@ -723,7 +729,13 @@ fn try_to_deploy_sites_match_the_original_table() {
 #[test]
 fn try_to_deploy_admits_a_clear_spot_where_the_unit_stands() {
     let (mut sim, rules, id) = house_fixture(false, BUILDABLE);
-    assert!(try_to_deploy(&mut sim, id, &rules, None));
+    assert!(try_to_deploy(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let mcv = sim.substrate.entities.get(id).unwrap();
     assert!(mcv.navigation.nav_com.is_none());
     assert!(sim.substrate.occupancy.contains_entity(20, 22, id));
@@ -737,7 +749,13 @@ fn try_to_deploy_drives_to_the_first_clear_site_in_table_order() {
     let (mut sim, rules, id) = house_fixture(false, BUILDABLE);
     sim.spawn_object("AMCV", "Americans", 20, 21, 0, &rules)
         .unwrap();
-    assert!(!try_to_deploy(&mut sim, id, &rules, None));
+    assert!(!try_to_deploy(
+        &mut sim,
+        id,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     let mcv = sim.substrate.entities.get(id).unwrap();
     assert_eq!(
         mcv.navigation.nav_com,
@@ -751,7 +769,13 @@ fn with_no_site_a_computer_mcv_scatters_and_a_human_one_waits() {
     for human in [false, true] {
         let (mut sim, rules, id) = house_fixture(human, "[Clear]\nBuildable=no\n");
         let rng = sim.scenario_rng.logical_state();
-        assert!(!try_to_deploy(&mut sim, id, &rules, None));
+        assert!(!try_to_deploy(
+            &mut sim,
+            id,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         let mcv = sim.substrate.entities.get(id).unwrap();
         let scattered = mcv.movement_target.is_some() || mcv.navigation.nav_com.is_some();
         assert_eq!(scattered, !human, "human={human}");
@@ -885,6 +909,7 @@ fn retail_frame(scenario: &mut crate::headless_scenario::HeadlessScenario) {
             &[],
             crate::headless_scenario::SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("retail frame");
 }
@@ -1247,7 +1272,12 @@ fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
                 arg6: true,
             },
         );
-        sim.commit_direct_damage_receiver(&resources.rules, None, hit);
+        sim.commit_direct_damage_receiver(
+            &resources.rules,
+            None,
+            hit,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     let lost = scenario.sim().session.binary_frame as i32;
     let start = frames;

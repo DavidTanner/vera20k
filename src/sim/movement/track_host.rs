@@ -16,7 +16,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, DriveOccupationFootprint, TrackProgress};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TrackWorldEvent {
@@ -103,9 +103,16 @@ impl Simulation {
         supplied: DriveCoord,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         self.force_track_observed(id, selector, supplied, &mut |sim, id, coord| {
-            sim.pickup_crate_at(id, super::foot_path::coord_cell(coord), rules, registry)
+            sim.pickup_crate_at(
+                id,
+                super::foot_path::coord_cell(coord),
+                rules,
+                registry,
+                effects,
+            )
         })
     }
 
@@ -126,10 +133,11 @@ impl Simulation {
         cell: (i16, i16),
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         match (rules, registry) {
             (Some(rules), Some(registry)) => {
-                crate::sim::crates::pickup_crate(self, rules, registry, cell, id)
+                crate::sim::crates::pickup_crate(self, rules, registry, cell, id, effects)
             }
             _ => true,
         }
@@ -202,6 +210,7 @@ impl Simulation {
         invocation: TrackInvocation,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<TrackPass, String> {
         if invocation.apply_fresh_occupation {
             self.track_apply_occupation(invocation.entity_id, invocation.family, true);
@@ -235,6 +244,7 @@ impl Simulation {
             rules,
             registry,
             &mut |_, _, _| {},
+            effects,
         )
     }
 
@@ -284,9 +294,16 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
     ) -> u32 {
-        self.try_run_track_points_observed(invocation, fresh_budget, rules, registry, observe)
-            .expect("track fixture must provide every coordinate receiver")
-            .moved
+        self.try_run_track_points_observed(
+            invocation,
+            fresh_budget,
+            rules,
+            registry,
+            observe,
+            FrameEffects::default(),
+        )
+        .expect("track fixture must provide every coordinate receiver")
+        .moved
     }
 
     fn try_run_track_points_observed(
@@ -296,6 +313,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
+        effects: FrameEffects<'_>,
     ) -> Result<TrackPass, String> {
         let TrackInvocation {
             entity_id: id,
@@ -347,6 +365,7 @@ impl Simulation {
                     rules,
                     registry,
                     observe,
+                    effects,
                 );
                 moved = moved.saturating_add(1);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -397,6 +416,7 @@ impl Simulation {
                     super::per_cell::PerCellReason::Arrival,
                     rules,
                     registry,
+                    effects,
                 );
                 observe(self, id, TrackWorldEvent::PerCell);
                 if !self.track_survives(id) {
@@ -408,7 +428,7 @@ impl Simulation {
                     entity.navigation.path_replay.clear_live_head();
                     entity.navigation.pending_arrival_clear = false;
                     if entity.mission.current().known() == Some(MissionType::Move) {
-                        let returns = self.unit_enter_idle_mode(id, rules, false);
+                        let returns = self.unit_enter_idle_mode(id, rules, false, effects);
                         observe(self, id, TrackWorldEvent::Arrival);
                         if returns {
                             return Ok(TrackPass::aborted(moved));
@@ -423,7 +443,7 @@ impl Simulation {
                         }
                     }
                 }
-                if self.track_navigation_gate(id, rules) {
+                if self.track_navigation_gate(id, rules, effects) {
                     return Ok(TrackPass::aborted(moved));
                 }
                 if !self
@@ -488,6 +508,7 @@ impl Simulation {
                 rules,
                 registry,
                 observe,
+                effects,
             );
             moved = moved.saturating_add(1);
             if !self
@@ -535,6 +556,7 @@ impl Simulation {
                     rules,
                     registry,
                     observe,
+                    effects,
                 )? {
                     chain_allowed = false;
                     if !self.track_survives(id) {
@@ -588,7 +610,16 @@ impl Simulation {
                 matches(step.interpolated, step.full),
                 live.residual,
             );
-            self.track_place(id, chosen, cell(current), false, rules, registry, observe);
+            self.track_place(
+                id,
+                chosen,
+                cell(current),
+                false,
+                rules,
+                registry,
+                observe,
+                effects,
+            );
         }
         Ok(TrackPass::paid(moved))
     }
@@ -669,6 +700,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
+        effects: FrameEffects<'_>,
     ) {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -677,7 +709,7 @@ impl Simulation {
         let selected_cell = cell(coord);
         let crossing = old != selected_cell;
         if crossing {
-            self.foot_mark_remove(id, rules, registry);
+            self.foot_mark_remove(id, rules, registry, effects);
             observe(self, id, TrackWorldEvent::MarkRemove);
         }
         let saved_marked = if !crossing {
@@ -740,9 +772,13 @@ impl Simulation {
             }
         }
         if crossing {
-            self.foot_mark_put_observed(id, rules, registry, &mut |sim, id| {
-                observe(sim, id, TrackWorldEvent::MarkPut)
-            });
+            self.foot_mark_put_observed(
+                id,
+                rules,
+                registry,
+                &mut |sim, id| observe(sim, id, TrackWorldEvent::MarkPut),
+                effects,
+            );
         }
     }
 
@@ -855,6 +891,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
         observe: &mut impl FnMut(&mut Simulation, u64, TrackWorldEvent),
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -922,7 +959,7 @@ impl Simulation {
             }
             //4B1EC0..4B1F43: the forced deck-aware Scatter_Objects on the cell.
             6 => {
-                self.scatter_blocked_track_cell(id, target, rules, registry)?;
+                self.scatter_blocked_track_cell(id, target, rules, registry, effects)?;
                 return Ok(false);
             }
             _ => return Ok(false),
@@ -959,6 +996,7 @@ impl Simulation {
             super::per_cell::PerCellReason::Arrival,
             Some(rules),
             registry,
+            effects,
         );
         observe(self, id, TrackWorldEvent::PerCell);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -984,6 +1022,7 @@ impl Simulation {
             super::foot_path::coord_cell(candidate),
             Some(rules),
             registry,
+            effects,
         );
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(true);
@@ -1051,6 +1090,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
@@ -1128,10 +1168,10 @@ impl Simulation {
             if category == EntityCategory::Infantry {
                 // Infantry51AA40 does not read the queue-clear flag; its
                 // shared setter supplies the same receiver for mode0/1.
-                self.set_infantry_destination(id, target, rules, registry)
+                self.set_infantry_destination(id, target, rules, registry, effects)
                     .expect("checked Infantry NavQueue destination inputs");
             } else {
-                self.set_unit_destination(id, target, rules, false);
+                self.set_unit_destination(id, target, rules, false, effects);
             }
             let entity = self
                 .substrate
@@ -1192,7 +1232,9 @@ impl Simulation {
                     crate::sim::components::NavTargetRef::object(id)
                 }
             };
-            if let Err(cause) = self.set_infantry_destination(id, destination, rules, registry) {
+            if let Err(cause) =
+                self.set_infantry_destination(id, destination, rules, registry, effects)
+            {
                 log::debug!("Infantry {id} idle Archive destination: {cause}");
             }
         }
@@ -1215,8 +1257,9 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         skip_human_land_check: bool,
+        effects: FrameEffects<'_>,
     ) -> bool {
-        let saved_base_return = self.foot_enter_idle_base(id, rules, None);
+        let saved_base_return = self.foot_enter_idle_base(id, rules, None, effects);
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return saved_base_return;
         };
@@ -1275,7 +1318,7 @@ impl Simulation {
             // before its queue gate. Use the shared concrete setter owners,
             // including retained burst, movement, and Teleporter side effects.
             let _ = self.assign_target_represented(id, None, rules);
-            self.assign_null_destination(id, rules, None);
+            self.assign_null_destination(id, rules, None, effects);
         }
         // Unit738CFA..D12 suppresses assignment only after preceding writes.
         let selection = selection.filter(|_| {
@@ -1304,7 +1347,12 @@ impl Simulation {
         saved_base_return
     }
 
-    fn track_navigation_gate(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    fn track_navigation_gate(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
+    ) -> bool {
         // Foot vt+504 ->4DB9B0, called after terminal PerCell and
         // StopMoving4DF0D0. Stock Enter7 + Building contact + UnitRepair
         // calls Unit738970(0,0) at4DBA15; other admitted paths use(0,1).
@@ -1320,7 +1368,7 @@ impl Simulation {
         if entity.navigation.nav_com.is_some() || entity.attack_target.is_some() {
             return false;
         }
-        self.unit_enter_idle_mode(id, rules, false)
+        self.unit_enter_idle_mode(id, rules, false, effects)
     }
 }
 

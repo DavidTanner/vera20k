@@ -140,7 +140,8 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         &mut saved,
         &rules,
         "Americans",
-        "PARENT"
+        "PARENT",
+        crate::sim::world::FrameEffects::default()
     ));
     // Seed a partially paid held object, then exercise a different live credit
     // writer before saving. The old factory balance could be stale at this edge.
@@ -181,10 +182,20 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     };
     for frame in 0..30 {
         runtime
-            .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                67,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("restored active frame");
         reference
-            .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(
+                &[],
+                67,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("uninterrupted active frame");
         assert_eq!(
             runtime.simulation.houses[&owner].economy, reference.simulation.houses[&owner].economy,
@@ -213,14 +224,20 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         &runtime.resources.rules,
         "Americans",
         "PARENT",
-        false
+        false,
+        crate::sim::world::FrameEffects::default()
     ));
     assert_eq!(
         crate::sim::production::credits_for_owner(&runtime.simulation, "Americans"),
         50_123
     );
     runtime
-        .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            67,
+            crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("restored frame");
     let economy = &runtime.simulation.houses[&owner].economy;
     assert_eq!(economy.credits(), 50_123);

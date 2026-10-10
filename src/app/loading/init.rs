@@ -1065,7 +1065,7 @@ mod map_wall_owner_candidate_tests {
         let mut rt = crate::sim::runtime::SimRuntime::from_simulation(sim);
         rt.resources.rules = rules;
         let frame = rt
-            .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("fixture frame must complete");
         assert!(matches!(frame.lighting_events.as_slice(),
             [LightingEvent::Building { id: 41, source: Some(source) },
@@ -1089,7 +1089,7 @@ mod map_wall_owner_candidate_tests {
             0
         );
         let next = rt
-            .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(&[], 16, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("fixture frame must complete");
         assert!(
             next.lighting_events.is_empty(),

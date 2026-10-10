@@ -15,6 +15,7 @@
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use super::foot_path::coord_cell;
+use crate::sim::world::FrameEffects;
 #[path = "jumpjet_flight.rs"]
 pub mod jumpjet_flight;
 
@@ -745,6 +746,7 @@ impl Simulation {
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if self.object_placement_scope_active() {
             return true;
@@ -771,7 +773,9 @@ impl Simulation {
                 }
                 true
             }
-            Some(StopOutcome::SearchFailed) => self.jumpjet_failed_stop(id, rules, registry),
+            Some(StopOutcome::SearchFailed) => {
+                self.jumpjet_failed_stop(id, rules, registry, frame_effects)
+            }
         }
     }
 
@@ -784,6 +788,7 @@ impl Simulation {
         id: u64,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
             return true;
@@ -794,7 +799,7 @@ impl Simulation {
         let Some(rules) = rules else {
             return false;
         };
-        self.receive_own_health_c4(id, rules, registry);
+        self.receive_own_health_c4(id, rules, registry, frame_effects);
         // Read the retained live owner only AFTER synchronous damage/lifecycle.
         if let Some(state) = self
             .substrate
@@ -859,8 +864,11 @@ impl Simulation {
         target: (u16, u16),
         speed: SimFixed,
         rules: Option<&crate::rules::ruleset::RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
-        if let Some(accepted) = self.jumpjet_cell_destination(id, target, speed, rules) {
+        if let Some(accepted) =
+            self.jumpjet_cell_destination(id, target, speed, rules, frame_effects)
+        {
             return accepted;
         }
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -920,6 +928,7 @@ impl Simulation {
         target: (u16, u16),
         speed: SimFixed,
         rules: Option<&crate::rules::ruleset::RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) -> Option<bool> {
         use crate::map::entities::EntityCategory;
         let entity = self.substrate.entities.get(id)?;
@@ -944,6 +953,7 @@ impl Simulation {
                     crate::sim::components::NavTargetRef::cell(target.0, target.1),
                     rules,
                     true,
+                    frame_effects,
                 )
             }));
         }

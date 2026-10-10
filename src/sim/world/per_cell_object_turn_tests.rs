@@ -53,7 +53,8 @@ fn output_arrival_fixture() -> (Simulation, RuleSet) {
                 2,
                 message,
                 RadioPayload::default(),
-                Some(&rules)
+                Some(&rules),
+                crate::sim::world::FrameEffects::default()
             ),
             RadioResponse::Roger
         );
@@ -74,8 +75,14 @@ fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
 
     let (mut sim, rules) = output_arrival_fixture();
     let rng_before = sim.rng_state();
-    sim.per_cell_process(1, PerCellReason::TurnComplete, Some(&rules), None)
-        .unwrap();
+    sim.per_cell_process(
+        1,
+        PerCellReason::TurnComplete,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     assert!(radio::take_transmit_log().is_empty());
     assert_eq!(
         sim.substrate.entities.get(1).unwrap().dock_entered_with,
@@ -83,8 +90,14 @@ fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
     );
     assert!(!sim.substrate.entities.get(1).unwrap().in_playfield);
 
-    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
-        .unwrap();
+    sim.per_cell_process(
+        1,
+        PerCellReason::Arrival,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
 
     let actual = radio::take_transmit_log()
         .into_iter()
@@ -113,8 +126,14 @@ fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
     assert!(infantry.in_playfield, "the existing Foot tail still runs");
     assert_eq!(sim.rng_state(), rng_before);
 
-    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
-        .unwrap();
+    sim.per_cell_process(
+        1,
+        PerCellReason::Arrival,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     assert!(
         radio::take_transmit_log().is_empty(),
         "live tether is re-read"
@@ -136,10 +155,17 @@ fn an_untethered_infantry_arrival_preserves_its_contact_and_runs_the_foot_tail()
         RadioMessage::Untether,
         RadioPayload::default(),
         Some(&rules),
+        crate::sim::world::FrameEffects::default(),
     );
     radio::take_transmit_log();
-    sim.per_cell_process(1, PerCellReason::Arrival, Some(&rules), None)
-        .unwrap();
+    sim.per_cell_process(
+        1,
+        PerCellReason::Arrival,
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
 
     assert!(radio::take_transmit_log().is_empty());
     for (id, partner) in [(1, 2), (2, 1)] {
@@ -249,7 +275,14 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
         .with_destination_for_test(DriveCoord::cell(10, 10, 0));
     let scenario_before = sim.scenario_rng.native_state_hex();
 
-    let process = sim.process_air_locomotor(id, Some(&rules), None).unwrap();
+    let process = sim
+        .process_air_locomotor(
+            id,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .unwrap();
 
     assert!(process.per_cell_ran, "accepted touchdown ran PerCell");
     let entity = sim.substrate.entities.get(id).unwrap();

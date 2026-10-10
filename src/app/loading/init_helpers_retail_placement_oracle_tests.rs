@@ -350,6 +350,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         &rules,
         OWNER,
         POWER_PLANT,
+        crate::sim::world::FrameEffects::default(),
     ));
     let category = crate::sim::production::category_for_object(
         rules.object(POWER_PLANT).expect("stock GAPOWR profile"),

@@ -341,8 +341,14 @@ instead of claiming complete output. Repeated tail draws are counted separately
 from the exact-step draw transcript. PCM stays inside the existing sealed
 `capture.json`; the 128 MiB receipt limit is unchanged. Frame `audio_state` and a
 load segment's `restored_audio_state` read the existing Main/Scenario cursors and
-filtered actors' body counter, MoveSound latch and countdown without advancing
-any owner. Each row charges its actors and both cursors to the shared
+filtered actors' body counter, MoveSound latch and countdown, and the Gattling
+owner's paired `gattling_stage`/`gattling_value` getters (`TechnoClass+0x140/+0x144`)
+without advancing any owner. These signed 32-bit values are independent of the
+unit animation's `stage_f8`. Historical audio actor rows may omit both Gattling
+fields; a partial pair, null, boolean or out-of-range value is rejected. A
+stage-transition witness must require their presence explicitly rather than
+infer progression from animation, firing counts or nominal ticks. Each row
+charges its actors and both cursors to the shared
 100000-sample budget, including the immediate restored row. Sound RNG and device
 timing are presentation inputs; repeated PCM captures need not be byte-identical.
 

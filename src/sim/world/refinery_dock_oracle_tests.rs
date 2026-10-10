@@ -435,7 +435,8 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
             miner,
             crate::sim::components::NavTargetRef::cell(nav.0, nav.1),
             &s.rules,
-            true
+            true,
+            crate::sim::world::FrameEffects::default()
         ));
         if input["moving"] != true {
             let entity = s.sim.substrate.entities.get_mut(miner).unwrap();
@@ -693,6 +694,7 @@ fn docking_handshake_matches_the_original_receivers() {
             RadioMessage::CanDock,
             RadioPayload::default(),
             Some(&s.rules),
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
             u64::from(reply.code()),
@@ -731,6 +733,7 @@ fn radio_core_matches_the_original_transmits() {
             msg,
             RadioPayload::default(),
             Some(&s.rules),
+            crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
             u64::from(reply.code()),
@@ -761,7 +764,12 @@ fn mission_enter_matches_the_original_dispatch() {
         }
         radio::take_transmit_log();
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::mission::enter::mission_enter(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::mission::enter::mission_enter(
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_state(&s, row, &context);
@@ -856,7 +864,12 @@ fn mission_unload_matches_the_original_harvester_branch() {
         let mut s = scene(input);
         radio::take_transmit_log();
         let mut stream = s.sim.scenario_rng.clone();
-        let delay = crate::sim::miner::mission_unload(&mut s.sim, &s.rules, s.miner);
+        let delay = crate::sim::miner::mission_unload(
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_delay(&s, row, delay, &mut stream, &context);
         compare_state(&s, row, &context);
@@ -880,7 +893,12 @@ fn per_cell_dock_now_matches_the_original_track_end_arm() {
         assert_eq!(scatters, context == "per_cell_pad_selling", "{context}");
         let mut s = scene(input);
         radio::take_transmit_log();
-        s.sim.unit_dock_now(s.miner, &s.rules, None);
+        s.sim.unit_dock_now(
+            s.miner,
+            &s.rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_state(&s, row, &context);
     }
@@ -911,7 +929,12 @@ fn per_cell_release_matches_the_original_track_end_arm() {
             s.sim
                 .mission_host_promote(s.miner, s.sim.session.binary_frame, &s.rules);
         }
-        crate::sim::miner::per_cell_release_dock_contact(&mut s.sim, &s.rules, s.miner);
+        crate::sim::miner::per_cell_release_dock_contact(
+            &mut s.sim,
+            &s.rules,
+            s.miner,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sends(&s), oracle_sends(row), "{context}: transmit sequence");
         compare_state(&s, row, &context);
         let miner = s.sim.substrate.entities.get(s.miner).unwrap();

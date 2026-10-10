@@ -168,7 +168,13 @@ fn fixture(corpus: &Value, row: &Value, retail: RetailBattleRules) -> Fixture {
                 &registry,
             )
             .expect("ordinary retail receiver enters supplied clear ground");
-        sim.foot_set_location_marked(id, coord, Some(&rules), Some(&registry));
+        sim.foot_set_location_marked(
+            id,
+            coord,
+            Some(&rules),
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         ids.insert(name.clone(), id);
         native_ids.insert(actor["id"].as_u64().unwrap(), id);
     }

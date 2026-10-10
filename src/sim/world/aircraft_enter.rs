@@ -1,7 +1,7 @@
 //! World host of `AircraftClass::Mission_Enter @ 0x00419C80`
 //! (`aircraft::enter_mission`): the radio exchanges with the dock, the
 //! dock coordinate and the landing step.
-use super::Simulation;
+use super::{FrameEffects, Simulation};
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
@@ -25,12 +25,14 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> i32 {
         enter_mission::enter_visit(&mut WorldEnter {
             sim: self,
             id,
             rules,
             registry,
+            effects,
         })
     }
 }
@@ -41,6 +43,7 @@ struct WorldEnter<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    effects: FrameEffects<'a>,
 }
 
 impl WorldEnter<'_> {
@@ -53,7 +56,7 @@ impl WorldEnter<'_> {
     }
 
     fn transmit(&mut self, message: RadioMessage) -> RadioResponse {
-        radio::transmit_to_contact(self.sim, self.id, message, Some(self.rules))
+        radio::transmit_to_contact(self.sim, self.id, message, Some(self.rules), self.effects)
     }
 }
 
@@ -139,11 +142,22 @@ impl EnterHost for WorldEnter<'_> {
     }
 
     fn approach_pending_entry(&mut self) -> bool {
-        crate::sim::docking::building_dock::park_pending_entry(self.sim, self.rules, self.id)
+        crate::sim::docking::building_dock::park_pending_entry(
+            self.sim,
+            self.rules,
+            self.id,
+            self.effects,
+        )
     }
 
     fn enter_idle_mode(&mut self) {
-        crate::sim::aircraft::enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
+        crate::sim::aircraft::enter_idle_mode_for(
+            self.sim,
+            self.id,
+            self.rules,
+            self.registry,
+            self.effects,
+        );
     }
 
     fn state(&mut self) -> u32 {
@@ -178,7 +192,7 @@ impl EnterHost for WorldEnter<'_> {
 
     fn clear_destination(&mut self) {
         self.sim
-            .assign_aircraft_destination(self.id, None, self.rules);
+            .assign_aircraft_destination(self.id, None, self.rules, self.effects);
     }
 
     fn step_toward_nav_com(&mut self) {
@@ -218,8 +232,13 @@ impl EnterHost for WorldEnter<'_> {
             y: here.y.wrapping_add(step(target.y, here.y)),
             z: here.z,
         };
-        self.sim
-            .foot_set_location_marked(self.id, next, Some(self.rules), self.registry);
+        self.sim.foot_set_location_marked(
+            self.id,
+            next,
+            Some(self.rules),
+            self.registry,
+            self.effects,
+        );
     }
 
     fn dock_now(&mut self) -> i32 {

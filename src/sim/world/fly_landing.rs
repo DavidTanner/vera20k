@@ -6,6 +6,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{air_movement, ground_pose, locomotor::MovementLayer};
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::SIM_ZERO;
 
 impl Simulation {
@@ -66,6 +67,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let entity = self
             .substrate
@@ -132,7 +134,7 @@ impl Simulation {
             let cell = ((destination.x / 256) as i16, (destination.y / 256) as i16);
             self.aircraft_can_enter(id, cell) == 0
         };
-        if !admitted && !self.retry_fly_landing(id, rules) {
+        if !admitted && !self.retry_fly_landing(id, rules, frame_effects) {
             return;
         }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -219,7 +221,7 @@ impl Simulation {
                 self.substrate.entities.get_mut(id).unwrap().on_bridge = true;
             }
         }
-        self.set_object_height(id, base, rules, registry);
+        self.set_object_height(id, base, rules, registry, frame_effects);
         self.aircraft_tracker_remove(id);
         let entity = self.substrate.entities.get_mut(id).unwrap();
         let fly = entity
@@ -255,16 +257,21 @@ impl Simulation {
                 .fly_runtime_mut()
                 .unwrap()
                 .finish_destination();
-            self.clear_landed_fly_destination(id, rules);
+            self.clear_landed_fly_destination(id, rules, frame_effects);
         }
     }
 
     /// Landing4CEF6E -> null MoveTo -> AssignDestination(NULL,1). Both native
     /// IsMoving inputs are now zero; Foot's Stop receiver returns immediately.
-    fn clear_landed_fly_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
+    fn clear_landed_fly_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let entity = self.substrate.entities.get(id).unwrap();
         if !air_movement::fly_coordinate_admitted(entity) {
-            self.clear_fly_foot_destination(id, rules);
+            self.clear_fly_foot_destination(id, rules, frame_effects);
             return;
         }
         let current = ground_pose::position_world_coord(&entity.position);
@@ -283,14 +290,19 @@ impl Simulation {
             .unwrap()
             .null_destination(current, height, base);
         debug_assert!(!begin, "landed null MoveTo cannot request another landing");
-        self.clear_fly_foot_destination(id, rules);
+        self.clear_fly_foot_destination(id, rules, frame_effects);
     }
 
     /// The class setter's `vt+0x480(NULL, 1)` after a landing (`0x004CEF88`)
     /// or on reaching the ground layer (`0x004CD2A0`'s layer arm), through
     /// [`Simulation::assign_null_destination`].
-    fn clear_fly_foot_destination(&mut self, id: u64, rules: Option<&RuleSet>) {
-        self.assign_null_destination(id, rules, None);
+    fn clear_fly_foot_destination(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
+        self.assign_null_destination(id, rules, None, frame_effects);
     }
 
     /// `FootClass::IsLandZoneClear @ 0x004DDC60` (vt+0x550) for `destination`:
@@ -429,11 +441,12 @@ impl Simulation {
         id: u64,
         layer: Option<DisplayLayer>,
         rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) {
         use crate::sim::radio::{self, RadioMessage};
         if layer == Some(DisplayLayer::GROUND) {
-            self.clear_fly_foot_destination(id, rules);
-            radio::broadcast(self, id, RadioMessage::Tether, rules);
+            self.clear_fly_foot_destination(id, rules, frame_effects);
+            radio::broadcast(self, id, RadioMessage::Tether, rules, frame_effects);
             if let Some(entity) = self.substrate.entities.get(id) {
                 let config = self.sight_reveal_config(rules);
                 let grid = self.path_grid_snapshot();
@@ -453,7 +466,7 @@ impl Simulation {
                 // changes; there is no second simulation fog-edge authority.
             }
         } else {
-            radio::broadcast(self, id, RadioMessage::Untether, rules);
+            radio::broadcast(self, id, RadioMessage::Untether, rules, frame_effects);
             if self.substrate.entities.get(id).is_some_and(|e| {
                 !e.radio_contacts.is_empty()
                     && e.navigation.nav_com.is_some()
@@ -467,12 +480,17 @@ impl Simulation {
                         None => false,
                     }
             }) {
-                radio::broadcast_break(self, id, rules);
+                radio::broadcast_break(self, id, rules, frame_effects);
             }
         }
     }
 
-    fn retry_fly_landing(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    fn retry_fly_landing(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) -> bool {
         use crate::rules::locomotor_type::{MovementZone, SpeedType};
         use crate::sim::find_nearby_cell::{
             NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs,
@@ -538,7 +556,7 @@ impl Simulation {
             self.move_air_coordinate(id, coord, None, Some(rules));
             true
         } else {
-            self.receive_own_health_c4(id, rules, None);
+            self.receive_own_health_c4(id, rules, None, frame_effects);
             if let Some(state) = self
                 .substrate
                 .entities
@@ -973,7 +991,12 @@ mod tests {
         for row in rows {
             let (mut sim, rules) = fixture(&row);
             let rng = sim.scenario_rng.logical_state();
-            sim.complete_fly_phase(1, Some(&rules), None);
+            sim.complete_fly_phase(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let e = sim.substrate.entities.get(1).unwrap();
             let l = e.locomotor.as_ref().unwrap();
             let f = l.fly_runtime().unwrap();
@@ -1084,7 +1107,12 @@ mod tests {
             .find(|r| r["input"]["name"] == "height_301")
             .unwrap();
         let (mut sim, rules) = fixture(row);
-        sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+        sim.tick_air_movement_with_cell_lists_one(
+            1,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let e = sim.substrate.entities.get(1).unwrap();
         assert!(e.air_spatial_bucket().is_some());
         assert!(
@@ -1107,7 +1135,12 @@ mod tests {
         for frame in 101..126 {
             for s in [&mut sim, &mut restored] {
                 s.session.binary_frame = frame;
-                s.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+                s.tick_air_movement_with_cell_lists_one(
+                    1,
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             assert_eq!(sim.state_hash(), restored.state_hash(), "frame{frame}");
         }

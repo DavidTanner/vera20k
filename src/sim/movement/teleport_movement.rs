@@ -488,6 +488,7 @@ impl crate::sim::world::Simulation {
         rules: &crate::rules::ruleset::RuleSet,
         is_harvester: bool,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: crate::sim::world::FrameEffects<'_>,
     ) -> Result<bool, String> {
         use crate::map::entities::EntityCategory;
         use crate::map::resolved_terrain::NativeCellQuery;
@@ -560,7 +561,7 @@ impl crate::sim::world::Simulation {
                 return Ok(true);
             }
             self.object_raw_receiver_at(id, physical, true);
-            self.assign_null_destination(id, Some(rules), registry);
+            self.assign_null_destination(id, Some(rules), registry, effects);
             return Ok(false);
         }
         if infantry
@@ -699,7 +700,7 @@ impl crate::sim::world::Simulation {
                 // Original719286..7192AE restores the physical raw receiver
                 // before returning false;7181F9 then calls the class NULL arm.
                 self.object_raw_receiver_at(id, physical, true);
-                self.assign_null_destination(id, Some(rules), registry);
+                self.assign_null_destination(id, Some(rules), registry, effects);
                 return Ok(false);
             };
             self.object_raw_receiver_at(id, resolved, true);

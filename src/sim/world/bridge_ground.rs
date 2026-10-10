@@ -11,6 +11,7 @@ use crate::sim::combat::{
 };
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellObjectMember;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 fn members(sim: &Simulation, rx: u16, ry: u16) -> impl Iterator<Item = CellObjectMember> + '_ {
@@ -23,6 +24,7 @@ pub(super) fn apply(
     registry: Option<&OverlayTypeRegistry>,
     rx: u16,
     ry: u16,
+    frame_effects: FrameEffects<'_>,
 ) {
     let warhead_ref = sim.interner.intern(&rules.bridge_warheads.c4_name);
     let mut current = members(sim, rx, ry).next();
@@ -55,7 +57,7 @@ pub(super) fn apply(
                             arg6: true,
                         },
                     );
-                    sim.commit_direct_damage_receiver(rules, registry, event);
+                    sim.commit_direct_damage_receiver(rules, registry, event, frame_effects);
                 }
             }
             CellObjectMember::Terrain(stable_id) => {
@@ -69,7 +71,12 @@ pub(super) fn apply(
                         warhead_ref,
                         near_center_ic_isolation_eligible: false,
                     };
-                    sim.commit_direct_terrain_damage_receiver(rules, registry, event);
+                    sim.commit_direct_terrain_damage_receiver(
+                        rules,
+                        registry,
+                        event,
+                        frame_effects,
+                    );
                 }
             }
         }
@@ -165,7 +172,14 @@ mod tests {
                 CellObjectMember::Entity(gi),
             ]
         );
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
             "tools/spatial_oracle/bridge_zero_health_receiver.json",
         ))
@@ -257,7 +271,14 @@ mod tests {
                 CellObjectMember::Entity(tank),
             ]
         );
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         // Two original deaths leave the heavy tank alive. The captured
         // successor's repeated DeathWeapon kills it; its unlinked NextObject
         // cannot pass it a later direct C4 receiver.
@@ -276,7 +297,14 @@ mod tests {
             .unwrap()
             .health
             .current = 0;
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(
             !sim.sound_events
                 .iter()
@@ -299,13 +327,27 @@ mod tests {
         let rules = stock_cascade_rules();
         let mut sim = world(&rules);
         let gi = place(&mut sim, &rules, "E1", 4);
-        assert!(sim.infantry_do_action(gi, 12, true, &rules).unwrap());
+        assert!(
+            sim.infantry_do_action(
+                gi,
+                12,
+                true,
+                &rules,
+                crate::sim::world::FrameEffects::default()
+            )
+            .unwrap()
+        );
         sim.substrate
             .entities
             .get_mut(gi)
             .unwrap()
             .set_native_stage_value(7);
-        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die2, &rules);
+        sim.begin_infantry_death_sequence(
+            gi,
+            InfantryDeathSequence::Die2,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.substrate
                 .entities
@@ -317,7 +359,12 @@ mod tests {
         );
         sim.uninit_with_rules(gi, &rules);
         let pending = sim.substrate.pending_delete.clone();
-        sim.begin_infantry_death_sequence(gi, InfantryDeathSequence::Die1, &rules);
+        sim.begin_infantry_death_sequence(
+            gi,
+            InfantryDeathSequence::Die1,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         let object = sim.substrate.entities.get(gi).unwrap();
         assert_eq!(object.mission_leaf.as_infantry().unwrap().doing(), 11);
         assert_eq!(object.native_stage().value(), 0);
@@ -355,7 +402,14 @@ mod tests {
             members(&sim, 4, 4).collect::<Vec<_>>(),
             vec![CellObjectMember::Entity(bunker)]
         );
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             sim.substrate.entities.get(bunker).unwrap().health.current,
             0
@@ -391,7 +445,14 @@ mod tests {
                 members(&sim, 4, 4).collect::<Vec<_>>(),
                 vec![CellObjectMember::Terrain(id)]
             );
-            apply(&mut sim, &rules, None, 4, 4);
+            apply(
+                &mut sim,
+                &rules,
+                None,
+                4,
+                4,
+                crate::sim::world::FrameEffects::default(),
+            );
             let tree = &sim.production.terrain_objects[&id];
             if wood {
                 assert_eq!(tree.health, 0);
@@ -437,7 +498,14 @@ mod tests {
                 CellObjectMember::Entity(tail),
             ]
         );
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.substrate.entities.get(head).unwrap().health.current, 0);
         assert_eq!(sim.substrate.entities.get(next).unwrap().health.current, 0);
         assert_eq!(
@@ -505,7 +573,14 @@ mod tests {
                 CellObjectMember::Entity(building),
             ]
         );
-        apply(&mut sim, &rules, None, 4, 4);
+        apply(
+            &mut sim,
+            &rules,
+            None,
+            4,
+            4,
+            crate::sim::world::FrameEffects::default(),
+        );
         for id in [older, newer, building] {
             assert_eq!(
                 sim.substrate.entities.get(id).unwrap().health.current,

@@ -546,7 +546,8 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
             target_ry: at.1
         },
         Some(&s.rules),
-        Some(registry())
+        Some(registry()),
+        crate::sim::world::FrameEffects::default()
     ));
     for _ in 0..1600 {
         frame(&mut s);
@@ -596,7 +597,8 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
             target_refinery_id: Some(s.refinery)
         },
         Some(&s.rules),
-        Some(registry())
+        Some(registry()),
+        crate::sim::world::FrameEffects::default()
     ));
     for _ in 0..1800 {
         frame(&mut s);

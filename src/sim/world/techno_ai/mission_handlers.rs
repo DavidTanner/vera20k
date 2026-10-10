@@ -8,6 +8,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::world::FrameEffects;
 use crate::util::direction_tables::CELL_DELTAS;
 
 #[cfg(test)]
@@ -125,6 +126,7 @@ pub(crate) fn dispatch_foot_mission(
                 ctx.miner_config,
                 ctx.overlay_registry,
                 id,
+                ctx.effects,
             ) else {
                 return bridge_changed;
             };
@@ -190,10 +192,10 @@ pub(crate) fn dispatch_foot_mission(
             } else if input.category == EntityCategory::Unit {
                 // Foot4D4242 calls Unit738970(0,1), then returns1. Use the
                 // same receiver as Attack, locomotion and refinery/depot exits.
-                sim.unit_enter_idle_mode(id, Some(rules), false);
+                sim.unit_enter_idle_mode(id, Some(rules), false, ctx.effects);
                 MissionHandlerEvaluation::cadence(1)
             } else {
-                sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+                sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry, ctx.effects);
                 MissionHandlerEvaluation::cadence(1)
             }
         }
@@ -203,7 +205,10 @@ pub(crate) fn dispatch_foot_mission(
             if input.depot_dock_state || input.refinery_dock_miner =>
         {
             MissionHandlerEvaluation::cadence(crate::sim::mission::enter::mission_enter(
-                sim, rules, id,
+                sim,
+                rules,
+                id,
+                ctx.effects,
             ))
         }
         // `UnitClass::Mission_Attack @ 0x007447A0` is a tail jump to
@@ -293,10 +298,10 @@ pub(crate) fn dispatch_foot_mission(
             // MissionAttack4D4E6A calls Approach before its Scenario cadence
             // draw. The accepted destination is visible to this object's
             // subsequent Drive Process, and is retained while it fires.
-            if !sim.approach_balloon_target(id, rules, ctx.overlay_registry)
+            if !sim.approach_balloon_target(id, rules, ctx.overlay_registry, ctx.effects)
                 && sim.owns_unit_cell_approach(id, rules)
             {
-                sim.approach_unit_cell_target(id, rules, ctx.overlay_registry)
+                sim.approach_unit_cell_target(id, rules, ctx.overlay_registry, ctx.effects)
                     .expect("ordinary Cell approach requires valid live map/navigation state");
             }
             // Foot tests TarCom before calling Approach. Only a null target
@@ -315,10 +320,10 @@ pub(crate) fn dispatch_foot_mission(
                 if input.category == EntityCategory::Unit {
                     // Unit738970 owns the Foot base, harvester selector,
                     // concrete setters and deferred queue before this draw.
-                    sim.unit_enter_idle_mode(id, Some(rules), false);
+                    sim.unit_enter_idle_mode(id, Some(rules), false, ctx.effects);
                     None
                 } else {
-                    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+                    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry, ctx.effects);
                     None
                 }
             };
@@ -347,7 +352,11 @@ pub(crate) fn dispatch_foot_mission(
         ) if !input.infantry_deployed_do_type => {
             infantry_guard_handled = true;
             MissionHandlerEvaluation::cadence(infantry_automatic_guard_delay(
-                sim, id, rules, mission,
+                sim,
+                id,
+                rules,
+                mission,
+                ctx.effects,
             ))
         }
         // Guard/Sticky51F620 and AreaGuard51F640 first call521320.
@@ -375,7 +384,7 @@ pub(crate) fn dispatch_foot_mission(
                 .expect("deployed shim type resolved");
             if object.undeploy_delay >= 0 {
                 //521355..52137D: unforced Undeploy31, then raw Count31.
-                let _ = sim.infantry_do_action(id, 31, false, rules);
+                let _ = sim.infantry_do_action(id, 31, false, rules, ctx.effects);
                 let count = rules
                     .animation_sequence(&object.id)
                     .and_then(|set| set.infantry_action(31))
@@ -443,6 +452,7 @@ pub(crate) fn dispatch_foot_mission(
                                     },
                                     rules,
                                     ctx.overlay_registry,
+                                    ctx.effects,
                                 )
                                 .bridge_state_changed;
                             fired = true;
@@ -452,7 +462,7 @@ pub(crate) fn dispatch_foot_mission(
                     let _ = sim.assign_target_represented(id, None, Some(rules));
                 }
                 if fired {
-                    let _ = sim.infantry_do_action(id, 29, false, rules);
+                    let _ = sim.infantry_do_action(id, 29, false, rules, ctx.effects);
                     let count = rules
                         .animation_sequence(&object.id)
                         .and_then(|set| set.infantry_action(29))
@@ -494,7 +504,7 @@ pub(crate) fn dispatch_foot_mission(
         // existing class owner performs action/weapon/AssignGuard/NULLNav
         // effects synchronously; its signed return reaches this epilogue.
         (EntityCategory::Infantry, Some(MissionType::Unload)) => {
-            let Ok(delay) = sim.infantry_mission_unload(id, rules) else {
+            let Ok(delay) = sim.infantry_mission_unload(id, rules, ctx.effects) else {
                 return bridge_changed;
             };
             MissionHandlerEvaluation::cadence(delay)
@@ -516,6 +526,7 @@ pub(crate) fn dispatch_foot_mission(
                 rules,
                 id,
                 ctx.overlay_registry,
+                ctx.effects,
             ))
         }
         (EntityCategory::Unit, Some(MissionType::Unload))
@@ -530,6 +541,7 @@ pub(crate) fn dispatch_foot_mission(
                 id,
                 rules,
                 ctx.overlay_registry,
+                ctx.effects,
             ))
         }
         (EntityCategory::Unit, Some(MissionType::Unload))
@@ -537,7 +549,7 @@ pub(crate) fn dispatch_foot_mission(
                 crate::sim::unit_simple_deploy::is_simple_deployer(sim, entity, rules)
             }) =>
         {
-            let Ok(delay) = sim.unit_simple_mission_unload(id, rules) else {
+            let Ok(delay) = sim.unit_simple_mission_unload(id, rules, ctx.effects) else {
                 return bridge_changed;
             };
             MissionHandlerEvaluation::cadence(delay)
@@ -545,7 +557,12 @@ pub(crate) fn dispatch_foot_mission(
         // The harvester branch of `UnitClass::Mission_Unload @ 0x0073D630`
         // (`0x0073D672` → `0x0073DEE0`) for a harvester on its refinery pad.
         (EntityCategory::Unit, Some(MissionType::Unload)) if input.refinery_dock_miner => {
-            MissionHandlerEvaluation::cadence(crate::sim::miner::mission_unload(sim, rules, id))
+            MissionHandlerEvaluation::cadence(crate::sim::miner::mission_unload(
+                sim,
+                rules,
+                id,
+                ctx.effects,
+            ))
         }
         // Guard and Sticky share the UnitClass slot (`MissionClass::AI`'s
         // table `0x005B34E8` sends both to `+0x21C` = `0x00740810`).
@@ -555,7 +572,7 @@ pub(crate) fn dispatch_foot_mission(
             // then the harvester arms and the Construction Yard maker's Unload
             // arm, in that order.
             if let Some(delay) =
-                sim.slave_master_mission_kick(id, mission, rules, ctx.overlay_registry)
+                sim.slave_master_mission_kick(id, mission, rules, ctx.overlay_registry, ctx.effects)
             {
                 MissionHandlerEvaluation::cadence(delay)
             } else if harvester_guard_override_requeues_harvest(sim, id, rules) {
@@ -570,16 +587,28 @@ pub(crate) fn dispatch_foot_mission(
                     MissionType::Unload,
                 )
             } else {
-                evaluate_foot_guard_cadence(sim, rules, id, mission, input.bunker_delegate)
+                evaluate_foot_guard_cadence(
+                    sim,
+                    rules,
+                    id,
+                    mission,
+                    input.bunker_delegate,
+                    ctx.effects,
+                )
             }
         }
-        (EntityCategory::Infantry, Some(MissionType::Guard)) => {
-            evaluate_foot_guard_cadence(sim, rules, id, MissionType::Guard, input.bunker_delegate)
-        }
+        (EntityCategory::Infantry, Some(MissionType::Guard)) => evaluate_foot_guard_cadence(
+            sim,
+            rules,
+            id,
+            MissionType::Guard,
+            input.bunker_delegate,
+            ctx.effects,
+        ),
         // `InfantryClass::Mission_Harvest @ 0x00522E70` (Infantry `vt+0x224`),
         // the slave's dig (`sim::slave_manager`).
         (EntityCategory::Infantry, Some(MissionType::Harvest)) => {
-            match sim.infantry_mission_harvest(id, rules, ctx.overlay_registry) {
+            match sim.infantry_mission_harvest(id, rules, ctx.overlay_registry, ctx.effects) {
                 (delay, true) => MissionHandlerEvaluation::queue(delay, MissionType::Guard),
                 (delay, false) => MissionHandlerEvaluation::cadence(delay),
             }
@@ -591,9 +620,14 @@ pub(crate) fn dispatch_foot_mission(
         // handler's identity), and `[Sticky] Rate=.016` is 14 frames against
         // Guard's 26. Stock skirmish maps park neutral civilian traffic on
         // this.
-        (EntityCategory::Infantry, Some(MissionType::Sticky)) => {
-            evaluate_foot_guard_cadence(sim, rules, id, MissionType::Sticky, input.bunker_delegate)
-        }
+        (EntityCategory::Infantry, Some(MissionType::Sticky)) => evaluate_foot_guard_cadence(
+            sim,
+            rules,
+            id,
+            MissionType::Sticky,
+            input.bunker_delegate,
+            ctx.effects,
+        ),
         // Area Guard is NOT a Guard alias — it has its own slot and its own
         // handler, and that handler owns its acquisition. The common Techno AI
         // body's passive-acquire block admits missions {Move, Harvest, Guard}
@@ -617,6 +651,7 @@ pub(crate) fn dispatch_foot_mission(
                 MissionType::AreaGuard,
                 rules,
                 ctx.overlay_registry,
+                ctx.effects,
             ) {
                 Some(delay) => MissionHandlerEvaluation::cadence(delay),
                 None => evaluate_foot_area_guard(sim, id, rules, ctx),
@@ -635,6 +670,7 @@ pub(crate) fn dispatch_foot_mission(
                 id,
                 rules,
                 ctx.overlay_registry,
+                ctx.effects,
             ))
         }
         (EntityCategory::Unit | EntityCategory::Infantry, Some(MissionType::Hunt)) => {
@@ -681,7 +717,14 @@ pub(crate) fn dispatch_foot_mission(
         match input.mission {
             Some(MissionType::AreaGuard) => evaluate_foot_area_guard(sim, id, rules, ctx),
             Some(mission @ (MissionType::Guard | MissionType::Sticky)) => {
-                evaluate_foot_guard_cadence(sim, rules, id, mission, input.bunker_delegate)
+                evaluate_foot_guard_cadence(
+                    sim,
+                    rules,
+                    id,
+                    mission,
+                    input.bunker_delegate,
+                    ctx.effects,
+                )
             }
             _ => unreachable!("Infantry Guard shim belongs to Guard-family slots"),
         }
@@ -799,6 +842,7 @@ fn infantry_automatic_guard_delay(
     id: u64,
     rules: &RuleSet,
     mission: MissionType,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     let Some(actor) = sim.substrate.entities.get(id) else {
         return -1;
@@ -854,7 +898,7 @@ fn infantry_automatic_guard_delay(
     };
     if !moving {
         //521631..521659 returns raw signed Count27 even when DoAction refuses.
-        let _ = sim.infantry_do_action(id, 27, false, rules);
+        let _ = sim.infantry_do_action(id, 27, false, rules, effects);
         return rules
             .animation_sequence(&object.id)
             .and_then(|set| set.infantry_action(27))
@@ -862,7 +906,7 @@ fn infantry_automatic_guard_delay(
     }
     // Stock GI/GGI use Walk. Stop75ADA0 retains a paid head; with no head
     // it synchronously invokes521B40 before this producer writes6E4=1.
-    if sim.walk_stop_moving(id, Some(rules)).is_err() {
+    if sim.walk_stop_moving(id, Some(rules), effects).is_err() {
         return -1;
     }
     sim.substrate
@@ -906,8 +950,9 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
-        let saved_base_return = self.foot_enter_idle_base(id, Some(rules), registry);
+        let saved_base_return = self.foot_enter_idle_base(id, Some(rules), registry, effects);
         let Some(entity) = self.substrate.entities.get(id) else {
             return saved_base_return;
         };
@@ -948,16 +993,17 @@ pub(crate) fn enter_idle_mode(
     id: u64,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     match sim.substrate.entities.get(id).map(|entity| entity.category) {
         Some(EntityCategory::Unit) => {
-            sim.unit_enter_idle_mode(id, Some(rules), false);
+            sim.unit_enter_idle_mode(id, Some(rules), false, effects);
         }
         Some(EntityCategory::Infantry) => {
-            sim.infantry_enter_idle_mode(id, rules, registry);
+            sim.infantry_enter_idle_mode(id, rules, registry, effects);
         }
         Some(EntityCategory::Aircraft) => {
-            crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+            crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry, effects);
         }
         Some(EntityCategory::Structure) => {
             sim.building_enter_idle_mode(id, false, Some(rules));
@@ -995,12 +1041,13 @@ pub(crate) fn foot_unlimbo_idle_mode(
     id: u64,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
     if entity.category == EntityCategory::Aircraft {
-        crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry);
+        crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry, effects);
         sim.mission_host_promote(id, sim.session.binary_frame, rules);
         return;
     }
@@ -1009,11 +1056,11 @@ pub(crate) fn foot_unlimbo_idle_mode(
         return;
     }
     if vehicle {
-        sim.unit_enter_idle_mode(id, Some(rules), true);
+        sim.unit_enter_idle_mode(id, Some(rules), true, effects);
         sim.mission_host_promote(id, sim.session.binary_frame, rules);
         return;
     }
-    sim.infantry_enter_idle_mode(id, rules, registry);
+    sim.infantry_enter_idle_mode(id, rules, registry, effects);
     sim.mission_host_promote(id, sim.session.binary_frame, rules);
 }
 
@@ -1226,7 +1273,7 @@ fn evaluate_foot_hunt(
         // `0x004D54DD`: a Unit approaches what the scan holds; the balloon
         // arm takes only a Unit.
         if acquired {
-            sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+            sim.approach_balloon_target(id, rules, ctx.overlay_registry, ctx.effects);
         }
     }
     //4D54EE..4D5576: the human no-target arm invokes the class idle
@@ -1238,7 +1285,7 @@ fn evaluate_foot_hunt(
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none() && sim.owner_is_human(entity.owner()))
     {
-        let _ = sim.infantry_idle_action(id, rules);
+        let _ = sim.infantry_idle_action(id, rules, ctx.effects);
     }
     MissionHandlerEvaluation::cadence(jittered_mission_cadence(sim, rules, MissionType::Hunt))
 }
@@ -1441,8 +1488,13 @@ fn evaluate_foot_rescue(
         let destination = sim
             .house_return_cell(id)
             .map(|(rx, ry)| crate::sim::components::NavTargetRef::cell(rx, ry));
-        let _ =
-            sim.assign_destination_represented(id, destination, Some(rules), ctx.overlay_registry);
+        let _ = sim.assign_destination_represented(
+            id,
+            destination,
+            Some(rules),
+            ctx.overlay_registry,
+            ctx.effects,
+        );
         sim.substrate
             .entities
             .get_mut(id)
@@ -1450,7 +1502,7 @@ fn evaluate_foot_rescue(
             .set_archive_target(None);
     } else if state == 0 {
         // `0x004DDFDB..0x004DDFEB`: with a Target, approach it.
-        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry, ctx.effects);
     }
     let mission = sim
         .substrate
@@ -1534,6 +1586,7 @@ pub(super) fn evaluate_foot_area_guard(
             Some(destination),
             Some(rules),
             ctx.overlay_registry,
+            ctx.effects,
         );
     }
     let needs_target = sim
@@ -1544,7 +1597,7 @@ pub(super) fn evaluate_foot_area_guard(
     // `0x004D6ED1..0x004D6F32`: with a Target the body approaches it instead
     // of scanning; without a post it does neither (`0x004D6E66`).
     if !needs_target && archive.is_some() {
-        sim.approach_balloon_target(id, rules, ctx.overlay_registry);
+        sim.approach_balloon_target(id, rules, ctx.overlay_registry, ctx.effects);
     }
     let timer_due = sim
         .substrate
@@ -1585,7 +1638,7 @@ pub(super) fn evaluate_foot_area_guard(
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none())
     {
-        let _ = sim.infantry_idle_action(id, rules);
+        let _ = sim.infantry_idle_action(id, rules, ctx.effects);
     }
     let base = mission_cadence(rules, MissionType::AreaGuard);
     // `0x004D7040..0x004D7048`: an aircraft (What_Am_I 2) doubles the Rate
@@ -1724,6 +1777,7 @@ pub(super) fn evaluate_foot_guard_cadence(
     id: u64,
     mission: MissionType,
     bunker_delegate: bool,
+    effects: FrameEffects<'_>,
 ) -> MissionHandlerEvaluation {
     if bunker_delegate {
         return MissionHandlerEvaluation::cadence(mission_cadence(rules, mission));
@@ -1736,7 +1790,7 @@ pub(super) fn evaluate_foot_guard_cadence(
         .get(id)
         .is_some_and(|entity| entity.attack_target.is_none())
     {
-        let _ = sim.infantry_idle_action(id, rules);
+        let _ = sim.infantry_idle_action(id, rules, effects);
     }
     let rearm = sim.substrate.entities.get(id).map_or(0, |entity| {
         entity
@@ -2123,7 +2177,7 @@ fn infantry_deployed_attack_reacquire(
     {
         return None;
     }
-    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry);
+    sim.infantry_enter_idle_mode(id, rules, ctx.overlay_registry, ctx.effects);
     None
 }
 
@@ -2258,6 +2312,7 @@ mod harvester_guard_override_tests {
             MINER_ID,
             rules,
             super::super::ObjectAiCtx {
+                effects: crate::sim::world::FrameEffects::default(),
                 overlay_registry: None,
                 terrain_spawner_cells: None,
                 miner_config: None,
@@ -2535,6 +2590,7 @@ mod move_arrival_tests {
             UNIT_ID,
             rules,
             super::super::ObjectAiCtx {
+                effects: crate::sim::world::FrameEffects::default(),
                 overlay_registry: None,
                 terrain_spawner_cells: None,
                 miner_config: None,
@@ -2621,8 +2677,14 @@ mod guard_rearm_tests {
             sim.substrate.entities.insert(entity);
             let before = sim.scenario_rng.logical_state();
 
-            let evaluation =
-                evaluate_foot_guard_cadence(&mut sim, &rules, 1, MissionType::Guard, false);
+            let evaluation = evaluate_foot_guard_cadence(
+                &mut sim,
+                &rules,
+                1,
+                MissionType::Guard,
+                false,
+                crate::sim::world::FrameEffects::default(),
+            );
 
             match row["returns"].as_i64() {
                 Some(returned) => {

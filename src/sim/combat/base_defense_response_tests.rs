@@ -121,7 +121,7 @@ fn response_defender(id: u64, type_name: &str, x: u16) -> GameEntity {
 /// The victim building (1) calls for help against the attacker (2).
 fn respond(sim: &mut Simulation, rules: &RuleSet) {
     sim.interner = test_interner();
-    respond_to_base_attack(sim, rules, 1, 2);
+    respond_to_base_attack(sim, rules, 1, 2, crate::sim::world::FrameEffects::default());
 }
 
 #[test]
@@ -761,6 +761,7 @@ fn retail_bridge_base_response_runs_through_the_protected_damage_receiver() {
                     arg6: false,
                 },
             ),
+            crate::sim::world::FrameEffects::default(),
         );
         assert!(
             sim.substrate.entities.get(victim).unwrap().health.current < health,

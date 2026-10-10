@@ -99,6 +99,7 @@ fn begin_native_aim_motion(duel: &mut Duel, target_id: u64) {
         crate::sim::components::NavTargetRef::Cell { rx: 87, ry: 53 },
         &duel.rules,
         true,
+        crate::sim::world::FrameEffects::default(),
     ));
     let target = duel.sim.substrate.entities.get_mut(target_id).unwrap();
     target
@@ -239,6 +240,7 @@ fn original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim() {
         },
         &duel.rules,
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     let bullets: Vec<_> = duel
         .sim
@@ -308,6 +310,7 @@ fn original_direct_fireat_keeps_argument_speed_separate_from_live_tarcom_aim() {
         },
         &duel.rules,
         None,
+        crate::sim::world::FrameEffects::default(),
     );
     assert_eq!(
         duel.sim
@@ -417,8 +420,11 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
     );
     let expected = attack_aim_row(&corpus, "aim_cases", "expired_target_aim");
     assert_read_only_native_aim(&duel, source, expected);
-    duel.sim
-        .process_pending_delete_with(Some(&duel.rules), None);
+    duel.sim.process_pending_delete_with(
+        Some(&duel.rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(duel.sim.substrate.entities.get(target).is_none());
     assert_read_only_native_aim(&duel, source, expected);
     assert_rng(&duel.sim, &expiry["rng_after"], "after deferred removal");

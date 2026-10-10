@@ -261,7 +261,8 @@ impl Fixture {
                     target_building_id: building,
                 },
                 Some(&rules),
-                Some(&registry)
+                Some(&registry),
+                crate::sim::world::FrameEffects::default()
             ));
             // The native command witness follows Event4C6CB0 with the
             // ordinary Mission5B3570 Commence receiver before its snapshot.
@@ -287,7 +288,13 @@ impl Fixture {
             // Supply the native owner-race prior using the shared owner to
             // install coherent House/occupancy indexes, then restore the
             // witness's pre-arrival scalar statistics and paid repair state.
-            sim.change_owner_with_rules(building, new_owner, &rules, Some(&registry));
+            sim.change_owner_with_rules(
+                building,
+                new_owner,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            );
             let entity = sim.substrate.entities.get_mut(building).unwrap();
             entity.repairing = before["paid_repair"] == 1;
             entity.has_been_captured = false;
@@ -587,6 +594,7 @@ impl Fixture {
             },
             Some(&self.rules),
             Some(&self.registry),
+            crate::sim::world::FrameEffects::default(),
         );
         let entity = self.sim.substrate.entities.get_mut(id).unwrap();
         install_mission(entity, &native["engineer"]);
@@ -728,6 +736,7 @@ fn original_half_threshold_and_friendly_repair_object_actions() {
         enemy,
         &fixture.rules,
         Some(&fixture.registry),
+        crate::sim::world::FrameEffects::default(),
     );
     for row in controls["enemy_rows"].as_array().unwrap() {
         fixture
@@ -797,6 +806,7 @@ fn original_nine_routes_ten_walk_arrivals_repair_capture_and_deferred_cleanup() 
                         head,
                         Some(&fixture.rules),
                         Some(&fixture.registry),
+                        crate::sim::world::FrameEffects::default(),
                     )
                     .unwrap()
             });
@@ -851,9 +861,11 @@ fn original_nine_routes_ten_walk_arrivals_repair_capture_and_deferred_cleanup() 
             );
             arrivals += 1;
         }
-        fixture
-            .sim
-            .process_pending_delete_with(Some(&fixture.rules), Some(&fixture.registry));
+        fixture.sim.process_pending_delete_with(
+            Some(&fixture.rules),
+            Some(&fixture.registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         for (index, after) in route["cleanup"]["after"]
             .as_array()
             .unwrap()
@@ -925,9 +937,13 @@ fn original_engineer_receiver_terminal_branches_return_before_foot_tail() {
         for (index, arrival) in route["arrivals"].as_array().unwrap().iter().enumerate() {
             let head = fixture.prepare_paid_arrival(index, &arrival["before"]);
             let id = fixture.engineers[index];
-            fixture
-                .sim
-                .run_walk_boundary(id, head, Some(&fixture.rules), Some(&fixture.registry));
+            fixture.sim.run_walk_boundary(
+                id,
+                head,
+                Some(&fixture.rules),
+                Some(&fixture.registry),
+                crate::sim::world::FrameEffects::default(),
+            );
             fixture
                 .sim
                 .substrate
@@ -940,7 +956,12 @@ fn original_engineer_receiver_terminal_branches_return_before_foot_tail() {
                 .set_step_head(None);
             let result = fixture
                 .sim
-                .infantry_per_cell_engineer_entry(id, &fixture.rules, Some(&fixture.registry))
+                .infantry_per_cell_engineer_entry(
+                    id,
+                    &fixture.rules,
+                    Some(&fixture.registry),
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             let foot_tail = arrival["trace"]
                 .as_array()

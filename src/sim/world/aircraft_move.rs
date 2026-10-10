@@ -3,7 +3,7 @@
 //! state 0 search `AircraftClass::Find_Attack_Cell @ 0x00418E20`. Both read
 //! live objects and NavCom reservations; the search and the Rate epilogue
 //! draw Scenario RNG. Executable witnesses: tools/spatial_oracle/aircraft_move.*.
-use super::Simulation;
+use super::{FrameEffects, Simulation};
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::{enter_idle_mode_for, move_mission};
@@ -29,6 +29,7 @@ impl Simulation {
         state: u8,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> (u8, i32) {
         move_mission::move_visit(
             state,
@@ -37,6 +38,7 @@ impl Simulation {
                 id,
                 rules,
                 registry,
+                effects,
             },
         )
     }
@@ -166,6 +168,7 @@ struct WorldMove<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    effects: FrameEffects<'a>,
 }
 
 impl WorldMove<'_> {
@@ -186,7 +189,7 @@ impl move_mission::MoveHost for WorldMove<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
+        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry, self.effects);
     }
 
     fn assign_attack_cell(&mut self) {
@@ -194,7 +197,7 @@ impl move_mission::MoveHost for WorldMove<'_> {
             .sim
             .aircraft_find_attack_cell(self.id, self.nav(), self.rules);
         self.sim
-            .assign_aircraft_destination(self.id, cell, self.rules);
+            .assign_aircraft_destination(self.id, cell, self.rules, self.effects);
     }
 
     fn move_to_nav_com(&mut self) {

@@ -220,7 +220,12 @@ impl Arena {
                 arg6: false,
             },
         );
-        self.sim.commit_direct_damage_receiver(rules, None, event);
+        self.sim.commit_direct_damage_receiver(
+            rules,
+            None,
+            event,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
 
     fn cell(&self, id: u64) -> (u16, u16) {
@@ -473,6 +478,7 @@ fn a_paid_repair_radio_request_releases_the_drone_after_the_heal() {
             RadioMessage::RepairTick,
             RadioPayload::default(),
             Some(&rules),
+            crate::sim::world::FrameEffects::default(),
         ),
         RadioResponse::InsufficientFunds
     );
@@ -493,6 +499,7 @@ fn a_paid_repair_radio_request_releases_the_drone_after_the_heal() {
             RadioMessage::RepairTick,
             RadioPayload::default(),
             Some(&rules),
+            crate::sim::world::FrameEffects::default(),
         ),
         RadioResponse::Roger
     );
@@ -600,7 +607,16 @@ fn iron_curtain_strips_the_drone_and_kills_an_organic_vehicle() {
         owner,
         "IronCurtainSpecial",
     );
-    crate::sim::superweapon::iron_curtain::launch(&mut arena.sim, &rules, owner, 11, 10, sw, None);
+    crate::sim::superweapon::iron_curtain::launch(
+        &mut arena.sim,
+        &rules,
+        owner,
+        11,
+        10,
+        sw,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let frame = arena.frame();
     assert!(arena.gone(drone));
@@ -782,7 +798,12 @@ fn an_infected_unit_cannot_load_bunker_or_deploy() {
         .get_mut(mcv)
         .unwrap()
         .mcv_deploy_pending = true;
-    assert!(!arena.sim.deploy_mcv(mcv, &rules, None));
+    assert!(!arena.sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(
         !arena
             .sim

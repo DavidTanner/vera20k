@@ -116,7 +116,7 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
         // child's entire timer/Middle/Scenario RNG trajectory.
         for frame in 0..100 {
             sim.session.binary_frame = frame;
-            sim.visit_anim(id, &rules, None);
+            sim.visit_anim(id, &rules, None, crate::sim::world::FrameEffects::default());
             if sim.substrate.pending_delete.contains(&id) {
                 break;
             }

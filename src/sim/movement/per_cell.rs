@@ -21,7 +21,7 @@ use crate::sim::lifecycle_request::{LifecycleRequest, UninitReason};
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::radio::{self, RadioMessage, RadioPayload};
-use crate::sim::world::{FrameAdvanceError, Simulation};
+use crate::sim::world::{FrameAdvanceError, FrameEffects, Simulation};
 
 /// The reason a `Per_Cell_Process` call passes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +42,7 @@ impl Simulation {
         reason: PerCellReason,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, FrameAdvanceError> {
         match self
             .substrate
@@ -50,14 +51,14 @@ impl Simulation {
             .map(|entity| entity.category)
         {
             Some(EntityCategory::Unit) => {
-                self.unit_per_cell_process(id, reason, rules, registry);
+                self.unit_per_cell_process(id, reason, rules, registry, effects);
                 Ok(false)
             }
             Some(EntityCategory::Infantry) => {
-                self.infantry_per_cell_process(id, reason, rules, registry)
+                self.infantry_per_cell_process(id, reason, rules, registry, effects)
             }
             Some(_) => {
-                self.foot_per_cell_process(id, reason, rules, registry);
+                self.foot_per_cell_process(id, reason, rules, registry, effects);
                 Ok(false)
             }
             None => Ok(false),
@@ -72,6 +73,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         // 73A31F..A547: an Enter7/Patrol25 object destination at its
         // GetDockCoord cell runs Foot's tail once, sends DOCK_NOW, powers
@@ -106,12 +108,13 @@ impl Simulation {
                 unit.navigation.nav_com =
                     Some(crate::sim::components::NavTargetRef::Building { id: contact });
             }
-            self.foot_per_cell_process(id, PerCellReason::Arrival, Some(rules), registry);
+            self.foot_per_cell_process(id, PerCellReason::Arrival, Some(rules), registry, effects);
             crate::sim::radio::transmit_to_contact(
                 self,
                 id,
                 crate::sim::radio::RadioMessage::DockNow,
                 Some(rules),
+                effects,
             );
             if let Some(unit) = self.substrate.entities.get_mut(id)
                 && let Some(locomotor) = unit.locomotor.as_mut()
@@ -148,6 +151,7 @@ impl Simulation {
             RadioMessage::DockNow,
             RadioPayload::default(),
             Some(rules),
+            effects,
         );
         // 0x0073A5CE..0x0073A5E4: an answer other than 1 or 5 scatters the unit
         // (a refinery being sold) — RESIDUAL, module doc.
@@ -163,10 +167,11 @@ impl Simulation {
         reason: PerCellReason,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         // Unit739EC0 invokes the MCV receiver before normal crush/Foot tail.
         if let Some(rules) = rules {
-            crate::sim::mcv_deploy::per_cell_process(self, id, rules, registry);
+            crate::sim::mcv_deploy::per_cell_process(self, id, rules, registry, effects);
         }
         if !self.track_survives(id) {
             return;
@@ -178,10 +183,10 @@ impl Simulation {
         {
             // The object-destination docking arm73A31F..A547 completes
             // Foot's tail and returns before the later factory clearance.
-            if self.unit_dock_now(id, rules, registry) {
+            if self.unit_dock_now(id, rules, registry, effects) {
                 return;
             }
-            self.unit_per_cell_factory_clearance(id, rules, registry);
+            self.unit_per_cell_factory_clearance(id, rules, registry, effects);
         }
         // Unit PerCell2 739EC0: after MCV retry, +6D1==0 admits
         // Ready(+200)73ACC2 -> Commence(+1EC)73ACD1, BEFORE full-cell
@@ -205,7 +210,7 @@ impl Simulation {
         if let Some(rules) = rules
             && reason == PerCellReason::Arrival
         {
-            crate::sim::miner::per_cell_release_dock_contact(self, rules, id);
+            crate::sim::miner::per_cell_release_dock_contact(self, rules, id, effects);
         }
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
@@ -280,6 +285,7 @@ impl Simulation {
                     },
                     rules,
                     registry,
+                    effects,
                 );
             } else {
                 self.apply_lifecycle_request(LifecycleRequest::Uninit {
@@ -290,7 +296,7 @@ impl Simulation {
         }
         // 0x0073B08F tests only IsAlive (`+0x90`) before the Foot body.
         if self.per_cell_owner_alive(id) {
-            self.foot_per_cell_process(id, reason, rules, registry);
+            self.foot_per_cell_process(id, reason, rules, registry, effects);
         }
     }
 
@@ -304,6 +310,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(unit) = self.substrate.entities.get(id) else {
             return;
@@ -374,6 +381,7 @@ impl Simulation {
             id,
             crate::sim::radio::RadioMessage::RequestClearance,
             Some(rules),
+            effects,
         );
         if reply != crate::sim::radio::RadioResponse::Queued {
             // RESIDUAL:73AAF7..73AB66's non23 replies include harvester
@@ -443,7 +451,7 @@ impl Simulation {
         if let Some(archive) = archive
             .filter(|archive| Some(*archive) != nav_com.map(crate::sim::combat::TargetKind::from))
         {
-            self.set_unit_destination(id, NavTargetRef::from(archive), rules, true);
+            self.set_unit_destination(id, NavTargetRef::from(archive), rules, true, effects);
         } else {
             if let Some(unit) = self.substrate.entities.get_mut(id) {
                 super::navcom::foot_stop_moving(unit);
@@ -455,6 +463,7 @@ impl Simulation {
                 super::scatter::ScatterFlags::new(true, false),
                 rules,
                 registry,
+                effects,
             );
         }
         // RESIDUAL:73AB6C..73ABD0 rereads the first ground Building, NavCom,
@@ -484,10 +493,11 @@ impl Simulation {
         reason: PerCellReason,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, FrameAdvanceError> {
         let entry = match rules {
             Some(rules) if reason == PerCellReason::Arrival => {
-                self.infantry_per_cell_engineer_entry(id, rules, registry)?
+                self.infantry_per_cell_engineer_entry(id, rules, registry, effects)?
             }
             _ => Default::default(),
         };
@@ -504,10 +514,16 @@ impl Simulation {
                     .get(id)
                     .is_some_and(|entity| entity.dock_entered_with.is_some())
             {
-                radio::transmit_to_contact(self, id, RadioMessage::RequestClearance, rules);
+                radio::transmit_to_contact(
+                    self,
+                    id,
+                    RadioMessage::RequestClearance,
+                    rules,
+                    effects,
+                );
             }
             if self.per_cell_owner_alive(id) {
-                self.foot_per_cell_process(id, reason, rules, registry);
+                self.foot_per_cell_process(id, reason, rules, registry, effects);
             }
         }
         Ok(entry.bridge_state_changed)
@@ -542,6 +558,7 @@ impl Simulation {
         reason: PerCellReason,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         if reason != PerCellReason::Arrival {
             return;
@@ -559,7 +576,7 @@ impl Simulation {
             crate::sim::world::techno_ai_cloak::uncloak_on_sensor_neighbour_after_cell_entry(
                 self, id, rules,
             );
-            self.per_cell_range_stop(id, rules, registry);
+            self.per_cell_range_stop(id, rules, registry, effects);
         }
         // `0x006F5090`'s head lets a held Temporal target go.
         self.temporal_release_if_warping(id);
@@ -580,6 +597,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(category) = self
             .substrate
@@ -604,12 +622,12 @@ impl Simulation {
         }
         match category {
             EntityCategory::Unit => {
-                self.set_unit_null_destination(id, Some(rules), registry);
+                self.set_unit_null_destination(id, Some(rules), registry, effects);
             }
             EntityCategory::Infantry => {
                 // With no head and no destination left, the next Walk
                 // Process takes its idle tail and retires the adapter.
-                self.set_infantry_null_destination(id, Some(rules), registry);
+                self.set_infantry_null_destination(id, Some(rules), registry, effects);
             }
             _ => {}
         }

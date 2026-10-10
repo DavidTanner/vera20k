@@ -4,7 +4,7 @@
 //! (`aircraft::attack_mission::exit_visit`). State 1 consumes Scenario RNG;
 //! state 3 returns a one-tick delay. States 4..9 run in the combat phase
 //! (`combat::aircraft_release`).
-use super::Simulation;
+use super::{FrameEffects, Simulation};
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::{attack_mission, enter_idle_mode_for};
@@ -36,7 +36,12 @@ impl Simulation {
     /// readiness. A refused void destination setter can retain the OLD NavCom;
     /// neither FindFireLocation's result nor Fly MoveTo's adapter bool decides
     /// whether state3 is entered. Executable corpus: aircraft_reengagement.*.
-    pub(crate) fn aircraft_reengage(&mut self, id: u64, rules: &RuleSet) -> (u8, i32) {
+    pub(crate) fn aircraft_reengage(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) -> (u8, i32) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let target = entity
             .attack_target
@@ -48,7 +53,7 @@ impl Simulation {
         let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
         let state = if target.is_some() && ammo != 0 {
             let destination = self.aircraft_find_fire_location(id, target, rules);
-            self.assign_aircraft_destination(id, destination, rules);
+            self.assign_aircraft_destination(id, destination, rules, effects);
             if self
                 .substrate
                 .entities
@@ -76,11 +81,21 @@ impl Simulation {
     ///4180A1..4182A2 after the shared entry prefix. Strafe classification wins
     /// over Fighter. Other aircraft approach their retained firing position,
     /// not a freshly substituted target cell. Corpus: aircraft_approach.*.
-    pub(crate) fn aircraft_approach(&mut self, id: u64, rules: &RuleSet) -> (u8, i32) {
-        (self.advance_aircraft_approach(id, rules), 1)
+    pub(crate) fn aircraft_approach(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) -> (u8, i32) {
+        (self.advance_aircraft_approach(id, rules, effects), 1)
     }
 
-    fn advance_aircraft_approach(&mut self, id: u64, rules: &RuleSet) -> u8 {
+    fn advance_aircraft_approach(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) -> u8 {
         let entity = self
             .substrate
             .entities
@@ -116,7 +131,7 @@ impl Simulation {
             if distance < weapon.range_leptons {
                 return 4;
             }
-            self.assign_aircraft_destination(id, Some(target.into()), rules);
+            self.assign_aircraft_destination(id, Some(target.into()), rules, effects);
         } else if object.fighter
             || !crate::sim::movement::motion_query::is_moving_now(
                 entity,
@@ -178,7 +193,7 @@ impl Simulation {
             .unwrap()
             .set(facing, self.session.binary_frame);
         if distance < 16 {
-            self.assign_aircraft_destination(id, None, rules);
+            self.assign_aircraft_destination(id, None, rules, effects);
             4
         } else {
             3
@@ -202,6 +217,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> (u8, i32) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let facts = attack_mission::ExitFacts {
@@ -224,6 +240,7 @@ impl Simulation {
                 id,
                 rules,
                 registry,
+                effects,
             },
         );
         if let Some(latch) = visit.latch
@@ -242,6 +259,7 @@ struct WorldExit<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    effects: FrameEffects<'a>,
 }
 
 impl attack_mission::ExitHost for WorldExit<'_> {
@@ -258,6 +276,7 @@ impl attack_mission::ExitHost for WorldExit<'_> {
                 self.id,
                 Some(NavTargetRef::cell(rx, ry)),
                 self.rules,
+                self.effects,
             );
         }
     }
@@ -273,6 +292,6 @@ impl attack_mission::ExitHost for WorldExit<'_> {
     }
 
     fn enter_idle_mode(&mut self) {
-        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry);
+        enter_idle_mode_for(self.sim, self.id, self.rules, self.registry, self.effects);
     }
 }

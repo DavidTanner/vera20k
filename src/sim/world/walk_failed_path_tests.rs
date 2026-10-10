@@ -39,6 +39,7 @@ fn order_walk(sim: &mut Simulation, rules: &RuleSet, id: u64, target: (u16, u16)
             crate::sim::components::NavTargetRef::cell(target.0, target.1),
             rules,
             None,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap()
     );
@@ -175,7 +176,14 @@ fn obstructed_target_beyond_close_enough_redirects_only_when_the_nearby_cell_is_
     // (EstimateZoneCost = Chebyshev), so SetDestination(cell, 1) retargets.
     order_walk(&mut sim, &rules, id, (13, 10));
     let goal = sim
-        .find_path_goal_for_answer(id, DriveCoord::cell(13, 10, 0), 6, &rules, Some(&registry))
+        .find_path_goal_for_answer(
+            id,
+            DriveCoord::cell(13, 10, 0),
+            6,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert_eq!((goal.x / 256, goal.y / 256), (12, 10));
     let e = sim.substrate.entities.get(id).unwrap();
@@ -188,7 +196,14 @@ fn obstructed_target_beyond_close_enough_redirects_only_when_the_nearby_cell_is_
     // Within CloseEnough the obstructed target is searched unchanged.
     order_walk(&mut sim, &rules, id, (12, 10));
     let goal = sim
-        .find_path_goal_for_answer(id, DriveCoord::cell(12, 10, 0), 6, &rules, Some(&registry))
+        .find_path_goal_for_answer(
+            id,
+            DriveCoord::cell(12, 10, 0),
+            6,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert_eq!((goal.x / 256, goal.y / 256), (12, 10));
 }
@@ -199,11 +214,22 @@ fn near_failure_returns_before_the_null_setter_and_guard_queue() {
     human_house(&mut sim);
     let id = engineer_at(&mut sim, &rules, (10, 10));
     order_walk(&mut sim, &rules, id, (11, 10));
-    sim.infantry_stop_driver(id, &rules, Some(&registry))
-        .unwrap();
+    sim.infantry_stop_driver(
+        id,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     // 0x4D40A6..0x4D40D4: Chebyshev 1 to a non-structural target returns.
-    sim.finish_find_path_failure(id, DriveCoord::cell(11, 10, 0), &rules, Some(&registry))
-        .unwrap();
+    sim.finish_find_path_failure(
+        id,
+        DriveCoord::cell(11, 10, 0),
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(e.mission.queued(), MissionId::NONE);
     assert_eq!(
@@ -269,8 +295,13 @@ fn receiver_records_an_impassable_current_cell() {
     }
     order_walk(&mut sim, &rules, id, (11, 10));
     let before = sim.state_hash();
-    sim.infantry_stop_driver(id, &rules, Some(&registry))
-        .unwrap();
+    sim.infantry_stop_driver(
+        id,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.infantry.as_ref().unwrap().cell_entry_blocked);
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
@@ -285,8 +316,13 @@ fn receiver_writes_the_ready_action_only_when_do_action_admits_it() {
     order_walk(&mut sim, &rules, id, (11, 10));
     // Doing -1 admits request 0 when the type carries a Ready sequence; the
     // fixture rules define no sequences, so 0x51D70F refuses before any write.
-    sim.infantry_stop_driver(id, &rules, Some(&registry))
-        .unwrap();
+    sim.infantry_stop_driver(
+        id,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    )
+    .unwrap();
     let doing = sim
         .substrate
         .entities

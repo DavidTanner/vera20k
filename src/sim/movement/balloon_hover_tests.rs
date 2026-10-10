@@ -173,7 +173,12 @@ fn balloon_approach_arm_matches_the_original() {
                 .iter()
                 .any(|call| *call == serde_json::json!(["assign_destination", true, 1]));
             assert_eq!(
-                sim.approach_balloon_target(ACTOR, &rules, None),
+                sim.approach_balloon_target(
+                    ACTOR,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                ),
                 assigned,
                 "{input}"
             );

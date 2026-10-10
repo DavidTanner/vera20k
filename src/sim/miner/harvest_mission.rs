@@ -11,6 +11,7 @@
 
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::MinerState;
@@ -26,6 +27,7 @@ pub(crate) fn mission_harvest(
     config: Option<&super::MinerConfig>,
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
+    frame_effects: FrameEffects<'_>,
 ) -> Option<i32> {
     let entity = sim.substrate.entities.get(id)?;
     if entity.dying {
@@ -38,7 +40,7 @@ pub(crate) fn mission_harvest(
             .object_type(entity.type_ref(), rules)
             .is_some_and(|object| object.resource_destination && object.resource_gatherer);
     if slave_master {
-        sim.handle_returned_slaves(id, rules);
+        sim.handle_returned_slaves(id, rules, frame_effects);
         return Some(sim.mission_rate_epilogue_for(
             rules,
             id,
@@ -50,7 +52,14 @@ pub(crate) fn mission_harvest(
     }
     let config = config?;
     let mut snap = build_miner_snapshot(sim, rules, id)?;
-    harvest_mission_step(sim, rules, config, overlay_registry, &mut snap);
+    harvest_mission_step(
+        sim,
+        rules,
+        config,
+        overlay_registry,
+        &mut snap,
+        frame_effects,
+    );
     commit_miner_snapshot(sim, &snap);
     Some(snap.dispatch_delay)
 }
@@ -61,6 +70,7 @@ fn harvest_mission_step(
     config: &super::MinerConfig,
     overlay_registry: Option<&OverlayTypeRegistry>,
     snap: &mut MinerSnapshot,
+    frame_effects: FrameEffects<'_>,
 ) {
     // Cursor sanity (debug-only, never hashed): the working cursor must have
     // decoded from the entity's handler state — pins the cursor round-trip the
@@ -77,5 +87,5 @@ fn harvest_mission_step(
         );
     }
 
-    process_miner(sim, rules, config, overlay_registry, snap);
+    process_miner(sim, rules, config, overlay_registry, snap, frame_effects);
 }

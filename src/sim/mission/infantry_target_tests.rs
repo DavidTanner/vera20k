@@ -263,7 +263,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                         sim.session.binary_frame,
                     )
                     .unwrap();
-                    sim.reset_orders_to_guard(1, rules);
+                    sim.reset_orders_to_guard(1, rules, crate::sim::world::FrameEffects::default());
                     let actor = sim.substrate.entities.get(1).unwrap();
                     assert_eq!(actor.archive_target(), None, "{name}: Guard archive");
                     assert_eq!(
@@ -304,7 +304,13 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                         sim.houses
                             .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
                     }
-                    sim.change_owner_with_rules(1, new_owner, rules, None);
+                    sim.change_owner_with_rules(
+                        1,
+                        new_owner,
+                        rules,
+                        None,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                     assert_eq!(
                         sim.substrate.entities.get(1).unwrap().owner(),
                         new_owner,

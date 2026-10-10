@@ -409,8 +409,13 @@ fn process_units(sim: &mut Simulation, rules: &RuleSet) {
             .get(id)
             .is_some_and(|e| e.category == EntityCategory::Unit)
         {
-            sim.process_ground_locomotor_one(id, Some(rules), None)
-                .expect("unit Process");
+            sim.process_ground_locomotor_one(
+                id,
+                Some(rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
+            .expect("unit Process");
         }
     }
 }
@@ -2119,7 +2124,12 @@ fn dying_corpse_break_frees_the_dock_before_its_animation_ends() {
 
     // What the damage receiver does for a unit with a death animation.
     sim.substrate.entities.get_mut(occupant).unwrap().dying = true;
-    crate::sim::radio::broadcast_break(&mut sim, occupant, None);
+    crate::sim::radio::broadcast_break(
+        &mut sim,
+        occupant,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let corpse = sim.substrate.entities.get(occupant).expect("corpse stays");
     assert!(!corpse.radio_contacts.contains(2));
@@ -2176,6 +2186,7 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
             miner_id,
             crate::sim::mission::MissionType::Move,
             Some(&rules),
+            crate::sim::world::FrameEffects::default(),
         );
 
         let entity = sim.substrate.entities.get(miner_id).unwrap();
@@ -2216,6 +2227,7 @@ fn megamission_mid_unload_abandons_the_unload_and_commences_the_order() {
         miner_id,
         crate::sim::mission::MissionType::Move,
         Some(&rules),
+        crate::sim::world::FrameEffects::default(),
     );
     assert!(!crate::sim::miner::miner_dock::has_contact(
         &sim, 2, miner_id
@@ -2620,6 +2632,7 @@ fn stop_does_not_force_guard_on_a_non_miner() {
         &Command::Stop { entity_id: 7 },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
 
     let tank = sim.substrate.entities.get(7).expect("tank present");
@@ -2665,7 +2678,14 @@ fn fill_and_return(sim: &mut Simulation, miner_id: u64) {
 /// `Find_Docking_Bay(Type->Dock, 0, wide)` as the miner's state-2 dispatch
 /// calls it.
 fn docking_bay(sim: &mut Simulation, rules: &RuleSet, miner_id: u64, wide: bool) -> Option<u64> {
-    super::miner_system::find_docking_bay(sim, rules, miner_id, wide, wide)
+    super::miner_system::find_docking_bay(
+        sim,
+        rules,
+        miner_id,
+        wide,
+        wide,
+        crate::sim::world::FrameEffects::default(),
+    )
 }
 
 /// An open 64x64 playfield: the War return's staging search
@@ -2730,6 +2750,7 @@ fn occupy_refinery(sim: &mut Simulation, refinery_sid: u64, occupant_sid: u64) {
             crate::sim::radio::RadioMessage::Hello,
             crate::sim::radio::RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         ),
         crate::sim::radio::RadioResponse::Roger,
     );
@@ -2898,6 +2919,7 @@ fn refinery_selection_keeps_already_tracked_refinery() {
             crate::sim::radio::RadioMessage::Hello,
             crate::sim::radio::RadioPayload::default(),
             None,
+            crate::sim::world::FrameEffects::default(),
         ),
         crate::sim::radio::RadioResponse::Roger,
     );
@@ -3402,7 +3424,12 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
     // Kill the refinery through the damage transaction (not a sale).
     let warhead = sim.interner.intern("KILLWH");
     let event = EntityDamageEvent::area(2, 5000, 0, miner_id, Some(owner), warhead);
-    sim.commit_noncombat_aoe_hits(&rules, None, &[event]);
+    sim.commit_noncombat_aoe_hits(
+        &rules,
+        None,
+        &[event],
+        crate::sim::world::FrameEffects::default(),
+    );
 
     assert!(
         sim.substrate
@@ -3848,7 +3875,13 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
         Some(MissionType::Harvest)
     );
 
-    sim.change_owner_with_rules(miner_id, captor, &rules, None);
+    sim.change_owner_with_rules(
+        miner_id,
+        captor,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -3905,7 +3938,13 @@ fn captured_miner_off_ore_under_a_human_house_parks_on_guard() {
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
 
-    sim.change_owner_with_rules(miner_id, captor, &rules, None);
+    sim.change_owner_with_rules(
+        miner_id,
+        captor,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -3951,7 +3990,13 @@ fn captured_miner_off_ore_under_an_ai_house_requeues_harvest() {
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
 
-    sim.change_owner_with_rules(miner_id, captor, &rules, None);
+    sim.change_owner_with_rules(
+        miner_id,
+        captor,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);
@@ -4006,7 +4051,13 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
         .unwrap()
         .mark_live_contact_with(2);
 
-    sim.change_owner_with_rules(miner_id, captor, &rules, None);
+    sim.change_owner_with_rules(
+        miner_id,
+        captor,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
     assert_eq!(miner.owner, captor);

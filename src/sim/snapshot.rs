@@ -4793,7 +4793,13 @@ mod tests {
             sim.session.binary_frame as i32,
         );
         let resources = crate::sim::runtime::SimResources::empty();
-        sim.suspend_teams_for_base_defense(owner, 1, 1800, &resources.rules);
+        sim.suspend_teams_for_base_defense(
+            owner,
+            1,
+            1800,
+            &resources.rules,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(sim.team_script_vm.team_for_member(1).is_none());
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let expected_hash = sim.state_hash();

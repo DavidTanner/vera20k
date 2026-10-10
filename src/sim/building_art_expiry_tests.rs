@@ -355,7 +355,12 @@ fn original_64_slot_expiry_controls_and_actual_sprite_frame_histories() {
             }
             for frame in row["frames"].as_array().unwrap() {
                 sim.session.binary_frame = integer(&frame["frame"]) as u32;
-                sim.visit_anim(expired, &rules, None);
+                sim.visit_anim(
+                    expired,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 let anim = sim.anim(expired).unwrap();
                 assert_eq!(
                     anim.runtime.current_frame,

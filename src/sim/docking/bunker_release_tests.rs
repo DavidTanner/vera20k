@@ -118,7 +118,7 @@ fn release_head() -> DriveCoord {
 fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed() {
     let mut sim = release_fixture();
     let pose = position_world_coord(&sim.substrate.entities.get(1).unwrap().position);
-    release_sell_destroy(&mut sim, 2);
+    release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
     let trace = take_trace();
     assert_eq!(
         trace.iter().map(|b| b.name).collect::<Vec<_>>(),
@@ -193,7 +193,12 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
 fn normal_release_clears_unit_first_and_assigns_destination_without_teleport() {
     let mut sim = release_fixture();
     let pose = position_world_coord(&sim.substrate.entities.get(1).unwrap().position);
-    release_normal(&mut sim, 2, &super::tests::rules());
+    release_normal(
+        &mut sim,
+        2,
+        &super::tests::rules(),
+        crate::sim::world::FrameEffects::default(),
+    );
     let trace = take_trace();
     assert_eq!(
         trace.iter().map(|b| b.name).collect::<Vec<_>>(),
@@ -241,7 +246,7 @@ fn force_limbo_early_return_does_not_skip_caller_speed_links_or_break() {
         .unwrap()
         .lifecycle
         .in_limbo = true;
-    release_sell_destroy(&mut sim, 2);
+    release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
     let unit = sim.substrate.entities.get(1).unwrap();
     assert!(unit.lifecycle.in_limbo, "release must not resurrect/reveal");
     assert_eq!(unit.foot_speed.applied_fraction(), SIM_ONE);
@@ -270,7 +275,7 @@ fn break_targets_slot_zero_even_when_it_is_not_the_released_unit() {
     building.radio_contacts = Contacts::with_capacity(2);
     building.radio_contacts.insert(3);
     building.radio_contacts.insert(1);
-    release_sell_destroy(&mut sim, 2);
+    release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
     assert!(
         !sim.substrate
             .entities
@@ -305,7 +310,7 @@ fn empty_slot_zero_does_not_scan_later_contacts() {
     building.radio_contacts.insert(3);
     building.radio_contacts.insert(1);
     building.radio_contacts.remove(3);
-    release_sell_destroy(&mut sim, 2);
+    release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
     assert!(
         sim.substrate
             .entities
@@ -331,9 +336,14 @@ fn nonunit_link_does_not_release_or_reset_bunker() {
         let mut sim = release_fixture();
         sim.substrate.entities.get_mut(1).unwrap().category = EntityCategory::Infantry;
         if normal {
-            release_normal(&mut sim, 2, &super::tests::rules());
+            release_normal(
+                &mut sim,
+                2,
+                &super::tests::rules(),
+                crate::sim::world::FrameEffects::default(),
+            );
         } else {
-            release_sell_destroy(&mut sim, 2);
+            release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
         }
         assert!(take_trace().is_empty());
         let unit = sim.substrate.entities.get(1).unwrap();

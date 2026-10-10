@@ -225,7 +225,11 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
             anim_state(&sim, sim.anim(bubble).unwrap()),
             row["after_bullet_uninit"]["anim"]
         );
-        sim.process_pending_delete_with(Some(&rules), None);
+        sim.process_pending_delete_with(
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(counts(&sim), row["after_bullet_drain"]["counts"]);
         assert_eq!(
             anim_state(&sim, sim.anim(bubble).unwrap()),
@@ -233,7 +237,12 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
         );
         for frame in row["anim_frames"].as_array().unwrap() {
             sim.session.binary_frame = frame["frame"].as_u64().unwrap() as u32;
-            sim.visit_anim(bubble, &rules, None);
+            sim.visit_anim(
+                bubble,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_eq!(
                 anim_state(&sim, sim.anim(bubble).unwrap()),
                 frame["anim"],
@@ -246,7 +255,11 @@ fn projectile_trailer_retail_constructor_rng_and_complete_lifetime_match_native(
                 "{name}: frame {}",
                 frame["frame"]
             );
-            sim.process_pending_delete_with(Some(&rules), None);
+            sim.process_pending_delete_with(
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         assert_eq!(counts(&sim), row["final_counts"]);
         assert_eq!(rngs(&sim), row["final_rng"], "{name}: lifecycle streams");
@@ -266,7 +279,12 @@ fn projectile_trailer_is_registered_before_terminal_logic_compaction() {
         // Existing live tail shares production ObjectAI, append and compacting
         // removal. Header corpus does not execute the complete native Logic loop;
         // its ordering rests on 55B613 / 55BAE0 instruction-level evidence.
-        sim.visit_combat_tail(bullet, &rules, None);
+        sim.visit_combat_tail(
+            bullet,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let bubble = only_bubble(&sim);
         assert_eq!(
             sim.anim(bubble).unwrap().runtime.first_ai_guard,
@@ -337,17 +355,30 @@ fn projectile_trailer_save_load_preserves_live_and_pending_cleanup_boundaries() 
             if !pending {
                 assert!(loaded.retire_non_entity_object(bullet));
             }
-            loaded.process_pending_delete_with(Some(&rules), None);
+            loaded.process_pending_delete_with(
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         for frame in row["anim_frames"].as_array().unwrap() {
             for loaded in [&mut first, &mut second] {
                 loaded.session.binary_frame = frame["frame"].as_u64().unwrap() as u32;
-                loaded.visit_anim(bubble, &rules, None);
+                loaded.visit_anim(
+                    bubble,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 assert_eq!(
                     anim_state(loaded, loaded.anim(bubble).unwrap()),
                     frame["anim"]
                 );
-                loaded.process_pending_delete_with(Some(&rules), None);
+                loaded.process_pending_delete_with(
+                    Some(&rules),
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
             }
             assert_eq!(first.state_hash(), second.state_hash());
             assert_eq!(rngs(&first), rngs(&second));

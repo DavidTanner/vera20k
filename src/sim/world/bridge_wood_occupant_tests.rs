@@ -501,6 +501,7 @@ fn retail_wood_occupants_match_native_list_lifetime_detach_and_rng() {
             let sim = &mut runtime.simulation;
             sim.clear_lifecycle_test_events_for_test();
             let mut live = LivePublication {
+                frame_effects: crate::sim::world::FrameEffects::default(),
                 sim,
                 rules: &runtime.resources.rules,
                 registry: Some(&runtime.resources.overlay_registry),
@@ -526,6 +527,7 @@ fn retail_wood_occupants_match_native_list_lifetime_detach_and_rng() {
                     59,
                     Some(&runtime.resources.rules),
                     Some(&runtime.resources.overlay_registry),
+                    crate::sim::world::FrameEffects::default(),
                 );
             }
             assert_eq!(
@@ -622,7 +624,7 @@ fn retail_wood_hut_collapse_matches_native_live_occupants_and_animation_order() 
         // and later AnimAI are separate consumers, not supplied return values.
         assert!(crate::sim::world::bridge_orchestrator::dispatch_bridge_collapse_from_hut_with_overlay_registry(
             &mut runtime.simulation, &runtime.resources.rules, hut,
-            Some(&runtime.resources.overlay_registry)));
+            Some(&runtime.resources.overlay_registry), crate::sim::world::FrameEffects::default()));
         let sim = &runtime.simulation;
         assert_state(
             sim,

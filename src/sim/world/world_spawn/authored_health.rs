@@ -68,7 +68,8 @@ impl Simulation {
     ) -> (u64, RevealOutcome) {
         let building = entity.category == EntityCategory::Structure;
         // InitManagers belongs to construction, before the map loader's stores.
-        let (id, position) = self.store_with_constructor_managers(entity, rules);
+        let (id, position) =
+            self.store_with_constructor_managers(entity, rules, super::FrameEffects::default());
         if building && let Some(rules) = rules {
             let entity = self
                 .substrate
@@ -91,8 +92,14 @@ impl Simulation {
                 strength,
             );
         }
-        let (id, outcome) =
-            self.unlimbo_constructed_parent(id, position, rules, overlay_registry, true);
+        let (id, outcome) = self.unlimbo_constructed_parent(
+            id,
+            position,
+            rules,
+            overlay_registry,
+            true,
+            super::FrameEffects::default(),
+        );
         if !building
             && matches!(outcome, RevealOutcome::Revealed { .. })
             && let Some(rules) = rules

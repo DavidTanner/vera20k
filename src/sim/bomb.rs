@@ -65,6 +65,7 @@
 //!   bomb planted by, or seen by a detector of, a player-controlled allied
 //!   campaign house. Effect: its clock stays hidden. Frequency: rare.
 
+use crate::sim::world::FrameEffects;
 use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 
@@ -503,6 +504,7 @@ impl Simulation {
         carrier: u64,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(carrier) else {
             return false;
@@ -528,8 +530,9 @@ impl Simulation {
             rules.combat_damage.ivan_damage,
             warhead,
             origin,
+            frame_effects,
         );
-        changed | self.bomb_blast_tail(&blast, warhead, rules, overlay_registry)
+        changed | self.bomb_blast_tail(&blast, warhead, rules, overlay_registry, frame_effects)
     }
 
     /// A dying carrier's bomb (`TechnoClass::ReceiveDamage` `0x0070267F`,
@@ -557,7 +560,7 @@ impl Simulation {
             origin,
         );
         effects.bridge_state_changed |=
-            self.bomb_blast_tail(&blast, warhead, rules, overlay_registry);
+            self.bomb_blast_tail(&blast, warhead, rules, overlay_registry, run.effects());
         Some((effects, pings))
     }
 
@@ -572,6 +575,7 @@ impl Simulation {
         warhead: &WarheadType,
         rules: &RuleSet,
         overlay_registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let land = crate::sim::combat::detonation_anim::land_at(self, blast.location);
         if let Some(effect) = crate::sim::combat::detonation_anim::effect(
@@ -594,7 +598,7 @@ impl Simulation {
             rules,
             (rx, ry),
             overlay_registry,
-        )
+         frame_effects,)
     }
 }
 

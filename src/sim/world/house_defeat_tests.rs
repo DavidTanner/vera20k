@@ -272,7 +272,13 @@ fn native_blowup_all_corpus() {
                 let cleg = sim
                     .spawn_object_at_height("CLEG", "house1", 2, 2 + n as u16, 0, 0, &rules)
                     .unwrap();
-                sim.temporal_initiate_warp(cleg, Some(ids[n]), &rules, None);
+                sim.temporal_initiate_warp(
+                    cleg,
+                    Some(ids[n]),
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default(),
+                );
                 assert!(sim.substrate.entities.get(ids[n]).unwrap().is_warped_out());
                 warpers.push((ids[n], cleg));
             }
@@ -285,7 +291,12 @@ fn native_blowup_all_corpus() {
         let c4 = sim.interner.intern("Super");
         let _ = super::take_blowup_trace();
 
-        sim.house_blowup_all(blown, &rules, None);
+        sim.house_blowup_all(
+            blown,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         // Native: ReceiveDamage(&damage, distance, warhead, attacker,
         // ignoreDefenses, arg6, sourceHouse), in array order.

@@ -18,6 +18,7 @@ use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::ai_unit_choice::UnitChoiceKind;
 use crate::sim::intern::InternedId;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
 /// The PRODUCE event for `type_id`: `HouseClass::Begin_Production @ 0x004FA350`.
@@ -45,7 +46,13 @@ use crate::sim::world::{SimSoundEvent, Simulation};
 /// appends it. Trigger: a second building PRODUCE before the first executes
 /// (the sidebar refuses a busy structure strip, and VERA's AI asks only while
 /// no building is queued). Effect: VERA builds both in turn. Rare.
-pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_id: &str) -> bool {
+pub(crate) fn enqueue_by_type(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    owner: &str,
+    type_id: &str,
+    effects: FrameEffects<'_>,
+) -> bool {
     let Some(obj) = rules.object(type_id) else {
         return false;
     };
@@ -94,6 +101,7 @@ pub fn enqueue_by_type(sim: &mut Simulation, rules: &RuleSet, owner: &str, type_
             rules,
             FactoryHolder::House(owner_id, category),
             type_interned,
+            effects,
         )
         .expect("validated StartProduction type must construct one Techno");
     }
@@ -137,6 +145,7 @@ pub(super) fn start_active_production(
     rules: &RuleSet,
     holder: FactoryHolder,
     type_id: InternedId,
+    effects: FrameEffects<'_>,
 ) -> Option<u64> {
     let owner_id = sim
         .production
@@ -155,7 +164,7 @@ pub(super) fn start_active_production(
         .factories
         .link_active_entity(holder, stable_id);
     if linked != Some(stable_id) {
-        let _ = sim.discard_constructed_limbo(stable_id, Some(rules));
+        let _ = sim.discard_constructed_limbo(stable_id, Some(rules), effects);
         return None;
     }
     let time_to_build = time_to_build(&time_to_build_inputs(sim, rules, owner_id, obj));
@@ -176,6 +185,7 @@ pub(super) fn settle_abandoned(
     rules: &RuleSet,
     owner_id: InternedId,
     abandoned: AbandonedObject,
+    effects: FrameEffects<'_>,
 ) {
     refund_abandoned(sim, rules, owner_id, abandoned.type_id, abandoned.balance);
     let game_mode_nonzero = sim.session.game_mode_nonzero;
@@ -196,7 +206,7 @@ pub(super) fn settle_abandoned(
         // Building43BD67 pointer expiry. Its listener timers cannot draw under
         // A8E7AC; preserve the caller's bracket through the shared destructor.
         let discarded = sim.with_object_placement_scope(|sim| {
-            sim.discard_constructed_limbo(entity_id, Some(rules))
+            sim.discard_constructed_limbo(entity_id, Some(rules), effects)
         });
         debug_assert!(
             discarded,
@@ -229,12 +239,13 @@ fn refund_abandoned(
 /// registry's `cancel_one`. An abandoned active object is refunded and
 /// destroyed ([`settle_abandoned`]), a finished building stops waiting for
 /// placement, and the next queued build starts (`0x004FAC96`).
-pub fn cancel_by_type_for_owner(
+pub(crate) fn cancel_by_type_for_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
     type_id: &str,
     all: bool,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let Some(obj) = rules.object(type_id) else {
         return false;
@@ -250,8 +261,8 @@ pub fn cancel_by_type_for_owner(
         CancelOutcome::NoMatch => return false,
         CancelOutcome::QueuedRemoved => {}
         CancelOutcome::AbandonedActive(object) => {
-            settle_abandoned(sim, rules, owner_id, object);
-            advance_after_delivery(sim, rules, owner_id, category);
+            settle_abandoned(sim, rules, owner_id, object, effects);
+            advance_after_delivery(sim, rules, owner_id, category, effects);
         }
     }
     sim.production.factories.prune_all_idle();
@@ -271,6 +282,7 @@ fn advance_after_delivery(
     rules: &RuleSet,
     owner_id: InternedId,
     category: ProductionCategory,
+    effects: FrameEffects<'_>,
 ) {
     let next_cost = sim
         .production
@@ -288,6 +300,7 @@ fn advance_after_delivery(
             rules,
             FactoryHolder::House(owner_id, category),
             type_id,
+            effects,
         )
         .expect("validated promoted production type must construct one Techno");
     }
@@ -308,10 +321,11 @@ fn discard_active_factory_entity(
     rules: &RuleSet,
     owner_id: InternedId,
     category: ProductionCategory,
+    effects: FrameEffects<'_>,
 ) {
     if let Some(stable_id) = active_entity_id(sim, owner_id, category) {
         let discarded = sim.with_object_placement_scope(|sim| {
-            sim.discard_constructed_limbo(stable_id, Some(rules))
+            sim.discard_constructed_limbo(stable_id, Some(rules), effects)
         });
         debug_assert!(
             discarded,
@@ -357,6 +371,7 @@ pub(in crate::sim) fn release_delivered_mobile(
     rules: &RuleSet,
     owner: InternedId,
     category: ProductionCategory,
+    effects: FrameEffects<'_>,
 ) {
     if let Some(object) = sim
         .production
@@ -366,7 +381,7 @@ pub(in crate::sim) fn release_delivered_mobile(
     {
         record_last_built(sim, rules, owner, object.type_id);
     }
-    advance_after_delivery(sim, rules, owner, category);
+    advance_after_delivery(sim, rules, owner, category, effects);
 }
 
 /// `HouseClass::Record_Last_Built @ 0x004FB6B0` for an object of type
@@ -401,6 +416,7 @@ pub(super) fn refund_failed_delivery(
     rules: &RuleSet,
     owner: InternedId,
     category: ProductionCategory,
+    effects: FrameEffects<'_>,
 ) {
     let type_id = sim
         .production
@@ -410,8 +426,8 @@ pub(super) fn refund_failed_delivery(
     if let Some(type_id) = type_id {
         refund_abandoned(sim, rules, owner, type_id, 0);
     }
-    discard_active_factory_entity(sim, rules, owner, category);
-    advance_after_delivery(sim, rules, owner, category);
+    discard_active_factory_entity(sim, rules, owner, category, effects);
+    advance_after_delivery(sim, rules, owner, category, effects);
 }
 
 /// Matching identity captured by a successful placement admission. The caller
@@ -429,16 +445,26 @@ impl ReadyFactoryObject {
     }
 
     /// Building Unlimbo/build-up/superweapon effects precede factory release.
-    pub(super) fn release_after_placement(self, sim: &mut Simulation, rules: &RuleSet) {
-        advance_after_delivery(sim, rules, self.owner, self.category);
+    pub(super) fn release_after_placement(
+        self,
+        sim: &mut Simulation,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
+        advance_after_delivery(sim, rules, self.owner, self.category, effects);
     }
 
     /// Primary and autofill overlays are already stamped when the constructor
     /// identity is consumed. Successor construction follows.
-    pub(super) fn consume_after_wall_stamp(self, sim: &mut Simulation, rules: &RuleSet) {
-        let _ = sim.discard_constructed_limbo(self.entity_id, Some(rules));
+    pub(super) fn consume_after_wall_stamp(
+        self,
+        sim: &mut Simulation,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
+        let _ = sim.discard_constructed_limbo(self.entity_id, Some(rules), effects);
         record_last_built(sim, rules, self.owner, self.type_id);
-        advance_after_delivery(sim, rules, self.owner, self.category);
+        advance_after_delivery(sim, rules, self.owner, self.category, effects);
     }
 }
 
@@ -499,8 +525,14 @@ pub(crate) fn complete_held_building_for_test(
         "the fixture arms one fresh factory head"
     );
     sim.production.next_enqueue_order = enqueue_order.saturating_add(1);
-    let held = start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
-        .expect("the fixture constructs its object at StartProduction");
+    let held = start_active_production(
+        sim,
+        rules,
+        FactoryHolder::House(owner, category),
+        type_id,
+        FrameEffects::default(),
+    )
+    .expect("the fixture constructs its object at StartProduction");
     assert!(sim.production.factories.test_arm_ready(owner, category));
     super::production_queue::publish_production_changes(sim, rules);
     assert!(
@@ -523,7 +555,13 @@ pub(in crate::sim) fn construct_active_factory_fixture(
     category: ProductionCategory,
     type_id: InternedId,
 ) -> Option<u64> {
-    start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
+    start_active_production(
+        sim,
+        rules,
+        FactoryHolder::House(owner, category),
+        type_id,
+        FrameEffects::default(),
+    )
 }
 
 /// Revalidate before the charge sweep at its existing frame phase: first
@@ -531,19 +569,29 @@ pub(in crate::sim) fn construct_active_factory_fixture(
 /// disposing all abandoned objects before starting any promoted ones, then
 /// the human houses' strips ([`recalculate_strips`]). A freshly abandoned
 /// factory is not charged this frame.
-pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules: &RuleSet) {
+pub(in crate::sim) fn revalidate_and_step_factories(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    effects: FrameEffects<'_>,
+) {
     let mut registry = std::mem::take(&mut sim.production.factories);
     let reval_plan = registry.plan_revalidation(sim, rules);
     let lifecycle = registry.apply_revalidation(&reval_plan);
     for (owner, abandoned) in lifecycle.abandoned {
-        settle_abandoned(sim, rules, owner, abandoned);
+        settle_abandoned(sim, rules, owner, abandoned, effects);
     }
     sim.production.factories = registry;
     for (owner, category, type_id) in lifecycle.promoted {
-        start_active_production(sim, rules, FactoryHolder::House(owner, category), type_id)
-            .expect("validated revalidation promotion must construct one Techno");
+        start_active_production(
+            sim,
+            rules,
+            FactoryHolder::House(owner, category),
+            type_id,
+            effects,
+        )
+        .expect("validated revalidation promotion must construct one Techno");
     }
-    recalculate_strips(sim, rules);
+    recalculate_strips(sim, rules, effects);
     let mut registry = std::mem::take(&mut sim.production.factories);
     registry.step_all(&mut sim.houses, sim.session.binary_frame);
     sim.production.factories = registry;
@@ -566,7 +614,7 @@ pub(in crate::sim) fn revalidate_and_step_factories(sim: &mut Simulation, rules:
 /// on a later frame; VERA decides every frame and abandons at once.
 /// Trigger: a build whose prerequisite or last factory is lost. Effect: the
 /// abandon and refund land a frame or more earlier. Frequency: occasional.
-fn recalculate_strips(sim: &mut Simulation, rules: &RuleSet) {
+fn recalculate_strips(sim: &mut Simulation, rules: &RuleSet, effects: FrameEffects<'_>) {
     let mut abandons = Vec::new();
     for (owner, category, types) in sim.production.factories.house_build_types() {
         if !sim.houses.get(&owner).is_some_and(|house| house.is_human) {
@@ -595,10 +643,10 @@ fn recalculate_strips(sim: &mut Simulation, rules: &RuleSet) {
         let owner_name = sim.interner.resolve(owner).to_string();
         let type_name = sim.interner.resolve(type_id).to_string();
         if own_factory {
-            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, false);
+            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, false, effects);
         }
         if kind_factory {
-            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, true);
+            cancel_by_type_for_owner(sim, rules, &owner_name, &type_name, true, effects);
         }
     }
 }

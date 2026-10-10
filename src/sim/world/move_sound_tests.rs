@@ -354,7 +354,11 @@ fn ordinary_uninit_then_physical_destruction_detaches_without_a_foot_hard_stop()
         assert!(sim.substrate.pending_delete.contains(&id));
         let mut expected = native_effects(original_limbo, true);
         expected.extend(native_effects(original_destructor, true));
-        sim.process_pending_delete_with(Some(&rules), None);
+        sim.process_pending_delete_with(
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(
             effects(id, &sim.sound_events, true),
             expected,
@@ -441,6 +445,7 @@ fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
                 &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
             )
             .expect("paid ordinary production frame");
         assert!(output.tick.frame_committed);

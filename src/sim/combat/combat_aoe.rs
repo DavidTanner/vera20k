@@ -4133,6 +4133,7 @@ mod tests {
                 }),
                 AreaDamageReceiver::Entity(later_parent_receiver),
             ],
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert_eq!(
@@ -4265,6 +4266,7 @@ mod tests {
                     near_center_ic_isolation_eligible: true,
                 }),
             ],
+            crate::sim::world::FrameEffects::default(),
         );
 
         assert_eq!(

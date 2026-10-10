@@ -27,6 +27,7 @@
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::MissionType;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// Every Approach visit's return (`0x00415907`, `0x00415925`, `0x00415956`).
@@ -44,17 +45,22 @@ const OVERFLY_FRAMES: i32 = 5;
 ///   (`ObjectClass::Distance_To @ 0x005F6440`, a signed `JG` at
 ///   `0x00415940`): Overfly queued and one pass taken (`0x00415942..
 ///   0x00415950`).
-pub(super) fn approach(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
+pub(super) fn approach(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    frame_effects: FrameEffects<'_>,
+) -> i32 {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return APPROACH_FRAMES;
     };
     match entity.attack_target.as_ref().map(|attack| attack.target) {
         None => {
-            sim.assign_aircraft_destination(id, None, rules);
+            sim.assign_aircraft_destination(id, None, rules, frame_effects);
             super::queue_mission(sim, id, MissionType::Retreat);
         }
         Some(target) if super::nav_com_absent(sim, id) => {
-            sim.assign_aircraft_destination(id, Some(target.into()), rules);
+            sim.assign_aircraft_destination(id, Some(target.into()), rules, frame_effects);
         }
         Some(target) => {
             if super::target_distance(sim, id, Some(target)) <= rules.general.paradrop_radius {
@@ -82,6 +88,7 @@ pub(super) fn overfly(
     id: u64,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> i32 {
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return OVERFLY_FRAMES;
@@ -93,7 +100,7 @@ pub(super) fn overfly(
         .cargo()
         .is_some_and(|cargo| cargo.count() > 0);
     let Some(target) = target.filter(|_| carrying) else {
-        give_up(sim, id, rules);
+        give_up(sim, id, rules, frame_effects);
         return OVERFLY_FRAMES;
     };
     if super::target_distance(sim, id, Some(target)) > rules.general.paradrop_radius {
@@ -108,13 +115,15 @@ pub(super) fn overfly(
         if passes_left {
             super::queue_mission(sim, id, MissionType::ParadropApproach);
         } else {
-            give_up(sim, id, rules);
+            give_up(sim, id, rules, frame_effects);
         }
         return OVERFLY_FRAMES;
     }
     let over_playfield = sim.substrate.entities.get(id).is_some_and(|plane| {
-        let location =
-            crate::sim::movement::ground_pose::object_location(plane, sim.resolved_terrain.as_ref());
+        let location = crate::sim::movement::ground_pose::object_location(
+            plane,
+            sim.resolved_terrain.as_ref(),
+        );
         crate::sim::cell_rect::cell_is_in_playfield_leptons(
             (location.x, location.y, location.z),
             sim.playfield_bounds,
@@ -122,7 +131,7 @@ pub(super) fn overfly(
         )
     });
     if over_playfield {
-        super::drop_payload::drop_payload(sim, id, rules, registry);
+        super::drop_payload::drop_payload(sim, id, rules, registry, frame_effects);
     }
     OVERFLY_FRAMES
 }
@@ -130,11 +139,11 @@ pub(super) fn overfly(
 /// Overfly's way out (`0x00415A0A..0x00415A33`): the latch cleared, no
 /// Target (vt+0x3C8(NULL)), no destination (vt+0x480(NULL, 1)) and Retreat
 /// queued.
-fn give_up(sim: &mut Simulation, id: u64, rules: &RuleSet) {
+fn give_up(sim: &mut Simulation, id: u64, rules: &RuleSet, frame_effects: FrameEffects<'_>) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         entity.mission_leaf.set_aircraft_action_latch(false);
         crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
     }
-    sim.assign_aircraft_destination(id, None, rules);
+    sim.assign_aircraft_destination(id, None, rules, frame_effects);
     super::queue_mission(sim, id, MissionType::Retreat);
 }

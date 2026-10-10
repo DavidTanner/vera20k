@@ -194,7 +194,12 @@ fn deploy_mcv_on(
     sim.playfield_bounds = Some(crate::sim::arena_fixture::OPEN_PLAYFIELD);
     prepare(&mut sim);
 
-    let applied = sim.deploy_mcv(mcv, &rules, None);
+    let applied = sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let mcv_remains = sim.substrate.entities.get(mcv).is_some();
     (applied, mcv_remains, sim.sound_events.len())
 }
@@ -208,7 +213,12 @@ fn deploy_mcv_uses_gamemd_large_foundation_origin_offset() {
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, None);
+    let applied = sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(applied, "clear ConYard footprint should deploy");
     // Deferred-delete: apply_command enqueues the consumed MCV; the end-of-tick P9
     // flush (here invoked directly) frees it. Until then it lingers resolvable-Dying.
@@ -253,7 +263,12 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
         .spawn_object("AMCV", "Americans", start.0, start.1, 128, &rules)
         .expect("spawn MCV");
     assert!(
-        sim.deploy_mcv(mcv, &rules, None),
+        sim.deploy_mcv(
+            mcv,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ),
         "clear ConYard footprint should deploy"
     );
     sim.flush_pending_delete();
@@ -311,7 +326,12 @@ fn deploy_mcv_accepts_mixed_height_clear_foundation() {
         .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, None);
+    let applied = sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         applied,
         "clear ConYard footprint should deploy even when foundation cells have mixed heights"
@@ -349,7 +369,12 @@ fn deploy_mcv_rejects_structure_in_rightmost_foundation_column() {
         .spawn_object("GAPOWR", "Soviets", 21, 22, 0, &rules)
         .expect("spawn blocker");
 
-    let applied = sim.deploy_mcv(mcv, &rules, None);
+    let applied = sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(
         !applied,
         "structure in the deployed foundation footprint must block MCV deploy"
@@ -393,7 +418,12 @@ fn deploy_mcv_waits_for_target_building_deploy_facing() {
         .spawn_object("AMCV", "Americans", 20, 22, 64, &rules)
         .expect("spawn MCV");
 
-    let applied = sim.deploy_mcv(mcv, &rules, None);
+    let applied = sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(applied, "misfaced deploy starts the facing turn");
     let entity = sim
         .substrate
@@ -443,7 +473,12 @@ Buildable=yes
         .spawn_object("AMCV", "Americans", 20, 22, 0x80, &rules)
         .expect("spawn MCV");
 
-    assert!(sim.deploy_mcv(mcv, &rules, None));
+    assert!(sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let entity = sim
         .substrate
@@ -554,7 +589,12 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
 
-    assert!(sim.deploy_mcv(mcv, &rules, None));
+    assert!(sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     let yard = deployed_type(&sim, "GACNST");
     assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
@@ -598,7 +638,12 @@ fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
         .expect("spawn MCV");
     sim.substrate.entities.get_mut(mcv).unwrap().health.current = 225;
     let deployed_at = sim.session.binary_frame;
-    assert!(sim.deploy_mcv(mcv, &rules, None));
+    assert!(sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     sim.flush_pending_delete();
     let yard = deployed_type(&sim, "GACNST").stable_id;
     let mut frames = Vec::new();
@@ -644,7 +689,12 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         let mut expected_rng = sim.scenario_rng.clone();
         let _replacement_constructor_word = expected_rng.next_u32();
 
-        assert!(sim.deploy_mcv(mcv, &rules, None));
+        assert!(sim.deploy_mcv(
+            mcv,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         assert!(deployed_type(&sim, "GACNST").building_up());
         // UnitClass::Deploy marks a computer's building AI-repairable in a
         // campaign too (`0x007397E4..0x007397F4`); Unlimbo does not there.
@@ -673,7 +723,12 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         .expect("spawn deployable miner");
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
-    assert!(sim.deploy_mcv(miner, &rules, None));
+    assert!(sim.deploy_mcv(
+        miner,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(deployed_type(&sim, "YAREFN").building_up());
     assert!(deployed_type(&sim, "YAREFN").ai_repairable);
     assert_eq!(sim.houses[&owner].base_center, None);
@@ -711,7 +766,12 @@ fn base_plan_recalc_deploy_countryless_nonempty_plan_only_reanchors_node_zero() 
     let mut expected_rng = sim.scenario_rng.clone();
     let _replacement_constructor_word = expected_rng.next_u32();
 
-    assert!(sim.deploy_mcv(mcv, &rules, None));
+    assert!(sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
     assert!(deployed_type(&sim, "GACNST").building_up());
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, Some((19, 21)));
@@ -749,7 +809,12 @@ fn base_plan_recalc_deploy_countryless_empty_plan_fails_before_removal() {
         .expect("spawn MCV");
     let rng_before = sim.scenario_rng.state();
 
-    assert!(!sim.deploy_mcv(mcv, &rules, None));
+    assert!(!sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 
     assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
     let house = &sim.houses[&owner];
@@ -781,7 +846,7 @@ fn base_plan_recalc_deploy_failures_preserve_source_rng_plan_and_centers() {
         }
         let rng_before = sim.scenario_rng.state();
 
-        assert!(!sim.deploy_mcv(mcv, rules, None));
+        assert!(!sim.deploy_mcv(mcv, rules, None, crate::sim::world::FrameEffects::default()));
         assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
@@ -1362,10 +1427,15 @@ fn walk_stop_and_pending_callback_match_original_deployment_rows() {
         let (mut sim, rules, id) = native_deploy_fixture(row);
         let untouched = (sim.main_rng.logical_state(), sim.mapgen_rng.logical_state());
         if row["input"]["kind"] == "stop" {
-            sim.walk_stop_moving(id, Some(&rules)).unwrap();
-        } else {
-            sim.infantry_pending_deploy_stop_callback(id, Some(&rules))
+            sim.walk_stop_moving(id, Some(&rules), crate::sim::world::FrameEffects::default())
                 .unwrap();
+        } else {
+            sim.infantry_pending_deploy_stop_callback(
+                id,
+                Some(&rules),
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap();
         }
         assert_native_deploy_state(&sim, id, row);
         assert_eq!(
@@ -1392,7 +1462,7 @@ fn deploy_completion_keeps_suffix_effects_when_next_action_refuses() {
     {
         let (mut sim, rules, id) = native_deploy_fixture(row);
         assert!(
-            !sim.infantry_sequencer(id, &rules),
+            !sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()),
             "deployment does not UnInit"
         );
         assert_native_deploy_state(&sim, id, row);
@@ -1445,7 +1515,9 @@ fn infantry_unload_full_original_handler_matches52_supplied_controls() {
             sim.mapgen_rng.native_state_hex(),
             row["rng_streams_before"]["mapgen"].as_str().unwrap()
         );
-        let result = sim.infantry_mission_unload(id, &rules).unwrap();
+        let result = sim
+            .infantry_mission_unload(id, &rules, crate::sim::world::FrameEffects::default())
+            .unwrap();
         assert_eq!(
             result as u32,
             row["return_eax"].as_u64().unwrap() as u32,

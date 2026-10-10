@@ -173,10 +173,22 @@ mod tests {
         assert!(sim.anim(anim).unwrap().runtime.paused);
         assert_eq!(sim.anim(anim).unwrap().runtime.current_frame, frame);
         let old_owner = sim.entities().get(id).unwrap().owner();
-        sim.change_owner_with_rules(id, old_owner, &rules, None);
+        sim.change_owner_with_rules(
+            id,
+            old_owner,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(!sim.entities().get(id).unwrap().building_has_engineer);
         let owner = sim.interner.intern("Americans");
-        sim.change_owner_with_rules(id, owner, &rules, None);
+        sim.change_owner_with_rules(
+            id,
+            owner,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert!(sim.entities().get(id).unwrap().building_has_engineer);
         assert!(sim.entities().get(id).unwrap().building_stuff_enabled);
         assert!(!sim.anim(anim).unwrap().runtime.paused);

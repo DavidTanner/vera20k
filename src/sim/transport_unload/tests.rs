@@ -405,7 +405,12 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
         .passenger_role = PassengerRole::Boarding {
         target_transport_id: transport,
     };
-    crate::sim::passenger::tick_passenger_system(&mut fx.sim, &fx.rules, None);
+    crate::sim::passenger::tick_passenger_system(
+        &mut fx.sim,
+        &fx.rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(fx.cargo_ids(transport), vec![passenger]);
     assert!(!fx.revealed(passenger));
     assert_eq!(
@@ -441,7 +446,13 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
     }));
     let frame = fx.frame();
     for _ in 0..3 {
-        super::unit_mission_unload(&mut fx.sim, &fx.rules, transport, None);
+        super::unit_mission_unload(
+            &mut fx.sim,
+            &fx.rules,
+            transport,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     assert_eq!(fx.frame(), frame);
     assert!(
@@ -1070,7 +1081,13 @@ fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
         let bfrt = fx.spawn("BFRT", 20, 20, 0x40);
         fx.board(bfrt, 1);
         setup(fx.sim.substrate.entities.get_mut(bfrt).expect("transport"));
-        let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, bfrt, None);
+        let delay = super::unit_mission_unload(
+            &mut fx.sim,
+            &fx.rules,
+            bfrt,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         (delay, handler_state(&fx, bfrt))
     };
     let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
@@ -1121,7 +1138,13 @@ fn jumpjet_transport_unload_waits_on_the_moving_byte_in_the_hold() {
             .clone()
             .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
             .with_moving_for_test(moving);
-        let delay = super::unit_mission_unload(&mut fx.sim, &fx.rules, hind, None);
+        let delay = super::unit_mission_unload(
+            &mut fx.sim,
+            &fx.rules,
+            hind,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         (delay, handler_state(&fx, hind))
     };
     let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
@@ -1389,11 +1412,18 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                     &mut fx.sim,
                     &fx.rules,
                     None,
-                    transport
+                    transport,
+                    crate::sim::world::FrameEffects::default()
                 ));
             } else {
                 assert!(matches!(
-                    super::eject_head_passenger(&mut fx.sim, &fx.rules, transport, None),
+                    super::eject_head_passenger(
+                        &mut fx.sim,
+                        &fx.rules,
+                        transport,
+                        None,
+                        crate::sim::world::FrameEffects::default()
+                    ),
                     super::EjectOutcome::Failed
                 ));
             }

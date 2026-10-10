@@ -39,6 +39,7 @@ fn constructed(control: [i32; 3], origin: i32) -> (Simulation, RuleSet, u64) {
             0,
             PlacementEvidence::EvaluateMark,
             &rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .is_some()
     );

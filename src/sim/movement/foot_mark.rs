@@ -56,6 +56,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::occupancy::{CellListInsertion, OBJECT_OCCUPATION_BIT};
 use crate::sim::pathfinding::PathGrid;
+use crate::sim::world::FrameEffects;
 #[cfg(test)]
 use crate::sim::world::LifecycleTestEvent;
 use crate::sim::world::Simulation;
@@ -128,7 +129,12 @@ impl Simulation {
     /// Techno Mark6F4A81..97 after an accepted Object Mark: read the live
     /// tether and first contact, transmit literal13 synchronously, then return
     /// to the class-specific Mark tail. No entity borrow crosses the receiver.
-    pub(crate) fn techno_mark_after_object(&mut self, id: u64, rules: Option<&RuleSet>) {
+    pub(crate) fn techno_mark_after_object(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if self
             .substrate
             .entities
@@ -140,6 +146,7 @@ impl Simulation {
                 id,
                 crate::sim::radio::RadioMessage::AnimStop,
                 rules,
+                frame_effects,
             );
         }
     }
@@ -152,6 +159,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
@@ -160,7 +168,7 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = false;
-        self.techno_mark_after_object(id, rules);
+        self.techno_mark_after_object(id, rules, frame_effects);
         self.foot_pick_up(id, rules, registry);
         true
     }
@@ -196,8 +204,9 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
-        self.foot_mark_put_observed(id, rules, registry, &mut |_, _| {})
+        self.foot_mark_put_observed(id, rules, registry, &mut |_, _| {}, frame_effects)
     }
 
     /// Mark(DOWN). `receive` runs after the list link, where AddContent's
@@ -208,6 +217,7 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
         receive: &mut impl FnMut(&mut Simulation, u64),
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
@@ -216,7 +226,7 @@ impl Simulation {
             return false;
         }
         entity.lifecycle.cell_marked = true;
-        self.techno_mark_after_object(id, rules);
+        self.techno_mark_after_object(id, rules, frame_effects);
         self.foot_place_down(id, rules, registry, receive);
         #[cfg(test)]
         self.trace_lifecycle_for_test(LifecycleTestEvent::CellMarked);

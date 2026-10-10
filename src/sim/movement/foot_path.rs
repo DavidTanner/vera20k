@@ -31,6 +31,7 @@ use crate::sim::mission::MissionId;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::concrete_effects::represented_assign_target;
 use crate::sim::pathfinding::zone_map::{ZoneGrid, ZoneQueryCell};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// AStar429F54's live Foot +1AC receiver: Infantry 0x0051BF90 or Unit
@@ -266,8 +267,9 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
-        self.run_walk_path_request(request, held, rules, registry)
+        self.run_walk_path_request(request, held, rules, registry, frame_effects)
             .map(|resumed| {
                 if resumed {
                     FootPathOutcome::Resume
@@ -286,6 +288,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FindPathResult, String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
@@ -326,8 +329,9 @@ impl Simulation {
             //4D3989..399C returns false before Mark, AStar or +500.
             return Ok(FindPathResult::Failed);
         }
-        let goal = self.find_path_admitted_goal(id, request.destination, rules, registry)?;
-        match self.search_foot_path(request, held, goal, rules, registry)? {
+        let goal =
+            self.find_path_admitted_goal(id, request.destination, rules, registry, frame_effects)?;
+        match self.search_foot_path(request, held, goal, rules, registry, frame_effects)? {
             Ok(()) => Ok(FindPathResult::Route),
             Err(refusal) => {
                 if let CoreRefusal::VeraOnly(reason) = refusal {
@@ -350,8 +354,8 @@ impl Simulation {
                     .navigation
                     .path_runtime
                     .start_movement(frame, rules.general.path_delay_ticks());
-                self.run_find_path_failed_receiver(id, rules, registry)?;
-                self.finish_find_path_failure(id, goal, rules, registry)?;
+                self.run_find_path_failed_receiver(id, rules, registry, frame_effects)?;
+                self.finish_find_path_failure(id, goal, rules, registry, frame_effects)?;
                 Ok(FindPathResult::Failed)
             }
         }
@@ -367,6 +371,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -374,9 +379,11 @@ impl Simulation {
             .get(id)
             .ok_or("retired failed-path receiver")?;
         match actor.category {
-            EntityCategory::Infantry => self.infantry_stop_driver(id, rules, registry),
+            EntityCategory::Infantry => {
+                self.infantry_stop_driver(id, rules, registry, frame_effects)
+            }
             EntityCategory::Unit | EntityCategory::Aircraft => {
-                self.locomotor_stop_moving(id, Some(rules), registry)
+                self.locomotor_stop_moving(id, Some(rules), registry, frame_effects)
             }
             EntityCategory::Structure => {
                 Err("Find_Path +0x500 receiver for this class is not represented".into())
@@ -394,13 +401,14 @@ impl Simulation {
         goal: DriveCoord,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<Result<(), CoreRefusal>, String> {
         let id = request.entity_id;
         let frame = self.session.binary_frame;
         if self.path_grid.is_none() {
             return Err("Find_Path core requires PathGrid; no native failure inferred".into());
         }
-        self.foot_mark_remove(id, Some(rules), registry);
+        self.foot_mark_remove(id, Some(rules), registry, frame_effects);
         #[cfg(test)]
         self.export_bridge_engineer_entry_inputs(id, rules, "mark0");
         let owner = request.owner();
@@ -539,7 +547,7 @@ impl Simulation {
             self.movement_pass_cache.give_back(owner, lent);
         }
         //4D3EAC restores Mark1 before inspecting the core result.
-        self.foot_mark_put(id, Some(rules), registry);
+        self.foot_mark_put(id, Some(rules), registry, frame_effects);
         if let Err(super::movement_path::MovePathFailure::Search(
             crate::sim::pathfinding::zone_search::PathSearchFailure::CellEntryUnavailable(cause),
         )) = &searched
@@ -595,6 +603,7 @@ impl Simulation {
         goal: DriveCoord,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let actor = self
             .substrate
@@ -645,13 +654,13 @@ impl Simulation {
                 }
             };
             drive_end(self, false);
-            self.leave_team(id, false, Some(rules));
+            self.leave_team(id, false, Some(rules), frame_effects);
             drive_end(self, true);
         }
         //0x4D413A: the class SetDestination(NULL, true): Infantry 0x51AA40 ->
         //Foot 0x4D94B0 -> Walk 0x75ADA0, or Unit 0x741970 -> Foot 0x4D94B0 ->
         //Drive 0x4AFE00 / Ship 0x69F510.
-        self.assign_null_destination(id, Some(rules), registry);
+        self.assign_null_destination(id, Some(rules), registry, frame_effects);
         let actor = self
             .substrate
             .entities
@@ -705,6 +714,7 @@ impl Simulation {
         destination: DriveCoord,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<DriveCoord, String> {
         let terrain = self
             .resolved_terrain
@@ -713,7 +723,7 @@ impl Simulation {
         let target = ((destination.x / 256) as i16, (destination.y / 256) as i16);
         let cell = terrain.native_cell_identity(target);
         let answer = self.foot_can_enter(id, cell, InfantryEntryArgs::REPAIR, rules, registry)?;
-        self.find_path_goal_for_answer(id, destination, answer, rules, registry)
+        self.find_path_goal_for_answer(id, destination, answer, rules, registry, frame_effects)
     }
 
     /// The redirect selection of 0x4D3A92..0x4D3E0A for an already computed
@@ -726,6 +736,7 @@ impl Simulation {
         answer: u8,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<DriveCoord, String> {
         let target = ((destination.x / 256) as i16, (destination.y / 256) as i16);
         let cell = self
@@ -783,7 +794,7 @@ impl Simulation {
                 if cost > direct + 6 {
                     return Ok(destination);
                 }
-                self.redirect_find_path_destination(id, near, rules, registry)?;
+                self.redirect_find_path_destination(id, near, rules, registry, frame_effects)?;
                 Ok(cell_centre(near))
             }
             7 => {
@@ -813,7 +824,7 @@ impl Simulation {
                 let near = self.find_path_nearby_cell(id, target, rules)?.ok_or(
                     "Find_Path code-7 redirect found no passable cell near the Building target",
                 )?;
-                self.redirect_find_path_destination(id, near, rules, registry)?;
+                self.redirect_find_path_destination(id, near, rules, registry, frame_effects)?;
                 Ok(cell_centre(near))
             }
             _ => Ok(destination),
@@ -1081,6 +1092,7 @@ impl Simulation {
         cell: (i16, i16),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<(), String> {
         let move_info = self
             .resolve_move_info(id, Some(rules))
@@ -1097,6 +1109,7 @@ impl Simulation {
                 move_info.speed,
                 rules,
                 registry,
+                frame_effects,
             )?;
             return Ok(());
         }
@@ -1105,7 +1118,7 @@ impl Simulation {
             // its same-NavCom guard and queue ownership. Reuse that owner;
             // composing only its Foot/Drive tail bypassed those decisions.
             // Native class controls: track_destination.json.
-            let _ = self.set_unit_destination(id, requested, rules, true);
+            let _ = self.set_unit_destination(id, requested, rules, true, frame_effects);
             return Ok(());
         }
         let timing = super::DestinationTiming::new(

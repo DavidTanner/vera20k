@@ -501,7 +501,8 @@ fn fixture_input(fixture: &mut Fixture, rules: &RuleSet, native: &Value) {
                     *product,
                     message,
                     RadioPayload::default(),
-                    Some(rules)
+                    Some(rules),
+                    crate::sim::world::FrameEffects::default()
                 )
                 .code(),
                 1
@@ -520,8 +521,14 @@ fn fixture_input(fixture: &mut Fixture, rules: &RuleSet, native: &Value) {
         // Import the declared post-UnitAI radio seam using the existing
         // reciprocal cleanup owner; no raw tether mutation is introduced.
         assert_eq!(
-            radio::transmit_to_contact(sim, *product, RadioMessage::RequestClearance, Some(rules))
-                .code(),
+            radio::transmit_to_contact(
+                sim,
+                *product,
+                RadioMessage::RequestClearance,
+                Some(rules),
+                crate::sim::world::FrameEffects::default()
+            )
+            .code(),
             23
         );
     }
@@ -798,7 +805,13 @@ fn original_harvester_and_weeder_primary_controls_use_shared_mission_authority()
         .unwrap();
         fixture
             .sim
-            .per_cell_process(fixture.product, PerCellReason::Arrival, Some(&rules), None)
+            .per_cell_process(
+                fixture.product,
+                PerCellReason::Arrival,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_snapshot(&fixture, &row["after"], name);
         assert_rng(&fixture.sim, &row["rng"], "after_hex", name);

@@ -50,7 +50,7 @@ impl ElectricBolts {
         &mut self,
         viewport: SurfaceLineViewport,
         palette: Option<ElectricBoltPalette>,
-        main: &mut MainRngDraws<'_>,
+        main: &mut MainRngDraws,
     ) -> &[SurfaceLine] {
         self.lines.clear();
         for bolt in self.live.iter_mut().rev() {

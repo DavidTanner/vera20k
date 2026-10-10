@@ -79,9 +79,19 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
         }
         sim.substrate.entities.insert(e);
         if aircraft {
-            sim.assign_null_destination(1, Some(&rules), None);
+            sim.assign_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         } else {
-            sim.foot_null_destination(1, Some(&rules), None);
+            sim.foot_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let e = sim.substrate.entities.get(1).unwrap();
         let (destination, head) = if input["family"] == "drive" {
@@ -696,6 +706,7 @@ fn ground_orders_preserve_the_native_unit_same_destination_noop() {
                 },
                 Some(&rules),
                 None,
+                crate::sim::world::FrameEffects::default(),
             ));
             compare(sim.substrate.entities.get(1).unwrap(), &row);
             assert_eq!(sim.rng_state(), rng);
@@ -819,13 +830,19 @@ fn unit_setters_clear_navqueue_like_the_original() {
         }
         let (mut sim, rules) = destination_fixture(input);
         if input["null"] == true {
-            assert!(sim.set_unit_null_destination(1, Some(&rules), None));
+            assert!(sim.set_unit_null_destination(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default()
+            ));
         } else {
             assert!(sim.set_unit_destination(
                 1,
                 NavTargetRef::cell(11, 10),
                 &rules,
                 input["flag"] != 0,
+                crate::sim::world::FrameEffects::default(),
             ));
         }
         compare(sim.substrate.entities.get(1).unwrap(), &row);
@@ -1178,10 +1195,22 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
             ));
         }
         let accepted = if family == "MTNK" {
-            sim.set_unit_destination(1, requested, &rules, true)
+            sim.set_unit_destination(
+                1,
+                requested,
+                &rules,
+                true,
+                crate::sim::world::FrameEffects::default(),
+            )
         } else {
-            sim.set_infantry_destination(1, requested, &rules, Some(&overlays))
-                .unwrap()
+            sim.set_infantry_destination(
+                1,
+                requested,
+                &rules,
+                Some(&overlays),
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap()
         };
         assert!(accepted, "{input}");
         for (stream, rng) in [

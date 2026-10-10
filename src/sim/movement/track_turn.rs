@@ -11,7 +11,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::MissionType;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 pub(super) fn sample(latched: &mut bool, rotating: bool) -> bool {
     let completed = *latched && !rotating;
@@ -52,6 +52,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get_mut(id) else {
@@ -78,7 +79,7 @@ impl Simulation {
         if matches!(entity.navigation.nav_com, Some(NavTargetRef::Cell { rx, ry })
             if (rx, ry) == (entity.position.rx, entity.position.ry))
         {
-            self.track_navcom_stop(id, rules);
+            self.track_navcom_stop(id, rules, effects);
             return false;
         }
         let current = super::ground_pose::position_world_coord(&entity.position);
@@ -95,7 +96,7 @@ impl Simulation {
             && !valid
             && destination.is_some_and(|dest| dest == current)
         {
-            self.track_navcom_stop(id, rules);
+            self.track_navcom_stop(id, rules, effects);
             return false;
         }
         let rotating = entity.body_facing.is_rotating(frame);
@@ -117,6 +118,7 @@ impl Simulation {
                 super::per_cell::PerCellReason::TurnComplete,
                 rules,
                 registry,
+                effects,
             );
             // Native reloads these three bytes after the synchronous callback.
             if !self.substrate.entities.get(id).is_some_and(|e| {
@@ -125,14 +127,19 @@ impl Simulation {
                 return false;
             }
         }
-        self.track_movement_gates(id, rules)
+        self.track_movement_gates(id, rules, effects)
     }
 
     /// Drive4B08D1..4B0A69 / Ship69FF98..6A0131: the outer Process gates
     /// between the turn observation and fresh Process_Movement. True admits
     /// Process_Movement (4B0A79 / 6A0142); false is the Process tail, which
     /// skips both Process_Movement and Process_Track.
-    fn track_movement_gates(&mut self, id: u64, rules: Option<&RuleSet>) -> bool {
+    fn track_movement_gates(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
+    ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
@@ -196,7 +203,7 @@ impl Simulation {
             // Unrepresented precheck inputs (no zone topology or bounds in a
             // component fixture) admit Process_Movement unchanged.
             if let Ok(false) = self.foot_path_zone_precheck(id, destination, rules) {
-                self.track_zone_drop(id, rules);
+                self.track_zone_drop(id, rules, effects);
                 return false;
             }
         }

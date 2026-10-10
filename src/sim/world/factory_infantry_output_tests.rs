@@ -238,7 +238,12 @@ fn ground_command_fixture(
         .expect("observed retail actor enters the supplied original clear ground");
     // Retain the observed subcell Location without leaving a competing raw
     // occupation projection. These setup calls are outside the comparison.
-    assert!(sim.foot_mark_remove(id, Some(&rules), Some(&registry)));
+    assert!(sim.foot_mark_remove(
+        id,
+        Some(&rules),
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
+    ));
     ground_pose::foot_set_location(
         &mut sim.substrate.entities,
         id,
@@ -246,7 +251,12 @@ fn ground_command_fixture(
         Some(&rules),
         &sim.interner,
     );
-    assert!(sim.foot_mark_put(id, Some(&rules), Some(&registry)));
+    assert!(sim.foot_mark_put(
+        id,
+        Some(&rules),
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
+    ));
     if unit && state["target"] != 0 {
         // Recreate the observed admitted GAPOWR TarCom prior. The owner label
         // maps its native pointer identity; it supplies no acquisition history.
@@ -1035,7 +1045,15 @@ pub(crate) fn check_initialized_ground_reissues(names: &[&str], produce: GroundC
                     .find(|boundary| boundary["label"] == "actual_GI_DoAction_Down")
                     .unwrap();
                 assert_eq!(down["args"], json!([5, 1, 0]));
-                let _ = sim.infantry_do_action(id, 5, true, &rules).unwrap();
+                let _ = sim
+                    .infantry_do_action(
+                        id,
+                        5,
+                        true,
+                        &rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
+                    .unwrap();
                 assert_ground_command_fields(&sim, id, row, &down["after"]);
             }
             sim.session.binary_frame = dispatch["before"]["frame"]
@@ -1067,7 +1085,8 @@ pub(crate) fn check_initialized_ground_reissues(names: &[&str], produce: GroundC
                 "Americans",
                 &decoded.payload,
                 Some(&rules),
-                Some(&registry)
+                Some(&registry),
+                crate::sim::world::FrameEffects::default()
             ));
             assert_ground_command_fields(&sim, id, row, &dispatch["after"]);
         }
@@ -1107,7 +1126,8 @@ pub(crate) fn check_initialized_unit_paid_reissues(produce: GroundCommandProduce
                 "Americans",
                 &Command::Stop { entity_id: id },
                 Some(&rules),
-                Some(&registry)
+                Some(&registry),
+                crate::sim::world::FrameEffects::default()
             ));
             assert_ground_command_fields(&sim, id, row, &stop["after"]);
         }
@@ -1129,7 +1149,8 @@ pub(crate) fn check_initialized_unit_paid_reissues(produce: GroundCommandProduce
             "Americans",
             &decoded.payload,
             Some(&rules),
-            Some(&registry)
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
         ));
         let dispatch = boundaries
             .iter()
@@ -1180,7 +1201,8 @@ fn initialized_unit_delayed_move_reaches_original_class_refusal() {
                 queue: false
             },
             Some(&rules),
-            Some(&registry)
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
         ),
         "the void class refusal is still an executed Move"
     );
@@ -1227,7 +1249,8 @@ fn initialized_gi_move_clears_original_archive_before_destination() {
             queue: false
         },
         Some(&rules),
-        Some(&registry)
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
     ));
     assert_ground_command_fields(&sim, id, row, &row["final"]);
 }
@@ -1270,7 +1293,15 @@ fn initialized_gi_retained_priors_and_stop_reissues_match_original_returns() {
                 .find(|boundary| boundary["label"] == "actual_GI_DoAction_Down")
                 .unwrap();
             assert_eq!(down["args"], json!([5, 1, 0]));
-            let _ = sim.infantry_do_action(id, 5, true, &rules).unwrap();
+            let _ = sim
+                .infantry_do_action(
+                    id,
+                    5,
+                    true,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
+                .unwrap();
             assert_ground_command_fields(&sim, id, row, &down["after"]);
         }
         if name == "paid_head_Stop_B" {
@@ -1278,8 +1309,13 @@ fn initialized_gi_retained_priors_and_stop_reissues_match_original_returns() {
                 .iter()
                 .find(|boundary| boundary["label"] == "actual_GI_Stop")
                 .unwrap();
-            sim.infantry_stop_driver(id, &rules, Some(&registry))
-                .unwrap();
+            sim.infantry_stop_driver(
+                id,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            )
+            .unwrap();
             assert_ground_command_fields(&sim, id, row, &stop["after"]);
         }
         let input = row["inputs"].as_array().unwrap().last().unwrap();
@@ -1298,7 +1334,8 @@ fn initialized_gi_retained_priors_and_stop_reissues_match_original_returns() {
                 queue: false
             },
             Some(&rules),
-            Some(&registry)
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
         ));
         assert_ground_command_fields(&sim, id, row, &row["final"]);
     }
@@ -1353,6 +1390,7 @@ fn initialized_gi_findpath_redirects_match_original_class_returns() {
                 answer,
                 &rules,
                 Some(&registry),
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         let native_near = calls
@@ -1489,6 +1527,7 @@ fn initialized_gi_non_deployer_input_reaches_original_class_refusal() {
         },
         Some(&rules),
         Some(&registry),
+        crate::sim::world::FrameEffects::default(),
     ));
     assert_ground_command_fields(&sim, id, row, &row["final"]);
 }
@@ -1520,7 +1559,13 @@ fn initialized_gi_deploy_class_contexts_match_original_returns() {
             ground_command_cell_reference(&call["before"], call["args"][0].as_u64().unwrap())
                 .unwrap();
         let _ = sim
-            .set_infantry_destination(id, requested, &rules, Some(&registry))
+            .set_infantry_destination(
+                id,
+                requested,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_ground_command_fields(&sim, id, row, &call["after"]);
     }
@@ -1855,6 +1900,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                     TICK_MS,
                     super::TickLane::Ordinary,
                     None,
+                    crate::sim::world::FrameEffects::default(),
                 )
                 .expect("the ordinary app frame completes");
             let admitted = output.take_admitted_commands();

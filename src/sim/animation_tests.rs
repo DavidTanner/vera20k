@@ -875,7 +875,16 @@ fn infantry_action_fixture(
         .unwrap()
         .lifecycle
         .in_limbo = false;
-    assert!(sim.infantry_do_action(id, 0, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            0,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     (sim, rules, id)
 }
 
@@ -931,11 +940,11 @@ fn assert_infantry_pose(
 fn infantry_walk_action_uses_retained_locomotor_motion() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     sim.substrate.entities.get_mut(id).unwrap().movement_target = Some(make_movement_target());
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
 }
 
@@ -947,7 +956,7 @@ fn infantry_walk_action_uses_retained_locomotor_motion() {
 fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.mission_leaf.install_infantry_water_state_fixture(1);
@@ -968,14 +977,14 @@ fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
 fn infantry_stopped_walk_returns_to_ready_through_class_action() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(3);
     set_infantry_walk_motion(&mut sim, id, false);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 }
 
@@ -983,7 +992,7 @@ fn infantry_stopped_walk_returns_to_ready_through_class_action() {
 fn infantry_walk_stage_uses_absolute_frames_and_presentation_leaves_it_alone() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_eq!(
         sim.substrate
             .entities
@@ -1033,7 +1042,16 @@ fn infantry_walk_stage_uses_absolute_frames_and_presentation_leaves_it_alone() {
 #[test]
 fn presentation_preserves_infantry_fire_action_latch_and_signed_stage() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
-    assert!(sim.infantry_do_action(id, 4, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            4,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.attack_target = Some(AttackTarget::new(999));
     actor.mission_leaf.set_foot_firing_sequence(1);
@@ -1062,13 +1080,22 @@ fn gsi_05_07_idle_completion_snaps_current_hint_before_ready_dispatch() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
     sim.session.binary_frame = 77;
     sim.substrate.entities.get_mut(id).unwrap().body_facing = FacingClass::new(0, 4);
-    assert!(sim.infantry_do_action(id, 9, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            9,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(15);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
     let body = sim.substrate.entities.get(id).unwrap().body_facing;
     assert_eq!(body.destination(), 0x8000);
@@ -1082,13 +1109,22 @@ fn gsi_05_07_unhinted_completion_preserves_body_facing() {
     let (mut sim, rules, id) = infantry_action_fixture(None);
     sim.session.binary_frame = 91;
     sim.substrate.entities.get_mut(id).unwrap().body_facing = FacingClass::new(0x2000, 4);
-    assert!(sim.infantry_do_action(id, 9, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            9,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(15);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
     let body = sim.substrate.entities.get(id).unwrap().body_facing;
     assert_eq!(body.destination(), 0x2000);
@@ -1106,15 +1142,33 @@ fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
         .as_mut()
         .unwrap()
         .is_prone = true;
-    assert!(sim.infantry_do_action(id, 2, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            2,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
     set_infantry_walk_motion(&mut sim, id, true);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 6, SequenceKind::Crawl, 0);
     set_infantry_walk_motion(&mut sim, id, false);
-    sim.infantry_movement_actions(id, &rules, None);
+    sim.infantry_movement_actions(id, &rules, None, crate::sim::world::FrameEffects::default());
     assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
-    assert!(sim.infantry_do_action(id, 8, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            8,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     assert_infantry_pose(&sim, id, 8, SequenceKind::FireProne, 0);
     assert!(
         sim.substrate
@@ -1131,7 +1185,16 @@ fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
 #[test]
 fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
-    assert!(sim.infantry_do_action(id, 5, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            5,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     assert!(
         sim.substrate
             .entities
@@ -1142,23 +1205,41 @@ fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
             .unwrap()
             .is_prone
     );
-    assert!(!sim.infantry_do_action(id, 3, false, &rules).unwrap());
+    assert!(
+        !sim.infantry_do_action(
+            id,
+            3,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(1);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 5, SequenceKind::Down, 1);
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(2);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 2, SequenceKind::Prone, 0);
 
-    assert!(sim.infantry_do_action(id, 7, false, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            7,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     assert!(
         !sim.substrate
             .entities
@@ -1169,27 +1250,45 @@ fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
             .unwrap()
             .is_prone
     );
-    assert!(!sim.infantry_do_action(id, 3, false, &rules).unwrap());
+    assert!(
+        !sim.infantry_do_action(
+            id,
+            3,
+            false,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(1);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 7, SequenceKind::Up, 1);
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(2);
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 0, SequenceKind::Stand, 0);
 }
 
 #[test]
 fn presentation_skips_dying_infantry_without_changing_its_stage_or_action() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
-    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            11,
+            true,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.dying = true;
     actor.health.current = 0;
@@ -1209,24 +1308,46 @@ fn presentation_skips_dying_infantry_without_changing_its_stage_or_action() {
 #[test]
 fn completed_infantry_death_is_removed_by_the_class_sequencer() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
-    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            11,
+            true,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.dying = true;
     actor.health.current = 0;
     actor.set_native_stage_value(15);
-    assert!(sim.infantry_sequencer(id, &rules));
+    assert!(sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     let retired = sim.substrate.entities.get(id).unwrap();
     assert!(!retired.lifecycle.object_alive);
     assert!(retired.lifecycle.in_limbo);
     assert!(sim.substrate.pending_delete.contains(&id));
-    sim.process_pending_delete_with(Some(&rules), None);
+    sim.process_pending_delete_with(
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(sim.substrate.entities.get(id).is_none());
 }
 
 #[test]
 fn infantry_death_finishes_at_its_sequence_count_and_not_one_frame_early() {
     let (mut sim, rules, id) = infantry_action_fixture(Some("S"));
-    assert!(sim.infantry_do_action(id, 11, true, &rules).unwrap());
+    assert!(
+        sim.infantry_do_action(
+            id,
+            11,
+            true,
+            &rules,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+    );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.dying = true;
     actor.health.current = 0;
@@ -1246,19 +1367,23 @@ fn infantry_death_finishes_at_its_sequence_count_and_not_one_frame_early() {
         (11, 14, "E1", 15),
         "the supplied death pose and the bound action record must agree",
     );
-    assert!(!sim.infantry_sequencer(id, &rules));
+    assert!(!sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     assert_infantry_pose(&sim, id, 11, SequenceKind::Die1, 14);
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .set_native_stage_value(15);
-    assert!(sim.infantry_sequencer(id, &rules));
+    assert!(sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
     let retired = sim.substrate.entities.get(id).unwrap();
     assert!(!retired.lifecycle.object_alive);
     assert!(retired.lifecycle.in_limbo);
     assert!(sim.substrate.pending_delete.contains(&id));
-    sim.process_pending_delete_with(Some(&rules), None);
+    sim.process_pending_delete_with(
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert!(sim.substrate.entities.get(id).is_none());
 }
 

@@ -211,9 +211,14 @@ fn building_crew_keeps_distinct_native_caller_placement_and_rng() {
         request: (SimFixed::from_num(128), SimFixed::from_num(164)),
         caller_places_first: true,
     };
-    assert!(
-        sim.with_object_placement_scope(|sim| sim.unlimbo_crew(&rules, id, unlimbo, None, None))
-    );
+    assert!(sim.with_object_placement_scope(|sim| sim.unlimbo_crew(
+        &rules,
+        id,
+        unlimbo,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default()
+    )));
     let entity = sim.substrate.entities.get(id).unwrap();
     let foot = row["events"]
         .as_array()
@@ -330,7 +335,13 @@ fn a_captured_building_remembers_it() {
     sim.substrate.entities.get_mut(id).unwrap().repairing = true;
     sim.sound_events.clear();
     let russians = sim.interner.intern("Russians");
-    sim.change_owner_with_rules(id, russians, &rules, None);
+    sim.change_owner_with_rules(
+        id,
+        russians,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let building = sim.substrate.entities.get(id).unwrap();
     assert!(building.has_been_captured);
     assert!(!building.repairing);
@@ -356,9 +367,16 @@ fn phase_b_interleaves_each_cells_roll_with_its_mark() {
         let before = sim.substrate.entities.keys_sorted();
         let mut replay: SimRng = sim.scenario_rng.clone();
         let mut marks = Vec::new();
-        sim.spawn_building_survivors(&rules, None, yard, false, |world, cell| {
-            marks.push((cell, world.scenario_rng.state()));
-        });
+        sim.spawn_building_survivors(
+            &rules,
+            None,
+            yard,
+            false,
+            |world, cell| {
+                marks.push((cell, world.scenario_rng.state()));
+            },
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let mut expected_marks = Vec::new();
         let mut expected = Vec::new();
@@ -416,9 +434,16 @@ fn a_captured_yard_rolls_one_in_nine_without_the_engineer_draw() {
         .has_been_captured = true;
     let mut replay = sim.scenario_rng.clone();
     let mut marks = Vec::new();
-    sim.spawn_building_survivors(&rules, None, yard, false, |world, cell| {
-        marks.push((cell, world.scenario_rng.state()));
-    });
+    sim.spawn_building_survivors(
+        &rules,
+        None,
+        yard,
+        false,
+        |world, cell| {
+            marks.push((cell, world.scenario_rng.state()));
+        },
+        crate::sim::world::FrameEffects::default(),
+    );
     let mut expected_marks = Vec::new();
     let mut owed = 3;
     for cell in foundation_cells(10, 10, "3x3") {
@@ -444,9 +469,14 @@ fn a_building_owing_no_survivor_draws_and_marks_nothing() {
     let allied = spawn(&mut sim, &rules, "GAPOWR", "Americans", 30, 10);
     for (id, no_survivor) in [(neutral, false), (uncrewed, false), (allied, true)] {
         let before = sim.scenario_rng.state();
-        sim.spawn_building_survivors(&rules, None, id, no_survivor, |_, cell| {
-            panic!("no mark expected at {cell:?}")
-        });
+        sim.spawn_building_survivors(
+            &rules,
+            None,
+            id,
+            no_survivor,
+            |_, cell| panic!("no mark expected at {cell:?}"),
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.scenario_rng.state(), before);
     }
 }
@@ -473,9 +503,16 @@ fn survivors_of_a_c4_charged_building_attack_an_enemy_planter() {
             let before = sim.substrate.entities.keys_sorted();
             let mut replay = sim.scenario_rng.clone();
             let mut marks = Vec::new();
-            sim.spawn_building_survivors(&rules, None, plant, false, |world, cell| {
-                marks.push((cell, world.scenario_rng.state()));
-            });
+            sim.spawn_building_survivors(
+                &rules,
+                None,
+                plant,
+                false,
+                |world, cell| {
+                    marks.push((cell, world.scenario_rng.state()));
+                },
+                crate::sim::world::FrameEffects::default(),
+            );
             let mut expected_marks = Vec::new();
             let mut owed = 5;
             for cell in foundation_cells(10, 10, "3x3") {
@@ -519,7 +556,14 @@ fn a_human_owners_survivors_move() {
         let mut sim = sim_with_houses(seed);
         let plant = spawn(&mut sim, &rules, "GACNST", "AlliedHuman", 10, 10);
         let before = sim.substrate.entities.keys_sorted();
-        sim.spawn_building_survivors(&rules, None, plant, false, |_, _| {});
+        sim.spawn_building_survivors(
+            &rules,
+            None,
+            plant,
+            false,
+            |_, _| {},
+            crate::sim::world::FrameEffects::default(),
+        );
         for id in new_ids(&sim, &before) {
             assert_eq!(queued(&sim, id), MissionId::from_known(MissionType::Move));
             moved += 1;
@@ -570,9 +614,16 @@ fn a_bio_reactor_releases_its_absorbed_infantry_before_its_crew() {
     let absorbed = load_absorbed(&mut sim, &rules, reactor, 2);
     let mut replay = sim.scenario_rng.clone();
     let mut marks = Vec::new();
-    sim.spawn_building_survivors(&rules, None, reactor, false, |world, cell| {
-        marks.push((cell, world.scenario_rng.state()));
-    });
+    sim.spawn_building_survivors(
+        &rules,
+        None,
+        reactor,
+        false,
+        |world, cell| {
+            marks.push((cell, world.scenario_rng.state()));
+        },
+        crate::sim::world::FrameEffects::default(),
+    );
 
     for _ in &absorbed {
         let _overwritten_row = replay.next_range_u32(4);
@@ -616,9 +667,14 @@ fn no_survivor_uninits_the_absorbed_infantry() {
     let reactor = spawn(&mut sim, &rules, "YAPOWR", "Americans", 10, 10);
     let absorbed = load_absorbed(&mut sim, &rules, reactor, 2);
     let mut replay = sim.scenario_rng.clone();
-    sim.spawn_building_survivors(&rules, None, reactor, true, |_, cell| {
-        panic!("no mark expected at {cell:?}")
-    });
+    sim.spawn_building_survivors(
+        &rules,
+        None,
+        reactor,
+        true,
+        |_, cell| panic!("no mark expected at {cell:?}"),
+        crate::sim::world::FrameEffects::default(),
+    );
     for _ in &absorbed {
         let _overwritten_row = replay.next_range_u32(4);
     }
@@ -648,10 +704,22 @@ fn a_crewed_vehicle_rolls_crew_escape_then_places_its_crewman() {
         ] {
             let mut sim = sim_with_houses(seed);
             let mcv = spawn(&mut sim, &rules, "AMCV", owner, 10, 10);
-            sim.foot_mark_remove(mcv, Some(&rules), None);
+            sim.foot_mark_remove(
+                mcv,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let before = sim.substrate.entities.keys_sorted();
             let mut replay = sim.scenario_rng.clone();
-            sim.spawn_vehicle_crew(&rules, None, mcv, false, false);
+            sim.spawn_vehicle_crew(
+                &rules,
+                None,
+                mcv,
+                false,
+                false,
+                crate::sim::world::FrameEffects::default(),
+            );
 
             let escaped = replay.next_range_u32_inclusive(0, 0x7fff_fffe) < 0x4000_0000;
             let health = escaped.then(|| {
@@ -710,10 +778,22 @@ fn a_crewman_leaving_a_bridge_deck_keeps_the_vehicle_coordinate() {
             unit.position.sub_x = sub_x;
             unit.position.sub_y = sub_y;
         }
-        sim.foot_mark_remove(mcv, Some(&rules), None);
+        sim.foot_mark_remove(
+            mcv,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let before = sim.substrate.entities.keys_sorted();
         let mut replay = sim.scenario_rng.clone();
-        sim.spawn_vehicle_crew(&rules, None, mcv, false, false);
+        sim.spawn_vehicle_crew(
+            &rules,
+            None,
+            mcv,
+            false,
+            false,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         let escapes = replay.next_range_u32_inclusive(0, 0x7fff_fffe) < 0x4000_0000;
         if escapes {
@@ -748,9 +828,21 @@ fn prevent_escape_and_passenger_capacity_skip_the_crew_draw() {
     let mcv = spawn(&mut sim, &rules, "AMCV", "Americans", 10, 10);
     let ifv = spawn(&mut sim, &rules, "IFV", "Americans", 20, 10);
     for (id, prevent) in [(mcv, true), (ifv, false)] {
-        sim.foot_mark_remove(id, Some(&rules), None);
+        sim.foot_mark_remove(
+            id,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let before = sim.scenario_rng.state();
-        sim.spawn_vehicle_crew(&rules, None, id, prevent, false);
+        sim.spawn_vehicle_crew(
+            &rules,
+            None,
+            id,
+            prevent,
+            false,
+            crate::sim::world::FrameEffects::default(),
+        );
         assert_eq!(sim.scenario_rng.state(), before);
     }
 }
@@ -770,7 +862,12 @@ fn kill_with(
     let warhead = sim.interner.intern(warhead);
     let hit =
         EntityDamageEvent::direct_receiver(id, 100_000, 0, RAD_NO_ATTACKER, None, warhead, flags);
-    sim.commit_noncombat_aoe_hits(rules, registry, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        rules,
+        registry,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 }
 
 const ORDINARY: ReceiverCallFlags = ReceiverCallFlags {
@@ -972,7 +1069,12 @@ fn kill_by(
         .get(attacker)
         .map(|entity| entity.owner());
     let hit = EntityDamageEvent::direct_receiver(id, 100_000, 0, attacker, house, warhead, flags);
-    sim.commit_noncombat_aoe_hits(rules, None, &[hit]);
+    sim.commit_noncombat_aoe_hits(
+        rules,
+        None,
+        &[hit],
+        crate::sim::world::FrameEffects::default(),
+    );
 }
 
 fn cargo_len(sim: &Simulation, transport: u64) -> usize {
@@ -1504,7 +1606,12 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
     }
     let guard = keep_undefeated(sim, resources, loads[0].2);
     sim.resolve_type_handles(rules);
-    crate::sim::passenger::tick_passenger_system(sim, rules, None);
+    crate::sim::passenger::tick_passenger_system(
+        sim,
+        rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     for (kind, transport, _, gis) in &loads {
         assert_eq!(cargo_len(sim, *transport), gis.len(), "{kind} boarded");
     }

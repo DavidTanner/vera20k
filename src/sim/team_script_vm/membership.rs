@@ -50,6 +50,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::movement::ground_pose::position_world_xy;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::{TeamMember, TeamRules, member_type_identity, script_action_at};
@@ -218,12 +219,13 @@ impl Simulation {
         constrained: bool,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(slot) = self.team_can_add(team_id, entity_id, constrained, rules) else {
             return false;
         };
         if let Some(old_team) = self.team_script_vm.member_team.get(&entity_id).copied() {
-            self.team_remove_member(old_team, entity_id, false, Some(rules));
+            self.team_remove_member(old_team, entity_id, false, Some(rules), frame_effects);
         }
         let vm = &mut self.team_script_vm;
         let recruitable = vm
@@ -275,6 +277,7 @@ impl Simulation {
         entity_id: u64,
         no_idle: bool,
         rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if self.team_script_vm.member_team.get(&entity_id) != Some(&team_id) {
             return;
@@ -316,7 +319,7 @@ impl Simulation {
             && !no_idle
             && let Some(rules) = rules
         {
-            crate::sim::world::enter_idle_mode(self, entity_id, rules, None);
+            crate::sim::world::enter_idle_mode(self, entity_id, rules, None, frame_effects);
         }
         if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
             if !other_initiated && let Some(head) = team.members.first_mut() {
@@ -343,16 +346,27 @@ impl Simulation {
 
     /// Remove `entity_id` from whatever team it is in; the object side's
     /// `if (Team) Team->Remove_Member(this, -1, no_idle)`.
-    pub(crate) fn leave_team(&mut self, entity_id: u64, no_idle: bool, rules: Option<&RuleSet>) {
+    pub(crate) fn leave_team(
+        &mut self,
+        entity_id: u64,
+        no_idle: bool,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         if let Some(team_id) = self.team_script_vm.member_team.get(&entity_id).copied() {
-            self.team_remove_member(team_id, entity_id, no_idle, rules);
+            self.team_remove_member(team_id, entity_id, no_idle, rules, frame_effects);
         }
     }
 
     /// Remove every member of team `team_id`, head first, as the destructor
     /// and the base-defense suspension do (`while (Member)
     /// Remove_Member(Member, -1, 0)`).
-    fn team_remove_all_members(&mut self, team_id: u64, rules: &RuleSet) {
+    fn team_remove_all_members(
+        &mut self,
+        team_id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         while let Some(head) = self
             .team_script_vm
             .teams
@@ -360,7 +374,7 @@ impl Simulation {
             .and_then(|team| team.members.first())
             .map(|member| member.id)
         {
-            self.team_remove_member(team_id, head, false, Some(rules));
+            self.team_remove_member(team_id, head, false, Some(rules), frame_effects);
             // The member index and the lists change together, so the head
             // left; a stale head would otherwise stop this loop.
             let vm = &mut self.team_script_vm;
@@ -392,6 +406,7 @@ impl Simulation {
         slot: usize,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let vm = &self.team_script_vm;
         let Some(team) = vm.teams.get(&team_id) else {
@@ -437,7 +452,7 @@ impl Simulation {
             return false;
         };
         self.team_member_clear_target(winner, rules);
-        self.team_add_member(team_id, winner, false, rules, registry);
+        self.team_add_member(team_id, winner, false, rules, registry, frame_effects);
         true
     }
 
@@ -446,11 +461,16 @@ impl Simulation {
     /// outcome, then every member leaves, head first, and the team is gone.
     /// The house's and TeamType's live-team counts (`+0x566C`, `+0xDC`) are
     /// counted from the team list.
-    pub(crate) fn destroy_team(&mut self, team_id: u64, rules: &RuleSet) {
+    pub(crate) fn destroy_team(
+        &mut self,
+        team_id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let team_rules = TeamRules::new(&rules.general, self.session.game_mode_nonzero);
         self.team_script_vm
             .record_trigger_outcome(team_id, &team_rules);
-        self.team_remove_all_members(team_id, rules);
+        self.team_remove_all_members(team_id, rules, frame_effects);
         self.team_script_vm.teams.remove(&team_id);
         self.team_script_vm.forget_team_to_rejoin(team_id);
     }
@@ -466,6 +486,7 @@ impl Simulation {
         priority: i32,
         duration: i32,
         rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
     ) {
         let current_frame = self.session.binary_frame as i32;
         let vm = &self.team_script_vm;
@@ -482,7 +503,7 @@ impl Simulation {
             .map(|team| team.id)
             .collect();
         for team_id in suspended {
-            self.team_remove_all_members(team_id, rules);
+            self.team_remove_all_members(team_id, rules, frame_effects);
             if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
                 team.just_altered = true;
                 team.altered = true;

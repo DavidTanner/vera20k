@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 pub mod contacts;
 pub mod receive;
 pub use contacts::Contacts;
-pub use receive::receive_radio;
+pub(crate) use receive::receive_radio;
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 #[cfg(test)]
 use crate::sim::world::LifecycleTestEvent;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 #[cfg(test)]
 use std::cell::RefCell;
@@ -101,8 +101,13 @@ pub(crate) fn take_transmit_log() -> Vec<TransmitRecord> {
 /// before dispatch so mutations made by an earlier receiver are visible to the
 /// remaining ascending-slot walk, matching `Broadcast_Radio_ToAll @ 0x0065ACE0`.
 /// No entity borrow is held across [`transmit`].
-pub(crate) fn broadcast_break(sim: &mut Simulation, sender_sid: u64, rules: Option<&RuleSet>) {
-    broadcast(sim, sender_sid, RadioMessage::Break, rules);
+pub(crate) fn broadcast_break(
+    sim: &mut Simulation,
+    sender_sid: u64,
+    rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
+) {
+    broadcast(sim, sender_sid, RadioMessage::Break, rules, effects);
 }
 
 /// Radio65ACE0, shared by landing24/takeoff25 and teardown3. Receivers may
@@ -112,6 +117,7 @@ pub(crate) fn broadcast(
     sender_sid: u64,
     message: RadioMessage,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) {
     let capacity = sim
         .substrate
@@ -148,6 +154,7 @@ pub(crate) fn broadcast(
                 message,
                 RadioPayload::default(),
                 rules,
+                effects,
             );
         }
     }
@@ -159,13 +166,16 @@ pub(crate) fn broadcast(
 /// unchanged. The receiver only ever sees an RTTI-filtered (Techno) sender
 /// (`As_Techno @ 0x0040DD70`). `rules` reaches the type-aware receivers; a
 /// caller without it gets their rules-free answers.
-pub fn transmit(
+/// The borrowed frame effects follow synchronous nested dispatch and are
+/// never retained in contacts or the wire payload.
+pub(crate) fn transmit(
     sim: &mut Simulation,
     sender_sid: u64,
     target_sid: u64,
     msg: RadioMessage,
     payload: RadioPayload,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     #[cfg(test)]
     let log_index = TRANSMIT_LOG.with(|log| {
@@ -180,9 +190,13 @@ pub fn transmit(
     });
     let filtered = as_techno(sim, sender_sid);
     let reply = match msg {
-        RadioMessage::Hello => transmit_hello(sim, sender_sid, target_sid, filtered, rules),
-        RadioMessage::Break => transmit_over_out(sim, sender_sid, target_sid, filtered, rules),
-        _ => receive_radio(sim, target_sid, filtered, msg, payload, rules),
+        RadioMessage::Hello => {
+            transmit_hello(sim, sender_sid, target_sid, filtered, rules, effects)
+        }
+        RadioMessage::Break => {
+            transmit_over_out(sim, sender_sid, target_sid, filtered, rules, effects)
+        }
+        _ => receive_radio(sim, target_sid, filtered, msg, payload, rules, effects),
     };
     #[cfg(test)]
     TRANSMIT_LOG.with(|log| {
@@ -200,6 +214,7 @@ pub(crate) fn transmit_to_contact(
     sender_sid: u64,
     msg: RadioMessage,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(target_sid) = sim
         .substrate
@@ -216,6 +231,7 @@ pub(crate) fn transmit_to_contact(
         msg,
         RadioPayload::default(),
         rules,
+        effects,
     )
 }
 
@@ -242,6 +258,7 @@ fn transmit_hello(
     target_sid: u64,
     filtered: Option<u64>,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     let Some(sender) = sim.substrate.entities.get(sender_sid) else {
         return RadioResponse::Negatory;
@@ -260,6 +277,7 @@ fn transmit_hello(
                     RadioMessage::Break,
                     RadioPayload::default(),
                     rules,
+                    effects,
                 );
             }
             0
@@ -272,6 +290,7 @@ fn transmit_hello(
         RadioMessage::Hello,
         RadioPayload::default(),
         rules,
+        effects,
     );
     if response != RadioResponse::Roger {
         return RadioResponse::Negatory;
@@ -290,6 +309,7 @@ fn transmit_over_out(
     target_sid: u64,
     filtered: Option<u64>,
     rules: Option<&RuleSet>,
+    effects: FrameEffects<'_>,
 ) -> RadioResponse {
     if let Some(sender) = sim.substrate.entities.get_mut(sender_sid) {
         while sender.radio_contacts.remove(target_sid).is_some() {}
@@ -310,6 +330,7 @@ fn transmit_over_out(
         RadioMessage::Break,
         RadioPayload::default(),
         rules,
+        effects,
     )
 }
 

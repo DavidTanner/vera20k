@@ -11,6 +11,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::BuildingUp;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::production_tech::{
@@ -150,12 +151,13 @@ pub fn cycle_active_producer_for_owner_category(
 /// One HouseClass::Place_Production4FB0E0 owner. A building PLACE uses
 /// its clicked type/cell; mobile type_index=-1 resolves the current category
 /// head when the queued event executes, not the object held when Strip issued it.
-pub fn place_production_with_overlays(
+pub(crate) fn place_production_with_overlays(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
     request: ProductionPlacement<'_>,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> bool {
     let (type_id, (rx, ry)) = match request {
         ProductionPlacement::Building { type_id, cell } => (type_id, cell),
@@ -202,6 +204,7 @@ pub fn place_production_with_overlays(
                 producer,
                 entity_id,
                 overlay_registry,
+                effects,
             );
             let accepted = exit == BuildingExit::Placed
                 || exit == BuildingExit::TryLater
@@ -235,11 +238,15 @@ pub fn place_production_with_overlays(
                             ),
                         });
                 }
-                super::factory_lifecycle::release_delivered_mobile(sim, rules, owner_id, category);
+                super::factory_lifecycle::release_delivered_mobile(
+                    sim, rules, owner_id, category, effects,
+                );
             } else {
                 // Exit0 or Exit1 with producer+524zero: refund the actually
                 // charged complete object, destroy it and start the queued head.
-                super::factory_lifecycle::refund_failed_delivery(sim, rules, owner_id, category);
+                super::factory_lifecycle::refund_failed_delivery(
+                    sim, rules, owner_id, category, effects,
+                );
             }
             return accepted;
         }
@@ -278,7 +285,7 @@ pub fn place_production_with_overlays(
         // Wall placement consumes the factory-created BuildingClass into
         // overlay state; the constructor identity is destroyed, never
         // reconstructed at placement.
-        held.consume_after_wall_stamp(sim, rules);
+        held.consume_after_wall_stamp(sim, rules, effects);
         return true;
     }
     let foundation_str: String = rules
@@ -307,6 +314,7 @@ pub fn place_production_with_overlays(
         crate::sim::radio::RadioMessage::Hello,
         crate::sim::radio::RadioPayload::default(),
         Some(rules),
+        effects,
     );
     // Event::Execute4C70E1..4C710B passes an admitted PLACE straight to
     // House4FB0E0. Its placement refusal occurs after HELLO4FB1F1, and
@@ -317,6 +325,7 @@ pub fn place_production_with_overlays(
             yard,
             crate::sim::radio::RadioMessage::Break,
             Some(rules),
+            effects,
         );
         return false;
     }
@@ -328,6 +337,7 @@ pub fn place_production_with_overlays(
         z,
         crate::sim::world::PlacementEvidence::EvaluateMark,
         rules,
+        effects,
     ) else {
         // The failed placement reaches the same4FB4A6 FirstContact teardown;
         // its retained limbo object remains in the house factory for retry.
@@ -336,12 +346,13 @@ pub fn place_production_with_overlays(
             yard,
             crate::sim::radio::RadioMessage::Break,
             Some(rules),
+            effects,
         );
         return false;
     };
     // `0x004452FA`/`0x004FB252`: a placed building's slave manager (a Slave
     // Miner refinery's) takes the hand-off once its Unlimbo succeeds.
-    sim.slave_manager_hand_off(new_sid, rules);
+    sim.slave_manager_hand_off(new_sid, rules, effects);
     // Log screen position for debugging placement alignment.
     if let Some(ge) = sim.substrate.entities.get(new_sid) {
         let (fw, fh) = foundation_dimensions(&foundation_str);
@@ -378,7 +389,7 @@ pub fn place_production_with_overlays(
     // Refresh superweapon grants — newly placed building may provide a SW.
     crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
 
-    held.release_after_placement(sim, rules);
+    held.release_after_placement(sim, rules, effects);
     crate::sim::radio::transmit(
         sim,
         new_sid,
@@ -386,6 +397,7 @@ pub fn place_production_with_overlays(
         crate::sim::radio::RadioMessage::DockArrived,
         crate::sim::radio::RadioPayload::default(),
         Some(rules),
+        effects,
     );
     // `0x004FB2CC..0x004FB314`: BuildingSlam follows every successful
     // Unlimbo, before the yard's FirstContact BREAK, whatever the release.
@@ -396,6 +408,7 @@ pub fn place_production_with_overlays(
         yard,
         crate::sim::radio::RadioMessage::Break,
         Some(rules),
+        effects,
     );
     // Original4FB4B7 records the successful build after FirstContact BREAK,
     // not during CompletedProduction4FB2A1 or its C message4FB2AD.

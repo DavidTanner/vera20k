@@ -28,7 +28,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{CellObjectMember, RawCellKey};
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 /// CellClass+0x140 bit tested beside `0x400` by both the overlay and the
 /// terrain arms: a high bridge over the cell.
@@ -199,6 +199,7 @@ pub(crate) fn flush_for_placement(
     ty: &ObjectType,
     origin: (i16, i16),
     house: InternedId,
+    effects: FrameEffects<'_>,
 ) -> Flush {
     if origin == (0, 0) {
         return Flush::Clear;
@@ -252,7 +253,7 @@ pub(crate) fn flush_for_placement(
         {
             continue;
         }
-        if let Err(cause) = sim.scatter_cell_contacts(cell, false, true, rules, registry) {
+        if let Err(cause) = sim.scatter_cell_contacts(cell, false, true, rules, registry, effects) {
             log::debug!("site cell {cell:?} did not scatter: {cause}");
         }
     }

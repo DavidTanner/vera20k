@@ -241,7 +241,14 @@ mod tests {
             };
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if source == "initial" {
-                    sim.grand_opening(id, false, true, rules, None);
+                    sim.grand_opening(
+                        id,
+                        false,
+                        true,
+                        rules,
+                        None,
+                        crate::sim::world::FrameEffects::default(),
+                    );
                 } else {
                     sim.update_building_storage_anims(id, rules);
                 }

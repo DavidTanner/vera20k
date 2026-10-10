@@ -7,6 +7,7 @@ use crate::map::cell_index::NativeCellIdentity;
 use crate::sim::bridge_state::damage_dispatch::{self, CellFields, CellReader, DamageHost};
 use crate::sim::bridge_state::publication::CellCoord;
 use crate::sim::bridge_state::ramp_repair::{Family, HutCells};
+use crate::sim::world::FrameEffects;
 
 /// The live cell reads behind a driver selection and the CABHUT fallback's
 /// anchor search.
@@ -99,6 +100,7 @@ pub(super) struct BridgeDamageDrivers<'a> {
     registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
     /// A driver collapsed a span.
     pub(super) collapsed: bool,
+    frame_effects: FrameEffects<'a>,
 }
 
 impl<'a> BridgeDamageDrivers<'a> {
@@ -106,12 +108,14 @@ impl<'a> BridgeDamageDrivers<'a> {
         sim: &'a mut Simulation,
         rules: &'a RuleSet,
         registry: Option<&'a crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'a>,
     ) -> Self {
         Self {
             sim,
             rules,
             registry,
             collapsed: false,
+            frame_effects,
         }
     }
 
@@ -141,12 +145,26 @@ impl<'a> BridgeDamageDrivers<'a> {
             DispatchPath::HighDirect | DispatchPath::HighStateMachine => Family::High,
         };
         let result = if path.is_state_machine() {
-            live_publication::run_state_machine(self.sim, self.rules, self.registry, input, family)
+            live_publication::run_state_machine(
+                self.sim,
+                self.rules,
+                self.registry,
+                input,
+                family,
+                self.frame_effects,
+            )
         } else {
-            live_publication::damage_ordinary(self.sim, self.rules, self.registry, input, family)
-                .unwrap_or_else(|error| {
-                    panic!("ordinary {family:?} bridge publication at {input:?}: {error}")
-                })
+            live_publication::damage_ordinary(
+                self.sim,
+                self.rules,
+                self.registry,
+                input,
+                family,
+                self.frame_effects,
+            )
+            .unwrap_or_else(|error| {
+                panic!("ordinary {family:?} bridge publication at {input:?}: {error}")
+            })
         };
         self.collapsed |= result.collapsed;
         result.returned
@@ -214,6 +232,7 @@ impl DamageHost for LiveDamage<'_> {
             ry as u16,
             Some(rules),
             self.drivers.registry,
+            self.drivers.frame_effects,
         );
     }
 
@@ -234,6 +253,7 @@ pub(super) fn run(
     strength: i32,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     if sim.resolved_terrain.is_none() || sim.bridge_state.is_none() {
         return false;
@@ -246,7 +266,7 @@ pub(super) fn run(
             .unwrap()
             .native_cell_identity((event.rx as i16, event.ry as i16));
         let mut host = LiveDamage {
-            drivers: BridgeDamageDrivers::new(sim, rules, registry),
+            drivers: BridgeDamageDrivers::new(sim, rules, registry, frame_effects),
             event,
             strength,
         };

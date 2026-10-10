@@ -41,6 +41,7 @@ fn prior_building(sim: &mut Simulation, rules: &RuleSet, name: &str, x: u16, y: 
             0,
             PlacementEvidence::EvaluateMark,
             rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .is_some()
     );
@@ -98,6 +99,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
             RadioMessage::Hello,
             RadioPayload::default(),
             Some(rules),
+            crate::sim::world::FrameEffects::default(),
         );
     }
     sim.substrate
@@ -113,8 +115,15 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
             RadioMessage::DockArrived,
             RadioPayload::default(),
             Some(rules),
+            crate::sim::world::FrameEffects::default(),
         );
-        transmit_to_contact(&mut sim, yard, RadioMessage::Break, Some(rules));
+        transmit_to_contact(
+            &mut sim,
+            yard,
+            RadioMessage::Break,
+            Some(rules),
+            crate::sim::world::FrameEffects::default(),
+        );
     }
     (sim, id)
 }
@@ -434,14 +443,24 @@ fn stock_opening_matches_original_building_and_same_pass_anim_visits() {
             let (_, draws) = trace_draws(|| {
                 sim.for_each_live_object(|sim, stable_id| {
                     if sim.anim(stable_id).is_some() {
-                        sim.visit_anim(stable_id, &rules, None);
+                        sim.visit_anim(
+                            stable_id,
+                            &rules,
+                            None,
+                            crate::sim::world::FrameEffects::default(),
+                        );
                     } else {
                         // Execute the same bounded join as the native corpus.
                         // Its header/mission/body slices exclude damage fires,
                         // Techno common AI, repair and factory AI. Full object
                         // integration is checked by construction_tests and the
                         // separate normal-match production capture.
-                        sim.visit_building_operational(stable_id, &rules, None);
+                        sim.visit_building_operational(
+                            stable_id,
+                            &rules,
+                            None,
+                            crate::sim::world::FrameEffects::default(),
+                        );
                         update_animation(sim, stable_id, Some(&rules));
                         ready_commence(sim, stable_id, true);
                         dispatch(

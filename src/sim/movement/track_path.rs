@@ -57,6 +57,7 @@ use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::block_index::HeldBlockSets;
 use crate::sim::movement::locomotor::MovementLayer;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::fixed_math::SimFixed;
@@ -160,6 +161,7 @@ impl Simulation {
         held: Option<&mut HeldBlockSets>,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
         let rules = rules.ok_or("Drive/Ship path request requires rules")?;
         let id = request.entity_id;
@@ -172,8 +174,8 @@ impl Simulation {
             .navigation
             .path_runtime
             .start_movement(frame, rules.general.path_delay_ticks());
-        let found = self.foot_find_path(request, held, rules, registry)?;
-        self.continue_track_path_request(id, found, rules, registry)
+        let found = self.foot_find_path(request, held, rules, registry, frame_effects)?;
+        self.continue_track_path_request(id, found, rules, registry, frame_effects)
     }
 
     /// The continuation after `Find_Path` returned (0x4B28A8 / 0x6A1EF8);
@@ -184,6 +186,7 @@ impl Simulation {
         found: super::foot_path::FindPathResult,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
         use super::foot_path::FindPathResult;
         //4B28B3..4B28C7 / 6A1F03..6A1F17: a vanished Foot sets the out byte.
@@ -191,8 +194,12 @@ impl Simulation {
             return Ok(FootPathOutcome::Deleted);
         }
         let outcome = match found {
-            FindPathResult::Route => self.finish_found_track_path(id, rules, registry)?,
-            FindPathResult::Failed => self.finish_failed_track_path(id, rules, registry)?,
+            FindPathResult::Route => {
+                self.finish_found_track_path(id, rules, registry, frame_effects)?
+            }
+            FindPathResult::Failed => {
+                self.finish_failed_track_path(id, rules, registry, frame_effects)?
+            }
         };
         if outcome == FootPathOutcome::Returned {
             self.retire_idle_track_adapter(id);
@@ -206,6 +213,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
         let actor = self
             .substrate
@@ -227,7 +235,8 @@ impl Simulation {
         let location = ground_pose::position_world_coord(&actor.position);
         let current = super::foot_path::coord_cell(location);
         let next = (i32::from(current.0) + dx, i32::from(current.1) + dy);
-        let stop = self.answer_track_ahead_cell(id, next, direction, rules, registry)?;
+        let stop =
+            self.answer_track_ahead_cell(id, next, direction, rules, registry, frame_effects)?;
         if stop {
             return Ok(FootPathOutcome::Returned);
         }
@@ -248,13 +257,14 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
         let destination = self.substrate.entities.get(id).and_then(track_destination);
         //4B28CD / 6A1F1D: the zone precheck on the LIVE destination, which the
         //Unit receiver may already have cleared (Cell(0,0) refuses).
         let probe = destination.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         if !self.foot_path_zone_precheck(id, probe, rules)? {
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, frame_effects);
             return Ok(FootPathOutcome::Returned);
         }
         //4B28F5..4B2917: a null destination returns.
@@ -278,14 +288,14 @@ impl Simulation {
             && matches!(mission, Some(MissionType::Move | MissionType::AreaGuard))
         {
             //4B29AF..4B2A44: clear the head, then stop or take the waypoint.
-            if self.stop_or_take_next_waypoint(id, rules) {
+            if self.stop_or_take_next_waypoint(id, rules, frame_effects) {
                 return Ok(FootPathOutcome::Returned);
             }
             //4B2A06..4B2A11: a dead Foot returns before the tail.
             if !self.track_owner_alive(id) {
                 return Ok(FootPathOutcome::Returned);
             }
-            return self.finish_track_path_tail(id, rules, registry);
+            return self.finish_track_path_tail(id, rules, registry, frame_effects);
         }
         //4B2A47..4B2B17 / 6A2097..: the cell ahead of the body facing.
         let frame = self.session.binary_frame;
@@ -293,7 +303,7 @@ impl Simulation {
         let current = super::foot_path::coord_cell(location);
         let (dx, dy) = DIRECTION_DELTAS[usize::from(octant)];
         let ahead = (i32::from(current.0) + dx, i32::from(current.1) + dy);
-        if self.answer_track_ahead_cell(id, ahead, octant, rules, registry)? {
+        if self.answer_track_ahead_cell(id, ahead, octant, rules, registry, frame_effects)? {
             return Ok(FootPathOutcome::Returned);
         }
         //4B2DC5..4B2DD9 / 6A2415..: spend one retry, else give up.
@@ -304,10 +314,10 @@ impl Simulation {
             .ok_or("retired Drive/Ship path owner")?;
         if actor.navigation.path_runtime.retries_left > 0 {
             actor.navigation.path_runtime.retries_left -= 1;
-            return self.finish_track_path_tail(id, rules, registry);
+            return self.finish_track_path_tail(id, rules, registry, frame_effects);
         }
         //4B2DDE..4B2E30: the exhausted ladder.
-        if self.stop_or_take_next_waypoint(id, rules) {
+        if self.stop_or_take_next_waypoint(id, rules, frame_effects) {
             return Ok(FootPathOutcome::Returned);
         }
         //4B2E36..4B2E70 / 6A2486..6A24C0: a dead Foot returns;
@@ -323,7 +333,7 @@ impl Simulation {
             .navigation
             .path_runtime
             .clear_scold_latch();
-        self.finish_track_path_tail(id, rules, registry)
+        self.finish_track_path_tail(id, rules, registry, frame_effects)
     }
 
     /// Whether the Foot can fire at its TarCom (vt+0x3AC, TechnoClass::
@@ -369,6 +379,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if self.foot_can_fire_at_target(id, rules, registry) != Some(false) {
             return;
@@ -377,7 +388,7 @@ impl Simulation {
             actor.mark_stopped_cannot_fire();
         }
         if let Some((team_id, _)) = self.team_script_vm.team_for_member(id) {
-            self.team_scan_limit(team_id, rules, registry);
+            self.team_scan_limit(team_id, rules, registry, frame_effects);
         }
         let _ = self.assign_target_represented(id, None, Some(rules));
     }
@@ -389,6 +400,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<FootPathOutcome, String> {
         let actor = self
             .substrate
@@ -396,7 +408,7 @@ impl Simulation {
             .get(id)
             .ok_or("retired Drive/Ship path owner")?;
         if !super::motion_query::is_moving(actor).unwrap_or(false) {
-            self.drop_unfireable_target(id, rules, registry);
+            self.drop_unfireable_target(id, rules, registry, frame_effects);
         }
         let actor = self
             .substrate
@@ -427,6 +439,7 @@ impl Simulation {
         direction: u8,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
             cell,
@@ -470,7 +483,7 @@ impl Simulation {
                 );
                 Ok(false)
             }
-            6 => self.answer_track_ally_cell(id, cell, rules, registry),
+            6 => self.answer_track_ally_cell(id, cell, rules, registry, frame_effects),
             _ => Ok(false),
         }
     }
@@ -486,6 +499,7 @@ impl Simulation {
         cell: (i32, i32),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let terrain = self
             .resolved_terrain
@@ -536,11 +550,17 @@ impl Simulation {
         ) < rules.general.close_enough;
         if close && actor.radio_contacts.is_empty() && self.track_stop_band(location, destination) {
             //4B2CDD..4B2D65: clear the head, then stop or take the waypoint.
-            self.stop_or_take_next_waypoint(id, rules);
+            self.stop_or_take_next_waypoint(id, rules, frame_effects);
             return Ok(true);
         }
         //4B2D68..4B2DC0: the forced scatter of the refused cell.
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)?;
+        self.scatter_blocked_track_cell(
+            id,
+            (cell.0 as i16, cell.1 as i16),
+            rules,
+            registry,
+            frame_effects,
+        )?;
         Ok(false)
     }
 
@@ -548,40 +568,55 @@ impl Simulation {
     /// SetDestination(NULL, 1), else Foot 0x4DF0D0 (NavCom only) then the
     /// Unit idle entry (+0x484 = 0x738970), whose AL the caller may return.
     /// Returns that AL (false after the NULL setter).
-    pub(super) fn stop_or_take_next_waypoint(&mut self, id: u64, rules: &RuleSet) -> bool {
+    pub(super) fn stop_or_take_next_waypoint(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) -> bool {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return false;
         };
         clear_track_head(actor);
         if actor.navigation.nav_queue.is_empty() {
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, frame_effects);
             return false;
         }
         super::navcom::foot_stop_moving(actor);
-        self.unit_enter_idle_mode(id, Some(rules), false)
+        self.unit_enter_idle_mode(id, Some(rules), false, frame_effects)
     }
 
     /// The outer Process stop at a same-cell Cell NavCom (0x4B066C..0x4B06D2)
     /// or a Guard exact destination (0x4B06D5..0x4B0772), Ship twins
     /// 0x69FD13 / 0x69FD7F: NavQueue empty -> SetDestination(NULL, 1), else
     /// Foot 0x4DF0D0 then the Unit idle entry (+0x484). No head write.
-    pub(super) fn track_navcom_stop(&mut self, id: u64, rules: Option<&RuleSet>) {
+    pub(super) fn track_navcom_stop(
+        &mut self,
+        id: u64,
+        rules: Option<&RuleSet>,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
         };
         if actor.navigation.nav_queue.is_empty() {
-            self.set_unit_null_destination(id, rules, None);
+            self.set_unit_null_destination(id, rules, None, frame_effects);
         } else {
             super::navcom::foot_stop_moving(actor);
-            self.unit_enter_idle_mode(id, rules, false);
+            self.unit_enter_idle_mode(id, rules, false, frame_effects);
         }
         self.retire_idle_track_adapter(id);
     }
 
     /// The outer Process zone drop (0x4B09EC..0x4B0A68 / 0x6A00B5..0x6A0131):
     /// clear the head, then the shared stop/waypoint pair.
-    pub(super) fn track_zone_drop(&mut self, id: u64, rules: &RuleSet) {
-        self.stop_or_take_next_waypoint(id, rules);
+    pub(super) fn track_zone_drop(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
+        self.stop_or_take_next_waypoint(id, rules, frame_effects);
         self.retire_idle_track_adapter(id);
     }
 
@@ -653,6 +688,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(actor) = self.substrate.entities.get(id) else {
             return;
@@ -668,7 +704,7 @@ impl Simulation {
         if let (true, Some(rules), LocomotorKind::Walk | LocomotorKind::Hover) =
             (actor.navigation.pending_arrival_clear, rules, kind)
         {
-            self.finish_setter_destination(id, rules, registry);
+            self.finish_setter_destination(id, rules, registry, frame_effects);
             return;
         }
         if !actor.navigation.pending_arrival_clear
@@ -708,7 +744,15 @@ impl Simulation {
             super::movement_commands::schedule_track_process(actor, cell(destination), speed);
         } else if let Some((target, coord)) = nav {
             if class {
-                self.finish_class_destination(id, kind, cell(coord), speed, rules, registry);
+                self.finish_class_destination(
+                    id,
+                    kind,
+                    cell(coord),
+                    speed,
+                    rules,
+                    registry,
+                    frame_effects,
+                );
                 return;
             }
             let object = (!matches!(target, NavTargetRef::Cell { .. })).then_some((target, coord));
@@ -725,7 +769,15 @@ impl Simulation {
         {
             actor.navigation.nav_queue.remove(0);
             if class {
-                self.finish_class_destination(id, kind, (rx, ry), speed, rules, registry);
+                self.finish_class_destination(
+                    id,
+                    kind,
+                    (rx, ry),
+                    speed,
+                    rules,
+                    registry,
+                    frame_effects,
+                );
                 return;
             }
             super::navcom::set_destination_internal_cell(
@@ -737,7 +789,7 @@ impl Simulation {
             timing.accept(actor);
             super::movement_commands::schedule_track_process(actor, (rx, ry), speed);
         } else {
-            self.assign_null_destination(id, rules, registry);
+            self.assign_null_destination(id, rules, registry, frame_effects);
             return;
         }
     }
@@ -759,6 +811,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(actor) = self.substrate.entities.get_mut(id) else {
             return;
@@ -795,9 +848,9 @@ impl Simulation {
             super::navcom::foot_stop_moving(actor);
         }
         if category == EntityCategory::Unit {
-            self.set_unit_destination(id, requested, rules, true);
+            self.set_unit_destination(id, requested, rules, true, frame_effects);
         } else {
-            self.set_infantry_destination(id, requested, rules, registry)
+            self.set_infantry_destination(id, requested, rules, registry, frame_effects)
                 .expect("checked Infantry destination inputs");
         }
     }
@@ -812,14 +865,15 @@ impl Simulation {
         speed: SimFixed,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             super::navcom::foot_stop_moving(actor);
         }
         if kind == LocomotorKind::Teleport {
-            self.teleport_destination(id, cell, rules, registry);
+            self.teleport_destination(id, cell, rules, registry, frame_effects);
         } else {
-            self.issue_air_cell_destination(id, cell, speed, rules);
+            self.issue_air_cell_destination(id, cell, speed, rules, frame_effects);
         }
     }
 
@@ -850,22 +904,25 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(category) = self.substrate.entities.get(id).map(|actor| actor.category) else {
             return;
         };
         match category {
             EntityCategory::Unit => {
-                self.set_unit_null_destination(id, rules, registry);
+                self.set_unit_null_destination(id, rules, registry, frame_effects);
             }
             EntityCategory::Infantry => {
-                if self.set_infantry_null_destination(id, rules, registry)
+                if self.set_infantry_null_destination(id, rules, registry, frame_effects)
                     && let Some(actor) = self.substrate.entities.get_mut(id)
                 {
                     super::retain_committed_movement(actor);
                 }
             }
-            EntityCategory::Aircraft => self.foot_null_destination(id, rules, registry),
+            EntityCategory::Aircraft => {
+                self.foot_null_destination(id, rules, registry, frame_effects)
+            }
             EntityCategory::Structure => self.set_building_destination(id, None, rules),
         }
     }
@@ -928,6 +985,7 @@ impl Simulation {
         requested: NavTargetRef,
         rules: &RuleSet,
         clear_queue: bool,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
@@ -1037,6 +1095,7 @@ impl Simulation {
                             id,
                             crate::sim::radio::RadioMessage::Break,
                             Some(rules),
+                            frame_effects,
                         );
                     }
                     destination = None;
@@ -1047,6 +1106,7 @@ impl Simulation {
                     crate::sim::radio::RadioMessage::CanDock,
                     crate::sim::radio::RadioPayload::default(),
                     Some(rules),
+                    frame_effects,
                 ) != crate::sim::radio::RadioResponse::Roger
                 {
                     crate::sim::radio::transmit_to_contact(
@@ -1054,6 +1114,7 @@ impl Simulation {
                         id,
                         crate::sim::radio::RadioMessage::Break,
                         Some(rules),
+                        frame_effects,
                     );
                     if let Some(unit) = self.substrate.entities.get_mut(id) {
                         unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
@@ -1087,6 +1148,7 @@ impl Simulation {
                 crate::sim::radio::RadioMessage::Hello,
                 crate::sim::radio::RadioPayload::default(),
                 Some(rules),
+                frame_effects,
             ) == crate::sim::radio::RadioResponse::Roger
             {
                 if crate::sim::radio::transmit_to_contact(
@@ -1094,6 +1156,7 @@ impl Simulation {
                     id,
                     crate::sim::radio::RadioMessage::CanDock,
                     Some(rules),
+                    frame_effects,
                 ) != crate::sim::radio::RadioResponse::Roger
                 {
                     crate::sim::radio::transmit_to_contact(
@@ -1101,6 +1164,7 @@ impl Simulation {
                         id,
                         crate::sim::radio::RadioMessage::Break,
                         Some(rules),
+                        frame_effects,
                     );
                     destination = None;
                 } else {
@@ -1115,7 +1179,7 @@ impl Simulation {
                 let _ = self.unit_teleporter_arm(id, None, rules);
             }
             self.unit_destination_power_on(id, Some(rules));
-            self.foot_null_destination(id, Some(rules), None);
+            self.foot_null_destination(id, Some(rules), None, frame_effects);
             if let Some(actor) = self.substrate.entities.get_mut(id) {
                 super::retain_committed_movement(actor);
             }
@@ -1205,7 +1269,7 @@ impl Simulation {
                     let coord = coord.expect("accepted Move_To captures target +4C");
                     let cell =
                         requested_cell.unwrap_or(((coord.x / 256) as u16, (coord.y / 256) as u16));
-                    self.teleport_move_to(id, cell, rules, info.is_harvester, None)
+                    self.teleport_move_to(id, cell, rules, info.is_harvester, None, frame_effects)
                         .unwrap_or_else(|error| {
                             log::debug!("Unit Teleport MoveTo {id}: {error}");
                             false
@@ -1429,11 +1493,12 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if rules.is_some_and(|rules| self.balloon_hover_keeps_nav_com(id, rules)) {
             return false;
         }
-        self.unit_null_destination_past_balloon_arm(id, rules, registry)
+        self.unit_null_destination_past_balloon_arm(id, rules, registry, frame_effects)
     }
 
     /// [`Self::set_unit_null_destination`] from its NavCom guard (0x741A80)
@@ -1446,6 +1511,7 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
@@ -1491,7 +1557,7 @@ impl Simulation {
         }
         actor.navigation.nav_queue.clear();
         self.unit_destination_power_on(id, rules);
-        self.foot_null_destination(id, rules, registry);
+        self.foot_null_destination(id, rules, registry, frame_effects);
         // The scheduling adapter keeps only the committed head step: the
         // locomotor Stop keeps the head, so the running track still finishes,
         // and its terminal then retires the adapter.

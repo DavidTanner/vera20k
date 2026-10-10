@@ -11,7 +11,8 @@ use super::PassengerRole;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::world::{
-    PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation, UninitContext,
+    FrameEffects, PlacementEvidence, RevealOutcome, RevealPosition, RevealRequest, Simulation,
+    UninitContext,
 };
 use crate::util::lepton;
 
@@ -47,6 +48,7 @@ pub(crate) fn depart_cargo_head(
     transport_id: u64,
     route: DepartureRoute,
     attempt: impl FnOnce(&mut Simulation, u64) -> Result<(), DepartureFailure>,
+    effects: FrameEffects<'_>,
 ) -> Result<(), DepartureFailure> {
     let transport = sim
         .substrate
@@ -89,6 +91,7 @@ pub(crate) fn depart_cargo_head(
             passenger_size,
             route,
             *failure,
+            effects,
         );
     }
     result
@@ -104,6 +107,7 @@ fn restore_departure(
     passenger_size: u32,
     route: DepartureRoute,
     failure: DepartureFailure,
+    effects: FrameEffects<'_>,
 ) {
     let reveal_outcome = match failure {
         DepartureFailure::GroundReveal(outcome) | DepartureFailure::ParachuteReveal(outcome, _) => {
@@ -113,7 +117,10 @@ fn restore_departure(
     };
     if reveal_outcome == Some(RevealOutcome::AlreadyRevealed) {
         // Defensive legacy repair of an already-broken cargo/limbo invariant.
-        let _ = sim.techno_limbo_with_rules(passenger_id, rules, registry);
+        let _ = sim.techno_limbo_with_context(
+            passenger_id,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
     }
     match route {
         DepartureRoute::Paradrop => match failure {
@@ -193,6 +200,7 @@ pub(crate) fn reveal_unloaded_passenger(
     rx: u16,
     ry: u16,
     z: u8,
+    effects: FrameEffects<'_>,
 ) -> Result<(), DepartureFailure> {
     let sub_cell = sim
         .substrate
@@ -226,7 +234,7 @@ pub(crate) fn reveal_unloaded_passenger(
             placement: PlacementEvidence::MarkSucceeded,
             logic_eligible: true,
         },
-        UninitContext::with_rules(rules),
+        UninitContext::with_rules(rules).with_effects(effects),
     );
     match outcome {
         RevealOutcome::Revealed { .. } => Ok(()),

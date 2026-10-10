@@ -150,6 +150,7 @@ pub(super) fn retail_frame(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             super::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
         )
         .expect("retail frame")
 }
@@ -517,7 +518,13 @@ fn a_grounded_rocketeer_fidgets_and_turns_to_the_fidgets_facing() {
     // The crash fixture's rules-free Reveal intentionally skips Techno
     // Unlimbo's idle selection (0x006F6E2A..0x006F6E4F). This live idle test
     // needs the committed Guard that the ordinary rules-bearing owner sets.
-    super::techno_ai::foot_unlimbo_idle_mode(&mut sim, 1, &rules, None);
+    super::techno_ai::foot_unlimbo_idle_mode(
+        &mut sim,
+        1,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -910,7 +917,16 @@ fn rocketeer_crash_fixture(
     // The row's action, started by Do_Action (forced) as the oracle starts it.
     let doing = input["doing"].as_i64().unwrap() as i32;
     if doing != -1 {
-        assert!(sim.infantry_do_action(1, doing, true, &rules).unwrap());
+        assert!(
+            sim.infantry_do_action(
+                1,
+                doing,
+                true,
+                &rules,
+                crate::sim::world::FrameEffects::default()
+            )
+            .unwrap()
+        );
     }
     let shooter_type = sim.interner.intern("SHOOTER");
     let soviets = sim.interner.intern("Soviets");
@@ -960,6 +976,7 @@ fn shoot_the_rocketeer(
                 arg6: false,
             },
         ),
+        crate::sim::world::FrameEffects::default(),
     );
 }
 
@@ -1210,6 +1227,7 @@ fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
         },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
@@ -1308,7 +1326,13 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
         .unwrap()
         .retain_spatial_threat(0);
     let soviets = sim.interner.intern("Soviets");
-    sim.change_owner_with_rules(1, soviets, &rules, None);
+    sim.change_owner_with_rules(
+        1,
+        soviets,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     let here = (
         i32::from(rocketeer.position.rx),

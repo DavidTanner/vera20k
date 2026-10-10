@@ -55,6 +55,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellObjectMember;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, X87Ordering};
 
@@ -193,6 +194,7 @@ pub(super) fn process(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     match sim.psychic_dominator.status {
         Status::Idle => {}
@@ -201,7 +203,7 @@ pub(super) fn process(
             let (stage, frames) = anim_progress(sim, rules);
             if fires(stage, frames, rules.general.dominator_fire_at_percentage) {
                 sim.psychic_dominator.status = Status::Struck;
-                return mind_control_area(sim, rules, overlay_registry);
+                return mind_control_area(sim, rules, overlay_registry, frame_effects);
             }
         }
         Status::Struck => {
@@ -285,6 +287,7 @@ fn mind_control_area(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let general = &rules.general;
     let centre = sim.psychic_dominator.cell;
@@ -306,6 +309,7 @@ fn mind_control_area(
             general.dominator_damage,
             warhead,
             (crate::sim::combat::RAD_NO_ATTACKER, storm_house, warhead_id),
+            frame_effects,
         );
     }
 
@@ -325,7 +329,7 @@ fn mind_control_area(
         let mut current = sim.nearest_cell_object(cell, MovementLayer::Ground, None);
         while let Some(id) = current {
             if sim.can_be_perma_mind_controlled(id, rules) {
-                sim.perma_capture(id, owner, rules, overlay_registry);
+                sim.perma_capture(id, owner, rules, overlay_registry, frame_effects);
                 captured.push(id);
             }
             // Object+0x30 after the capture: a Terrain object ends the walk.

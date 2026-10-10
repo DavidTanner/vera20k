@@ -71,7 +71,7 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             _ => Vec::new(),
         };
         runtime
-            .advance_frame(&commands, TICK_MS, crate::sim::world::TickLane::Ordinary)
+            .advance_frame(&commands, TICK_MS, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
             .expect("production frame");
         let cash = runtime.simulation.houses[&owner].economy.credits();
         assert_eq!(

@@ -43,7 +43,7 @@ fn fixture(relative_z: i32) -> (Simulation, RuleSet, u64) {
     sim.substrate.entities.insert(entity);
     sim.begin_receiver_kill_record(id);
     sim.record_destruction_once(id);
-    sim.begin_ship_sinking(id, &rules);
+    sim.begin_ship_sinking(id, &rules, crate::sim::world::FrameEffects::default());
     (sim, rules, id)
 }
 
@@ -65,7 +65,8 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
         sim.mapgen_rng = SimRng::new(seed);
         sim.substrate.entities.get_mut(id).unwrap().sinking.active =
             input["sinking"].as_u64().unwrap_or(1) != 0;
-        let terminal = sim.tick_ship_sinking(id, &rules, None);
+        let terminal =
+            sim.tick_ship_sinking(id, &rules, None, crate::sim::world::FrameEffects::default());
         let entity = sim.substrate.entities.get(id).unwrap();
         let coord = position_world_coord(&entity.position);
         assert_eq!(
@@ -165,8 +166,12 @@ fn sinking_state_is_hashed_and_survives_snapshot() {
     for frame in 1..=60 {
         sim.session.binary_frame = frame;
         loaded.session.binary_frame = frame;
-        let terminal = sim.tick_ship_sinking(id, &rules, None);
-        assert_eq!(loaded.tick_ship_sinking(id, &rules, None), terminal);
+        let terminal =
+            sim.tick_ship_sinking(id, &rules, None, crate::sim::world::FrameEffects::default());
+        assert_eq!(
+            loaded.tick_ship_sinking(id, &rules, None, crate::sim::world::FrameEffects::default()),
+            terminal
+        );
         assert_eq!(loaded.state_hash(), sim.state_hash(), "frame {frame}");
         assert_eq!(loaded.rng_state(), sim.rng_state(), "frame {frame}");
         if terminal {

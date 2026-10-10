@@ -47,7 +47,14 @@ fn structural_fallout_retires_effect_only_ground_victim() {
     sim.substrate.entities.get_mut(victim).unwrap().selected = true;
     // Supplied structural47DD70 callback. Concrete ground overlays205..232
     // do not call this owner; the former hut fixture invented that dependency.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 4, 4, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        4,
+        4,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let object = sim.substrate.entities.get(victim).unwrap();
     assert!(object.infantry_terminal.is_none());
     assert!(!object.lifecycle.object_alive);
@@ -231,7 +238,14 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
 
     // Supplied structural47DD70 callback. Concrete ground overlays205..232
     // do not call this owner; the former hut fixture invented that dependency.
-    blow_up_bridge_cell_fallout(&mut sim, &rules, 4, 4, None);
+    blow_up_bridge_cell_fallout(
+        &mut sim,
+        &rules,
+        4,
+        4,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let ground = vec![older, newer, building];
     for (x, expected) in [(4, ground.clone()), (3, vec![building])] {
         let cell = sim.substrate.occupancy.get(x, 4).unwrap();
@@ -428,10 +442,20 @@ fn a_bombed_bridge_hut_drops_its_bridge() {
                     arg6: false,
                 },
             );
-            sim.commit_direct_damage_receiver(&rules, Some(&registry), hit);
+            sim.commit_direct_damage_receiver(
+                &rules,
+                Some(&registry),
+                hit,
+                crate::sim::world::FrameEffects::default(),
+            );
         } else {
             sim.session.binary_frame = 100 + 451;
-            sim.bomb_fuse_step(hut, &rules, Some(&registry));
+            sim.bomb_fuse_step(
+                hut,
+                &rules,
+                Some(&registry),
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_eq!(
                 sim.substrate.entities.get(hut).unwrap().health.current,
                 1000 - 450,

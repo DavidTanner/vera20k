@@ -11,7 +11,7 @@ use crate::sim::find_nearby_cell::{
     map_owned_radius_cap,
 };
 use crate::sim::movement::ground_pose;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 use crate::util::native_x87::distance_3d_leptons;
 
 /// The building distance (leptons) under which the aircraft is taken to be
@@ -140,7 +140,12 @@ impl Simulation {
     /// 0)` answers ([`find_docking_bay`]).
     ///
     /// [`find_docking_bay`]: crate::sim::miner::miner_system::find_docking_bay
-    pub(crate) fn aircraft_find_docking_bay(&mut self, id: u64, rules: &RuleSet) -> Option<u64> {
+    pub(crate) fn aircraft_find_docking_bay(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) -> Option<u64> {
         let entity = self.substrate.entities.get(id)?;
         let airport_bound = rules
             .object(self.interner.resolve(entity.type_ref()))
@@ -154,13 +159,16 @@ impl Simulation {
                 crate::sim::radio::RadioMessage::CanEnter,
                 crate::sim::radio::RadioPayload::default(),
                 Some(rules),
+                effects,
             ) == crate::sim::radio::RadioResponse::Roger
             {
                 return Some(cached);
             }
             self.set_aircraft_dock(id, None);
         }
-        let dock = crate::sim::miner::miner_system::find_docking_bay(self, rules, id, false, false);
+        let dock = crate::sim::miner::miner_system::find_docking_bay(
+            self, rules, id, false, false, effects,
+        );
         self.set_aircraft_dock(id, dock);
         dock
     }

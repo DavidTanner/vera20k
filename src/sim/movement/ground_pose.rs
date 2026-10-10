@@ -9,7 +9,7 @@ use crate::map::cell_index::NativeCellIdentity;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 use crate::util::lepton::{
     BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons,
 };
@@ -51,6 +51,7 @@ impl Simulation {
         z: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let marked = self
             .substrate
@@ -60,7 +61,7 @@ impl Simulation {
             .lifecycle
             .cell_marked;
         if marked {
-            self.foot_mark_remove(id, rules, registry);
+            self.foot_mark_remove(id, rules, registry, effects);
         }
         self.substrate
             .entities
@@ -69,7 +70,7 @@ impl Simulation {
             .position
             .exact_z_leptons = Some(z);
         if marked {
-            self.foot_mark_put(id, rules, registry);
+            self.foot_mark_put(id, rules, registry, effects);
         }
     }
 }
@@ -520,6 +521,7 @@ impl Simulation {
         coord: DriveCoord,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let marked = self
             .substrate
@@ -527,7 +529,7 @@ impl Simulation {
             .get(id)
             .is_some_and(|entity| entity.lifecycle.cell_marked);
         if marked {
-            self.foot_mark_remove(id, rules, registry);
+            self.foot_mark_remove(id, rules, registry, effects);
         }
         foot_set_location(
             &mut self.substrate.entities,
@@ -537,7 +539,7 @@ impl Simulation {
             &self.interner,
         );
         if marked {
-            self.foot_mark_put(id, rules, registry);
+            self.foot_mark_put(id, rules, registry, effects);
         }
     }
 
@@ -555,8 +557,9 @@ impl Simulation {
         height: i32,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
-        let context = crate::sim::world::UninitContext::new(rules, registry);
+        let context = crate::sim::world::UninitContext::new(rules, registry).with_effects(effects);
         let marked = self
             .substrate
             .entities

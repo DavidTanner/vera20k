@@ -94,8 +94,12 @@ fn slave_master_admission_reaches_head_selection_in_the_same_object_turn() {
                 CellListInsertion::AppendBuilding,
             );
         }
-        sim.advance_live_object_pass(Some(&rules), Some(&registry))
-            .expect("fixture frame must complete");
+        sim.advance_live_object_pass(
+            Some(&rules),
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
+        .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(slave).unwrap();
         let head = e.locomotor.as_ref().unwrap().step_head();
         if later_blocker {
@@ -416,7 +420,13 @@ fn walk_boundary_relinks_current_xyz_and_leaves_the_raw_bit_on_the_head() {
         y: 15 * 256 + 64,
         z: 0,
     };
-    sim.run_walk_boundary(id, crossing, Some(&rules), Some(&registry));
+    sim.run_walk_boundary(
+        id,
+        crossing,
+        Some(&rules),
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(id).unwrap();
     assert_eq!(ground_pose::position_world_coord(&e.position), crossing);
     assert!(e.lifecycle.cell_marked && e.foot_occupation_enabled);
@@ -733,7 +743,13 @@ pub(in crate::sim::world) fn ready_engineer(
         .as_mut()
         .unwrap()
         .set_walk_destination(Some(head));
-    sim.run_walk_boundary(id, head, Some(rules), Some(registry));
+    sim.run_walk_boundary(
+        id,
+        head,
+        Some(rules),
+        Some(registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     sim.substrate
         .entities
         .get_mut(id)
@@ -825,7 +841,8 @@ fn bridge_repair_preserves_unrelated_foundation_before_next_reader() {
             engineer,
             crate::sim::components::DriveCoord::cell(16, 15, 0),
             Some(&rules),
-            Some(&registry)
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
         )
         .expect("fixture frame must complete")
     );
@@ -924,6 +941,7 @@ fn later_repair_scatters_stationary_hut_occupant_and_processes_it_synchronously(
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
         Some(&registry),
+        crate::sim::world::FrameEffects::default(),
     )
     .expect("hut evacuation finishes within the completion callback");
     let e = sim.substrate.entities.get(waiting).unwrap();
@@ -1002,6 +1020,7 @@ fn hut_repair_scatters_a_jumpjet_occupant_through_its_air_destination_owner() {
         DriveCoord::cell(16, 15, 0),
         Some(&rules),
         Some(&registry),
+        crate::sim::world::FrameEffects::default(),
     )
     .expect("a Jumpjet hut occupant scatters without stopping the frame");
     assert!(
@@ -1069,7 +1088,12 @@ fn repair_pointer_expiry_uses_descending_infantry_registry_and_preserves_paid_he
         .unwrap()
         .navigation
         .nav_com = Some(NavTargetRef::Building { id: hut });
-    sim.expire_infantry_bridge_hut_targets(hut, &rules, Some(&registry));
+    sim.expire_infantry_bridge_hut_targets(
+        hut,
+        &rules,
+        Some(&registry),
+        crate::sim::world::FrameEffects::default(),
+    );
     assert_eq!(sim.scenario_rng.state(), expected.state());
     for id in [a, b, c] {
         let e = sim.substrate.entities.get(id).unwrap();
@@ -1112,7 +1136,12 @@ fn repair_pointer_expiry_keeps_sensor_and_occupier_exceptions_and_current_nav_ga
         }
         e.navigation.nav_com_aux = Some(NavTargetRef::Building { id: hut });
         let before = e.navigation.clone();
-        sim.expire_infantry_bridge_hut_targets(hut, &rules, Some(&registry));
+        sim.expire_infantry_bridge_hut_targets(
+            hut,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        );
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
             e.navigation.nav_com, before.nav_com,
@@ -1335,8 +1364,14 @@ fn walk_completion_uses_retained_destination_and_exact_height_tolerance() {
         // The paid head is the last Foot+5E0 word, as the object-turn
         // suspension exposes it to the real PerCell completion owner.
         e.movement_target = Some(Default::default());
-        sim.run_completed_walk_step(id, head, Some(&rules), Some(&registry))
-            .expect("fixture frame must complete");
+        sim.run_completed_walk_step(
+            id,
+            head,
+            Some(&rules),
+            Some(&registry),
+            crate::sim::world::FrameEffects::default(),
+        )
+        .expect("fixture frame must complete");
         let e = sim.substrate.entities.get(id).unwrap();
         assert_eq!(e.navigation.nav_com.is_some(), survives);
         assert!(!e.navigation.path_runtime.path_blocked);
@@ -1413,7 +1448,12 @@ fn repair_receiver_failure_stops_runtime_before_consumption_or_frame_commit() {
         },
     };
     let error = runtime
-        .advance_frame(&[], 67, crate::sim::world::TickLane::Ordinary)
+        .advance_frame(
+            &[],
+            67,
+            crate::sim::world::TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .err()
         .expect("missing receiver must fail the actual runtime frame");
     assert_eq!(error.entity_id, engineer);
@@ -1489,8 +1529,13 @@ fn hut_queries_pending_uninit_and_active_tube_exit_before_other_gates() {
     e.lifecycle.in_limbo = true;
     e.locomotor.as_mut().unwrap().set_step_head(Some(head));
     assert!(
-        !sim.scatter_building_infantry(hut, &rules, Some(&registry))
-            .unwrap()
+        !sim.scatter_building_infantry(
+            hut,
+            &rules,
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
     );
     let dummy = sim
         .resolved_terrain
@@ -1562,7 +1607,8 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
                     queue: false,
                 },
                 Some(&rules),
-                Some(&registry)
+                Some(&registry),
+                crate::sim::world::FrameEffects::default()
             ));
             drop(grid);
             let mut expected_runtime =
@@ -1600,7 +1646,12 @@ fn repair_queries_unrelated_rocketeer_after_move_and_snapshot_restore() {
             // `Process 0x0054AEC0` dispatches State 0 (`0x0054B980`), which is
             // what promotes a moving owner out of the ground state. The air
             // adapter no longer touches Jumpjets at all.
-            sim.tick_air_movement_with_cell_lists_one(rocketeer, None, None);
+            sim.tick_air_movement_with_cell_lists_one(
+                rocketeer,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             assert_eq!(
                 sim.substrate
                     .entities
@@ -1849,7 +1900,13 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
     let id = sim
         .spawn_object("JUMPJET", "Americans", 19, 15, 0, &rules)
         .unwrap();
-    assert!(sim.issue_air_cell_destination(id, (20, 15), SimFixed::from_num(9), Some(&rules)));
+    assert!(sim.issue_air_cell_destination(
+        id,
+        (20, 15),
+        SimFixed::from_num(9),
+        Some(&rules),
+        crate::sim::world::FrameEffects::default()
+    ));
     let before = sim
         .substrate
         .entities
@@ -1865,7 +1922,8 @@ fn jumpjet_stop_command_keeps_native_moving_and_selected_coordinate() {
         "Americans",
         &Command::Stop { entity_id: id },
         Some(&rules),
-        Some(&registry)
+        Some(&registry),
+        crate::sim::world::FrameEffects::default()
     ));
     let state = sim
         .substrate
@@ -1931,7 +1989,12 @@ fn failed_jumpjet_stop_stock_fatal_receiver_precedes_cache_retirement() {
             })
             .with_moving_for_test(true)
             .with_phase_for_test(1);
-        assert!(sim.jumpjet_stop_moving(id, Some(&rules), Some(&registry)));
+        assert!(sim.jumpjet_stop_moving(
+            id,
+            Some(&rules),
+            Some(&registry),
+            crate::sim::world::FrameEffects::default()
+        ));
         let e = sim.substrate.entities.get(id).unwrap();
         let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
         assert_eq!(

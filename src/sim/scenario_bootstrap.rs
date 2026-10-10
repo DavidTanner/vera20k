@@ -1766,6 +1766,7 @@ fn place_starting_object_near_base(
                 PlacementEvidence::EvaluateMark,
                 rules,
                 overlay_registry,
+                crate::sim::world::FrameEffects::default(),
             )
             .is_some()
         {
@@ -1813,6 +1814,7 @@ fn place_starting_object_near_base(
                         PlacementEvidence::EvaluateMark,
                         rules,
                         overlay_registry,
+                        crate::sim::world::FrameEffects::default(),
                     )
                     .is_some()
                 {
@@ -1822,7 +1824,11 @@ fn place_starting_object_near_base(
         }
     }
 
-    sim.discard_constructed_limbo(stable_id, Some(rules));
+    sim.discard_constructed_limbo(
+        stable_id,
+        Some(rules),
+        crate::sim::world::FrameEffects::default(),
+    );
     None
 }
 

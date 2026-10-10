@@ -17,6 +17,7 @@ use crate::sim::mission::authority::queue_entity_mission_deferred;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::ground_pose;
 use crate::sim::pathfinding::zone_map::ZoneQueryCell;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::ra2_speed_to_leptons_per_frame;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53, object_distance};
@@ -328,6 +329,7 @@ pub(crate) fn respond_to_base_attack(
     rules: &RuleSet,
     victim_id: u64,
     attacker_id: u64,
+    frame_effects: FrameEffects<'_>,
 ) {
     let entities = &world.substrate.entities;
     let interner = &world.interner;
@@ -392,6 +394,7 @@ pub(crate) fn respond_to_base_attack(
         rules.general.suspend_priority,
         response_delay_frames(rules.general.suspend_delay_minutes),
         rules,
+        frame_effects,
     );
     let mut selection = ResponseSelection::new(budget);
     if !selection.can_scan() {

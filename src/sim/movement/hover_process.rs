@@ -57,7 +57,7 @@ use crate::sim::movement::foot_path::{FindPathResult, coord_cell};
 use crate::sim::movement::ground_pose;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::movement::movement_tick::FootPathRequest;
-use crate::sim::world::{FrameAdvanceError, Simulation};
+use crate::sim::world::{FrameAdvanceError, FrameEffects, Simulation};
 use crate::util::direction::DIRECTION_DELTAS;
 use crate::util::direction_tables::facing16_from_delta;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO};
@@ -221,14 +221,14 @@ impl Simulation {
     /// `0x005152D7..0x0051531E` and its twin `0x0051541F..0x0051546D`: the
     /// Foot's path head (+0x5E0 = -1), the dummy head, `SetDestination(NULL,
     /// 1)`, the four zeroed speeds and `SetSpeedFraction(0.0)`.
-    fn hover_drop_track(&mut self, id: u64, rules: &RuleSet) {
+    fn hover_drop_track(&mut self, id: u64, rules: &RuleSet, effects: FrameEffects<'_>) {
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.navigation.path_replay.clear_live_head();
             if let Some(hover) = runtime_mut(entity) {
                 hover.head = None;
             }
         }
-        self.set_unit_null_destination(id, Some(rules), None);
+        self.set_unit_null_destination(id, Some(rules), None, effects);
         self.hover_halt(id);
     }
 
@@ -259,10 +259,11 @@ impl Simulation {
         id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<HoverProcessOutcome, FrameAdvanceError> {
         let rules = rules.ok_or_else(|| self.hover_error(id, "Hover Process requires rules"))?;
         let mut out = HoverProcessOutcome::default();
-        if self.hover_is_moving(id) && !self.hover_move(id, rules, registry, &mut out)? {
+        if self.hover_is_moving(id) && !self.hover_move(id, rules, registry, &mut out, effects)? {
             self.retire_hover_adapter(id);
             return Ok(out);
         }
@@ -291,9 +292,10 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
         out: &mut HoverProcessOutcome,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, FrameAdvanceError> {
         let frame = self.session.binary_frame;
-        self.hover_speed_update(id, rules, registry, out)?;
+        self.hover_speed_update(id, rules, registry, out, effects)?;
         //514349..514358: a dead Foot returns before the tail.
         if !self.hover_alive(id) {
             return Ok(false);
@@ -320,9 +322,9 @@ impl Simulation {
                 hover.speed_request = crate::util::native_x87::NativeF64Bits::ONE;
             }
             self.hover_set_speed(id, true);
-            self.hover_path_and_arrival(id, 0, rules, registry)?;
+            self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
             if at_head_cell {
-                self.hover_process_movement(id, true, rules, registry, out)?;
+                self.hover_process_movement(id, true, rules, registry, out, effects)?;
             }
             speed = self.hover(id).map_or(0, |hover| {
                 hover.step_leptons(self.hover_foot_speed(id, rules))
@@ -338,14 +340,14 @@ impl Simulation {
             location.y.wrapping_sub(head.y),
         );
         if speed >= reach {
-            match self.hover_arrive(id, rules, registry, out)? {
+            match self.hover_arrive(id, rules, registry, out, effects)? {
                 Arrival::Return => return Ok(false),
                 Arrival::Tail => return Ok(true),
                 Arrival::Step => {}
             }
         }
         if speed > 0 {
-            self.hover_step(id, start.z, speed, rules, registry);
+            self.hover_step(id, start.z, speed, rules, registry, effects);
         }
         Ok(true)
     }
@@ -357,6 +359,7 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
         out: &mut HoverProcessOutcome,
+        effects: FrameEffects<'_>,
     ) -> Result<Arrival, FrameAdvanceError> {
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.foot_occupation_enabled = true;
@@ -365,7 +368,7 @@ impl Simulation {
                 hover.pushed = false;
             }
         }
-        self.hover_path_and_arrival(id, 0, rules, registry)?;
+        self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
         //51453A..514581: no path and no destination: the head drops (no F4).
         if let Some(entity) = self.substrate.entities.get_mut(id)
             && path_word(entity, 0).is_none()
@@ -399,7 +402,7 @@ impl Simulation {
         if !has_destination && !at_contact {
             return Ok(Arrival::Step);
         }
-        let code = self.hover_process_movement(id, true, rules, registry, out)?;
+        let code = self.hover_process_movement(id, true, rules, registry, out, effects)?;
         if !self.track_survives(id) {
             return Ok(Arrival::Return);
         }
@@ -414,6 +417,7 @@ impl Simulation {
                 super::super::PerCellReason::Arrival,
                 Some(rules),
                 registry,
+                effects,
             )?;
             out.per_cell_ran = true;
             if !self.track_survives(id) {
@@ -431,7 +435,7 @@ impl Simulation {
             {
                 return Ok(Arrival::Return);
             }
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             self.hover_halt(id);
         } else if code != 0 {
             //514982..5149EA.
@@ -450,6 +454,7 @@ impl Simulation {
         speed: i32,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
         let Some(location) = self.hover_location(id) else {
@@ -487,7 +492,7 @@ impl Simulation {
         }
         //5148DF..514973: Mark(REMOVE), SetCoords, SetZ, the bridge byte from
         //the new cell and the height, Mark(PUT).
-        self.foot_mark_remove(id, Some(rules), registry);
+        self.foot_mark_remove(id, Some(rules), registry, effects);
         super::super::ground_pose::foot_set_location(
             &mut self.substrate.entities,
             id,
@@ -512,7 +517,7 @@ impl Simulation {
                 entity.on_bridge = on_bridge;
             }
         }
-        self.foot_mark_put(id, Some(rules), registry);
+        self.foot_mark_put(id, Some(rules), registry, effects);
     }
 
     /// Process 0x00514A21..0x00514C12: the altitude controller and the
@@ -588,6 +593,7 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
         out: &mut HoverProcessOutcome,
+        effects: FrameEffects<'_>,
     ) -> Result<(), FrameAdvanceError> {
         let frame = self.session.binary_frame;
         let terrain = self.resolved_terrain.as_ref();
@@ -601,8 +607,8 @@ impl Simulation {
             //5162BA..516309: moving with no head asks for one.
             if hover.is_moving() {
                 self.hover_set_speed(id, true);
-                self.hover_path_and_arrival(id, 0, rules, registry)?;
-                self.hover_process_movement(id, true, rules, registry, out)?;
+                self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
+                self.hover_process_movement(id, true, rules, registry, out, effects)?;
             }
             return Ok(());
         };
@@ -676,6 +682,7 @@ impl Simulation {
         urgency: u8,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<(), FrameAdvanceError> {
         let frame = self.session.binary_frame;
         self.hover_trim_path(id, rules, registry);
@@ -697,7 +704,7 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 hover_stop_moving(entity);
             }
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             return Ok(());
         }
         if path_word(entity, 0).is_some() {
@@ -725,7 +732,7 @@ impl Simulation {
         )
         .ok_or_else(|| self.hover_error(id, "retired Hover Find_Path requester"))?;
         let found = self
-            .foot_find_path(&request, None, rules, registry)
+            .foot_find_path(&request, None, rules, registry, effects)
             .map_err(|cause| self.hover_error(id, cause))?;
         //51668B..5166BA / 5168D0..516904: +640 = (Frame, PathDelay).
         if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -737,9 +744,9 @@ impl Simulation {
             return Ok(());
         }
         if found != FindPathResult::Failed {
-            return self.hover_found_path(id, rules, registry);
+            return self.hover_found_path(id, rules, registry, effects);
         }
-        self.hover_failed_path(id, rules, registry)
+        self.hover_failed_path(id, rules, registry, effects)
     }
 
     /// 0x005168D0..0x00516BCD after a found route.
@@ -748,6 +755,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<(), FrameAdvanceError> {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(());
@@ -768,7 +776,7 @@ impl Simulation {
                 rules,
                 registry,
             )? == 6
-                && self.hover_ally_cell(id, cell, rules, registry)?
+                && self.hover_ally_cell(id, cell, rules, registry, effects)?
             {
                 return Ok(());
             }
@@ -789,6 +797,7 @@ impl Simulation {
         cell: (i32, i32),
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, FrameAdvanceError> {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
             return Ok(false);
@@ -835,11 +844,17 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 hover_stop_moving(entity);
             }
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             return Ok(true);
         }
-        self.scatter_blocked_track_cell(id, (cell.0 as i16, cell.1 as i16), rules, registry)
-            .map_err(|cause| self.hover_error(id, cause))?;
+        self.scatter_blocked_track_cell(
+            id,
+            (cell.0 as i16, cell.1 as i16),
+            rules,
+            registry,
+            effects,
+        )
+        .map_err(|cause| self.hover_error(id, cause))?;
         Ok(false)
     }
 
@@ -849,6 +864,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<(), FrameAdvanceError> {
         //5166BD..5166DD: the zone precheck on the live destination, which the
         //failed search's +500 receiver (Stop_Moving) may have nulled.
@@ -857,7 +873,7 @@ impl Simulation {
             .foot_path_zone_precheck(id, destination, rules)
             .map_err(|cause| self.hover_error(id, cause))?
         {
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             return Ok(());
         }
         let Some(entity) = self.substrate.entities.get(id) else {
@@ -874,7 +890,7 @@ impl Simulation {
             ) < rules.general.close_enough
             && matches!(mission, Some(MissionType::Move | MissionType::AreaGuard))
         {
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             if !self.hover_alive(id) {
                 return Ok(());
             }
@@ -889,7 +905,7 @@ impl Simulation {
             }
         } else {
             //5167D5..51681B: give up, with the retained scold sound.
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             if !self.hover_alive(id) {
                 return Ok(());
             }
@@ -901,7 +917,7 @@ impl Simulation {
         //516822..5168C3: a stopped Foot drops a target it cannot fire at;
         //then the head and Stop_Moving.
         if !self.hover_is_moving(id) {
-            self.drop_unfireable_target(id, rules, registry);
+            self.drop_unfireable_target(id, rules, registry, effects);
         }
         self.hover_release_head(id);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -958,6 +974,7 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
         out: &mut HoverProcessOutcome,
+        effects: FrameEffects<'_>,
     ) -> Result<u8, FrameAdvanceError> {
         let frame = self.session.binary_frame;
         //514F83..514FCA: the old head's claim goes first.
@@ -976,14 +993,14 @@ impl Simulation {
         }
         let Some(direction) = path_word(entity, 0) else {
             //515DEE: no path word asks the continuation.
-            self.hover_path_and_arrival(id, 0, rules, registry)?;
+            self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
             return Ok(0);
         };
         if direction == crate::util::direction::TUBE_STEP_DIRECTION {
             //5152D1..51532E: the invalid-tube arm (module residual): the
             //drop, then one more null destination.
-            self.hover_drop_track(id, rules);
-            self.set_unit_null_destination(id, Some(rules), None);
+            self.hover_drop_track(id, rules, effects);
+            self.set_unit_null_destination(id, Some(rules), None, effects);
             return Ok(7);
         }
         let location = ground_pose::position_world_coord(&entity.position);
@@ -1018,7 +1035,7 @@ impl Simulation {
             hover.head = Some(head);
         }
         //5153D8..5153EE: the crate question on the candidate cell.
-        if !self.pickup_crate_at(id, cell, Some(rules), registry) {
+        if !self.pickup_crate_at(id, cell, Some(rules), registry, effects) {
             //5153F6..515478: a false answer (a placed free vehicle): an owner
             //in limbo rejoins the ordinary checks; a dead or falling one
             //returns; a live one drops its path head, head and speeds and
@@ -1030,7 +1047,7 @@ impl Simulation {
                 .is_some_and(|entity| entity.lifecycle.in_limbo);
             if !in_limbo {
                 if self.track_survives(id) {
-                    self.hover_drop_track(id, rules);
+                    self.hover_drop_track(id, rules, effects);
                 }
                 return Ok(7);
             }
@@ -1057,6 +1074,7 @@ impl Simulation {
                     super::super::PerCellReason::Arrival,
                     Some(rules),
                     registry,
+                    effects,
                 )?;
                 out.per_cell_ran = true;
                 if !self.track_survives(id) {
@@ -1085,8 +1103,8 @@ impl Simulation {
                     self.hover_halt(id);
                     self.hover_release_head(id);
                     self.hover_restart_path(id);
-                    self.hover_path_and_arrival(id, 0, rules, registry)?;
-                    code = self.hover_process_movement(id, false, rules, registry, out)?;
+                    self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
+                    code = self.hover_process_movement(id, false, rules, registry, out, effects)?;
                 }
                 if code != 0 {
                     if let Some(hover) = self.hover_mut(id) {
@@ -1121,7 +1139,7 @@ impl Simulation {
                 } else {
                     1
                 };
-                self.hover_path_and_arrival(id, urgency, rules, registry)?;
+                self.hover_path_and_arrival(id, urgency, rules, registry, effects)?;
                 Ok(2)
             }
             3 => {
@@ -1144,10 +1162,10 @@ impl Simulation {
                 if retry {
                     self.hover_halt(id);
                     self.hover_restart_path(id);
-                    self.hover_path_and_arrival(id, 0, rules, registry)?;
-                    return self.hover_process_movement(id, false, rules, registry, out);
+                    self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
+                    return self.hover_process_movement(id, false, rules, registry, out, effects);
                 }
-                self.override_movement_blocker_at(id, cell, rules, registry);
+                self.override_movement_blocker_at(id, cell, rules, registry, effects);
                 Ok(code)
             }
             6 => {
@@ -1157,8 +1175,8 @@ impl Simulation {
                     }
                     self.hover_halt(id);
                     self.hover_restart_path(id);
-                    self.hover_path_and_arrival(id, 0, rules, registry)?;
-                    return self.hover_process_movement(id, false, rules, registry, out);
+                    self.hover_path_and_arrival(id, 0, rules, registry, effects)?;
+                    return self.hover_process_movement(id, false, rules, registry, out, effects);
                 }
                 //51581D..5158F4: close enough and in the stop band ends it.
                 let entity = self.substrate.entities.get(id).expect("same Hover Foot");
@@ -1171,11 +1189,11 @@ impl Simulation {
                     if let Some(entity) = self.substrate.entities.get_mut(id) {
                         hover_stop_moving(entity);
                     }
-                    self.set_unit_null_destination(id, Some(rules), None);
+                    self.set_unit_null_destination(id, Some(rules), None, effects);
                     return Ok(7);
                 }
                 //515902..5159E1: scatter the head cell; the head drops.
-                self.scatter_blocked_track_cell(id, cell, rules, registry)
+                self.scatter_blocked_track_cell(id, cell, rules, registry, effects)
                     .map_err(|cause| self.hover_error(id, cause))?;
                 if let Some(hover) = self.hover_mut(id) {
                     hover.head = None;

@@ -157,7 +157,7 @@ fn app_frames_match_original_ore_driver_histories_and_rng_continuation() {
                     67,
                     TickLane::Ordinary,
                     None,
-                )
+                 crate::sim::world::FrameEffects::default(),)
                 .unwrap()
             });
             assert!(output.tick.frame_committed, "{name}: app frame {index}");
@@ -221,7 +221,7 @@ fn app_ore_constructor_terminal_cleanup_matches_original_deferred_drain() {
                 67,
                 TickLane::Ordinary,
                 None,
-            )
+             crate::sim::world::FrameEffects::default(),)
             .unwrap()
         });
         assert!(output.tick.frame_committed, "{name}: admitted app frame");

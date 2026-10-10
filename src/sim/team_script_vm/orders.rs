@@ -11,6 +11,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 use super::TeamTarget;
@@ -81,9 +82,10 @@ impl Simulation {
         target: Option<TeamTarget>,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(target) = target else {
-            self.assign_null_destination(id, Some(rules), None);
+            self.assign_null_destination(id, Some(rules), None, frame_effects);
             return;
         };
         let requested = match target {
@@ -102,13 +104,14 @@ impl Simulation {
         };
         match category {
             EntityCategory::Infantry => {
-                let _ = self.set_infantry_destination(id, requested, rules, registry);
+                let _ =
+                    self.set_infantry_destination(id, requested, rules, registry, frame_effects);
             }
             EntityCategory::Unit if self.unit_setter_receiver(id, Some(rules)) => {
-                self.set_unit_destination(id, requested, rules, true);
+                self.set_unit_destination(id, requested, rules, true, frame_effects);
             }
             EntityCategory::Aircraft => {
-                self.assign_aircraft_destination(id, Some(requested), rules);
+                self.assign_aircraft_destination(id, Some(requested), rules, frame_effects);
             }
             _ => {}
         }

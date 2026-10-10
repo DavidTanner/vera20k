@@ -30,6 +30,7 @@
 use crate::rules::object_type::{Ability, ObjectType};
 use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
 use crate::sim::game_entity::GameEntity;
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 const MAX_FEAR: u16 = 300;
@@ -137,6 +138,7 @@ impl crate::sim::world::Simulation {
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -190,7 +192,7 @@ impl crate::sim::world::Simulation {
             if !matches!(doing, 27..=30) {
                 if prone && fear < PRONE_THRESHOLD {
                     //520150..158: neither NavCom nor motion gates Up.
-                    let _accepted = self.infantry_do_action(id, 7, false, rules)?;
+                    let _accepted = self.infantry_do_action(id, 7, false, rules, effects)?;
                 } else if !prone && fear >= PRONE_THRESHOLD {
                     let human = self
                         .houses
@@ -206,7 +208,7 @@ impl crate::sim::world::Simulation {
                     if !under_way && !fraidycat {
                         //5201CE..1D6: Crawls and accepted/refused prone/clock
                         // writes belong solely to Infantry51D6F0.
-                        let _accepted = self.infantry_do_action(id, 5, false, rules)?;
+                        let _accepted = self.infantry_do_action(id, 5, false, rules, effects)?;
                     }
                 }
             }
@@ -246,6 +248,7 @@ impl crate::sim::world::Simulation {
             crate::sim::movement::ScatterFlags::new(true, false),
             rules,
             registry,
+            effects,
         )
     }
 }
@@ -432,6 +435,7 @@ impl crate::sim::world::Simulation {
         &mut self,
         id: u64,
         rules: &crate::rules::ruleset::RuleSet,
+        effects: FrameEffects<'_>,
     ) -> Result<bool, String> {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(false);
@@ -462,7 +466,7 @@ impl crate::sim::world::Simulation {
             IdleTurn::Fidget(action) => {
                 //51CEEA/51CF4C pass action9/10, force0, random-stage0 for
                 // every Infantry class, including ordinary ground E1.
-                let _accepted = self.infantry_do_action(id, action, false, rules)?;
+                let _accepted = self.infantry_do_action(id, action, false, rules, effects)?;
             }
             IdleTurn::NullSourceScatter => {
                 // The existing damage Scatter owner accepts a real source;
@@ -871,7 +875,10 @@ mod tests {
             .find(|row| row["input"]["name"] == "up_same_refusal")
             .unwrap();
         let (mut sim, rules) = fear_fixture(row);
-        assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+        assert!(
+            !sim.infantry_fear_turn(1, &rules, None, crate::sim::world::FrameEffects::default())
+                .unwrap()
+        );
         assert_native_fear_state(&sim, row);
     }
 
@@ -900,7 +907,10 @@ mod tests {
                     "supplied full {stream} state"
                 );
             }
-            let (changed, draws) = trace_draws(|| sim.infantry_fear_turn(1, &rules, None).unwrap());
+            let (changed, draws) = trace_draws(|| {
+                sim.infantry_fear_turn(1, &rules, None, crate::sim::world::FrameEffects::default())
+                    .unwrap()
+            });
             assert!(!changed);
             assert!(
                 draws.is_empty(),
@@ -925,7 +935,10 @@ mod tests {
         let (mut sim, rules) = fear_fixture(row);
         sim.substrate.entities.get_mut(1).unwrap().movement_target =
             Some(crate::sim::components::MovementTarget::default());
-        assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+        assert!(
+            !sim.infantry_fear_turn(1, &rules, None, crate::sim::world::FrameEffects::default())
+                .unwrap()
+        );
         assert_native_fear_state(&sim, row);
     }
 
@@ -990,7 +1003,15 @@ mod tests {
                 .find(|row| row["input"]["name"] == name)
                 .unwrap();
             let (mut sim, _synthetic_rules) = fear_fixture(row);
-            assert!(!sim.infantry_fear_turn(1, &rules, None).unwrap());
+            assert!(
+                !sim.infantry_fear_turn(
+                    1,
+                    &rules,
+                    None,
+                    crate::sim::world::FrameEffects::default()
+                )
+                .unwrap()
+            );
             assert_native_fear_state(&sim, row);
         }
     }
@@ -1193,7 +1214,10 @@ mod tests {
             let target_before = actor.attack_target.as_ref().map(|target| target.target);
             let nav_before = actor.navigation.nav_com;
             sim.substrate.entities.insert(actor);
-            let (admitted, draws) = trace_draws(|| sim.infantry_idle_action(1, &rules).unwrap());
+            let (admitted, draws) = trace_draws(|| {
+                sim.infantry_idle_action(1, &rules, crate::sim::world::FrameEffects::default())
+                    .unwrap()
+            });
             assert_eq!(admitted, row["returned_al"] != 0, "{name} return AL");
             let actor = sim.substrate.entities.get(1).unwrap();
             let leaf = actor.mission_leaf.as_infantry().unwrap();

@@ -173,9 +173,14 @@ fn one_cell_undeploy_navcom_stays_at_the_separate_conversion_boundary() {
         InfantryPerCellBuildingAdmission::UndeployBuilding
     );
     assert!(
-        !sim.infantry_per_cell_engineer_entry(INFANTRY, &rules, None)
-            .unwrap()
-            .bridge_state_changed
+        !sim.infantry_per_cell_engineer_entry(
+            INFANTRY,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        )
+        .unwrap()
+        .bridge_state_changed
     );
     assert!(sim.substrate.entities.contains(INFANTRY));
     assert!(sim.sound_events.is_empty());

@@ -252,7 +252,7 @@ fn gsi_04_18_house_rung_applies_spy_sat_before_gap_and_recovers_after_gap_concea
     let gapper = sim.interner.intern("Soviet");
     insert_structure(&mut sim, 1, owner, "GASPYSAT", 6);
     insert_structure(&mut sim, 2, gapper, "GAGAP", 12);
-    sim.visit_building_operational(2, &rules, None);
+    sim.visit_building_operational(2, &rules, None, crate::sim::world::FrameEffects::default());
 
     sim.reconcile_active_vision_structures(&rules);
     assert!(sim.fog.is_cell_revealed(owner, 23, 23));
@@ -294,7 +294,7 @@ fn shroud_current_sight_world_collector_and_native_frame_restore() {
     let (mut sim, rules, owner) = fixture();
     let gapper = sim.interner.intern("Soviet");
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     insert_sight_unit(&mut sim, 2, owner, 12, 12);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     sim.reconcile_active_vision_structures(&rules);
@@ -343,7 +343,7 @@ fn shroud_current_sight_psychic_mapping_does_not_gain_gap_immunity() {
     ));
     assert!(sim.fog.is_cell_revealed(owner, 12, 12));
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     sim.reconcile_active_vision_structures(&rules);
     assert!(!sim.fog.is_cell_revealed(owner, 12, 12));
 }
@@ -353,7 +353,7 @@ fn shroud_current_sight_new_generator_identity_consumes_pending() {
     let (mut sim, rules, owner) = fixture();
     let gapper = sim.interner.intern("Soviet");
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     insert_sight_unit(&mut sim, 2, owner, 12, 12);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     sim.substrate
@@ -380,7 +380,12 @@ fn shroud_current_sight_new_generator_identity_consumes_pending() {
     // Same owner/geometry, different stable identity: replacement is a new write.
     restored.uninit(1);
     insert_structure(&mut restored, 3, gapper, "GAGAP", 12);
-    restored.visit_building_operational(3, &rules, None);
+    restored.visit_building_operational(
+        3,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     restored.reconcile_active_vision_structures(&rules);
     assert!(!restored.fog.is_cell_revealed(owner, 12, 12));
 }
@@ -392,7 +397,7 @@ fn shroud_current_sight_psychic_under_existing_gap_waits_for_native_boundary() {
     let sw = charge_psychic_reveal(&mut sim, owner);
     sim.fog.reveal_all_for_owner(owner);
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     sim.reconcile_active_vision_structures(&rules);
     assert!(!sim.fog.is_cell_revealed(owner, 12, 12));
     assert!(crate::sim::superweapon::psychic_reveal::launch(
@@ -433,7 +438,7 @@ fn shroud_current_sight_fresh_direct_allied_psychic_reaches_authoritative_view()
         sim.fog.reveal_all_for_owner(owner);
     }
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     sim.reconcile_active_vision_structures(&rules);
     assert!(!sim.fog.is_cell_revealed(a, 12, 12));
     assert!(crate::sim::superweapon::psychic_reveal::launch(
@@ -494,7 +499,12 @@ fn shroud_current_sight_psychic_never_gapped_and_mixed_views_are_nontransitive()
         }
         if with_gap {
             insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-            sim.visit_building_operational(1, &rules, None);
+            sim.visit_building_operational(
+                1,
+                &rules,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         sim.reconcile_active_vision_structures(&rules);
         assert!(crate::sim::superweapon::psychic_reveal::launch(
@@ -569,7 +579,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
     }
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
-    sim.visit_building_operational(1, &rules, None);
+    sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
     sim.reconcile_active_vision_structures(&rules);
     sim.substrate
         .entities
@@ -579,7 +589,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         .in_limbo = true;
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     insert_structure(&mut sim, 3, gapper, "GAGAP", 12);
-    sim.visit_building_operational(3, &rules, None);
+    sim.visit_building_operational(3, &rules, None, crate::sim::world::FrameEffects::default());
     sim.reconcile_active_vision_structures(&rules);
     sim.substrate
         .entities
@@ -619,7 +629,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
     );
     sim.session.binary_frame = 119;
     sim.set_logic_order_for_test(vec![2]);
-    sim.advance_live_object_pass(None, None)
+    sim.advance_live_object_pass(None, None, crate::sim::world::FrameEffects::default())
         .expect("fixture frame must complete");
     let clocks = &sim.substrate.entities.get(2).unwrap().sight_refresh_timers;
     assert_eq!(clocks.timer(a), CdTimer::started(119, 15));
@@ -803,7 +813,12 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
         insert_sight_unit(&mut sim, source, owner, 12, 12);
         sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
         insert_structure(&mut sim, first_gap, gapper, "GAGAP", 12);
-        sim.visit_building_operational(first_gap, &rules, None);
+        sim.visit_building_operational(
+            first_gap,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         sim.reconcile_active_vision_structures(&rules);
         sim.substrate
             .entities
@@ -813,7 +828,7 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
             .in_limbo = true;
         sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
         insert_structure(&mut sim, 3, gapper, "GAGAP", 12);
-        sim.visit_building_operational(3, &rules, None);
+        sim.visit_building_operational(3, &rules, None, crate::sim::world::FrameEffects::default());
         sim.reconcile_active_vision_structures(&rules);
         sim.substrate
             .entities
@@ -918,7 +933,7 @@ fn shroud_current_sight_spy_sat_replays_allied_buildings_but_not_mobile_admissio
         sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
         let admission = sim.fog.sight_admissions[&(1, viewer)].clone();
         insert_structure(&mut sim, 2, hostile, "GAGAP", 12);
-        sim.visit_building_operational(2, &rules, None);
+        sim.visit_building_operational(2, &rules, None, crate::sim::world::FrameEffects::default());
         sim.reconcile_active_vision_structures(&rules);
         assert!(sim.fog.is_cell_visible(viewer, 12, 12));
         insert_structure(&mut sim, 3, viewer, "GASPYSAT", 2);

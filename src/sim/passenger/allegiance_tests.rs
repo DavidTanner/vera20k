@@ -164,7 +164,13 @@ fn allegiance_matches_native_decisions_for_valid_rosters() {
         let (mut sim, rules, id, houses) = fixture(input);
         let old_anim = sim.substrate.entities.get(id).unwrap().building_anim_slots[3];
         let old_owner = sim.substrate.entities.get(id).unwrap().owner();
-        let changed = reconcile_civilian_garrison_owner_for_building(&mut sim, &rules, None, id);
+        let changed = reconcile_civilian_garrison_owner_for_building(
+            &mut sim,
+            &rules,
+            None,
+            id,
+            crate::sim::world::FrameEffects::default(),
+        );
         let building = sim.substrate.entities.get(id).unwrap();
         let expected_owner = houses[expected["owner_after_callback"].as_u64().unwrap() as usize];
         assert_eq!(building.owner(), expected_owner, "{name}");
@@ -242,7 +248,11 @@ fn missing_civilian_roster_does_not_fabricate_a_house() {
         let old_owner = sim.substrate.entities.get(id).unwrap().owner();
         let houses = sim.session.house_order.clone();
         assert!(!reconcile_civilian_garrison_owner_for_building(
-            &mut sim, &rules, None, id
+            &mut sim,
+            &rules,
+            None,
+            id,
+            crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(sim.substrate.entities.get(id).unwrap().owner(), old_owner);
         assert_eq!(sim.session.house_order, houses);

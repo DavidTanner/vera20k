@@ -22,6 +22,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::LandType;
 use crate::sim::movement::ground_pose;
 use crate::sim::pathfinding::zone_map::ZoneQueryCell;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
 /// A `[General]` scan radius in leptons as Mission_Harvest hands it on:
@@ -85,6 +86,7 @@ pub(crate) fn search_for_tiberium_and_move(
     overlay_registry: Option<&OverlayTypeRegistry>,
     id: u64,
     range: i32,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return false;
@@ -99,8 +101,14 @@ pub(crate) fn search_for_tiberium_and_move(
     if cell == own {
         return true;
     }
-    let _ =
-        super::miner_system::issue_stock_miner_drive_move(sim, rules, id, cell, overlay_registry);
+    let _ = super::miner_system::issue_stock_miner_drive_move(
+        sim,
+        rules,
+        id,
+        cell,
+        overlay_registry,
+        frame_effects,
+    );
     false
 }
 

@@ -62,7 +62,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::DriveCoord;
 use crate::sim::movement::ground_pose;
 use crate::sim::timer::CdTimer;
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation, UninitContext};
 use crate::util::direction_tables::CELL_DELTAS;
 
 /// Foot+698 launch lock: `TechnoClass::Fire @ 0x006FF81F` stores
@@ -214,7 +214,13 @@ impl Simulation {
 
     /// `AttachTo @ 0x0062A980`, reached only from the Parasite detonation arm
     /// with the bullet Target filtered to FootClass (`0x00469406`).
-    pub(crate) fn parasite_attach(&mut self, owner: u64, victim: Option<u64>, rules: &RuleSet) {
+    pub(crate) fn parasite_attach(
+        &mut self,
+        owner: u64,
+        victim: Option<u64>,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let frame = self.session.binary_frame;
         // Squid residual: a visible grapple owner must not attach while its
         // grapple is unported (every release path would fail its reveal).
@@ -238,7 +244,7 @@ impl Simulation {
         // 0x0062A9D8: the first bite lands on the victim's next AI visit.
         state.damage = CdTimer::started(frame as i32, 0);
         if !self.parasite_can_infect(owner, victim, rules) {
-            self.parasite_return_to_launch_cell(owner, rules);
+            self.parasite_return_to_launch_cell(owner, rules, effects);
             return;
         }
         let victim = victim.expect("CanInfect admitted a victim");
@@ -249,7 +255,7 @@ impl Simulation {
         let victim_coord = ground_pose::position_world_coord(
             &self.substrate.entities.get(victim).unwrap().position,
         );
-        self.force_track(owner, -1, victim_coord, Some(rules), None);
+        self.force_track(owner, -1, victim_coord, Some(rules), None, effects);
         self.substrate
             .entities
             .get_mut(victim)
@@ -268,7 +274,12 @@ impl Simulation {
     /// AttachTo refusal `0x0062AA02..0x0062AAD6`: Unlimbo at the centre of the
     /// owner's last map cell (Foot+55C, its launch cell), facing 0; failure
     /// deletes it. This path neither reselects nor rejoins a team.
-    fn parasite_return_to_launch_cell(&mut self, owner: u64, rules: &RuleSet) {
+    fn parasite_return_to_launch_cell(
+        &mut self,
+        owner: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let Some(cell) = self
             .substrate
             .entities
@@ -277,11 +288,14 @@ impl Simulation {
         else {
             return;
         };
-        if !self.parasite_unlimbo_owner(owner, cell_centre(cell), 0, false, rules) {
-            self.uninit_with_rules(owner, rules);
+        if !self.parasite_unlimbo_owner(owner, cell_centre(cell), 0, false, rules, effects) {
+            self.uninit_with_context(
+                owner,
+                UninitContext::with_rules(rules).with_effects(effects),
+            );
             return;
         }
-        self.parasite_released_owner_orders(owner, false, rules);
+        self.parasite_released_owner_orders(owner, false, rules, effects);
     }
 
     /// Release tail shared by AttachTo refusal, ExitUnit and PointerExpired:
@@ -290,18 +304,24 @@ impl Simulation {
     /// `0x0062A3ED`, `0x0062AAB9`), then Enter_Idle_Mode(0,1). Only ExitUnit
     /// (`0x0062A771`) and PointerExpired (`0x0062A3D4`) also clear the archive
     /// target; the AttachTo refusal (`0x0062AA96..0x0062AAC9`) keeps it.
-    fn parasite_released_owner_orders(&mut self, owner: u64, clear_archive: bool, rules: &RuleSet) {
+    fn parasite_released_owner_orders(
+        &mut self,
+        owner: u64,
+        clear_archive: bool,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             if clear_archive {
                 entity.set_archive_target(None);
             }
             crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
         }
-        self.assign_null_destination(owner, Some(rules), None);
+        self.assign_null_destination(owner, Some(rules), None, effects);
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
             entity.movement_target = None;
         }
-        crate::sim::world::enter_idle_mode(self, owner, rules, None);
+        crate::sim::world::enter_idle_mode(self, owner, rules, None, effects);
     }
 
     /// A successful ExitUnit or PointerExpired release re-adds the owner to
@@ -314,9 +334,9 @@ impl Simulation {
     /// centre (no joined member left) while it was away. Effect: that centre
     /// can be the mean cell where an overlay would refuse it, until the next
     /// `Calc_Center`.
-    fn parasite_rejoin_team(&mut self, owner: u64, rules: &RuleSet) {
+    fn parasite_rejoin_team(&mut self, owner: u64, rules: &RuleSet, effects: FrameEffects<'_>) {
         if let Some(team) = self.team_script_vm.team_to_rejoin(owner) {
-            self.team_add_member(team, owner, false, rules, None);
+            self.team_add_member(team, owner, false, rules, None, effects);
         }
     }
 
@@ -340,6 +360,7 @@ impl Simulation {
         victim: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
         let Some(owner) = self
@@ -457,11 +478,16 @@ impl Simulation {
                 arg6: true,
             },
         );
-        self.commit_direct_damage_receiver(rules, overlay_registry, event);
+        self.commit_direct_damage_receiver(rules, overlay_registry, event, effects);
     }
 
     /// ExitUnit `0x0062A4A0`: forced release from the victim.
-    pub(crate) fn parasite_exit_unit(&mut self, owner: u64, rules: &RuleSet) {
+    pub(crate) fn parasite_exit_unit(
+        &mut self,
+        owner: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let frame = self.session.binary_frame;
         let Some(owner_entity) = self.substrate.entities.get(owner) else {
             return;
@@ -501,7 +527,10 @@ impl Simulation {
                 .health
                 .current = 0;
             self.detach_parasite_victim(owner, victim, frame);
-            self.uninit_with_rules(owner, rules);
+            self.uninit_with_context(
+                owner,
+                UninitContext::with_rules(rules).with_effects(effects),
+            );
             return;
         }
         let requested = if naval {
@@ -526,12 +555,13 @@ impl Simulation {
                     dir_type(released),
                     false,
                     rules,
+                    effects,
                 )
         });
         if placed {
             self.parasite_reselect(owner);
-            self.parasite_rejoin_team(owner, rules);
-            self.parasite_released_owner_orders(owner, true, rules);
+            self.parasite_rejoin_team(owner, rules, effects);
+            self.parasite_released_owner_orders(owner, true, rules, effects);
             if let Some(entity) = self.substrate.entities.get_mut(owner) {
                 entity.paralysis_timer = CdTimer::started(frame as i32, rof.wrapping_mul(3));
             }
@@ -542,7 +572,10 @@ impl Simulation {
                 .unwrap()
                 .health
                 .current = 0;
-            self.uninit_with_rules(owner, rules);
+            self.uninit_with_context(
+                owner,
+                UninitContext::with_rules(rules).with_effects(effects),
+            );
         }
         self.detach_parasite_victim(owner, victim, frame);
     }
@@ -574,6 +607,7 @@ impl Simulation {
         owner: u64,
         expired: u64,
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
         let Some(state) = self
@@ -606,7 +640,10 @@ impl Simulation {
                 entity.parasite_eating_me = None;
             }
             self.clear_parasite_victim(owner);
-            self.uninit_with_rules(owner, rules);
+            self.uninit_with_context(
+                owner,
+                UninitContext::with_rules(rules).with_effects(effects),
+            );
             return;
         }
         let victim_raw = self
@@ -617,12 +654,12 @@ impl Simulation {
         let coords = self.parasite_release_coords(owner, victim, rules);
         // 0x0062A2ED..0x0062A303: the 0xA8E7AC bracket around Unlimbo.
         let placed = coords.is_some_and(|coords| {
-            self.parasite_unlimbo_owner(owner, coords, dir_type(victim_raw), true, rules)
+            self.parasite_unlimbo_owner(owner, coords, dir_type(victim_raw), true, rules, effects)
         });
         if placed {
             self.parasite_reselect(owner);
-            self.parasite_rejoin_team(owner, rules);
-            self.parasite_released_owner_orders(owner, true, rules);
+            self.parasite_rejoin_team(owner, rules, effects);
+            self.parasite_released_owner_orders(owner, true, rules, effects);
         } else {
             self.substrate
                 .entities
@@ -630,7 +667,10 @@ impl Simulation {
                 .unwrap()
                 .health
                 .current = 0;
-            self.uninit_with_rules(owner, rules);
+            self.uninit_with_context(
+                owner,
+                UninitContext::with_rules(rules).with_effects(effects),
+            );
         }
         self.clear_parasite_victim(owner);
     }
@@ -897,6 +937,7 @@ impl Simulation {
         facing: u8,
         guarded: bool,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) -> bool {
         let rx = (coord.x / 256) as u16;
         let ry = (coord.y / 256) as u16;
@@ -956,7 +997,7 @@ impl Simulation {
                     placement: crate::sim::world::PlacementEvidence::MarkSucceeded,
                     logic_eligible: true,
                 },
-                crate::sim::world::UninitContext::with_rules(rules),
+                UninitContext::with_rules(rules).with_effects(effects),
             ),
             crate::sim::world::RevealOutcome::Revealed { .. }
         );
@@ -978,6 +1019,7 @@ impl Simulation {
         bullet: Option<u64>,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
         let Some(entity) = self.substrate.entities.get(firer) else {
@@ -1016,7 +1058,10 @@ impl Simulation {
         if object.rejoin_team_if_limboed && target_infantry {
             self.team_script_vm.remember_team_to_rejoin(firer);
         }
-        self.techno_limbo_with_rules(firer, rules, registry);
+        self.techno_limbo_with_context(
+            firer,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
         let parasite = weapon
             .warhead
             .as_deref()
@@ -1060,6 +1105,7 @@ impl Simulation {
         listener: u64,
         expired: u64,
         rules: Option<&RuleSet>,
+        effects: FrameEffects<'_>,
     ) {
         let Some(eater) = self
             .substrate
@@ -1092,7 +1138,7 @@ impl Simulation {
             .and_then(|l| l.parasite_eating_me)
             && eater_health(self, eater) > 0
         {
-            self.parasite_pointer_expired(eater, expired, rules);
+            self.parasite_pointer_expired(eater, expired, rules, effects);
         }
         // 0x004D99C9: the victim itself expiring clears its own link.
         if expired == listener
@@ -1114,6 +1160,7 @@ impl Simulation {
         raw_damage: i32,
         warhead: crate::sim::intern::InternedId,
         rules: &RuleSet,
+        effects: FrameEffects<'_>,
     ) {
         let frame = self.session.binary_frame;
         let Some(eater) = self
@@ -1128,7 +1175,7 @@ impl Simulation {
             .warhead(self.interner.resolve(warhead))
             .is_some_and(|w| w.sonic);
         if sonic {
-            self.parasite_exit_unit(eater, rules);
+            self.parasite_exit_unit(eater, rules, effects);
             if let Some(source) = source.and_then(|id| self.substrate.entities.get_mut(id)) {
                 crate::sim::mission::concrete_effects::represented_assign_target(source, None);
             }
@@ -1151,13 +1198,19 @@ impl Simulation {
             state.suppress(frame, raw_damage.wrapping_mul(2).wrapping_sub(threshold));
         }
         if raw_damage < 0 {
-            self.parasite_force_release(eater, FORCED_RELEASE_SUPPRESSION_FRAMES, rules);
+            self.parasite_force_release(eater, FORCED_RELEASE_SUPPRESSION_FRAMES, rules, effects);
         }
     }
 
     /// The forced-release idiom of the repair, heal, Iron Curtain and grinder
     /// sites: arm the suppression timer, then ExitUnit.
-    pub(crate) fn parasite_force_release(&mut self, eater: u64, suppression: i32, rules: &RuleSet) {
+    pub(crate) fn parasite_force_release(
+        &mut self,
+        eater: u64,
+        suppression: i32,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         let frame = self.session.binary_frame;
         if let Some(state) = self
             .substrate
@@ -1167,7 +1220,7 @@ impl Simulation {
         {
             state.suppress(frame, suppression);
         }
-        self.parasite_exit_unit(eater, rules);
+        self.parasite_exit_unit(eater, rules, effects);
     }
 }
 

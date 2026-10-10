@@ -37,6 +37,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::movement::{self, DestinationTiming};
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::SimFixed;
 
 /// One ground move order.
@@ -72,10 +73,15 @@ impl Simulation {
         order: GroundMove,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
-        if let Some(accepted) =
-            self.teleport_destination(order.entity_id, order.target, rules, registry)
-        {
+        if let Some(accepted) = self.teleport_destination(
+            order.entity_id,
+            order.target,
+            rules,
+            registry,
+            frame_effects,
+        ) {
             return accepted;
         }
         if let Some(rules) = rules {
@@ -98,6 +104,7 @@ impl Simulation {
                         Some(requested),
                         Some(rules),
                         registry,
+                        frame_effects,
                     )
                     .map_or_else(
                         |cause| {
@@ -119,6 +126,7 @@ impl Simulation {
                         order.speed,
                         rules,
                         registry,
+                        frame_effects,
                     )
                     .unwrap_or_else(|cause| {
                         log::warn!("Infantry ground destination {}: {cause}", order.entity_id);
@@ -127,8 +135,13 @@ impl Simulation {
             }
         }
         if order.object_destination.is_none()
-            && let Some(accepted) =
-                self.jumpjet_cell_destination(order.entity_id, order.target, order.speed, rules)
+            && let Some(accepted) = self.jumpjet_cell_destination(
+                order.entity_id,
+                order.target,
+                order.speed,
+                rules,
+                frame_effects,
+            )
         {
             return accepted;
         }
@@ -205,6 +218,7 @@ impl Simulation {
         cell: (u16, u16),
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Option<bool> {
         let entity = self.substrate.entities.get(id)?;
         if entity.locomotor.as_ref()?.active_kind() != LocomotorKind::Teleport {
@@ -216,14 +230,24 @@ impl Simulation {
         };
         Some(match category {
             EntityCategory::Infantry => self
-                .set_infantry_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, registry)
+                .set_infantry_destination(
+                    id,
+                    NavTargetRef::cell(cell.0, cell.1),
+                    rules,
+                    registry,
+                    frame_effects,
+                )
                 .unwrap_or_else(|error| {
                     log::debug!("Teleport infantry order {id} refused: {error}");
                     false
                 }),
-            EntityCategory::Unit => {
-                self.set_unit_destination(id, NavTargetRef::cell(cell.0, cell.1), rules, true)
-            }
+            EntityCategory::Unit => self.set_unit_destination(
+                id,
+                NavTargetRef::cell(cell.0, cell.1),
+                rules,
+                true,
+                frame_effects,
+            ),
             EntityCategory::Aircraft | EntityCategory::Structure => return None,
         })
     }

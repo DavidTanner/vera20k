@@ -49,6 +49,18 @@ schedule is established. The sound chain itself executes original bodies.
 
 ## Start, ring fill and cleanup
 
+Increase reaches the stage-change Stop at `70DF74` and the report-entry Stop at
+`70DF9C` before its raw Main draw at `70DFC6`. Stop `405D40` finishes driver stop,
+endpoint and handle clear synchronously. The driver and worker use the same
+critical section `87E880`; Windows thread scheduling itself is not replayed.
+The Rust frame borrows a sim-defined sound boundary implemented by the existing
+app/SfxPlayer owner. It delivers reached Stops before the raw draw, releases
+before Update/Limbo owner writes, and then delivers only the remaining frame
+sound suffix. Other frame consumers retain all facts. This capability and its
+frame rules are never stored in Simulation. Device-free regressions compare
+real retained-source controls/Main against this corpus; production captures
+provide the separate app/device integration evidence.
+
 Original SoundService `4041D0` calls Prepare at `4045D1` and `404673`. Each Prepare
 rebuilds the remaining middle list and selects one next source; it does not draw
 a complete permutation. Initial audible Play leaves flags8 clear, so both calls

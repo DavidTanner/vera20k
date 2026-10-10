@@ -12,7 +12,7 @@ use crate::sim::mission::concrete_effects::{
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::util::direction_tables::CELL_DELTAS;
 
-use super::Simulation;
+use super::{FrameEffects, Simulation};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct SensorCloakReevaluation {
@@ -389,8 +389,9 @@ fn detach_targeters_on_cloak(
     cloaker_id: u64,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
-    sim.detach_all_pointer_expired(cloaker_id, rules, registry);
+    sim.detach_all_pointer_expired(cloaker_id, rules, registry, effects);
 }
 
 /// `FootClass::PerCellProcess @ 0x004D85D0`, the cell-enter (`param_2 == 2`)
@@ -580,6 +581,7 @@ pub(super) fn tick_stock_cloak_producer(
     id: u64,
     rules: &RuleSet,
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) {
     let Some((category, type_ref, veterancy)) = sim
         .substrate
@@ -623,7 +625,7 @@ pub(super) fn tick_stock_cloak_producer(
         .map(|cloak| cloak.tick(facts, &mut sim.scenario_rng));
     if result.is_some_and(|result| result.began_cloaking) {
         // `StartCloaking @ 0x00703770` opens with `Detach_All(false)`.
-        detach_targeters_on_cloak(sim, id, rules, registry);
+        detach_targeters_on_cloak(sim, id, rules, registry, effects);
     }
     if result.is_some_and(|result| result.completed_cloak) {
         // The 1 → 2 completion at `0x006FBA98` snapshots the still-admitted
@@ -634,7 +636,7 @@ pub(super) fn tick_stock_cloak_producer(
         // each receiver's passive-acquire provenance byte `+0x50C` first, which
         // `represented_assign_target_admitted` reproduces.
         let retained = sensor_targeters_in_native_dispatch_order(sim, id);
-        detach_targeters_on_cloak(sim, id, rules, registry);
+        detach_targeters_on_cloak(sim, id, rules, registry, effects);
         let commits = assign_target_commits(&sim.substrate.entities, Some(TargetKind::Entity(id)));
         for targeter_id in retained {
             if let Some(targeter) = sim.substrate.entities.get_mut(targeter_id) {

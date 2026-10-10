@@ -102,6 +102,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::projectile::ProjectileCoord;
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 use crate::util::lepton::{BRIDGE_DECK_HEIGHT_LEPTONS, GROUND_LEVEL_HEIGHT_LEPTONS};
 
@@ -332,6 +333,7 @@ pub(super) fn process(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let mut bridge_changed = false;
     let mut index = sim.lightning_storm.clouds_manifesting.len();
@@ -341,7 +343,8 @@ pub(super) fn process(
         match cloud(sim, rules, anim) {
             Some((stage, frames, coords)) => {
                 if stage > frames / 2 {
-                    bridge_changed |= ground_strike(sim, rules, overlay_registry, coords);
+                    bridge_changed |=
+                        ground_strike(sim, rules, overlay_registry, coords, frame_effects);
                     sim.lightning_storm.clouds_manifesting.remove(index);
                 }
             }
@@ -568,6 +571,7 @@ pub(super) fn ground_strike(
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     [x, y, _]: [i32; 3],
+    frame_effects: FrameEffects<'_>,
 ) -> bool {
     let general = &rules.general;
     let (target, centre) = {
@@ -665,6 +669,7 @@ pub(super) fn ground_strike(
             general.lightning_damage,
             warhead,
             (crate::sim::combat::RAD_NO_ATTACKER, house, warhead_ref),
+            frame_effects,
         );
     } else {
         log::warn!(

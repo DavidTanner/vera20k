@@ -492,6 +492,7 @@ fn a_wall_on_the_line_keeps_pursuit_closing_instead_of_freezing() {
         &rules,
         Some(&registry),
         &std::collections::BTreeSet::new(),
+        crate::sim::world::FrameEffects::default(),
     );
 
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -522,6 +523,7 @@ fn without_the_wall_the_same_shot_halts_pursuit() {
         &rules,
         Some(&registry),
         &std::collections::BTreeSet::new(),
+        crate::sim::world::FrameEffects::default(),
     );
 
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -560,7 +562,12 @@ fn inside_minimum_range_pursuit_holds_instead_of_closing() {
     let mut sim = make_sim(vec![lobber, rhino]);
     install_wall_map(&mut sim, &[]);
 
-    sim.tick_attack_pursuit_with_overlay_registry(&rules, None, &std::collections::BTreeSet::new());
+    sim.tick_attack_pursuit_with_overlay_registry(
+        &rules,
+        None,
+        &std::collections::BTreeSet::new(),
+        crate::sim::world::FrameEffects::default(),
+    );
 
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(
@@ -641,7 +648,13 @@ fn walk_frame(sim: &mut Simulation, rules: &RuleSet) {
 }
 
 fn walk_command(sim: &mut Simulation, rules: &RuleSet, command: crate::sim::command::Command) {
-    assert!(sim.apply_command_with_overlays("Local", &command, Some(rules), None));
+    assert!(sim.apply_command_with_overlays(
+        "Local",
+        &command,
+        Some(rules),
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
 }
 
 fn wait_for_walk_head(
@@ -694,6 +707,7 @@ fn walk_destination_search_observes_route_opened_before_process() {
         },
         Some(&rules),
         None,
+        crate::sim::world::FrameEffects::default(),
     ));
     sim.path_grid = Some(open_grid.clone());
     let e = sim.substrate.entities.get(actor).unwrap();
@@ -1030,7 +1044,13 @@ fn owner_change_finishes_the_paid_walk_head() {
     );
     let head = wait_for_walk_head(&mut sim, &rules, actor);
     let new_owner = sim.substrate.entities.get(victim).unwrap().owner();
-    sim.change_owner_with_rules(actor, new_owner, &rules, None);
+    sim.change_owner_with_rules(
+        actor,
+        new_owner,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let e = sim.substrate.entities.get(actor).unwrap();
     assert!(e.movement_target.is_none());
     assert_eq!(e.locomotor.as_ref().unwrap().walk_destination(), None);
@@ -1169,7 +1189,12 @@ fn walk_null_setter_matches_original_caller_rows() {
                 loco.set_step_head(None);
             }
         }
-        assert!(sim.set_infantry_null_destination(actor, Some(&rules), None));
+        assert!(sim.set_infantry_null_destination(
+            actor,
+            Some(&rules),
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
         let e = sim.substrate.entities.get(actor).unwrap();
         let loco = e.locomotor.as_ref().unwrap();
         assert_eq!(loco.walk_is_moving(), Some(row["moving"] == 1), "{input}");

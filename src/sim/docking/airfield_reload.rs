@@ -30,7 +30,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
-use crate::sim::world::Simulation;
+use crate::sim::world::{FrameEffects, Simulation};
 
 /// What the arm asks and does, each where the original does it.
 pub(crate) trait ReloadHost {
@@ -101,6 +101,7 @@ pub(crate) fn mission_reload(
     rules: &RuleSet,
     dock: u64,
     registry: Option<&OverlayTypeRegistry>,
+    effects: FrameEffects<'_>,
 ) -> i32 {
     reload_visit(
         rules.general.reload_rate,
@@ -109,6 +110,7 @@ pub(crate) fn mission_reload(
             rules,
             dock,
             registry,
+            effects,
         },
     )
 }
@@ -118,6 +120,7 @@ struct WorldReload<'a> {
     rules: &'a RuleSet,
     dock: u64,
     registry: Option<&'a OverlayTypeRegistry>,
+    effects: FrameEffects<'a>,
 }
 
 impl ReloadHost for WorldReload<'_> {
@@ -145,6 +148,7 @@ impl ReloadHost for WorldReload<'_> {
             message,
             RadioPayload::default(),
             Some(self.rules),
+            self.effects,
         ) == RadioResponse::Roger
     }
 
@@ -178,7 +182,13 @@ impl ReloadHost for WorldReload<'_> {
     }
 
     fn release(&mut self, contact: u64) {
-        crate::sim::world::enter_idle_mode(self.sim, contact, self.rules, self.registry);
+        crate::sim::world::enter_idle_mode(
+            self.sim,
+            contact,
+            self.rules,
+            self.registry,
+            self.effects,
+        );
         let now = self.sim.session.binary_frame;
         let _ =
             self.sim

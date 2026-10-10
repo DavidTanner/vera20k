@@ -26,6 +26,8 @@ mod crash;
 pub(crate) mod entry_test_fixture;
 mod object_entry;
 mod sinking;
+mod sound_boundary;
+pub(crate) use sound_boundary::{FrameEffects, SoundBoundary};
 #[cfg(test)]
 mod unit_unlimbo_tests;
 pub(crate) use sinking::SinkingState;
@@ -267,6 +269,9 @@ pub(crate) struct SimFrameOutput {
     /// cells and can never express a removal.
     pub overlay_removals: Vec<(u16, u16)>,
     pub sound_events: Vec<SimSoundEvent>,
+    /// Prefix synchronously delivered at reached native handle boundaries.
+    /// Other consumers still inspect the complete facts; audio takes the suffix.
+    pub(crate) sound_events_delivered: usize,
     pub fire_events: Vec<SimFireEvent>,
     pub combat_lights: Vec<crate::sim::combat::CombatLightRequest>,
     pub(crate) lighting_events: Vec<crate::sim::light_sources::LightingEvent>,
@@ -1872,7 +1877,11 @@ impl Simulation {
                         .and_then(|building| building.bunker_occupant)
                         .is_some()
                 {
-                    crate::sim::docking::bunker_link::release_sell_destroy(self, stable_id);
+                    crate::sim::docking::bunker_link::release_sell_destroy(
+                        self,
+                        stable_id,
+                        uninit_context.effects(),
+                    );
                 }
                 self.uninit_with_context(stable_id, uninit_context);
             }
@@ -1888,8 +1897,10 @@ impl Simulation {
         fire_suppressed: &BTreeSet<u64>,
         fire_requests: &crate::sim::combat::FireRequests,
         projectile_detonations: &[crate::sim::projectile::ProjectileDetonation],
+        frame_effects: FrameEffects<'_>,
     ) -> crate::sim::combat::CombatTickResult {
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let mut result = crate::sim::combat::world_receiver::tick_combat(
             self,
             &mut run,
@@ -1912,6 +1923,7 @@ impl Simulation {
         visit: crate::sim::combat::world_receiver::FireVisit,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> damage_consequences::DamageCommitReceipt {
         #[cfg(test)]
         if let crate::sim::combat::world_receiver::FireVisit::Building { id, shot } = &visit
@@ -1935,7 +1947,8 @@ impl Simulation {
         if let Some(id) = observed_direct {
             crate::sim::combat::receiver_fixture::observe_fire_visit(self, id, "entry");
         }
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let mut emit = crate::sim::combat::CombatEmit::default();
         let mut pings = Vec::new();
         crate::sim::combat::world_receiver::visit_fire(
@@ -1966,7 +1979,7 @@ impl Simulation {
             run.finish(),
             fire_events,
         )
-        .commit(self, rules, overlay_registry);
+        .commit(self, rules, overlay_registry, frame_effects);
         #[cfg(test)]
         if let Some(id) = observed_direct {
             crate::sim::combat::receiver_fixture::observe_fire_visit(self, id, "return");
@@ -1982,11 +1995,13 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         detonations: &[crate::sim::projectile::ProjectileDetonation],
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         if detonations.is_empty() {
             return false;
         }
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let commit = crate::sim::combat::world_receiver::commit_projectiles(
             self,
             &mut run,
@@ -2011,6 +2026,7 @@ impl Simulation {
             commit.effects,
             commit.under_attack_events,
             terrain_navigation_changed_cells,
+            frame_effects,
         )
         .bridge_state_changed
     }
@@ -2145,6 +2161,7 @@ impl Simulation {
         first_tail_id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let mut bridge_state_changed = false;
         let mut index = 0;
@@ -2156,6 +2173,7 @@ impl Simulation {
                         stable_id,
                         Some(rules),
                         techno_ai::ObjectAiCtx {
+                            effects: frame_effects,
                             overlay_registry,
                             ..techno_ai::ObjectAiCtx::default()
                         },
@@ -2175,6 +2193,7 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         request: &crate::sim::wave::WaveDamageRequest,
+        frame_effects: FrameEffects<'_>,
     ) {
         // DamageArea reads WaveClass+0x1D4 at the call boundary. Health and
         // Rust death-animation state do not null that pointer; only the exact
@@ -2203,7 +2222,8 @@ impl Simulation {
                 .collect()
         }
 
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         // Wave's synchronous receiver (0x0075F42C) can detonate a DeathWeapon
         // at 0x0070D782. Zero-delay/default-Start impact Anim construction
         // (0x00469C93 -> 0x00422702/0x00424D5A) accesses the live smudge map
@@ -2555,6 +2575,7 @@ impl Simulation {
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
+            frame_effects,
         );
     }
 
@@ -2567,8 +2588,10 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         event: crate::sim::combat::EntityDamageEvent,
+        frame_effects: FrameEffects<'_>,
     ) {
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_entities(
             self,
             &mut run,
@@ -2584,6 +2607,7 @@ impl Simulation {
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
+            frame_effects,
         );
     }
 
@@ -2599,6 +2623,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
             return;
@@ -2619,6 +2644,7 @@ impl Simulation {
                     arg6: true,
                 },
             ),
+            frame_effects,
         );
     }
 
@@ -2629,8 +2655,10 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         event: crate::sim::combat::TerrainDamageEvent,
+        frame_effects: FrameEffects<'_>,
     ) {
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let (effects, under_attack_events) = crate::sim::combat::world_receiver::commit_terrain(
             self,
             &mut run,
@@ -2646,6 +2674,7 @@ impl Simulation {
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
+            frame_effects,
         );
     }
 
@@ -2659,13 +2688,14 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         hits: &[crate::sim::combat::EntityDamageEvent],
+        frame_effects: FrameEffects<'_>,
     ) {
         let receivers = hits
             .iter()
             .copied()
             .map(crate::sim::combat::combat_aoe::AreaDamageReceiver::Entity)
             .collect::<Vec<_>>();
-        self.commit_noncombat_aoe_receivers(rules, overlay_registry, &receivers);
+        self.commit_noncombat_aoe_receivers(rules, overlay_registry, &receivers, frame_effects);
     }
 
     /// World-owned entry for a complete non-combat Apply_area_damage receiver
@@ -2675,8 +2705,10 @@ impl Simulation {
         rules: &RuleSet,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         receivers: &[crate::sim::combat::combat_aoe::AreaDamageReceiver],
+        frame_effects: FrameEffects<'_>,
     ) -> damage_consequences::DamageCommitReceipt {
-        let mut run = crate::sim::combat::world_receiver::ReceiverRun::default();
+        let mut run =
+            crate::sim::combat::world_receiver::ReceiverRun::default().with_effects(frame_effects);
         let (effects, under_attack_events, area_result) =
             crate::sim::combat::world_receiver::commit_area_with_dispatch(
                 self,
@@ -2692,6 +2724,7 @@ impl Simulation {
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
+            frame_effects,
         );
         receipt.area_result = Some(area_result);
         receipt
@@ -2708,13 +2741,14 @@ impl Simulation {
         effects: crate::sim::combat::DeathEffects,
         under_attack_events: Vec<crate::sim::combat::UnderAttackEvent>,
         terrain_navigation_changed_cells: Vec<(u16, u16)>,
+        frame_effects: FrameEffects<'_>,
     ) -> damage_consequences::DamageCommitReceipt {
         damage_consequences::DamageConsequences::immediate(
             effects,
             under_attack_events,
             terrain_navigation_changed_cells,
         )
-        .commit(self, rules, overlay_registry)
+        .commit(self, rules, overlay_registry, frame_effects)
     }
 
     /// `HouseClass::NotifyUnderAttack @ 0x004F93E0` for one damaged asset,
@@ -4639,7 +4673,7 @@ impl Simulation {
     /// requested it.
     #[cfg(test)]
     pub(crate) fn change_owner(&mut self, stable_id: u64, new_owner: InternedId) {
-        self.change_owner_impl(stable_id, new_owner, None, None);
+        self.change_owner_impl(stable_id, new_owner, None, None, FrameEffects::default());
     }
 
     pub(crate) fn change_owner_with_rules(
@@ -4648,8 +4682,9 @@ impl Simulation {
         new_owner: InternedId,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
-        self.change_owner_impl(stable_id, new_owner, Some(rules), registry);
+        self.change_owner_impl(stable_id, new_owner, Some(rules), registry, effects);
     }
 
     fn change_owner_impl(
@@ -4658,6 +4693,7 @@ impl Simulation {
         new_owner: InternedId,
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         let Some((old_owner, category, has_spawn_manager, build_const_eligible)) =
             self.substrate.entities.get(stable_id).map(|entity| {
@@ -4724,7 +4760,7 @@ impl Simulation {
         // `0x004486DF..0x00448701`: the building's own factory is abandoned
         // for its old owner.
         if category == EntityCategory::Structure {
-            crate::sim::production::detach_building_factory(self, rules, stable_id);
+            crate::sim::production::detach_building_factory(self, rules, stable_id, effects);
         }
         // gamemd-derived: `BuildingClass::ChangeOwner @ 0x00448260` removes
         // this pointer from the old House BuildConst vector before delegating
@@ -4754,7 +4790,7 @@ impl Simulation {
                     .is_some_and(|object| object.is_simple_deployer);
             let now = self.session.binary_frame;
             let _ = self.assign_target_represented(stable_id, None, Some(rules));
-            self.assign_null_destination(stable_id, Some(rules), None);
+            self.assign_null_destination(stable_id, Some(rules), None, effects);
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
                 entity.movement_target = None;
                 entity.order_intent = None;
@@ -4790,7 +4826,7 @@ impl Simulation {
             crate::sim::spawn_manager::kill_all_spawns_with_context(
                 self,
                 stable_id,
-                rules.map_or_else(UninitContext::default, UninitContext::with_rules),
+                UninitContext::new(rules, registry).with_effects(effects),
             );
         }
         // Techno70158A..7015E6: Removed_From_Game on the old house (not in
@@ -4843,7 +4879,7 @@ impl Simulation {
         //701674 Mark(UP),70D4A0 detach and701691 Mark(DOWN) all precede
         //the owner store. PlaceDown's Cell discovery therefore observes the
         //old House and can dirty its radar as well as its power.
-        let mark_context = UninitContext::new(rules, registry);
+        let mark_context = UninitContext::new(rules, registry).with_effects(effects);
         if on_map {
             self.unmark_entity_remove(stable_id, mark_context);
         }
@@ -4853,7 +4889,7 @@ impl Simulation {
         // garrison transfer both come through here, so a squad that was firing
         // at a building stops the instant the building changes hands instead of
         // shooting at what is now its own structure.
-        self.stop_all_targeting_on_detach(stable_id, rules, registry);
+        self.stop_all_targeting_on_detach(stable_id, rules, registry, effects);
         if on_map {
             self.mark_entity_put(stable_id, mark_context);
         }
@@ -4941,12 +4977,12 @@ impl Simulation {
         // IsControlledByHuman). A rules-less transfer (tests only) cannot
         // read the type and skips it.
         if let Some(rules) = rules {
-            self.change_owner_mission_half(stable_id, rules);
+            self.change_owner_mission_half(stable_id, rules, effects);
             if category == EntityCategory::Structure {
                 crate::sim::production::initialize_factory_primary(self, stable_id, rules);
                 //448CEF: Grand_Opening(1) also runs on an already placed
                 //building; its6E4 gate prevents repeating first-opening slots.
-                self.grand_opening(stable_id, true, false, rules, None);
+                self.grand_opening(stable_id, true, false, rules, None, effects);
             }
         }
         // `FootClass::ChangeOwner @ 0x004DBF13..0x004DBF32`: a Foot given to
@@ -4957,7 +4993,7 @@ impl Simulation {
                 .get(&new_owner)
                 .is_some_and(|house| house.is_human)
         {
-            self.leave_team(stable_id, false, rules);
+            self.leave_team(stable_id, false, rules, effects);
         }
         self.foot_neighbors_after_owner_change(stable_id, rules);
         self.refresh_waypoint_edge_from_committed_structure(stable_id);
@@ -5048,7 +5084,12 @@ impl Simulation {
     /// - `FootClass::ReceiveDamage @ 0x004D74C7`, gated on
     ///   `MissionControl[current].NoThreat && !Zombie`; no retail mission
     ///   sets either, so the call is unreachable on stock data.
-    fn change_owner_mission_half(&mut self, stable_id: u64, rules: &RuleSet) {
+    fn change_owner_mission_half(
+        &mut self,
+        stable_id: u64,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
         use crate::sim::mission::{MissionId, MissionType};
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
@@ -5087,12 +5128,12 @@ impl Simulation {
         if in_factory_contact {
             return;
         }
-        self.assign_null_destination(stable_id, Some(rules), None);
+        self.assign_null_destination(stable_id, Some(rules), None, effects);
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
             entity.movement_target = None;
         }
         let _ = self.assign_target_represented(stable_id, None, Some(rules));
-        enter_idle_mode(self, stable_id, rules, None);
+        enter_idle_mode(self, stable_id, rules, None, effects);
     }
 
     /// Legacy non-lifecycle contact scrub retained only for separately classified
@@ -5952,6 +5993,7 @@ impl Simulation {
         sid: u64,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         use crate::sim::building_construction::PackUpFrame;
         let now = self.session.binary_frame as i32;
@@ -5985,11 +6027,15 @@ impl Simulation {
         }
         let spawned = match visit {
             PackUpFrame::StageZero => {
-                production::sell_stage_zero(self, rules, sid);
+                production::sell_stage_zero(self, rules, sid, effects);
                 false
             }
-            PackUpFrame::StageOne => production::sell_stage_one(self, rules, overlay_registry, sid),
-            PackUpFrame::Complete => production::sell_complete(self, rules, overlay_registry, sid),
+            PackUpFrame::StageOne => {
+                production::sell_stage_one(self, rules, overlay_registry, sid, effects)
+            }
+            PackUpFrame::Complete => {
+                production::sell_complete(self, rules, overlay_registry, sid, effects)
+            }
             PackUpFrame::Waiting => false,
         };
         if spawned {
@@ -6010,6 +6056,7 @@ impl Simulation {
         execute_tick: u64,
         executed_commands: &mut usize,
         spawned_entities: &mut bool,
+        effects: FrameEffects<'_>,
     ) -> bool {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::Houses);
@@ -6026,7 +6073,7 @@ impl Simulation {
         // which construction and the frame-end pending-delete drain move: a
         // death reaches the gate on the next frame. Each house's strategy tick
         // (`house_strategy.rs`) and building choice follow its own gate.
-        self.house_rung(rules, overlay_registry, self.session.tick > 0);
+        self.house_rung(rules, overlay_registry, self.session.tick > 0, effects);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
@@ -6036,7 +6083,7 @@ impl Simulation {
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
         let (executed, spawned) =
-            self.apply_due_commands(commands, rules, execute_tick, overlay_registry);
+            self.apply_due_commands(commands, rules, execute_tick, overlay_registry, effects);
         *executed_commands += executed;
         *spawned_entities |= spawned;
 
@@ -6063,7 +6110,7 @@ impl Simulation {
         // collapse and physically finalize exactly once.
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::PendingDelete);
-        self.process_pending_delete_with(rules, overlay_registry);
+        self.process_pending_delete_with(rules, overlay_registry, effects);
 
         // Original55DE9F calls725C70 at this admitted late-frame boundary.
         // Stock bridge/ore Overlay objects publish only Cell state; their isolated
@@ -6102,11 +6149,12 @@ impl Simulation {
         &mut self,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        effects: FrameEffects<'_>,
     ) {
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::TeamScript);
         if let Some(rules) = rules {
-            self.run_team_ai_pass(rules, overlay_registry);
+            self.run_team_ai_pass(rules, overlay_registry, effects);
         }
     }
 
@@ -6232,6 +6280,7 @@ impl Simulation {
             tick_ms,
             TickLane::Ordinary,
             None,
+            FrameEffects::default(),
         )
         .expect("fixture frame must complete")
         .into_tick()
@@ -6252,6 +6301,7 @@ impl Simulation {
         tick_ms: u32,
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
+        effects: FrameEffects<'_>,
     ) -> Result<SimFrameOutput, FrameAdvanceError> {
         let frame = self.advance_master_frame(
             commands,
@@ -6260,11 +6310,12 @@ impl Simulation {
             tick_ms,
             lane,
             trigger_inputs,
+            effects,
         );
         // A failed frame must not carry a previous caller's derived interest
         // into a later headless, replay or ordinary presentation frame.
         self.unit_voice_visit_interest.clear();
-        Ok(self.collect_frame_output(frame?))
+        Ok(self.collect_frame_output(frame?, effects))
     }
 
     /// Install the sole audio owner's read-only pending-interest projection
@@ -6281,7 +6332,11 @@ impl Simulation {
         }
     }
 
-    fn collect_frame_output(&mut self, frame: MasterFrameOutput) -> SimFrameOutput {
+    fn collect_frame_output(
+        &mut self,
+        frame: MasterFrameOutput,
+        effects: FrameEffects<'_>,
+    ) -> SimFrameOutput {
         let MasterFrameOutput {
             tick,
             admitted_commands,
@@ -6301,6 +6356,8 @@ impl Simulation {
         let overlay_removals = std::mem::take(&mut self.frame_overlay_removals);
         let fire_events = std::mem::take(&mut self.fire_events);
         let sound_events = std::mem::take(&mut self.sound_events);
+        let sound_events_delivered = effects.delivered_sound_events();
+        assert!(sound_events_delivered <= sound_events.len());
         SimFrameOutput {
             admitted_commands,
             tick,
@@ -6309,6 +6366,7 @@ impl Simulation {
             overlay_updates,
             overlay_removals,
             sound_events,
+            sound_events_delivered,
             fire_events,
             combat_lights,
             lighting_events,
@@ -6330,7 +6388,9 @@ impl Simulation {
         tick_ms: u32,
         lane: TickLane,
         trigger_inputs: Option<TriggerInputs<'_>>,
+        effects: FrameEffects<'_>,
     ) -> Result<MasterFrameOutput, FrameAdvanceError> {
+        let effects = effects.with_rules(rules);
         self.combat_light_requests.clear();
         self.pending_projectile_detonations.clear();
         self.pending_wave_damage_requests.clear();
@@ -6355,7 +6415,7 @@ impl Simulation {
 
         if lane == TickLane::Ordinary {
             executed_commands +=
-                self.apply_due_frame_ingress_commands(commands, rules, execute_tick);
+                self.apply_due_frame_ingress_commands(commands, rules, execute_tick, effects);
         }
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::SessionCommands);
@@ -6406,7 +6466,7 @@ impl Simulation {
             // `Kamikaze__Update` follows it (0x0055B4F0). `LightningStorm::
             // Process` runs whatever the superweapons option (0x0055B5C8): a
             // map's NUKE weapon starts the nuke flash without a Super.
-            self.kamikaze_update(rules);
+            self.kamikaze_update(rules, effects);
             self.lifecycle_outputs.push(LifecycleOutput::LaserUpdate {
                 frame: self.session.binary_frame as i32,
             });
@@ -6414,6 +6474,7 @@ impl Simulation {
                 self,
                 rules,
                 overlay_registry,
+                effects,
             );
             self.radiation.tick_decay(
                 self.session.binary_frame,
@@ -6425,14 +6486,14 @@ impl Simulation {
         // Native TeamClass AI precedes the main LogicClass object vector. In
         // particular, ordinary object ReceiveDamage paths that arm a Team's
         // base-defense suspension occur only after this frame's Team visit.
-        self.run_team_script_pass(rules, overlay_registry);
+        self.run_team_script_pass(rules, overlay_registry, effects);
         // The live pass commits each object's AI, movement and lifecycle effects
         // before advancing its cursor; later phases need only these outcomes.
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::LogicVector);
         // Receipts are frame-local: an aborted earlier frame must not leak one.
         self.fire_requests = Default::default();
-        let object_pass = self.advance_live_object_pass(rules, overlay_registry)?;
+        let object_pass = self.advance_live_object_pass(rules, overlay_registry, effects)?;
         let ownership_changed = object_pass.ownership_changed();
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         let movement_stats = object_pass.movement;
@@ -6500,6 +6561,7 @@ impl Simulation {
                 rules,
                 overlay_registry,
                 &tube_turn_owned_ids,
+                effects,
             );
             destroyed_structure |= c4_outcome.destroyed_structure;
             bridge_state_changed |= c4_outcome.bridge_state_changed;
@@ -6511,6 +6573,7 @@ impl Simulation {
                 rules,
                 overlay_registry,
                 &tube_turn_owned_ids,
+                effects,
             );
             // Preserve live-object order among the remaining class requests.
             // Foot fire and its same-pass Bullet visits have already completed.
@@ -6523,7 +6586,7 @@ impl Simulation {
             // compatibility buffer. If a caller supplies Rules later in the
             // same frame, retain the live one-receiver-at-a-time contract.
             for request in sonic_damage_requests {
-                self.commit_logic_wave_damage_request(rules, overlay_registry, &request);
+                self.commit_logic_wave_damage_request(rules, overlay_registry, &request, effects);
             }
             let first_tail_id = self.substrate.next_stable_object_id;
             let fire_suppressed = tube_turn_owned_ids.clone();
@@ -6535,9 +6598,11 @@ impl Simulation {
                 &fire_suppressed,
                 &fire_requests,
                 &projectile_detonations,
+                effects,
             );
             self.admit_projectile_spawns(combat_result.projectile_spawns.iter().copied(), rules);
-            bridge_state_changed |= self.visit_combat_tail(first_tail_id, rules, overlay_registry);
+            bridge_state_changed |=
+                self.visit_combat_tail(first_tail_id, rules, overlay_registry, effects);
             turret::tick_turret_rotation(
                 &mut self.substrate.entities,
                 rules,
@@ -6549,7 +6614,7 @@ impl Simulation {
             // SpawnManager ran in its owner's TechnoClass::AI slot.
             let receipt = combat_result
                 .consequences
-                .commit(self, rules, overlay_registry);
+                .commit(self, rules, overlay_registry, effects);
             destroyed_structure |= receipt.structure_destroyed;
             bridge_state_changed |= receipt.bridge_state_changed;
 
@@ -6563,11 +6628,12 @@ impl Simulation {
             // --- Phase 6: Passengers ---
             // Retaliation is not a phase: every receiver issues its Mission
             // Override inline (`TechnoClass::ReceiveDamage 0x00702A43`).
-            passenger::tick_passenger_system(self, rules, overlay_registry);
+            passenger::tick_passenger_system(self, rules, overlay_registry, effects);
             self.tick_order_intents_post_combat_except(
                 Some(rules),
                 &tube_turn_owned_ids,
                 overlay_registry,
+                effects,
             );
             // `IonBlastClass::UpdateAll @ 0x0053D310` follows the object loop
             // (`0x0055B64B`).
@@ -6620,12 +6686,17 @@ impl Simulation {
             // Native55AFB0 visits all objects before55B66A's Factory sweep.
             // Depot service now spends inside its Building mission visit, so
             // every factory observes the wallet after that object's repair.
-            production::revalidate_and_step_factories(self, rules);
+            production::revalidate_and_step_factories(self, rules, effects);
             #[cfg(test)]
             self.trace_house_ai_activation_order(
                 HouseAiActivationOrderTestEvent::ProductionCompleted,
             );
-            crate::sim::docking::bunker_install::tick_bunker_install(self, rules, overlay_registry);
+            crate::sim::docking::bunker_install::tick_bunker_install(
+                self,
+                rules,
+                overlay_registry,
+                effects,
+            );
             if spawned_entities {
                 self.refresh_fog(&vision_config, Some(rules));
             }
@@ -6648,6 +6719,7 @@ impl Simulation {
             execute_tick,
             &mut executed_commands,
             &mut spawned_entities,
+            effects,
         );
         spawned_entities |= std::mem::take(&mut self.mission_spawned_entities);
         self.frame_overlay_updates = self.finalize_frame_overlays_and_navigation(

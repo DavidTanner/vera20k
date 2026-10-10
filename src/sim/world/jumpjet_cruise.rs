@@ -34,6 +34,7 @@ use crate::sim::movement::jumpjet_movement::jumpjet_flight::{
 };
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::RawCellKey;
+use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{
     GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons, lepton_to_cell_packed,
@@ -45,6 +46,7 @@ struct CruiseHost<'a> {
     trig: &'a TrigTable,
     rules: Option<&'a RuleSet>,
     registry: Option<&'a OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'a>,
     stable_id: u64,
     touched_down: bool,
     impact: bool,
@@ -132,8 +134,13 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         );
     }
     fn set_z(&mut self, z: i32) {
-        self.sim
-            .set_object_z(self.stable_id, z, self.rules, self.registry);
+        self.sim.set_object_z(
+            self.stable_id,
+            z,
+            self.rules,
+            self.registry,
+            self.frame_effects,
+        );
     }
     fn height_above_ground(&self) -> i32 {
         let location = self.location();
@@ -298,9 +305,16 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     fn set_destination_cell(&mut self, cell: (i16, i16), runtime: &mut JumpjetRuntime) {
         let id = self.stable_id;
         let rules = self.rules;
+        let frame_effects = self.frame_effects;
         let speed = self.sim.jumpjet_order_speed(id, rules);
         runtime.with_owner_call(self.sim, id, |sim| {
-            sim.jumpjet_cell_destination(id, (cell.0 as u16, cell.1 as u16), speed, rules);
+            sim.jumpjet_cell_destination(
+                id,
+                (cell.0 as u16, cell.1 as u16),
+                speed,
+                rules,
+                frame_effects,
+            );
         });
     }
     fn can_enter_cell(&self, cell: (i16, i16)) -> i32 {
@@ -343,9 +357,10 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let id = self.stable_id;
         let rules = self.rules;
         let registry = self.registry;
+        let frame_effects = self.frame_effects;
         let speed = self.sim.jumpjet_order_speed(id, rules);
         runtime.with_owner_call(self.sim, id, |sim| {
-            sim.jumpjet_stop_moving(id, rules, registry);
+            sim.jumpjet_stop_moving(id, rules, registry, frame_effects);
             sim.publish_jumpjet_destination(id, speed);
         });
         runtime.phase()
@@ -374,8 +389,9 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         }
         let id = self.stable_id;
         let registry = self.registry;
+        let frame_effects = self.frame_effects;
         runtime.with_owner_call(self.sim, id, |sim| {
-            sim.jumpjet_lift_off_notify(id, rules, registry);
+            sim.jumpjet_lift_off_notify(id, rules, registry, frame_effects);
         });
     }
     fn cell_high_bridge_at(&self, cell: (i16, i16)) -> bool {
@@ -406,6 +422,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let id = self.stable_id;
         let rules = self.rules;
         let registry = self.registry;
+        let frame_effects = self.frame_effects;
         if self.owner_kind() == FlightOwnerKind::Unit {
             runtime.with_owner_call(self.sim, id, |sim| {
                 // Unit739EC0 returns Ok(false); full Infantry bridge work remains
@@ -415,9 +432,10 @@ impl JumpjetFlightHost for CruiseHost<'_> {
                     crate::sim::movement::PerCellReason::Arrival,
                     rules,
                     registry,
+                    frame_effects,
                 )
                 .expect("Unit touchdown PerCell has no fallible arm");
-                sim.assign_null_destination(id, rules, registry);
+                sim.assign_null_destination(id, rules, registry, frame_effects);
             });
         }
         let location = self.location();
@@ -430,7 +448,9 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         // after the tracker removal (0x0054C9DC); its answer is not read.
         let rules = self.rules;
         let registry = self.registry;
-        let _ = self.sim.pickup_crate_at(id, here, rules, registry);
+        let _ = self
+            .sim
+            .pickup_crate_at(id, here, rules, registry, self.frame_effects);
     }
     fn finish_touchdown(&mut self) {
         let id = self.stable_id;
@@ -458,11 +478,19 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
     fn mark(&mut self, put: bool) {
         if put {
-            self.sim
-                .foot_mark_put(self.stable_id, self.rules, self.registry);
+            self.sim.foot_mark_put(
+                self.stable_id,
+                self.rules,
+                self.registry,
+                self.frame_effects,
+            );
         } else {
-            self.sim
-                .foot_mark_remove(self.stable_id, self.rules, self.registry);
+            self.sim.foot_mark_remove(
+                self.stable_id,
+                self.rules,
+                self.registry,
+                self.frame_effects,
+            );
         }
     }
     fn crash_impact(&mut self) {
@@ -499,6 +527,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) {
         use crate::sim::combat::TargetKind;
         let Some(owner) = self.substrate.entities.get(id) else {
@@ -515,6 +544,7 @@ impl Simulation {
             id,
             crate::sim::radio::RadioMessage::RequestClearance,
             Some(rules),
+            frame_effects,
         );
         let Some(owner) = self.substrate.entities.get(id) else {
             return;
@@ -535,7 +565,7 @@ impl Simulation {
             };
             // Native does not read the setter's answer.
             let speed = self.jumpjet_order_speed(id, Some(rules));
-            self.jumpjet_cell_destination(id, cell, speed, Some(rules));
+            self.jumpjet_cell_destination(id, cell, speed, Some(rules), frame_effects);
             return;
         }
         if let Some(owner) = self.substrate.entities.get_mut(id) {
@@ -546,6 +576,7 @@ impl Simulation {
             crate::sim::movement::ScatterFlags::new(true, false),
             rules,
             registry,
+            frame_effects,
         ) {
             log::debug!("Jumpjet {id} lift-off scatter: {cause}");
         }
@@ -557,6 +588,7 @@ impl Simulation {
         stable_id: u64,
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> Option<AirMovementTickStats> {
         if !self
             .substrate
@@ -577,6 +609,7 @@ impl Simulation {
                 trig,
                 rules,
                 registry,
+                frame_effects,
                 stable_id,
                 touched_down: false,
                 impact: false,
@@ -601,6 +634,7 @@ impl Simulation {
                     crate::sim::movement::infantry_action::DO_AIR_DEATH_START,
                     false,
                     rules,
+                    frame_effects,
                 )
             {
                 log::debug!("infantry {stable_id} AirDeathStart: {cause}");
@@ -823,7 +857,12 @@ mod tests {
         }
         for frame in 0..frames {
             sim.session.binary_frame = 1001 + frame;
-            sim.tick_air_movement_with_cell_lists_one(1, None, None);
+            sim.tick_air_movement_with_cell_lists_one(
+                1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         sim
     }
@@ -854,7 +893,12 @@ mod tests {
         assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(10, 10), 0x20);
         for frame in 0..80 {
             sim.session.binary_frame = 1001 + frame;
-            sim.tick_air_movement_with_cell_lists_one(1, None, None);
+            sim.tick_air_movement_with_cell_lists_one(
+                1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
         assert!(entity.position.exact_z_leptons.unwrap() >= 208);
@@ -916,7 +960,12 @@ mod tests {
                 .with_moving_for_test(true);
         }
         sim.session.binary_frame = 1001;
-        sim.tick_air_movement_with_cell_lists_one(1, None, None);
+        sim.tick_air_movement_with_cell_lists_one(
+            1,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
 
         assert_eq!(
             sim.substrate.air_slots.holder(13, 10),
@@ -957,7 +1006,12 @@ mod tests {
         let mut sim = hovering_jumpjet(body_facing);
         for (index, expected) in frames.iter().enumerate() {
             sim.session.binary_frame = 1001 + index as u32;
-            let stats = sim.tick_air_movement_with_cell_lists_one(1, None, None);
+            let stats = sim.tick_air_movement_with_cell_lists_one(
+                1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let entity = sim.substrate.entities.get(1).expect("jumpjet");
             let coord = position_world_coord(&entity.position);
             let native: Vec<i64> = expected["coord"]
@@ -1037,7 +1091,12 @@ mod tests {
         let mut sim = hovering_jumpjet(0x40);
         for frame in 0..20 {
             sim.session.binary_frame = 1001 + frame;
-            sim.tick_air_movement_with_cell_lists_one(1, None, None);
+            sim.tick_air_movement_with_cell_lists_one(
+                1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let runtime = |sim: &Simulation| {
             sim.substrate
@@ -1063,10 +1122,15 @@ mod tests {
         assert!(entity.navigation.nav_com.is_some());
         let here = (entity.position.rx, entity.position.ry);
         assert!(here.0 < 16, "still on its way");
-        sim.assign_null_destination(1, None, None);
+        sim.assign_null_destination(1, None, None, crate::sim::world::FrameEffects::default());
 
         sim.session.binary_frame = 1021;
-        sim.tick_air_movement_with_cell_lists_one(1, None, None);
+        sim.tick_air_movement_with_cell_lists_one(
+            1,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
         let stopped = runtime(&sim);
         assert!(stopped.moving(), "Stop_Moving keeps the moving byte");
         assert_eq!(
@@ -1083,7 +1147,12 @@ mod tests {
 
         for frame in 0..400 {
             sim.session.binary_frame = 1022 + frame;
-            sim.tick_air_movement_with_cell_lists_one(1, None, None);
+            sim.tick_air_movement_with_cell_lists_one(
+                1,
+                None,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
         }
         let landed = runtime(&sim);
         assert_eq!(landed.phase(), jumpjet_flight::STATE_GROUND);
@@ -1140,7 +1209,12 @@ mod tests {
             }
             sim.session.binary_frame = 1001;
             fresh_oracle_seam::install(vec![code], Vec::new());
-            sim.tick_air_movement_with_cell_lists_one(1, Some(&rules), None);
+            sim.tick_air_movement_with_cell_lists_one(
+                1,
+                Some(&rules),
+                None,
+                crate::sim::world::FrameEffects::default(),
+            );
             let (records, unused) = fresh_oracle_seam::finish();
             assert_eq!(
                 records,

@@ -53,6 +53,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellObjectMember;
 use crate::sim::rng::SimRng;
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::lepton::lepton_to_cell_packed;
 
@@ -150,6 +151,7 @@ pub(crate) fn try_fire(
     rules: &RuleSet,
     owner: InternedId,
     registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     #[cfg(test)]
     observe(AiFireEvent::TryFire);
@@ -192,7 +194,7 @@ pub(crate) fn try_fire(
             AiFireArm::LightningStorm | AiFireArm::None => None,
         };
         if let Some(cell) = cell {
-            sim.fire_super_weapon(rules, owner, sw_type_id, cell, registry);
+            sim.fire_super_weapon(rules, owner, sw_type_id, cell, registry, frame_effects);
         }
     }
 }

@@ -13,6 +13,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::anim_class::AnimWorldCoord;
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::movement::ground_pose::{ground_surface_z_at, position_world_coord};
+use crate::sim::world::FrameEffects;
 
 /// Techno constructor6F2F2B/6F2F31 initializes both bytes to zero. Kept
 /// separate from Foot+425/+426 (`GameEntity::crashing` and its sound edge).
@@ -44,26 +45,42 @@ impl Simulation {
     /// Stun. Keep cell marking and passenger/crew work at the receiver's
     /// existing postlude, after this call. Object's exact-zero callback has
     /// already consumed the kill before Destroy and Techno death effects.
-    pub(crate) fn begin_ship_sinking(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn begin_ship_sinking(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
         entity.health.current = 1;
         entity.lifecycle.object_alive = true;
         entity.sinking.active = true;
-        self.techno_death_stun(id, UninitContext::with_rules(rules));
+        self.techno_death_stun(
+            id,
+            UninitContext::with_rules(rules).with_effects(frame_effects),
+        );
     }
 
     /// PostWarpValidation's sink (`0x00718968..0x00718977`,
     /// `0x00718ABF..0x00718ACE`): +3CD and the Stun (vt+0x3A0) on a living
     /// object, which no receiver unmarked: Unit AI lowers it through
     /// SetLocation's marked arm until its terminal RecordKill/UnInit.
-    pub(crate) fn begin_warp_sinking(&mut self, id: u64, rules: &RuleSet) {
+    pub(crate) fn begin_warp_sinking(
+        &mut self,
+        id: u64,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
         entity.sinking.active = true;
-        self.techno_death_stun(id, UninitContext::with_rules(rules));
+        self.techno_death_stun(
+            id,
+            UninitContext::with_rules(rules).with_effects(frame_effects),
+        );
     }
 
     /// Foot4DABC7..4DACD7: voice first (no local-player gate), then the type
@@ -125,6 +142,7 @@ impl Simulation {
         id: u64,
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
@@ -146,7 +164,7 @@ impl Simulation {
         // Chrono Warp's sink leaves the hull marked, so it takes the marked
         // arm. Both rejoin the changed-coordinate/OpenTopped tail, not a
         // separate raw-Z setter. Native execution: naval_sink_tick.json.
-        self.foot_set_location_marked(id, coord, Some(rules), registry);
+        self.foot_set_location_marked(id, coord, Some(rules), registry, frame_effects);
         if coord.z.wrapping_sub(floor) < -400 {
             // UnitAI736500's terminal RecordKill(NULL) is a second callback,
             // not a second accounting implementation. Native naval_sink_tick
@@ -158,7 +176,10 @@ impl Simulation {
                 crate::sim::combat::KillCallback::Terminal,
                 rules,
             );
-            self.uninit_with_rules(id, rules);
+            self.uninit_with_context(
+                id,
+                UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+            );
             self.sound_events
                 .push(SimSoundEvent::ObjectSoundReleased { owner: id });
             return true;

@@ -71,6 +71,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
+use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::sim::world::display_layers::DisplayLayer;
 
@@ -339,6 +340,7 @@ pub(crate) fn enter_idle_mode_for(
     id: u64,
     rules: &RuleSet,
     registry: Option<&OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
 ) {
     #[cfg(test)]
     if RECORDED_CALLS
@@ -396,6 +398,7 @@ pub(crate) fn enter_idle_mode_for(
             id,
             rules,
             registry,
+            frame_effects,
         },
     );
 }
@@ -405,6 +408,7 @@ struct WorldIdle<'a> {
     id: u64,
     rules: &'a RuleSet,
     registry: Option<&'a OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'a>,
 }
 
 impl WorldIdle<'_> {
@@ -418,7 +422,7 @@ impl WorldIdle<'_> {
 
     fn assign_destination(&mut self, destination: Option<NavTargetRef>) {
         self.sim
-            .assign_aircraft_destination(self.id, destination, self.rules);
+            .assign_aircraft_destination(self.id, destination, self.rules, self.frame_effects);
     }
 }
 
@@ -433,7 +437,12 @@ impl IdleHost for WorldIdle<'_> {
 
     fn restore(&mut self) -> MissionId {
         self.sim
-            .mission_restore_represented(self.id, Some(self.rules), self.registry)
+            .mission_restore_represented(
+                self.id,
+                Some(self.rules),
+                self.registry,
+                self.frame_effects,
+            )
             .expect("Restore setters accept a live aircraft's archived Target and NavCom");
         self.entity().mission.current()
     }
@@ -454,7 +463,7 @@ impl IdleHost for WorldIdle<'_> {
 
     fn foot_enter_idle(&mut self) -> bool {
         self.sim
-            .foot_enter_idle_base(self.id, Some(self.rules), self.registry)
+            .foot_enter_idle_base(self.id, Some(self.rules), self.registry, self.frame_effects)
     }
 
     fn team(&mut self) -> bool {
@@ -471,7 +480,8 @@ impl IdleHost for WorldIdle<'_> {
     }
 
     fn leave_team(&mut self) {
-        self.sim.leave_team(self.id, false, Some(self.rules));
+        self.sim
+            .leave_team(self.id, false, Some(self.rules), self.frame_effects);
     }
 
     fn target(&mut self) -> bool {
@@ -504,7 +514,8 @@ impl IdleHost for WorldIdle<'_> {
     }
 
     fn find_dock(&mut self) -> Option<u64> {
-        self.sim.aircraft_find_docking_bay(self.id, self.rules)
+        self.sim
+            .aircraft_find_docking_bay(self.id, self.rules, self.frame_effects)
     }
 
     fn hello(&mut self, dock: u64) -> bool {
@@ -515,6 +526,7 @@ impl IdleHost for WorldIdle<'_> {
             RadioMessage::Hello,
             RadioPayload::default(),
             Some(self.rules),
+            self.frame_effects,
         ) == RadioResponse::Roger
     }
 
@@ -531,7 +543,7 @@ impl IdleHost for WorldIdle<'_> {
 
     fn crash(&mut self) {
         self.sim
-            .foot_crash(self.id, None, self.rules, self.registry);
+            .foot_crash(self.id, None, self.rules, self.registry, self.frame_effects);
     }
 
     fn in_radio_contact(&mut self) -> bool {
