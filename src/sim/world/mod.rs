@@ -6757,6 +6757,8 @@ mod production_shadow_tests;
 
 #[cfg(test)]
 pub(crate) mod factory_infantry_output_tests;
+#[cfg(test)]
+mod factory_jumpjet_output_tests;
 
 #[cfg(test)]
 #[path = "radar_dirty_ack_tests.rs"]
