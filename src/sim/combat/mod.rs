@@ -48,6 +48,9 @@ pub(crate) use receiver_fixture::{
     tick_combat, tick_combat_with_fog, tick_combat_with_fog_and_main_rng,
 };
 pub(crate) mod line_of_fire;
+pub(crate) mod laser;
+#[cfg(test)]
+mod laser_tests;
 pub(crate) mod parasite;
 pub(crate) mod rof;
 pub mod smudge_dispatch;

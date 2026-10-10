@@ -3399,6 +3399,14 @@ pub(super) fn emit_admitted_fire(
         crate::rules::flh::Flh::default(),
     );
     let launch_source = fireat_launch_source(world, rules, snap, &fire, weapon);
+    // Laser width reads +664 inside FireAt, before its caller applies/clears
+    // the support multiplier. Preserve that read across the existing deferred
+    // bullet payload construction below.
+    let prism_support_count = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .map_or(0, |entity| entity.prism_support_count);
     let warhead = selected.warhead;
     let base_damage = fireat_damage(world, rules, snap, obj, weapon, is_garrison);
     let ProjectileDelivery {
@@ -3627,7 +3635,7 @@ pub(super) fn emit_admitted_fire(
             // ProcessDelayedFire writes its support bonus on the bullet this
             // FireAt returns (`0x00450496..0x004504CD`). The rest of FireAt
             // reads neither the bullet's multiplier nor the count, save the
-            // laser width (`0x006FF52B`), which VERA does not draw.
+            // laser width (`0x006FF52B`), sampled before this consumption.
             let damage_multiplier = match snap.building_shot {
                 Some(super::BuildingShot::Delayed { .. }) => {
                     world.take_support_bonus(snap.stable_id, rules)
@@ -3795,6 +3803,17 @@ pub(super) fn emit_admitted_fire(
     if let Some(event) = out.fire_events.last().cloned() {
         crate::sim::world::damage_consequences::admit_muzzle_anim(world, rules, &event);
     }
+    // 6FF4CC..6FF54B: successful FireAt only, after burst advance and before
+    // ammo/RevealOnFire. SpawnLaser recomputes its own current GetFLH.
+    super::laser::fired(
+        world,
+        rules,
+        snap.stable_id,
+        snap.target,
+        selected.index,
+        weapon,
+        prism_support_count,
+    );
     // Aircraft ammo deduction: one ammo per burst completion (not per shot).
     if !mid_burst
         && !world

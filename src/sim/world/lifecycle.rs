@@ -297,6 +297,14 @@ pub(crate) enum ConcealOutcome {
 /// but the stream preserves the verified native relative ordering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LifecycleOutput {
+    /// Logic55AFB0 increments the process FPS sample even on terminal frames.
+    LogicVisit,
+    /// Logic55B5C3 updates existing lasers before the live object visits.
+    LaserUpdate {
+        frame: i32,
+    },
+    /// Copied LaserDraw54FE60 birth; no source/target pointer to detach.
+    LaserCreated(crate::sim::combat::laser::LaserBirth),
     /// ObjectUnlimbo5F517A/5F5207 constructs and attaches a presentation trail.
     LineTrailConstructed {
         stable_id: u64,

@@ -6230,6 +6230,8 @@ impl Simulation {
         // MainTick55DBC8 precedes Logic55DC9E (including trigger polling).
         self.sort_display_ground(rules);
 
+        self.lifecycle_outputs.push(LifecycleOutput::LogicVisit);
+
         // YR LogicClass::Update establishes trigger state before visiting the
         // live LogicVector, so object work in this frame observes its actions.
         #[cfg(test)]
@@ -6266,6 +6268,9 @@ impl Simulation {
             // Process` runs whatever the superweapons option (0x0055B5C8): a
             // map's NUKE weapon starts the nuke flash without a Super.
             self.kamikaze_update(rules);
+            self.lifecycle_outputs.push(LifecycleOutput::LaserUpdate {
+                frame: self.session.binary_frame as i32,
+            });
             bridge_state_changed |= crate::sim::superweapon::tick_active_superweapon_effects(
                 self,
                 rules,

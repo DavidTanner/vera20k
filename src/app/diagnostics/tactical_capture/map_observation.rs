@@ -354,6 +354,13 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_disguise_inputs: Option<bool>,
+    /// Read live lasers, process detail state and each building's Prism latch.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_lasers: Option<bool>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -422,6 +429,7 @@ impl MapCaptureProfile {
                     && self.allow_load_segments.is_none()
                     && self.observe_action_line_inputs.is_none()
                     && self.observe_disguise_inputs.is_none()
+                    && self.observe_lasers.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none()
@@ -1437,6 +1445,54 @@ fn retask_observation(entity: &crate::sim::game_entity::GameEntity) -> Value {
     })
 }
 
+fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
+    use crate::sim::game_entity::DelayedFire;
+    if entity.category != crate::map::entities::EntityCategory::Structure {
+        return Value::Null;
+    }
+    let pending = entity
+        .pending_building_fire
+        .map(|pending| match pending.fire {
+            DelayedFire::Weapon(slot) => json!({"mode": 1, "payload": {"weapon": slot},
+            "remaining": pending.remaining_ticks}),
+            DelayedFire::SupportBeam { to } => json!({"mode": 2,
+            "payload": {"to": [to.x, to.y, to.z]}, "remaining": pending.remaining_ticks}),
+        });
+    json!({"support_count": entity.prism_support_count, "pending": pending,
+        "rearm": {"start": entity.rearm_timer.start_frame(),
+                  "duration": entity.rearm_timer.duration(),
+                  "remaining": entity.rearm_timer.remaining(frame)}})
+}
+
+#[derive(Debug, Serialize)]
+struct MapLaserObservation {
+    detail: crate::app::presentation::detail::DetailObservation,
+    live: Vec<crate::app::presentation::lasers::LaserObservation>,
+}
+
+impl MapLaserObservation {
+    fn capture(state: &AppState) -> Result<Self> {
+        let presentation = &state.match_state.match_presentation;
+        let snapshot = Self {
+            detail: presentation.detail.borrow().observation(),
+            live: presentation
+                .lasers
+                .observations()
+                .take(MAX_OBSERVATION_SAMPLES + 1)
+                .collect(),
+        };
+        ensure!(
+            snapshot.sample_count() <= MAX_OBSERVATION_SAMPLES,
+            "laser observation exceeds sample budget"
+        );
+        Ok(snapshot)
+    }
+
+    fn sample_count(&self) -> usize {
+        1 + self.live.len()
+    }
+}
+
 /// Boundary snapshots of the production stores, without retained provenance,
 /// synthetic spawns, timer advancement or implied native frame equivalence.
 #[derive(Debug, Serialize)]
@@ -1516,6 +1572,8 @@ struct MapFrameObservation {
     terrain: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     effects: Option<MapEffectObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lasers: Option<MapLaserObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     input: Option<MapInputObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1692,6 +1750,14 @@ impl MapObservation {
                         .effects
                         .as_ref()
                         .map_or(0, MapEffectObservation::sample_count),
+                )
+            })
+            .and_then(|count| {
+                count.checked_add(
+                    frame
+                        .lasers
+                        .as_ref()
+                        .map_or(0, MapLaserObservation::sample_count),
                 )
             })
             .and_then(|count| {
@@ -2707,6 +2773,10 @@ impl TacticalCaptureSession {
                 if profile.observe_disguise_inputs == Some(true) {
                     observation["disguise_inputs"] = disguise_inputs(state, entity)?;
                 }
+                if profile.observe_lasers == Some(true) {
+                    observation["prism"] =
+                        prism_observation(entity, sim.session.binary_frame as i32);
+                }
                 if profile.observe_action_line_inputs == Some(true) {
                     let inputs = if entity.category
                         == crate::map::entities::EntityCategory::Structure
@@ -2827,6 +2897,9 @@ impl TacticalCaptureSession {
             effects: profile
                 .observes_effects()
                 .then(|| MapEffectObservation::capture(sim, &runtime.resources.rules, profile))
+                .transpose()?,
+            lasers: (profile.observe_lasers == Some(true))
+                .then(|| MapLaserObservation::capture(state))
                 .transpose()?,
             input: profile
                 .gestures
@@ -3201,6 +3274,7 @@ mod tests {
                     terrain: vec![],
                     effects: None,
                     input: None,
+                    lasers: None,
                     audio_state: Some(audio.clone()),
                 },
                 BTreeSet::new(),
@@ -3448,6 +3522,7 @@ mod tests {
                         terrain: vec![],
                         effects: Some(snapshot),
                         input: None,
+                        lasers: None,
                         audio_state: None,
                     },
                     BTreeSet::new()
@@ -3543,6 +3618,9 @@ mod tests {
         legacy.observe_disguise_inputs = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_lasers = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -3566,6 +3644,7 @@ mod tests {
         modern["observe_anim_types"] = json!(["BBBLELRG"]);
         modern["observe_action_line_inputs"] = json!(true);
         modern["observe_disguise_inputs"] = json!(true);
+        modern["observe_lasers"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         modern["observe_super_weapons"] = json!(true);
@@ -3582,6 +3661,7 @@ mod tests {
             "observe_anim_types",
             "observe_action_line_inputs",
             "observe_disguise_inputs",
+            "observe_lasers",
             "camera_cell",
             "cursor_position",
             "terrain_cells",
@@ -3790,6 +3870,7 @@ mod tests {
                 terrain: vec![],
                 effects: None,
                 input: None,
+                lasers: None,
                 audio_state: None,
             };
             if profile.observes_sidebar_step(&frame) {
@@ -4210,6 +4291,7 @@ mod tests {
                 terrain: Vec::new(),
                 effects: None,
                 input: None,
+                lasers: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4228,6 +4310,7 @@ mod tests {
                 terrain: Vec::new(),
                 effects: None,
                 input: None,
+                lasers: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4414,6 +4497,7 @@ mod tests {
             terrain: Vec::new(),
             effects: None,
             input: None,
+            lasers: None,
             audio_state: None,
         };
         let mut map = initialized_map();

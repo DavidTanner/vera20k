@@ -540,13 +540,13 @@ pub(super) fn dispatch_draw_passes(
         .combat_light_renderer
         .draw(encoder, [tac_x, tac_y, tac_w, tac_h]);
 
-    // Tactical LineTrail556D40 edits the completed tactical destination and
+    // Tactical LaserDraw550240 then LineTrail556D40 edit the destination and
     // samples the same native Z authority as bridge/object rendering. End the
     // attachment pass while the ordered RGB565 stores execute, then load it.
     state
         .renderer
         .terrain_draw_renderer
-        .draw_line_trails(encoder, view);
+        .draw_surface_lines(encoder, view);
     let mut pass = begin_main_load_pass(encoder, view, &state.renderer.depth_view);
     pass.set_scissor_rect(tac_x, tac_y, tac_w, tac_h);
 
