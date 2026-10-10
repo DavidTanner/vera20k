@@ -740,7 +740,9 @@ mod tests {
         use crate::rules::ruleset::RuleSet;
         use crate::sim::components::Health;
         use crate::sim::game_entity::GameEntity;
-        use crate::sim::world::{ConcealOutcome, LifecycleOutput, Simulation, TickLane};
+        use crate::sim::world::{
+            ConcealOutcome, FrameEffects, LifecycleOutput, Simulation, TickLane,
+        };
 
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n\
@@ -769,8 +771,16 @@ mod tests {
                     ));
             }
             sim.reveal(20);
-            sim.advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
-                .unwrap();
+            sim.advance_app_frame(
+                &[],
+                None,
+                None,
+                67,
+                TickLane::Ordinary,
+                None,
+                FrameEffects::empty(),
+            )
+            .unwrap();
             let mut input = crate::app::input::state::MatchInputState::new(Default::default());
             input.category_navigation.prepare(
                 CategoryNavigationKind::Veterancy,
@@ -797,11 +807,19 @@ mod tests {
             if conceal {
                 assert_eq!(sim.object_conceal(20), ConcealOutcome::Concealed);
             } else {
-                sim.detach_all_pointer_expired(20, &rules, None);
+                sim.detach_all_pointer_expired(20, &rules, None, FrameEffects::empty());
             }
             assert!(sim.entities().get(20).unwrap().is_object_alive());
             let frame = sim
-                .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+                .advance_app_frame(
+                    &[],
+                    None,
+                    None,
+                    67,
+                    TickLane::Ordinary,
+                    None,
+                    FrameEffects::empty(),
+                )
                 .unwrap();
             assert_eq!(
                 frame
@@ -855,7 +873,15 @@ mod tests {
             );
             assert!(sim.entities().get(20).unwrap().is_object_alive());
             let next = sim
-                .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+                .advance_app_frame(
+                    &[],
+                    None,
+                    None,
+                    67,
+                    TickLane::Ordinary,
+                    None,
+                    FrameEffects::empty(),
+                )
                 .unwrap();
             assert!(
                 !next.lifecycle_outputs.iter().any(|output| {
