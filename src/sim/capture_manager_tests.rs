@@ -1626,7 +1626,10 @@ fn a_captive_boarding_an_absorber_is_freed_first() {
         crate::sim::world::FrameEffects::default()
     ));
     sim.sound_events.clear();
-    sim.substrate.entities.get_mut(gi).unwrap().passenger_role = PassengerRole::Boarding {
+    // PerCellProcess boards from the absorber's own foundation cell.
+    let gi_entity = sim.substrate.entities.get_mut(gi).unwrap();
+    gi_entity.position.rx = 14;
+    gi_entity.passenger_role = PassengerRole::Boarding {
         target_transport_id: reactor,
     };
 

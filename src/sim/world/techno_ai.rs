@@ -3025,10 +3025,12 @@ mod tests {
             ],
             Some(rules),
         );
-        sim.substrate.entities.get_mut(2).unwrap().passenger_role =
-            crate::sim::passenger::PassengerRole::Boarding {
-                target_transport_id: 1,
-            };
+        // PerCellProcess boards from the garrison's own foundation cell.
+        let occupant = sim.substrate.entities.get_mut(2).unwrap();
+        occupant.position.rx = 10;
+        occupant.passenger_role = crate::sim::passenger::PassengerRole::Boarding {
+            target_transport_id: 1,
+        };
         for _ in 0..160 {
             let _ = sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
         }

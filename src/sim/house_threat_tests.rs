@@ -616,6 +616,8 @@ fn real_garrison_append_and_complete_ejection_refresh_the_existing_building_cach
     let passenger = sim
         .spawn_object("E1", "Americans", 15, 15, 0, &rules)
         .unwrap();
+    // PerCellProcess boards from the garrison's own foundation cell.
+    sim.substrate.entities.get_mut(passenger).unwrap().position.rx = 16;
     assert_eq!(
         sim.substrate
             .entities

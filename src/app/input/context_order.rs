@@ -3041,3 +3041,7 @@ mod retail_bridge_tests;
 #[cfg(test)]
 #[path = "context_order_retail_engineer_tests.rs"]
 mod retail_engineer_tests;
+
+#[cfg(test)]
+#[path = "context_order_retail_garrison_tests.rs"]
+mod retail_garrison_tests;
