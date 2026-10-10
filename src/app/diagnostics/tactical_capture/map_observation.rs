@@ -3731,6 +3731,7 @@ mod tests {
                     terrain: vec![],
                     effects: None,
                     lasers: None,
+                    electric_bolts: None,
                     bombs: Some(snapshot),
                     input: None,
                     audio_state: None,
