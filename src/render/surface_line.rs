@@ -15,6 +15,24 @@ pub(crate) struct SurfaceLineViewport {
     pub zoom: f32,
 }
 
+/// Shared DSurface operation after a presentation producer has resolved its
+/// geometry and color. LaserDraw and EBolt feed the same ordered pixel owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SurfaceLineBlend {
+    /// 4BDF00 pre-scales its RGB by the retained float then admits any >7.
+    Add([u8; 3]),
+    /// 4BFD30 receives an already packed surface word.
+    Replace(u16),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SurfaceLine {
+    pub from: [i32; 2],
+    pub to: [i32; 2],
+    pub z_adjust: [i32; 2],
+    pub blend: SurfaceLineBlend,
+}
+
 /// Original7BC2B0 mutates endpoints only on success. Callers such as rally
 /// deliberately reuse those clipped endpoints for their next offset row.
 /// Nearest-f64 retains a one-pixel edge residual versus native chop rounding;

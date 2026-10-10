@@ -10,6 +10,8 @@ use crate::sim::combat::CombatLightRequest;
 use crate::sim::intern::StringInterner;
 use crate::sim::projectile::ProjectileCoord;
 
+use super::detail::DetailState;
+
 const STAGE_STEP: u8 = 8;
 const EXPIRE_STAGE: u8 = 0x50;
 
@@ -29,8 +31,17 @@ const STAGE_SCALE: [u8; 80] = [
 pub(crate) struct CombatLight {
     pub coord: ProjectileCoord,
     pub stage: u8,
-    pub base_size: u8,
+    pub base_size: i32,
     pub flags: u32,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct CombatLightObservation {
+    coord: [i32; 3],
+    stage: u8,
+    base_size: i32,
+    flags: u32,
+    surface_index: i32,
 }
 
 pub(crate) use crate::render::combat_light::CombatLightDrawRecord;
@@ -41,6 +52,16 @@ pub(crate) struct CombatLightRuntime {
 }
 
 impl CombatLightRuntime {
+    pub(crate) fn observations(&self) -> impl Iterator<Item = CombatLightObservation> + '_ {
+        self.entries.iter().map(|entry| CombatLightObservation {
+            coord: [entry.coord.x, entry.coord.y, entry.coord.z],
+            stage: entry.stage,
+            base_size: entry.base_size,
+            flags: entry.flags,
+            surface_index: scaled_surface_index(entry.base_size, entry.stage),
+        })
+    }
+
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
     }
@@ -59,11 +80,17 @@ impl CombatLightRuntime {
         self.entries.extend(new_entries);
     }
 
-    /// Persistent draw-all snapshots the vector then walks tail to head.
-    pub(crate) fn draw_records(&self) -> Vec<CombatLightDrawRecord> {
+    /// DrawAll5FFFA0 walks tail to head. Draw5FF860..5FF879 queries the
+    /// shared mutative FPS threshold for every light without flags bits1..3,
+    /// before projection. Options Detail gates Spark creation, not this draw.
+    /// Original executable controls: electric_bolt.py `light_admission`.
+    pub(crate) fn draw_records(&self, detail: &mut DetailState) -> Vec<CombatLightDrawRecord> {
         self.entries
             .iter()
             .rev()
+            .filter(|entry| {
+                entry.flags & 0xE != 0 || detail.frame_rate() >= detail.minimum_frame_rate()
+            })
             .map(|entry| CombatLightDrawRecord {
                 coord: entry.coord,
                 surface_index: scaled_surface_index(entry.base_size, entry.stage),
@@ -80,56 +107,281 @@ pub(crate) fn materialize_combat_lights(
     impacts: Vec<CombatLightRequest>,
     rules: Option<&RuleSet>,
     interner: &StringInterner,
+    detail_level: u32,
 ) -> Vec<CombatLight> {
     impacts
         .into_iter()
-        .filter_map(|effect| {
-            let warhead =
-                rules.and_then(|rules| rules.warhead(interner.resolve(effect.warhead_ref)));
-            if !effect.force_create && !warhead.is_some_and(|warhead| warhead.bright) {
-                return None;
+        .filter_map(|effect| match effect {
+            CombatLightRequest::Spark { coord, base_size } => {
+                (detail_level == 2).then_some(CombatLight {
+                    coord,
+                    base_size,
+                    stage: 0,
+                    flags: 0,
+                })
             }
-            let override_size = warhead.map_or(0.0, |warhead| warhead.combat_light_size_f64);
-            Some(CombatLight {
-                coord: effect.coord,
-                stage: 0,
-                base_size: materialize_base_size(effect.damage, override_size),
-                flags: effect.flags,
-            })
+            CombatLightRequest::Impact {
+                damage,
+                warhead_ref,
+                coord,
+                force_create,
+                flags,
+                ..
+            } => {
+                let warhead = rules.and_then(|rules| rules.warhead(interner.resolve(warhead_ref)));
+                if !force_create && !warhead.is_some_and(|warhead| warhead.bright) {
+                    return None;
+                }
+                let override_size = warhead.map_or(0.0, |warhead| warhead.combat_light_size_f64);
+                Some(CombatLight {
+                    coord,
+                    stage: 0,
+                    base_size: materialize_base_size(damage, override_size),
+                    flags,
+                })
+            }
         })
         .collect()
 }
 
-fn materialize_base_size(damage: i32, override_size: f64) -> u8 {
+fn materialize_base_size(damage: i32, override_size: f64) -> i32 {
     if override_size > 0.0 {
         // ReadDouble is f32-first; positive values are capped only at the high
         // end and Math::ftol chops the product toward zero.
-        return (override_size.min(1.0) * 63.0) as u8;
+        return (override_size.min(1.0) * 63.0) as i32;
     }
     // Preserve the actual signed 32-bit shifts. `/ 4` differs for negative
     // values and cannot reproduce the wrapping left shift.
-    ((damage.wrapping_shl(6) >> 8).clamp(0x15, 0x3f)) as u8
+    (damage.wrapping_shl(6) >> 8).clamp(0x15, 0x3f)
 }
 
-fn scaled_surface_index(base_size: u8, stage: u8) -> u8 {
+fn scaled_surface_index(base_size: i32, stage: u8) -> i32 {
     let scale = STAGE_SCALE[usize::from(stage.min(79))];
-    (u16::from(base_size) * u16::from(scale) / 64) as u8
+    base_size.wrapping_mul(i32::from(scale)) / 64
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
+    use crate::rules::ruleset::DetailRules;
     use crate::sim::world::Simulation;
 
+    fn original_light_corpus() -> serde_json::Value {
+        serde_json::from_str(crate::test_fixture::text(
+            "tools/procedural_drawing_oracle/electric_bolt.json",
+        ))
+        .unwrap()
+    }
+
+    fn native_light_fields(light: &CombatLight) -> serde_json::Value {
+        serde_json::json!({
+            "position": [light.coord.x, light.coord.y, light.coord.z],
+            "size": light.base_size,
+            "flags": light.flags,
+            "ramp": light.stage,
+        })
+    }
+
+    fn detail_with_frame_rate(frame_rate: u32) -> DetailState {
+        let mut detail = DetailState::new();
+        for _ in 0..frame_rate {
+            detail.record_logic_visit();
+        }
+        detail.throttle_tail(0);
+        detail
+    }
+
     fn effect(sim: &mut Simulation, x: i32, flags: u32, damage: i32) -> CombatLightRequest {
-        CombatLightRequest {
+        CombatLightRequest::Impact {
             target_id: Some(x as u64),
             damage,
             warhead_ref: sim.interner.intern("WH"),
             coord: ProjectileCoord { x, y: 512, z: 0 },
             force_create: true,
             flags,
+        }
+    }
+
+    #[test]
+    fn original_light_fps_gate_queries_each_eligible_record_in_reverse_order() {
+        let corpus = original_light_corpus();
+        let cases = corpus["light_admission"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let input = &case["input"];
+            let name = input["name"].as_str().unwrap();
+            let mut detail = DetailState::new();
+            if input["reduced"].as_bool().unwrap() {
+                // Establish the retained latch through its existing owner,
+                // before selecting this case's possibly signed thresholds.
+                detail.minimum_frame_rate();
+            }
+            detail.configure_normal(&DetailRules {
+                min_frame_rate_normal: input["minimum"].as_i64().unwrap() as i32,
+                buffer_zone_width: input["buffer"].as_i64().unwrap() as i32,
+                ..DetailRules::default()
+            });
+            for _ in 0..input["fps"].as_u64().unwrap() {
+                detail.record_logic_visit();
+            }
+            detail.throttle_tail(0);
+            let coordinate = |value: &serde_json::Value| -> [i32; 3] {
+                std::array::from_fn(|axis| value[axis].as_i64().unwrap() as i32)
+            };
+            let mut runtime = CombatLightRuntime::default();
+            runtime.commit_frame(input["lights"].as_array().unwrap().iter().map(|entry| {
+                let [x, y, z] = coordinate(&entry["position"]);
+                CombatLight {
+                    coord: ProjectileCoord { x, y, z },
+                    stage: 0,
+                    base_size: 15,
+                    flags: entry["flags"].as_u64().unwrap() as u32,
+                }
+            }));
+            for (visit, expected) in case["visits"].as_array().unwrap().iter().enumerate() {
+                let actual: Vec<_> = runtime
+                    .draw_records(&mut detail)
+                    .iter()
+                    .map(|entry| ([entry.coord.x, entry.coord.y, entry.coord.z], entry.flags))
+                    .collect();
+                // A recorded projection result means the original FPS gate
+                // admitted the light. Projection/rectangle clipping happens
+                // after this app-owned gate; offscreen controls still query.
+                let expected_records: Vec<_> = expected["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|entry| !entry["projected"].is_null())
+                    .map(|entry| {
+                        (
+                            coordinate(&entry["position"]),
+                            entry["flags"].as_u64().unwrap() as u32,
+                        )
+                    })
+                    .collect();
+                assert_eq!(actual, expected_records, "{name}, visit {visit}");
+                let observed = serde_json::to_value(detail.observation()).unwrap();
+                assert_eq!(
+                    observed["reduced"], expected["reduced"],
+                    "{name}, visit {visit}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn original_spark_light_materialization_uses_current_detail_only_at_creation() {
+        let corpus = original_light_corpus();
+        let interner = StringInterner::new();
+        let mut details = std::collections::BTreeSet::new();
+        for case in corpus["spark_cases"].as_array().unwrap() {
+            let input = &case["input"];
+            if !input["system_type_overrides"].is_null() || input["fail_system_allocation"] == true
+            {
+                // The particle owner compares those upstream admission gates.
+                // This boundary receives an already-admitted stock Spark fact.
+                continue;
+            }
+            let detail = input["detail"].as_u64().unwrap_or(2) as u32;
+            details.insert(detail);
+            let position: [i32; 3] =
+                serde_json::from_value(case["endpoint"]["target"].clone()).unwrap();
+            let [x, y, z] = position;
+            let size = case["effective_types"]["system"]["light_size"]
+                .as_i64()
+                .unwrap() as i32;
+            let lights = materialize_combat_lights(
+                vec![CombatLightRequest::Spark {
+                    coord: ProjectileCoord { x, y, z },
+                    base_size: size,
+                }],
+                None,
+                &interner,
+                detail,
+            );
+            let expected = &case["first_logic_visit"]["state"]["lights"];
+            assert_eq!(
+                serde_json::json!(lights.iter().map(native_light_fields).collect::<Vec<_>>()),
+                *expected,
+                "{}",
+                input["name"]
+            );
+            let mut runtime = CombatLightRuntime::default();
+            runtime.commit_frame(lights);
+            // Later drawing has no Options Detail input: changing it cannot
+            // remove an already-created native light or replace the FPS gate.
+            assert_eq!(
+                runtime.draw_records(&mut detail_with_frame_rate(60)).len(),
+                expected.as_array().unwrap().len()
+            );
+        }
+        assert!(details.contains(&0) && details.contains(&1) && details.contains(&2));
+    }
+
+    #[test]
+    fn original_light_retains_signed_size_and_ages_through_shared_runtime() {
+        let corpus = original_light_corpus();
+        let mut sizes = std::collections::BTreeMap::<i32, Vec<&serde_json::Value>>::new();
+        for row in corpus["light_indices"]["rows"].as_array().unwrap() {
+            sizes
+                .entry(row["size"].as_i64().unwrap() as i32)
+                .or_default()
+                .push(row);
+        }
+        assert!(!sizes.is_empty());
+        for (size, rows) in sizes {
+            let mut runtime = CombatLightRuntime::default();
+            let mut detail = detail_with_frame_rate(60);
+            runtime.commit_frame([CombatLight {
+                coord: ProjectileCoord { x: 0, y: 0, z: 0 },
+                stage: 0,
+                base_size: size,
+                flags: 0,
+            }]);
+            for (visit, row) in rows.into_iter().enumerate() {
+                if visit != 0 {
+                    runtime.commit_frame([]);
+                }
+                let draw = runtime.draw_records(&mut detail);
+                assert_eq!(
+                    runtime.entries[0].stage,
+                    row["stage"].as_u64().unwrap() as u8
+                );
+                assert_eq!(draw[0].surface_index, row["index"].as_i64().unwrap() as i32);
+            }
+        }
+        for case in corpus["spark_cases"].as_array().unwrap() {
+            let lights = case["first_logic_visit"]["state"]["lights"]
+                .as_array()
+                .unwrap();
+            let mut runtime = CombatLightRuntime::default();
+            runtime.commit_frame(lights.iter().map(|light| {
+                let [x, y, z]: [i32; 3] =
+                    serde_json::from_value(light["position"].clone()).unwrap();
+                CombatLight {
+                    coord: ProjectileCoord { x, y, z },
+                    stage: light["ramp"].as_u64().unwrap() as u8,
+                    base_size: light["size"].as_i64().unwrap() as i32,
+                    flags: light["flags"].as_u64().unwrap() as u32,
+                }
+            }));
+            for expected in case["light_updates"].as_array().unwrap() {
+                runtime.commit_frame([]);
+                let native = expected.as_array().unwrap();
+                let count = native.last().unwrap()["registry_count"].as_u64().unwrap() as usize;
+                assert_eq!(runtime.len(), count, "{}", case["input"]["name"]);
+                assert_eq!(
+                    runtime
+                        .entries
+                        .iter()
+                        .map(native_light_fields)
+                        .collect::<Vec<_>>(),
+                    native[..count],
+                    "{}",
+                    case["input"]["name"]
+                );
+            }
         }
     }
 
@@ -142,14 +394,14 @@ mod tests {
         let second = effect(&mut sim, 768, 6, 400);
         let mut runtime = CombatLightRuntime::default();
         let new_entries =
-            materialize_combat_lights(vec![first, second], Some(&rules), &sim.interner);
+            materialize_combat_lights(vec![first, second], Some(&rules), &sim.interner, 2);
         assert_eq!(
             new_entries.iter().map(|e| e.base_size).collect::<Vec<_>>(),
             vec![25, 25]
         );
         runtime.commit_frame(new_entries);
 
-        let draw = runtime.draw_records();
+        let draw = runtime.draw_records(&mut detail_with_frame_rate(60));
         assert_eq!(
             draw.iter().map(|r| r.coord.x).collect::<Vec<_>>(),
             vec![768, 256]
@@ -159,7 +411,7 @@ mod tests {
             draw.iter().map(|r| r.surface_index).collect::<Vec<_>>(),
             vec![1, 1]
         );
-        assert!(materialize_combat_lights(Vec::new(), Some(&rules), &sim.interner).is_empty());
+        assert!(materialize_combat_lights(Vec::new(), Some(&rules), &sim.interner, 2).is_empty());
     }
 
     #[test]
@@ -171,11 +423,15 @@ mod tests {
             base_size: 63,
             flags: 1,
         }]);
-        let mut observed = vec![(0, runtime.draw_records()[0].surface_index)];
+        let mut detail = detail_with_frame_rate(60);
+        let mut observed = vec![(0, runtime.draw_records(&mut detail)[0].surface_index)];
         for _ in 0..9 {
             runtime.commit_frame([]);
             let entry = runtime.entries[0];
-            observed.push((entry.stage, runtime.draw_records()[0].surface_index));
+            observed.push((
+                entry.stage,
+                runtime.draw_records(&mut detail)[0].surface_index,
+            ));
         }
         assert_eq!(
             observed,

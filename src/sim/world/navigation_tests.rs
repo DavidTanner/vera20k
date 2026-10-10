@@ -444,3 +444,45 @@ fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
     assert_eq!(*sim.path_grid_snapshot().unwrap(), *open);
     assert_eq!(zone_storage(&sim), zones_before);
 }
+
+#[test]
+fn structure_mark_publishes_presence_and_preserves_other_marked_blockers() {
+    let (rules, overlays) = rules_and_overlays();
+    let context = super::UninitContext::new(Some(&rules), Some(&overlays));
+    let mut sim = Simulation::with_seed(0x43f180);
+    sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(16, 16));
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    let empty = sim.path_grid_snapshot().unwrap();
+    for id in [9, 10] {
+        let mut structure = crate::sim::game_entity::GameEntity::test_default_of_category(
+            id,
+            "YARD",
+            "Americans",
+            6,
+            6,
+            EntityCategory::Structure,
+        );
+        structure.type_ref = sim.interner.intern("YARD");
+        structure.foundation = rules.object("YARD").unwrap().foundation.clone();
+        sim.substrate.entities.insert(structure);
+        assert!(sim.mark_entity_put(id, context));
+        assert_only_marked_foundation(&sim);
+    }
+    let placed = sim.path_grid_snapshot().unwrap();
+    sim.substrate.entities.get_mut(10).unwrap().dying = true;
+    assert!(sim.unmark_entity_remove(9, context));
+    assert_only_marked_foundation(&sim);
+    assert!(sim.unmark_entity_remove(10, context));
+    assert_eq!(*sim.path_grid_snapshot().unwrap(), *empty);
+    assert!(
+        !placed.is_walkable(6, 6),
+        "previous borrowed view stays immutable"
+    );
+    assert!(!sim.unmark_entity_remove(10, context));
+    assert_eq!(*sim.path_grid_snapshot().unwrap(), *empty);
+    assert_eq!(
+        sim.structure_navigation_cells,
+        super::navigation::structure_movement_cells(&sim.substrate.entities, &sim.interner, &rules),
+        "the published structure-cell cache follows the same Mark authority"
+    );
+}

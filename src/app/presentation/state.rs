@@ -75,6 +75,7 @@ pub(crate) struct MatchPresentationState {
     pub(crate) lighting: super::lighting::MatchLighting,
     pub(crate) line_trails: super::line_trails::LineTrails,
     pub(crate) lasers: super::lasers::Lasers,
+    pub(crate) electric_bolts: super::electric_bolts::ElectricBolts,
     /// Native process-lived FPS counter and detail hysteresis, never sim state.
     pub(crate) detail: std::cell::RefCell<super::detail::DetailState>,
     /// The client's AnimClass `+0x19D` for Supers' ChronoPlacement anims

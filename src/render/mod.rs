@@ -12,7 +12,8 @@
 //!
 //! ## Dependency rules
 //! - render/ may READ from: assets/, map/, sim/
-//! - render/ NEVER mutates sim state — strictly read-only access
+//! - render/ reads sim state; presentation producers may consume the explicitly
+//!   borrowed process Main cursor, never Scenario/MapGen or gameplay state
 //! - render/ does NOT depend on: ui/, audio/, net/
 
 pub(crate) mod atlas_growth;
@@ -28,6 +29,7 @@ pub mod building_zshape;
 pub mod combat_light;
 pub mod cursor_atlas;
 pub mod draw_state;
+pub(crate) mod electric_bolt;
 #[cfg(feature = "dev-ui")]
 pub mod egui_integration;
 pub mod frame_readback;

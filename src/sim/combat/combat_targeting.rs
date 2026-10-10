@@ -91,9 +91,8 @@ pub(crate) struct AttackerSnapshot {
     /// (Area Guard reaches roughly twice as far as plain Guard) and, for mask
     /// 0, the scan topology itself.
     pub scan_mission: ScanMission,
-    /// The FireAt a building's Update asked for this frame
-    /// (`FireRequests::buildings`): its GetFireError already answered OK, and
-    /// a building fires no shot without it.
+    /// Call-local arguments of a building's synchronous FireAt. Its caller
+    /// already admitted GetFireError; no deferred queue retains the shot.
     pub building_shot: Option<super::BuildingShot>,
 }
 

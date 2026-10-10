@@ -6,6 +6,68 @@ use crate::sim::world::Simulation;
 
 thread_local! {
     static FIRE_VISIT_TRACE: std::cell::RefCell<Option<Vec<serde_json::Value>>> = const { std::cell::RefCell::new(None) };
+    static BUILDING_FIRE_STUB: std::cell::RefCell<Option<BuildingFireStub>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The older building-handler oracles replace FireAt itself. Preserve that
+/// explicit boundary in their caller-only comparisons, synchronously at the
+/// real call site. Full live-receiver tests never install this substitute.
+struct BuildingFireStub {
+    rearm: Option<i32>,
+    calls: Vec<(u64, BuildingShot, i32)>,
+}
+
+pub(crate) fn with_building_fire_stub<T>(
+    rearm: Option<i32>,
+    run: impl FnOnce() -> T,
+) -> (T, Vec<(u64, BuildingShot, i32)>) {
+    BUILDING_FIRE_STUB.with_borrow_mut(|slot| {
+        assert!(slot.is_none(), "nested building FireAt substitutes");
+        *slot = Some(BuildingFireStub {
+            rearm,
+            calls: Vec::new(),
+        });
+    });
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            BUILDING_FIRE_STUB.with_borrow_mut(|slot| *slot = None);
+        }
+    }
+    let reset = Reset;
+    let result = run();
+    let calls = BUILDING_FIRE_STUB.with_borrow_mut(|slot| slot.take().unwrap().calls);
+    drop(reset);
+    (result, calls)
+}
+
+pub(crate) fn substitute_building_fire(
+    world: &mut Simulation,
+    id: u64,
+    shot: BuildingShot,
+    rules: &RuleSet,
+) -> bool {
+    BUILDING_FIRE_STUB.with_borrow_mut(|slot| {
+        let Some(stub) = slot else {
+            return false;
+        };
+        let multiplier = if matches!(shot, BuildingShot::Delayed { .. }) {
+            world.take_support_bonus(id, rules)
+        } else {
+            crate::sim::projectile::ProjectilePayload::UNSCALED
+        };
+        if let Some(rof) = stub.rearm {
+            world
+                .substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .rearm_timer
+                .start(world.session.binary_frame as i32, rof);
+        }
+        stub.calls.push((id, shot, multiplier));
+        true
+    })
 }
 
 /// Observe the real FireAt transaction at its caller's boundaries. The trace
@@ -772,6 +834,7 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                     })
                 })
                 .collect();
+            let first_tail_id = world.substrate.next_stable_object_id;
             for id in buildings {
                 // A hand-built object switched to Structure keeps its first
                 // category's leaf; construction gives a building its own.
@@ -786,7 +849,6 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 world.fixture_building_visit(id, rules, overlay_registry);
             }
             let fire_requests = std::mem::take(&mut world.fire_requests);
-            let first_tail_id = world.substrate.next_stable_object_id;
             let mut result = world_receiver::tick_combat(
                 world,
                 run,
@@ -798,6 +860,9 @@ pub(crate) fn tick_combat_with_fog_and_main_rng_with_terrain_area(
                 &fire_requests,
                 projectile_detonations,
             );
+            result
+                .consequences
+                .prepend_live_fire_events_for_test(std::mem::take(&mut world.fire_events));
             // The same frame's tail: the shots' bullets take their first AI
             // (an Inviso one detonates). Bullets still in flight are handed
             // back as their admission records.

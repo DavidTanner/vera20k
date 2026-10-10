@@ -339,6 +339,13 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_lasers: Option<bool>,
+    /// Read copied bolts, light/particle owners and RNG at Logic and draw boundaries.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_electric_bolts: Option<bool>,
     /// Read the existing bomb owner and observed actors' retained FireAt state.
     #[serde(
         default,
@@ -418,6 +425,7 @@ impl MapCaptureProfile {
                     && self.observe_action_line_inputs.is_none()
                     && self.observe_disguise_inputs.is_none()
                     && self.observe_lasers.is_none()
+                    && self.observe_electric_bolts.is_none()
                     && self.observe_bombs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
@@ -724,6 +732,7 @@ pub(super) struct MapObservation {
     loaded_session: Option<Value>,
     rule_types: Vec<Value>,
     draws: Vec<MapDrawTime>,
+    electric_bolt_draws: Vec<MapElectricBoltDrawObservation>,
     commands: Vec<MapCommandReceipt>,
     gestures: Vec<MapGestureReceipt>,
     keyboard_bindings: Vec<MapKeyboardBinding>,
@@ -1542,6 +1551,101 @@ impl MapLaserObservation {
     }
 }
 
+/// Read-only boundaries of the actual effect owners. Full logical RNG words
+/// permit native continuation comparisons; observations never consume a draw.
+#[derive(Debug, Serialize)]
+struct MapElectricBoltObservation {
+    detail: crate::app::presentation::detail::DetailObservation,
+    live: Vec<crate::app::presentation::electric_bolts::ElectricBoltObservation>,
+    lights: Vec<crate::app::presentation::combat_lights::CombatLightObservation>,
+    particle_systems: Vec<Value>,
+    native_id_cursor: u32,
+    rng: Value,
+}
+
+impl MapElectricBoltObservation {
+    fn capture(state: &AppState) -> Result<Self> {
+        let runtime = state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .context("electric observation simulation absent")?;
+        let sim = &runtime.simulation;
+        let rules = &runtime.resources.rules;
+        let presentation = &state.match_state.match_presentation;
+        let live: Vec<_> = presentation
+            .electric_bolts
+            .observations()
+            .take(MAX_OBSERVATION_SAMPLES + 1)
+            .collect();
+        let lights: Vec<_> = presentation
+            .combat_lights
+            .observations()
+            .take(MAX_OBSERVATION_SAMPLES + 1)
+            .collect();
+        let mut count = 4 + live.len() + lights.len();
+        ensure!(
+            count <= MAX_OBSERVATION_SAMPLES,
+            "electric observation exceeds sample budget"
+        );
+        let mut particle_systems = Vec::new();
+        for (&id, system) in sim.particle_systems().iter() {
+            count = count
+                .checked_add(1 + system.particles.len())
+                .context("particle observation count overflow")?;
+            ensure!(
+                count <= MAX_OBSERVATION_SAMPLES,
+                "particle observation exceeds sample budget"
+            );
+            let particles: Vec<_> = system.particles.iter().map(|particle| json!({
+                "native_id": particle.native_unique_id(), "type_id": rules.particle_type(particle.type_id).name,
+                "coord": particle.coords.to_array(), "lifetime": particle.lifetime_remaining,
+                "damage_counter": particle.damage_counter, "marked_for_deletion": particle.marked_for_deletion,
+            })).collect();
+            particle_systems.push(json!({"stable_id": id, "native_id": system.native_unique_id(),
+                "type_id": rules.particle_system_type(system.type_id).name, "coord": system.coords.to_array(),
+                "lifetime": system.lifetime, "spawn_frames": system.spark_spawn_frames,
+                "done_spawning": system.done_spawning, "in_logic_vector": system.in_logic_vector,
+                "owner_entity": system.owner_entity, "attached_entity": system.attached_entity,
+                "particles": particles}));
+        }
+        let rng = sim.rng_views();
+        let rng_value = |stream: crate::sim::rng::SimRngLogicalView<'_>| {
+            json!({
+            "disabled": stream.disabled, "index_a": stream.index_a, "index_b": stream.index_b, "words": stream.words})
+        };
+        Ok(Self {
+            detail: presentation.detail.borrow().observation(),
+            live,
+            lights,
+            particle_systems,
+            native_id_cursor: sim
+                .native_identity_cursor()
+                .context("Scenario native identity absent")?,
+            rng: json!({"main": rng_value(rng.main), "scenario": rng_value(rng.scenario), "mapgen": rng_value(rng.mapgen)}),
+        })
+    }
+
+    fn sample_count(&self) -> usize {
+        4 + self.live.len()
+            + self.lights.len()
+            + self
+                .particle_systems
+                .iter()
+                .map(|system| 1 + system["particles"].as_array().map_or(0, Vec::len))
+                .sum::<usize>()
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MapElectricBoltDrawObservation {
+    ordinal: usize,
+    completed_steps: u64,
+    simulation_tick: u64,
+    binary_frame: u32,
+    effects: MapElectricBoltObservation,
+}
+
 /// Boundary snapshots of the production stores, without retained provenance,
 /// synthetic spawns, timer advancement or implied native frame equivalence.
 #[derive(Debug, Serialize)]
@@ -1623,6 +1727,8 @@ struct MapFrameObservation {
     effects: Option<MapEffectObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     lasers: Option<MapLaserObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    electric_bolts: Option<MapElectricBoltObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     bombs: Option<crate::sim::bomb::BombObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1718,6 +1824,9 @@ impl MapObservation {
         if profile.observe_sidebar_steps.is_some() {
             observations["sidebar"] =
                 json!({"policy": SIDEBAR_POLICY, "frames": self.sidebar_frames});
+        }
+        if profile.observe_electric_bolts == Some(true) {
+            observations["electric_bolt_draws"] = json!({"policy": "electric-bolt-after-each-tactical-composite-v1", "frames": self.electric_bolt_draws});
         }
         if profile.observe_audio.is_some() {
             observations["audio"] = json!(self.audio);
@@ -1818,6 +1927,14 @@ impl MapObservation {
                         .input
                         .as_ref()
                         .map_or(0, MapInputObservation::sample_count),
+                )
+            })
+            .and_then(|count| {
+                count.checked_add(
+                    frame
+                        .electric_bolts
+                        .as_ref()
+                        .map_or(0, MapElectricBoltObservation::sample_count),
                 )
             })
             .context("actor observation sample count overflow")?;
@@ -2825,6 +2942,9 @@ impl TacticalCaptureSession {
                     "health": entity.health.current, "active": entity.is_active(),
                     "object_alive": entity.is_object_alive(),
                     "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
+                    // Mark and Logic membership are independent retained facts.
+                    "cell_marked": entity.lifecycle.cell_marked,
+                    "in_logic_vector": entity.in_logic_vector,
                     "mission": {"current": entity.mission.current().raw(),
                         "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
                         "effective": entity.mission.effective().raw(), "handler_state": entity.mission.handler_state(),
@@ -2842,7 +2962,9 @@ impl TacticalCaptureSession {
                 if profile.observe_disguise_inputs == Some(true) {
                     observation["disguise_inputs"] = disguise_inputs(state, entity)?;
                 }
-                if profile.observe_lasers == Some(true) {
+                if profile.observe_lasers == Some(true)
+                    || profile.observe_electric_bolts == Some(true)
+                {
                     observation["prism"] =
                         prism_observation(entity, sim.session.binary_frame as i32);
                 }
@@ -2937,7 +3059,15 @@ impl TacticalCaptureSession {
                 "visible": sim.fog.is_cell_visible(id, rx, ry),
                 "gap_covered": sim.fog.is_cell_gap_covered(id, rx, ry),
             }));
+            // Borrow the current simulation projection at the point of use.
+            // The existing `walkable` field below describes bridge terrain,
+            // not this dynamic structure-blocking navigation grid.
+            let path_cell = sim.path_grid().and_then(|path| path.cell(rx, ry));
             json!({"cell": [rx, ry], "allocated": cell.is_some(),
+                "path_grid": path_cell.map(|path| json!({
+                    "ground_walkable": path.ground_walkable,
+                    "bridge_walkable": path.bridge_walkable,
+                })),
                 "local_visibility": local_visibility,
                 "overlay": overlay.map(|overlay| json!({"id": overlay.overlay_id, "density": overlay.overlay_data})),
                 "terrain_object": terrain_object.map(|object| json!({"name": sim.interner.resolve(object.type_ref),
@@ -2972,6 +3102,9 @@ impl TacticalCaptureSession {
                 .transpose()?,
             lasers: (profile.observe_lasers == Some(true))
                 .then(|| MapLaserObservation::capture(state))
+                .transpose()?,
+            electric_bolts: (profile.observe_electric_bolts == Some(true))
+                .then(|| MapElectricBoltObservation::capture(state))
                 .transpose()?,
             bombs: (profile.observe_bombs == Some(true))
                 .then(|| sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1)),
@@ -3033,7 +3166,34 @@ impl TacticalCaptureSession {
             state.diagnostic_presentation_ms() == Some(output.times.radar_ms),
             "map diagnostic presentation policy is not active"
         );
+        let electric = (self
+            .request
+            .map_profile()
+            .unwrap()
+            .value
+            .observe_electric_bolts
+            == Some(true))
+        .then(|| MapElectricBoltObservation::capture(state))
+        .transpose()?;
         let map = self.map_state_mut()?;
+        if let Some(effects) = electric {
+            map.sample_count = map
+                .sample_count
+                .checked_add(effects.sample_count())
+                .context("draw observation count overflow")?;
+            ensure!(
+                map.sample_count <= MAX_OBSERVATION_SAMPLES,
+                "draw observation exceeds sample budget"
+            );
+            map.electric_bolt_draws
+                .push(MapElectricBoltDrawObservation {
+                    ordinal: map.electric_bolt_draws.len(),
+                    completed_steps: step,
+                    simulation_tick: sim.session.tick,
+                    binary_frame: sim.session.binary_frame,
+                    effects,
+                });
+        }
         if map.audio_tail_started.is_some() && map.draws.len() == requested.max(1) as usize {
             // The existing render/audio service keeps running during the tail.
             // These repeat draws do not manufacture extra exact-step receipts.
@@ -3349,6 +3509,7 @@ mod tests {
                     effects: None,
                     input: None,
                     lasers: None,
+                    electric_bolts: None,
                     bombs: None,
                     audio_state: Some(audio.clone()),
                 },
@@ -3601,6 +3762,7 @@ mod tests {
                     terrain: vec![],
                     effects: None,
                     lasers: None,
+                    electric_bolts: None,
                     bombs: Some(snapshot),
                     input: None,
                     audio_state: None,
@@ -3693,6 +3855,7 @@ mod tests {
                         effects: Some(snapshot),
                         input: None,
                         lasers: None,
+                        electric_bolts: None,
                         bombs: None,
                         audio_state: None,
                     },
@@ -3849,6 +4012,9 @@ mod tests {
         legacy.observe_lasers = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_electric_bolts = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.observe_bombs = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -3876,6 +4042,7 @@ mod tests {
         modern["observe_action_line_inputs"] = json!(true);
         modern["observe_disguise_inputs"] = json!(true);
         modern["observe_lasers"] = json!(true);
+        modern["observe_electric_bolts"] = json!(true);
         modern["observe_bombs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
@@ -3894,6 +4061,7 @@ mod tests {
             "observe_action_line_inputs",
             "observe_disguise_inputs",
             "observe_lasers",
+            "observe_electric_bolts",
             "observe_bombs",
             "camera_cell",
             "cursor_position",
@@ -4142,6 +4310,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                electric_bolts: None,
                 bombs: None,
                 audio_state: None,
             };
@@ -4564,6 +4733,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                electric_bolts: None,
                 bombs: None,
                 audio_state: None,
             },
@@ -4584,6 +4754,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                electric_bolts: None,
                 bombs: None,
                 audio_state: None,
             },
@@ -4779,6 +4950,7 @@ mod tests {
             effects: None,
             input: None,
             lasers: None,
+            electric_bolts: None,
             bombs: None,
             audio_state: None,
         };

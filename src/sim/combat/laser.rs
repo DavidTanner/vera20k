@@ -82,38 +82,10 @@ pub(crate) fn fired(
         Default::default(),
     )
     .coord;
-    let to = match target {
-        super::TargetKind::Entity(id) => {
-            let Some(target) = world.substrate.entities.get(id) else {
-                return;
-            };
-            // Object+58 / Techno+A4 share this coordinate for the selected
-            // GAPOWR (native constructor/read TargetCoordOffset=0). The
-            // existing nonzero shipyard TargetCoordOffset residual remains.
-            let p = crate::sim::movement::ground_pose::object_get_coords(
-                target,
-                world.resolved_terrain.as_ref(),
-            );
-            ProjectileCoord::new(p.x, p.y, p.z)
-        }
-        super::TargetKind::Cell(x, y) => {
-            crate::sim::projectile::cell_target_coord(world.resolved_terrain.as_ref(), x, y)
-        }
+    let Some(to) = super::fire_coord::effect_target_coordinate(world, target) else {
+        return;
     };
-    let mut z_adjust = 0;
-    if source.category == EntityCategory::Structure {
-        let location = crate::sim::movement::ground_pose::object_location(
-            source,
-            world.resolved_terrain.as_ref(),
-        );
-        let base =
-            crate::sim::movement::ground_pose::building_render_order_parts(location, false, false)
-                .0;
-        let project_y = |x, y, z| crate::util::lepton::absolute_leptons_to_screen(x, y, z).1 as i32;
-        z_adjust = project_y(from.x, from.y, from.z)
-            .wrapping_sub(project_y(base.x, base.y, base.z))
-            .min(0);
-    }
+    let z_adjust = super::fire_coord::effect_z_adjust(world, source, from);
     let prism = source.category == EntityCategory::Structure && rules.is_prism_type(obj);
     let supported = prism && prism_support_count > 0;
     // RESIDUAL: other non-building house-color callers use width1 vs native2

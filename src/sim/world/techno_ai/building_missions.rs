@@ -37,10 +37,9 @@
 //! shot.
 //!
 //! The Update's two FireAts, Mission_Attack's (`0x0044B6D0`) and
-//! ProcessDelayedFire's (`0x00450492`), are VERA's combat emission: the visit
-//! asks the combat phase for the shot
-//! ([`crate::sim::combat::FireRequests::buildings`]), which emits it without
-//! asking GetFireError again. A building fires no shot without that request.
+//! ProcessDelayedFire's (`0x00450492`), enter the existing live combat
+//! receiver synchronously. Rearm, Main/Scenario draws and object appends
+//! finish before the following Gattling work or the next Logic object.
 //!
 //! A Prism tower (`[General] PrismType=`) never takes Mission_Attack's FireAt
 //! arm: it recruits one charged tower of its House per visit to beam at it,
@@ -61,27 +60,6 @@
 //! the idle decay, and whole engagements frame by frame.
 //!
 //! RESIDUALS, each with its later owner:
-//! - The frame position of a building's shot. Native fires both FireAts
-//!   inside the building's own Logic visit; VERA emits them in the combat
-//!   phase after the Logic pass, like every class's FireAt (the draw-order
-//!   residual `docs/plans/2026-09-21-combat-parity.md` records for all of
-//!   them). Trigger: every building shot. Effect: the shot's Scenario draws
-//!   (GetROF's `RandomRanged(0, 2)` at `0x006FD09E`, the bullet's own) and
-//!   its rearm and ammo writes follow the Logic visits of the objects after
-//!   the building, not precede them; the bullet still takes its first AI at
-//!   the tail of the same pass ([`Simulation::visit_combat_tail`]).
-//!   Frequency: every frame a building fires while a later object draws.
-//!   Downstream: the Scenario stream's order in that frame. The pass's one
-//!   reader of another building's rearm, the Prism walk, counts a requested
-//!   shot as rearming ([`prism_supporter`]); the support count the shot
-//!   clears (`0x004504CD`) is read only in its own tower's visits. The
-//!   request carries the visit's target and weapon ([`BuildingShot`]), so a
-//!   Gattling charge after the FireAt or a later retarget leaves the shot as
-//!   the visit made it. FireAt (`0x006FDD50`) draws `g_MainRng` only through
-//!   callees off the Gattling Cannon's path (SpawnRadEruption `0x006FD800`,
-//!   EBolt::Init `0x004C2A60`, audio; an instruction scan), so the charge's
-//!   loop draw keeps its native place in that stream. Later owner: FireAt
-//!   moving into each object's Logic visit.
 //! The house-color Prism support/main lasers now emit ordered copied births
 //! through `combat::laser` and share the app LaserDraw/DSurface owner. The
 //! remaining non-house randomized spread path belongs to DrawBeam550260.
@@ -188,6 +166,7 @@ pub(super) fn dispatch(
     id: u64,
     rules: Option<&RuleSet>,
     ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
 ) {
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
@@ -209,7 +188,7 @@ pub(super) fn dispatch(
         Some(MissionType::Guard | MissionType::Sticky | MissionType::AreaGuard) => {
             mission_guard(sim, id, rules)
         }
-        Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx),
+        Some(MissionType::Attack) => mission_attack(sim, id, rules, ctx, bridge_state_changed),
         Some(MissionType::Construction) => mission_construction(sim, id, rules, ctx),
         Some(MissionType::Unload) => match mission_unload(sim, id, rules, ctx) {
             Some(delay) => delay,
@@ -651,7 +630,13 @@ fn mission_guard(sim: &mut Simulation, id: u64, rules: &RuleSet) -> i32 {
 }
 
 /// `BuildingClass::Mission_Attack` (`0x0044ACF0`).
-fn mission_attack(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: ObjectAiCtx<'_>) -> i32 {
+fn mission_attack(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
+) -> i32 {
     let Some((target, weapon)) = attack_prelude(sim, id, rules) else {
         return 1;
     };
@@ -659,7 +644,16 @@ fn mission_attack(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: ObjectAiC
     if code == FireError::Facing && voxel_turret_snaps(sim, id, rules, target) {
         code = fire_error_with_overlay(sim, rules, id, target, weapon, ctx.overlay_registry);
     }
-    attack_arm(sim, id, rules, target, weapon, code)
+    attack_arm(
+        sim,
+        id,
+        rules,
+        target,
+        weapon,
+        code,
+        ctx,
+        bridge_state_changed,
+    )
 }
 
 /// Mission_Attack up to its GetFireError (`0x0044B00F`): with no target, the
@@ -693,10 +687,12 @@ fn attack_arm(
     target: TargetKind,
     weapon: i32,
     code: FireError,
+    ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
 ) -> i32 {
     match code {
         FireError::Ok => {
-            fire_arm(sim, id, rules, target, weapon);
+            fire_arm(sim, id, rules, target, weapon, ctx, bridge_state_changed);
             // The tail every OK arm reaches (`0x0044B6D6..0x0044B724`).
             if !gattling_step(sim, id, rules, StageCall::Increase) {
                 advance_turret_anim(sim, id);
@@ -859,12 +855,17 @@ pub(super) fn gattling_idle(sim: &mut Simulation, id: u64, rules: &RuleSet) {
 /// The OK arm (`0x0044B2BC`): a Prism tower forwards ([`prism_arm`]); an
 /// `IsAnimDelayedFire=` building arms its delayed shot (`0x0044B630..
 /// 0x0044B666`: `+0x714` = DelayedFireDelay, `+0x708` = the weapon, `+0x704`
-/// = 1) for [`process_delayed_fire`]; any other asks the combat phase for its
-/// FireAt (`0x0044B6D0`) at the visit's target with SelectWeapon's weapon,
-/// both of which the request carries: the tail's charge may step a Gattling
-/// type's stage, and a later object may retarget the building, before the
-/// combat phase fires.
-fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, weapon: i32) {
+/// = 1) for [`process_delayed_fire`]; any other calls the existing live
+/// receiver at FireAt (`0x0044B6D0`) before the Gattling charge in its tail.
+fn fire_arm(
+    sim: &mut Simulation,
+    id: u64,
+    rules: &RuleSet,
+    target: TargetKind,
+    weapon: i32,
+    ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
+) {
     let Some(obj) = sim
         .substrate
         .entities
@@ -898,9 +899,16 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, 
             );
         }
         None => {
-            sim.fire_requests
-                .buildings
-                .insert(id, BuildingShot::Mission { weapon, target });
+            *bridge_state_changed |= sim
+                .commit_fire_visit(
+                    crate::sim::combat::world_receiver::FireVisit::Building {
+                        id,
+                        shot: BuildingShot::Mission { weapon, target },
+                    },
+                    rules,
+                    ctx.overlay_registry,
+                )
+                .bridge_state_changed;
         }
     }
 }
@@ -909,10 +917,10 @@ fn fire_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, target: TargetKind, 
 /// from `fire`) and swaps the building's anims: the Active anim's slot 3 is
 /// emptied (`0x00451E40`) and the SpecialAnim plays in slot 10, its Damaged
 /// variant at or below ConditionYellow (`0x00451890`, the Tesla Coil's and
-/// the Prism tower's charge, with their `Report=`). Nothing in play gives the
-/// Active anim back when the SpecialAnim ends: BuildingClass's vt+0x28
-/// (`0x0044E9AA`) replays it only for a `Grinding=` type, so it returns with a
-/// power restore.
+/// the Prism tower's charge, with their `Report=`). Normal SpecialAnim
+/// completion restores Active through Building451B40's delayed-fire slot
+/// callback. The separate PointerExpired44E9AA hook handles Grinding types;
+/// `building_art` owns both callbacks and the ordered slot replacement.
 fn arm_delayed_fire(
     sim: &mut Simulation,
     id: u64,
@@ -1011,12 +1019,8 @@ fn prism_arm(
 /// wins; a tie keeps the lower vector index (`0x0044B49E..0x0044B4AA`).
 /// Power, EMP, the tower's own target, a build-up or a sale are not asked.
 ///
-/// FireAt starts the shooter's rearm inside its visit
-/// (`0x006FF2B2..0x006FF2BB`), before the visits after it; VERA's combat
-/// phase starts it after the Logic pass (module doc), so a tower whose shot
-/// this pass has already asked for counts as rearming. That is FireAt's
-/// answer for every ROF above zero; a zero ROF, which native leaves run out,
-/// is not told apart.
+/// FireAt already started the shooter's actual rearm inside its visit
+/// (`0x006FF2B2..0x006FF2BB`); a zero ROF remains expired, as in native.
 fn prism_supporter(
     sim: &Simulation,
     id: u64,
@@ -1040,7 +1044,6 @@ fn prism_supporter(
         let admitted = candidate.lifecycle.object_alive
             && candidate.type_ref() == master.type_ref()
             && candidate.rearm_timer.remaining(now) == 0
-            && !sim.fire_requests.buildings.contains_key(&candidate_id)
             && candidate
                 .pending_building_fire
                 .map_or(0, |pending| pending.remaining_ticks)
@@ -1078,7 +1081,7 @@ fn prism_supporter(
 /// `0x004504D7`).
 /// - A shot (mode 1, `0x0045045E..0x00450492`) needs a target and
 ///   GetFireError(target, `+0x708`, range) answering OK; then its FireAt at
-///   that target is asked of the combat phase ([`BuildingShot::Delayed`]),
+///   that target commits synchronously through [`BuildingShot::Delayed`],
 ///   whose bullet takes the support bonus ([`Simulation::take_support_bonus`]).
 ///   Otherwise the shot is dropped and `+0x664` kept.
 /// - A support beam (mode 2, `0x0044ABD0`): construct the beam, then
@@ -1090,6 +1093,7 @@ pub(super) fn process_delayed_fire(
     id: u64,
     rules: &RuleSet,
     ctx: ObjectAiCtx<'_>,
+    bridge_state_changed: &mut bool,
 ) {
     let now = sim.session.binary_frame as i32;
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
@@ -1120,9 +1124,16 @@ pub(super) fn process_delayed_fire(
             if fire_error_with_overlay(sim, rules, id, target, weapon, ctx.overlay_registry)
                 == FireError::Ok
             {
-                sim.fire_requests
-                    .buildings
-                    .insert(id, BuildingShot::Delayed { slot, target });
+                *bridge_state_changed |= sim
+                    .commit_fire_visit(
+                        crate::sim::combat::world_receiver::FireVisit::Building {
+                            id,
+                            shot: BuildingShot::Delayed { slot, target },
+                        },
+                        rules,
+                        ctx.overlay_registry,
+                    )
+                    .bridge_state_changed;
             }
         }
         DelayedFire::SupportBeam { to } => {
@@ -1251,7 +1262,7 @@ impl Simulation {
     /// (`0x00450496..0x004504CD`): a building with a support count (`+0x664`)
     /// gives the bullet the [`support_multiplier`] of it (`+0x150`) and
     /// restarts the count; with none the bullet keeps Construct's
-    /// [`ProjectilePayload::UNSCALED`]. The combat phase asks it for a
+    /// [`ProjectilePayload::UNSCALED`]. The live receiver asks it for a
     /// launched delayed shot only ([`BuildingShot::Delayed`]); FireAt's early
     /// exits and a refused launch return no bullet and keep the count.
     pub(crate) fn take_support_bonus(&mut self, id: u64, rules: &RuleSet) -> i32 {
@@ -1319,9 +1330,8 @@ impl Simulation {
 
     /// The phase-level combat fixture's stand-in for a building's object-pass
     /// visit (`combat::receiver_fixture`): Mission_Attack when the building
-    /// holds a target, then ProcessDelayedFire, whose requests the receiver
-    /// then serves, as BuildingClass::Update runs them before the frame's
-    /// combat. The fixture honours no mission or dispatch timer.
+    /// holds a target, then ProcessDelayedFire. Both use the live receiver;
+    /// the fixture honours no mission or dispatch timer.
     #[cfg(test)]
     pub(crate) fn fixture_building_visit(
         &mut self,
@@ -1339,9 +1349,9 @@ impl Simulation {
             .get(id)
             .is_some_and(|entity| entity.attack_target.is_some())
         {
-            let _ = mission_attack(self, id, rules, ctx);
+            let _ = mission_attack(self, id, rules, ctx, &mut false);
         }
-        process_delayed_fire(self, id, rules, ctx);
+        process_delayed_fire(self, id, rules, ctx, &mut false);
     }
 }
 

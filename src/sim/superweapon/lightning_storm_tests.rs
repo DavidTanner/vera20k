@@ -341,11 +341,18 @@ impl Calls {
             .combat_light_requests
             .iter()
             .map(|request| {
-                assert!(!request.force_create && request.flags == 0);
-                (
-                    request.damage,
-                    [request.coord.x, request.coord.y, request.coord.z],
-                )
+                let crate::sim::combat::CombatLightRequest::Impact {
+                    force_create,
+                    flags,
+                    damage,
+                    coord,
+                    ..
+                } = request
+                else {
+                    panic!("storm impact light");
+                };
+                assert!(!force_create && *flags == 0);
+                (*damage, [coord.x, coord.y, coord.z])
             })
             .collect();
         let anims = sim

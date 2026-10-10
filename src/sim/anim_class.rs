@@ -2434,7 +2434,7 @@ impl Simulation {
             (crate::sim::combat::RAD_NO_ATTACKER, None, warhead_ref),
         );
         self.combat_light_requests
-            .push(crate::sim::combat::CombatLightRequest {
+            .push(crate::sim::combat::CombatLightRequest::Impact {
                 target_id: None,
                 damage,
                 warhead_ref,

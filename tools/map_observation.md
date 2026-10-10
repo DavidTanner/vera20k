@@ -125,6 +125,15 @@ or destination callback. Historical receipts may omit `retask`; omission supplie
 no evidence about either suspended reference. These fixed fields remain part of
 the existing one-sample actor row.
 
+Actor `cell_marked` and `in_logic_vector` are independent read-only lifecycle
+facts; neither is inferred from health, limbo or the other flag. Requested
+terrain rows include nullable `path_grid`: `{ground_walkable, bridge_walkable}`
+from the current simulation navigation projection, or `null` when no grid/cell
+exists. The existing terrain `walkable` field describes resolved bridge terrain,
+not dynamic structure passability. Historical receipts may omit these additions;
+omission supplies no evidence. Post-Logic observations cannot prove ordering
+between objects within a Logic pass.
+
 Requested terrain cells also report `local_visibility`: the current viewer's
 owner name and retained `revealed`, `visible` and `gap_covered` queries. It is
 `null` when no local viewer resolves. These read-only observations let a GPU
@@ -203,6 +212,19 @@ payload/countdown, and rearm timer. These are owner snapshots, not inferred
 firing events or proof that a beam reached the GPU. One detail row and each live
 beam count toward the shared sample budget. False/absent adds no fields; v1
 rejects the option, and present null/nonboolean values are invalid.
+
+Optional v2 `observe_electric_bolts: true` adds immutable bolt, Spotlight and
+particle snapshots at L0, each committed frame, and after every tactical
+composite, including repeated draws during an audio completion tail. It retains
+native particle IDs, the Scenario identity cursor and all three complete logical
+RNG states. Each observed actor also receives the `prism` firing-state fields
+described above. Counts include one detail row, three RNG streams, every bolt,
+light, particle system and particle toward the existing sample budget.
+These observations consume no RNG and create no effects. Compare observer-off
+captures to establish that diagnostics leave production output unchanged. Draw
+rows describe the post-composite registry: the last submitted geometry of an
+expiring bolt is absent from its retained live vector. False/absent adds no
+fields; v1 and present null/nonboolean values are rejected.
 
 Optional v2 `observe_bombs: true` adds `bombs` at L0 and each committed frame.
 The bomb owner independently reads its sorted carrier index and the carried

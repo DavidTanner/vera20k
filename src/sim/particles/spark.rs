@@ -575,7 +575,6 @@ pub fn finish_particle_tick(
 mod tests {
     use super::*;
     use crate::rules::particle_type::ParticleTypeId;
-    use crate::util::fixed_math::SimFixed;
 
     const F32_ZERO: NativeF32Bits = NativeF32Bits::POSITIVE_ZERO;
     const F32_ONE: NativeF32Bits = NativeF32Bits::ONE;
@@ -615,25 +614,11 @@ mod tests {
     }
 
     fn particle(coords: IVec3, vz: NativeF32Bits, lifetime: i16) -> Particle {
-        Particle {
-            type_id: ParticleTypeId(0),
-            coords,
-            origin: coords,
-            direction: [SimFixed::from_num(0); 3],
-            velocity: SimFixed::from_num(0),
-            lifetime_remaining: lifetime,
-            damage_counter: 0,
-            state_ai_advance: 0,
-            animation_state: 0,
-            translucency: 0,
-            marked_for_deletion: false,
-            drift_x: 0,
-            drift_y: 0,
-            drift_z: 0,
-            spark: Some(spark_state(vz)),
-            prev_delta: [SimFixed::from_num(0); 3],
-            state_advance_counter: 0,
-        }
+        let mut particle = Particle::test_fixture(ParticleTypeId(0), coords);
+        particle.origin = coords;
+        particle.lifetime_remaining = lifetime;
+        particle.spark = Some(spark_state(vz));
+        particle
     }
 
     fn stored_f32(value: i32) -> NativeF32Bits {

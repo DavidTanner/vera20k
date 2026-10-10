@@ -242,7 +242,6 @@ mod tests {
     use crate::rules::particle_type::ParticleTypeId;
     use crate::sim::particles::{Particle, ParticleSystem, SparkRuntimeState};
     use crate::sim::rng::SimRng;
-    use crate::util::fixed_math::SimFixed;
     use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
     use glam::IVec3;
 
@@ -262,23 +261,9 @@ mod tests {
     }
 
     fn fake_system(type_id: ParticleSystemTypeId, lifetime: i32) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 0,
-            in_logic_vector: false,
-            type_id,
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(0),
-            lifetime,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        let mut system = ParticleSystem::test_fixture(0, type_id, IVec3::ZERO);
+        system.lifetime = lifetime;
+        system
     }
 
     fn insert_live_system(sim: &mut Simulation, mut system: ParticleSystem) -> u64 {
@@ -299,32 +284,18 @@ mod tests {
     }
 
     fn spark_particle(x: i32, lifetime: i16) -> Particle {
-        Particle {
-            type_id: ParticleTypeId(0),
-            coords: IVec3::new(x, 0, 100),
-            origin: IVec3::ZERO,
-            direction: [SimFixed::from_num(0); 3],
-            velocity: SimFixed::from_num(0),
-            lifetime_remaining: lifetime,
-            damage_counter: 0,
-            state_ai_advance: 0,
-            animation_state: 0,
-            translucency: 0,
-            marked_for_deletion: false,
-            drift_x: 0,
-            drift_y: 0,
-            drift_z: 0,
-            spark: Some(SparkRuntimeState {
-                velocity_x: NativeF32Bits::POSITIVE_ZERO,
-                velocity_y: NativeF32Bits::POSITIVE_ZERO,
-                velocity_z: NativeF32Bits::POSITIVE_ZERO,
-                start_rgb: [255; 3],
-                color_index: 0,
-                color_accumulator: NativeF64Bits::POSITIVE_ZERO,
-            }),
-            prev_delta: [SimFixed::from_num(0); 3],
-            state_advance_counter: 0,
-        }
+        let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::new(x, 0, 100));
+        particle.origin = IVec3::ZERO;
+        particle.lifetime_remaining = lifetime;
+        particle.spark = Some(SparkRuntimeState {
+            velocity_x: NativeF32Bits::POSITIVE_ZERO,
+            velocity_y: NativeF32Bits::POSITIVE_ZERO,
+            velocity_z: NativeF32Bits::POSITIVE_ZERO,
+            start_rgb: [255; 3],
+            color_index: 0,
+            color_accumulator: NativeF64Bits::POSITIVE_ZERO,
+        });
+        particle
     }
 
     fn flat_facts() -> SparkCollisionFacts {
@@ -658,7 +629,6 @@ SpawnSparkPercentage=1
         use super::*;
         use crate::rules::particle_type::ParticleTypeId;
         use crate::sim::particles::Particle;
-        use crate::util::fixed_math::SimFixed;
         use glam::IVec3;
 
         fn pt_rules(extra: &str) -> RuleSet {
@@ -667,25 +637,13 @@ SpawnSparkPercentage=1
         }
 
         fn fake_particle(pt: &crate::rules::particle_type::ParticleType) -> Particle {
-            Particle {
-                type_id: ParticleTypeId(0),
-                coords: IVec3::ZERO,
-                origin: IVec3::ZERO,
-                direction: [SimFixed::from_num(0); 3],
-                velocity: SimFixed::from_num(0),
-                lifetime_remaining: 100,
-                damage_counter: 0,
-                state_ai_advance: pt.state_ai_advance,
-                animation_state: pt.start_state_ai,
-                translucency: pt.translucency,
-                marked_for_deletion: false,
-                drift_x: 0,
-                drift_y: 0,
-                drift_z: 0,
-                spark: None,
-                prev_delta: [SimFixed::from_num(0); 3],
-                state_advance_counter: 0,
-            }
+            let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::ZERO);
+            particle.origin = IVec3::ZERO;
+            particle.lifetime_remaining = 100;
+            particle.state_ai_advance = pt.state_ai_advance;
+            particle.animation_state = pt.start_state_ai;
+            particle.translucency = pt.translucency;
+            particle
         }
 
         #[test]

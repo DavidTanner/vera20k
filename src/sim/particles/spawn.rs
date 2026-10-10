@@ -9,15 +9,13 @@
 //!     shuffle within the last `insert_range` slots so the visual stream has
 //!     variety instead of strict FIFO.
 //!
-//! Tier 3 system types (`Spark`, `Railgun`) are accepted by the public entry
-//! point but logged + skipped — runtime spawn returns `None`.
+//! Railgun remains refused by the public entry. Spark systems enter the
+//! shared live Logic vector and their owned particles run in that system visit.
 
 use super::{Particle, ParticleSystem};
 use crate::rules::particle_system_type::{ParticleSystemBehavesLike, ParticleSystemTypeId};
-use crate::rules::particle_type::ParticleBehavesLike;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
-use crate::sim::rng::SimRng;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 use crate::util::native_x87::{X87Chop53, sqrt_approx_f32};
@@ -103,11 +101,13 @@ impl Simulation {
     /// `ParticleSystemClass::AI_Spark @ 0x0062E840`'s burst half and
     /// `particles/spark.rs` the per-particle kernel. Railgun is still refused.
     ///
-    /// The electric-bolt producer is wired: `sim/world/mod.rs`'s post-combat
-    /// walk creates one `[CombatDamage] DefaultSparkSystem` per
+    /// The shared FireAt electric-bolt producer creates one
+    /// `[CombatDamage] DefaultSparkSystem` per
     /// `IsElectricBolt=yes` discharge at the bolt's target endpoint, matching
     /// `EBolt::Init @ 0x004C2A60`'s construction at `0x004C2B30` — no owner
-    /// house, no attachment, handle discarded, no RNG consumed. That is the
+    /// house, no attachment, handle discarded, no constructor RNG consumed.
+    /// Both system and particle constructors retain their AbstractClass IDs.
+    /// That is the
     /// most frequent of native's five Spark producers by a wide margin: every
     /// Tesla Coil, Tesla Trooper, Tesla Tank, `AssaultBolt`, `EiffelBolt`,
     /// `CRElectricBolt` shot. It does NOT cover shrapnel bolts, which reach
@@ -125,9 +125,10 @@ impl Simulation {
     ///   two more spark systems this engine does not create.
     ///   (`[ElectricFragment]` also sets the flag but is named by no stock
     ///   `ShrapnelWeapon=`, so it is dead and deliberately not listed as a
-    ///   trigger.) The producer wired above walks `fire_events`, while
-    ///   `emit_projectile_shrapnel` pushes `projectile_spawns`, so wiring this
-    ///   arm means a second call site rather than a wider filter.
+    ///   trigger.) Ordinary FireAt now calls `combat::electric_bolt::fired`
+    ///   synchronously; `emit_projectile_shrapnel` still pushes only
+    ///   `projectile_spawns`, so its electric birth remains a separate caller
+    ///   to integrate through the shared effect owner.
     /// - `TechnoClass::Fire_At @ 0x006FF1EC`, on `WeaponType+0x12A`
     ///   (`UseSparkParticles`), spawning `WeaponType+0x11C`
     ///   (`AttachedParticleSystem`) into `Techno+0x308`, one at a time.
@@ -187,9 +188,14 @@ impl Simulation {
             );
             return None;
         }
+        // Original62DC50 calls Abstract410230 -> Scenario68BCB0 before
+        // registration. The native numeric identity is not the Rust handle.
+        // Executed constructor/CRC: procedural_drawing_oracle/electric_bolt.
+        let native_unique_id = self.next_native_runtime_id();
         let stable_id = self.allocate_stable_id();
         let sys = ParticleSystem {
             stable_id,
+            native_unique_id,
             in_logic_vector: false,
             type_id,
             coords,
@@ -352,7 +358,7 @@ pub(super) fn spawn_particle(
     sys: &mut ParticleSystem,
     coords: IVec3,
     rules: &RuleSet,
-    rng: &mut SimRng,
+    sim: &mut Simulation,
 ) -> bool {
     let pst = rules.particle_system_type(sys.type_id);
     let Some(pt_id) = pst.holds_what else {
@@ -365,18 +371,10 @@ pub(super) fn spawn_particle(
     let direction = normalized_direction(coords, sys.target_coords);
     let state_ai_advance = spawn_state_ai_advance(pt, coords, sys.target_coords, direction);
 
-    let lifetime_extra = if pt.behaves_like == ParticleBehavesLike::Railgun {
-        rng.next_raw_abs_modulo(10) as i16
-    } else {
-        let base = (pt.max_ec as u32).max(1);
-        rng.next_raw_abs_modulo(base) as i16
-    };
-    let lifetime_remaining = (pt.max_ec as i16).saturating_add(lifetime_extra);
-
     sys.particles.push(Particle {
         direction,
         state_ai_advance,
-        ..Particle::new(pt_id, coords, pt, lifetime_remaining)
+        ..Particle::new(pt_id, coords, pt, sim)
     });
     true
 }
@@ -470,9 +468,9 @@ pub(super) fn spawn_particle_with_insert(
     coords: IVec3,
     insert_range: usize,
     rules: &RuleSet,
-    rng: &mut SimRng,
+    sim: &mut Simulation,
 ) -> bool {
-    if insert_range == 0 || !spawn_particle(sys, coords, rules, rng) {
+    if insert_range == 0 || !spawn_particle(sys, coords, rules, sim) {
         return false;
     }
     let count = sys.particles.len();
@@ -480,7 +478,7 @@ pub(super) fn spawn_particle_with_insert(
         return true;
     }
     let actual_range = insert_range.min(count);
-    let random_offset = rng.next_raw_abs_modulo(actual_range as u32) as usize;
+    let random_offset = sim.particle_rng().next_raw_abs_modulo(actual_range as u32) as usize;
     let insert_pos = count.saturating_sub(2).saturating_sub(random_offset);
     if insert_pos + 1 >= count {
         return true;
@@ -492,6 +490,7 @@ pub(super) fn spawn_particle_with_insert(
 
 #[cfg(test)]
 mod tests {
+    use crate::sim::rng::SimRng;
     #[test]
     fn original_96_receiver_height_rows_gate_constructor_and_rng() {
         use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
@@ -733,10 +732,10 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
         for _ in 0..10 {
-            spawn_particle(sys, IVec3::ZERO, &rules, &mut rng);
+            spawn_particle(&mut sys, IVec3::ZERO, &rules, &mut sim);
         }
         assert_eq!(sys.particles.len(), 3);
     }
@@ -760,15 +759,15 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
-        spawn_particle(sys, IVec3::ZERO, &rules, &mut rng);
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
+        spawn_particle(&mut sys, IVec3::ZERO, &rules, &mut sim);
         assert_eq!(sys.particles[0].lifetime_remaining, 11);
 
         // Exactly one raw draw consumed by the lifetime roll.
         let mut reference = SimRng::new(1);
         reference.next_u32();
-        assert_eq!(rng.state(), reference.state());
+        assert_eq!(sim.particle_rng().state(), reference.state());
     }
 
     #[test]
@@ -786,10 +785,10 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
         for _ in 0..10 {
-            spawn_particle_with_insert(sys, IVec3::ZERO, 3, &rules, &mut rng);
+            spawn_particle_with_insert(&mut sys, IVec3::ZERO, 3, &rules, &mut sim);
         }
         assert_eq!(sys.particles.len(), 5);
     }
@@ -816,9 +815,9 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
-        assert!(!spawn_particle(sys, IVec3::ZERO, &rules, &mut rng));
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
+        assert!(!spawn_particle(&mut sys, IVec3::ZERO, &rules, &mut sim));
         assert!(sys.particles.is_empty());
     }
 
@@ -855,10 +854,15 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
 
-        assert!(spawn_particle(sys, IVec3::new(0, 0, 0), &rules, &mut rng));
+        assert!(spawn_particle(
+            &mut sys,
+            IVec3::new(0, 0, 0),
+            &rules,
+            &mut sim
+        ));
 
         let particle = &sys.particles[0];
         assert_eq!(particle.direction, [SIM_ONE, SIM_ZERO, SIM_ZERO]);
@@ -898,10 +902,15 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
 
-        assert!(spawn_particle(sys, IVec3::new(0, 0, 0), &rules, &mut rng));
+        assert!(spawn_particle(
+            &mut sys,
+            IVec3::new(0, 0, 0),
+            &rules,
+            &mut sim
+        ));
 
         let particle = &sys.particles[0];
         assert!(particle.direction[2] > SIM_ZERO);
@@ -943,10 +952,10 @@ mod tests {
                 &rules,
             )
             .unwrap();
-        let mut rng = SimRng::new(1);
-        let sys = sim.particle_systems_mut().get_mut(sys_id).unwrap();
+        *sim.particle_rng() = SimRng::new(1);
+        let mut sys = sim.particle_systems_mut().take_for_tick(sys_id).unwrap();
 
-        assert!(spawn_particle(sys, IVec3::ZERO, &rules, &mut rng));
+        assert!(spawn_particle(&mut sys, IVec3::ZERO, &rules, &mut sim));
 
         // advance=trunc(300/1/(0+1)+1)=301; byte store keeps 45.
         assert_eq!(sys.particles[0].state_ai_advance, 45);
