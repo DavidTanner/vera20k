@@ -3847,12 +3847,12 @@ pub(super) fn emit_admitted_fire(
 /// with the firer as its Owner (`0x006FF825`, the tail's one bullet
 /// dereference), so a parasite shot is never a failed launch.
 ///
+/// `FireOnce` (`0x006FF8F1..0x006FF929`) then releases a Foot's team
+/// mission target and marks its action complete, before the firer's concrete
+/// `Assign_Target(NULL)`. It runs after both successful and failed launches.
+/// Native execution: `tools/projectile_oracle/fire_once.py`.
+///
 /// RESIDUAL, pre-existing and not ported:
-/// - FireOnce (`WeaponType+0x135`, `0x006FF8F1..0x006FF929`): a team member
-///   steps its team (`0x006E9050`), then the firer drops its target
-///   (Assign_Target(NULL)). Triggers: every mind-control, Psi wave, Ivan bomb,
-///   disguise kit, disc drain and defuse kit shot. Effect: VERA's firer keeps
-///   the target where native's lets go at once.
 /// - DistributedFire (TechnoType `+0x6B0`, `0x006FF872..0x006FF8EB`): the
 ///   target is remembered at `+0x470`, then dropped. Trigger: the Aegis
 ///   Cruiser. Effect: VERA's Aegis keeps its target.
@@ -3873,6 +3873,15 @@ fn fireat_tail(
             rules,
             overlay_registry,
         );
+    }
+    if weapon.fire_once {
+        // Native Abstract+0x14 bit 4 admits Foot receivers, not buildings.
+        if snap.category != EntityCategory::Structure {
+            world.team_fire_once_complete(snap.stable_id, rules, overlay_registry);
+        }
+        world
+            .assign_target_represented(snap.stable_id, None, Some(rules))
+            .expect("FireOnce firer retains its concrete target receiver");
     }
 }
 
@@ -4813,3 +4822,7 @@ mod ifv_area_receipt_tests;
 #[cfg(test)]
 #[path = "nuke_maker_tests.rs"]
 mod nuke_maker_tests;
+
+#[cfg(test)]
+#[path = "fire_once_tests.rs"]
+mod fire_once_tests;

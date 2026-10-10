@@ -26,6 +26,13 @@ LineTrail timing residual.
 
 ## FireAt tail and BulletFire
 
+[`fire_once`](fire_once.md) executes 13 original common-tail continuations
+through concrete team/member setters, including supplied refused-launch and
+ballistic-failure cleanup. Rust compares 12 representable boundaries through
+the production shared tail; the removed Foot-bit control has no production
+object counterpart. The document records retail inputs, timer/RNG state and
+the supplied admission/launch boundaries.
+
 `fireat_fixture.py` owns the synthetic object/stack initialization, virtual and
 world hooks, checked native execution and observations for these five generators:
 

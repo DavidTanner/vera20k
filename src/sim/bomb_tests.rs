@@ -737,6 +737,114 @@ fn a_crazy_ivan_bombs_a_tank() {
     );
 }
 
+/// Stock layered rules/ART -> explicit Attack -> infantry FireAt -> Attach.
+/// `FireOnce` clears the planter's target in the same object turn, before
+/// another order or the victim's fuse can run.
+#[test]
+fn retail_fire_once_ivan_releases_target_on_attach() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (mut sim, grid) = arena(21, rules);
+    sim.intern_rule_type_ids(rules);
+    sim.resolve_type_handles(rules);
+    let tank = spawn(&mut sim, rules, "HTNK", "Americans", 12, 10);
+    let ivan = spawn(&mut sim, rules, "IVAN", "Russians", 11, 10);
+    assert!(rules.weapon("IvanBomber").unwrap().fire_once);
+    attack(&mut sim, ivan, tank);
+    run_until(&mut sim, rules, &grid, 200, |sim| bomb(sim, tank).is_some())
+        .expect("the stock shot attaches a bomb");
+    assert_eq!(bomb(&sim, tank).unwrap().planter, Some(ivan));
+    assert!(
+        entity(&sim, ivan).attack_target.is_none(),
+        "FireAt must clear the FireOnce target in the attach frame"
+    );
+
+    let terrain = sim.resolved_terrain.as_ref().unwrap().clone();
+    let bytes = crate::sim::snapshot::GameSnapshot::save_validated(&sim, 0, 0, "FireOnce", 0);
+    let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+        .expect("snapshot")
+        .sim;
+    restored.restore_after_snapshot_load().unwrap();
+    restored.install_resolved_terrain_for_new_map(terrain);
+    assert!(restored.rebuild_dynamic_navigation(rules));
+    restored.intern_rule_type_ids(rules);
+    restored.resolve_type_handles(rules);
+    // Snapshot loading has its own Scenario reseed policy; compare retained
+    // gameplay after aligning that unrelated owner.
+    restored.scenario_rng = sim.scenario_rng.clone();
+    assert_eq!(restored.state_hash(), sim.state_hash());
+    assert!(entity(&restored, ivan).attack_target.is_none());
+    assert_eq!(bomb(&restored, tank), bomb(&sim, tank));
+    assert_eq!(restored.bomb_carriers(), sim.bomb_carriers());
+
+    let next = spawn(&mut sim, rules, "HTNK", "Americans", 11, 11);
+    attack(&mut sim, ivan, next);
+    run_until(&mut sim, rules, &grid, 200, |sim| bomb(sim, next).is_some())
+        .expect("Ivan accepts a subsequent explicit attack");
+    assert_eq!(bomb(&sim, next).unwrap().planter, Some(ivan));
+    assert!(entity(&sim, ivan).attack_target.is_none());
+}
+
+/// The other stock one-shot bomb route uses the same FireAt tail; defusing
+/// keeps the victim alive, retires the carrier index and releases the order.
+#[test]
+fn retail_fire_once_defuse_releases_target_and_carrier() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (mut sim, grid) = arena(26, rules);
+    let tank = spawn(&mut sim, rules, "HTNK", "Americans", 12, 10);
+    let ivan = spawn(&mut sim, rules, "IVAN", "Russians", 30, 10);
+    let engineer = spawn(&mut sim, rules, "ENGINEER", "Americans", 11, 10);
+    assert!(rules.weapon("DefuseKit").unwrap().fire_once);
+    sim.bomb_attach(ivan, Some(tank), rules);
+    let health = entity(&sim, tank).health.current;
+    // The ordinary DisarmBomb click emits ForceAttack for an allied object
+    // (`app/input/context_order.rs::bomb_order`), retaining native Attack
+    // admission without Command::Attack's enemy-only convenience gate.
+    sim.queue_command(CommandEnvelope::new(
+        entity(&sim, engineer).owner(),
+        sim.session.tick + 1,
+        Command::ForceAttack {
+            attacker_id: engineer,
+            target_id: tank,
+        },
+    ));
+    run_until(&mut sim, rules, &grid, 100, |sim| bomb(sim, tank).is_none())
+        .expect("the stock kit defuses the friendly tank");
+    assert_eq!(entity(&sim, tank).health.current, health);
+    assert!(!sim.bomb_carriers().contains(&tank));
+    assert!(entity(&sim, engineer).attack_target.is_none());
+}
+
+/// A normal retail weapon must keep attacking its surviving target.
+#[test]
+fn retail_non_fire_once_shot_retains_target() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (mut sim, grid) = arena(21, rules);
+    let tank = spawn(&mut sim, rules, "HTNK", "Americans", 12, 10);
+    let gi = spawn(&mut sim, rules, "E1", "Russians", 11, 10);
+    assert!(!rules.weapon("M1Carbine").unwrap().fire_once);
+    attack(&mut sim, gi, tank);
+    run_until(&mut sim, rules, &grid, 200, |sim| {
+        entity(sim, gi).last_fire_frame >= 0
+    })
+    .expect("the stock GI fires");
+    assert_eq!(
+        entity(&sim, gi).attack_target.as_ref().unwrap().target,
+        crate::sim::combat::TargetKind::Entity(tank)
+    );
+}
+
 /// Frames in limbo do not extend the fuse, and a carrier in limbo does not
 /// set it off: it goes off on its first AI visit back on the map.
 #[test]

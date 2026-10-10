@@ -97,6 +97,21 @@ firing events or proof that a beam reached the GPU. One detail row and each live
 beam count toward the shared sample budget. False/absent adds no fields; v1
 rejects the option, and present null/nonboolean values are invalid.
 
+Optional v2 `observe_bombs: true` adds `bombs` at L0 and each committed frame.
+The bomb owner independently reads its sorted carrier index and the carried
+records: carrier and planter stable IDs, planter House, and signed start/end
+frames. A null planter preserves pointer expiry. The observer neither refreshes
+BombVisible nor calls Attach, expiry, clock, Defuse or any other gameplay
+callback. Every observed actor also receives `fire`: its existing last-fire
+frame, Foot body counter, shared Stage value and signed rearm timer. Current
+actor `target`, mission and Foot Doing/firing latch retain their ordinary fields.
+Together these boundary values can associate a real attach or defuse with a
+same-turn target clear; they do not create firing events or certify native
+arithmetic or whole-weapon parity. The owner snapshot plus each carrier index
+entry and each carried record count toward the shared 100000-sample budget;
+the 128 MiB receipt limit is unchanged. False/absent adds no frame or actor
+fields, v1 rejects any presence, and present null/nonboolean values are invalid.
+
 Optional v2 `observe_audio` records device-mixer queue pulls from requested ordinary
 SFX Players. For example:
 

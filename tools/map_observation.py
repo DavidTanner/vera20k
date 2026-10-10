@@ -73,7 +73,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types',
                               'observe_projectiles', 'observe_anim_types', 'observe_action_line_inputs',
-                              'observe_disguise_inputs', 'observe_lasers',
+                              'observe_disguise_inputs', 'observe_lasers', 'observe_bombs',
                               'observe_audio', 'allow_load_segments',
                               'camera_cell', 'cursor_position', 'terrain_cells',
                               'observe_super_weapons', 'observe_sidebar_steps'))
@@ -425,6 +425,8 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         raise ValidationError('profile.observe_disguise_inputs must be a boolean')
     if 'observe_lasers' in profile and type(profile['observe_lasers']) is not bool:
         raise ValidationError('profile.observe_lasers must be a boolean')
+    if 'observe_bombs' in profile and type(profile['observe_bombs']) is not bool:
+        raise ValidationError('profile.observe_bombs must be a boolean')
     if 'observe_super_weapons' in profile and type(profile['observe_super_weapons']) is not bool:
         raise ValidationError('profile.observe_super_weapons must be a boolean')
     if 'cursor_position' in profile:
@@ -879,10 +881,53 @@ def _lasers(value: Any, label: str) -> int:
     return 1 + len(live)
 
 
+def _bombs(value: Any, label: str) -> int:
+    snapshot = require_object(value, label)
+    require_exact_keys(snapshot, ('carriers', 'records'), label)
+    carriers = require_array(snapshot['carriers'], f'{label}.carriers')
+    previous = 0
+    for index, value in enumerate(carriers):
+        identity = _bounded_int(value, f'{label}.carriers[{index}]', 1, (1 << 64) - 1)
+        if identity <= previous:
+            raise ValidationError(f'{label}.carriers must be unique and increasing')
+        previous = identity
+    records = require_array(snapshot['records'], f'{label}.records')
+    previous = 0
+    for index, value in enumerate(records):
+        row_label = f'{label}.records[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('carrier_id', 'planter_id', 'planter_house', 'start_frame', 'end_frame'), row_label)
+        identity = _bounded_int(row['carrier_id'], f'{row_label}.carrier_id', 1, (1 << 64) - 1)
+        if identity <= previous:
+            raise ValidationError(f'{label}.records must have unique increasing carrier IDs')
+        previous = identity
+        if row['planter_id'] is not None:
+            _bounded_int(row['planter_id'], f'{row_label}.planter_id', 1, (1 << 64) - 1)
+        if not require_string(row['planter_house'], f'{row_label}.planter_house'):
+            raise ValidationError(f'{row_label}.planter_house must be nonempty')
+        for key in ('start_frame', 'end_frame'):
+            _bounded_int(row[key], f'{row_label}.{key}', -(1 << 31), (1 << 31) - 1)
+    # Membership consistency and timing are gameplay assertions for analysis,
+    # not reconstructed by this structural receipt validator.
+    return 1 + len(carriers) + len(records)
+
+
+def _fire(value: Any, label: str) -> None:
+    row = require_object(value, label)
+    require_exact_keys(row, ('last_fire_frame', 'body_counter', 'stage_value', 'rearm'), label)
+    _bounded_int(row['last_fire_frame'], f'{label}.last_fire_frame', -(1 << 63), (1 << 63) - 1)
+    _bounded_int(row['body_counter'], f'{label}.body_counter', 0, (1 << 32) - 1)
+    _bounded_int(row['stage_value'], f'{label}.stage_value', -(1 << 31), (1 << 31) - 1)
+    rearm = require_object(row['rearm'], f'{label}.rearm')
+    require_exact_keys(rearm, ('start_frame', 'duration', 'remaining'), f'{label}.rearm')
+    for key in rearm:
+        _bounded_int(rearm[key], f'{label}.rearm.{key}', -(1 << 31), (1 << 31) - 1)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
            docking_state: bool = True, walk_state: bool = True,
            action_line_inputs: bool = False, disguise_inputs: bool = False,
-           lasers: bool = False) -> tuple[int, str]:
+           lasers: bool = False, bombs: bool = False) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -895,6 +940,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('disguise_inputs',) if disguise_inputs else ()),
                               *(('prism',) if lasers else ()),
+                              *(('fire',) if bombs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -909,6 +955,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         _disguise_inputs(actor['disguise_inputs'], category, f'{label}.disguise_inputs')
     if lasers:
         _prism(actor['prism'], category, f'{label}.prism')
+    if bombs:
+        _fire(actor['fire'], f'{label}.fire')
     if docking_state:
         _docking_state(actor, label)
     if building_state:
@@ -1713,6 +1761,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                                  *(('input',) if gesture_input else ()),
                                  *(('effects',) if effects else ()),
                                  *(('lasers',) if profile.get('observe_lasers', False) else ()),
+                                 *(('bombs',) if profile.get('observe_bombs', False) else ()),
                                  *(('audio_state',) if 'observe_audio' in profile else ()),
                                  *(('houses',) if docking_state else ())), row_label)
         tick, binary_frame = _segment_clock(step, segments)
@@ -1736,7 +1785,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                                      docking_state=docking_state, walk_state=walk_state,
                                      action_line_inputs=profile.get('observe_action_line_inputs', False),
                                      disguise_inputs=profile.get('observe_disguise_inputs', False),
-                                     lasers=profile.get('observe_lasers', False))
+                                     lasers=profile.get('observe_lasers', False),
+                                     bombs=profile.get('observe_bombs', False))
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
@@ -1763,6 +1813,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
             sample_count += _effects(row['effects'], profile, f'{row_label}.effects')
         if profile.get('observe_lasers', False):
             sample_count += _lasers(row['lasers'], f'{row_label}.lasers')
+        if profile.get('observe_bombs', False):
+            sample_count += _bombs(row['bombs'], f'{row_label}.bombs')
         if gesture_input:
             sample_count += _input_observation(row['input'], f'{row_label}.input',
                                                 local_input=_observes_local_input(profile))

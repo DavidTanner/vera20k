@@ -143,6 +143,24 @@ impl Hash for Bomb {
     }
 }
 
+/// An immutable boundary projection of the bomb owner. The carrier index and
+/// carried records are read independently; neither is reconstructed from the
+/// other. This value owns no gameplay state and does not sample visibility.
+#[derive(Debug, Serialize)]
+pub(crate) struct BombObservation {
+    pub(crate) carriers: Vec<u64>,
+    pub(crate) records: Vec<BombRecordObservation>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct BombRecordObservation {
+    pub(crate) carrier_id: u64,
+    pub(crate) planter_id: Option<u64>,
+    pub(crate) planter_house: String,
+    pub(crate) start_frame: i32,
+    pub(crate) end_frame: i32,
+}
+
 /// The loop-handle owner of a carrier's ticking sound: native gives each bomb
 /// its own VocHandle (`BombClass+0x3C`), apart from the carrier's own sounds,
 /// so a tag bit keeps the key apart from every stable object id.
@@ -220,6 +238,31 @@ pub(crate) struct BombBlast {
 }
 
 impl Simulation {
+    /// Read retained BombClass inputs and BombList membership without running
+    /// Attach, UpdateAll, a clock query, expiry or any other gameplay callback.
+    /// Each independent collection stops at `limit`; callers request one more
+    /// than their budget and reject excess instead of publishing truncation.
+    pub(crate) fn bomb_observation(&self, limit: usize) -> BombObservation {
+        BombObservation {
+            carriers: self.bombs.carriers.iter().copied().take(limit).collect(),
+            records: self
+                .substrate
+                .entities
+                .iter_sorted()
+                .filter_map(|(carrier_id, entity)| {
+                    entity.bomb.map(|bomb| BombRecordObservation {
+                        carrier_id,
+                        planter_id: bomb.planter,
+                        planter_house: self.interner.resolve(bomb.planter_house).to_owned(),
+                        start_frame: bomb.start_frame,
+                        end_frame: bomb.end_frame,
+                    })
+                })
+                .take(limit)
+                .collect(),
+        }
+    }
+
     /// The live bombs' carriers (`BombListClass`'s list).
     pub(crate) fn bomb_carriers(&self) -> &BTreeSet<u64> {
         &self.bombs.carriers
