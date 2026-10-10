@@ -701,6 +701,7 @@ pub(crate) fn commit_entities(
             attacker_owner,
             live_source_owner,
             receiver_outcome,
+            world.session.binary_frame,
         )
         else {
             continue;

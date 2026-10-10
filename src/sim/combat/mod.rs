@@ -87,6 +87,9 @@ mod combat_cloak_legality_tests;
 mod combat_cloak_damage_tests;
 
 #[cfg(test)]
+mod mirage_disguise_tests;
+
+#[cfg(test)]
 #[path = "delayed_building_fire_tests.rs"]
 mod delayed_building_fire_tests;
 

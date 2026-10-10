@@ -73,6 +73,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types',
                               'observe_projectiles', 'observe_anim_types', 'observe_action_line_inputs',
+                              'observe_disguise_inputs',
                               'observe_audio', 'allow_load_segments',
                               'camera_cell', 'cursor_position', 'terrain_cells',
                               'observe_super_weapons', 'observe_sidebar_steps'))
@@ -420,6 +421,8 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         _coordinate(profile['camera_cell'], 'profile.camera_cell')
     if 'observe_action_line_inputs' in profile and type(profile['observe_action_line_inputs']) is not bool:
         raise ValidationError('profile.observe_action_line_inputs must be a boolean')
+    if 'observe_disguise_inputs' in profile and type(profile['observe_disguise_inputs']) is not bool:
+        raise ValidationError('profile.observe_disguise_inputs must be a boolean')
     if 'observe_super_weapons' in profile and type(profile['observe_super_weapons']) is not bool:
         raise ValidationError('profile.observe_super_weapons must be a boolean')
     if 'cursor_position' in profile:
@@ -784,9 +787,39 @@ def _cloak(value: Any, label: str) -> None:
             raise ValidationError(f'{label}.{key} must be a boolean')
 
 
+def _disguise_inputs(value: Any, category: str, label: str) -> None:
+    if value is None:
+        return
+    row = require_object(value, label)
+    require_exact_keys(row, ('active', 'creation_frame', 'type_id', 'house',
+                             'reveal_start', 'reveal_duration', 'draw'), label)
+    if type(row['active']) is not bool:
+        raise ValidationError(f'{label}.active must be a boolean')
+    _bounded_int(row['creation_frame'], f'{label}.creation_frame', 0, (1 << 32) - 1)
+    for key in ('reveal_start', 'reveal_duration'):
+        _bounded_int(row[key], f'{label}.{key}', -(1 << 31), (1 << 31) - 1)
+    for key in ('type_id', 'house'):
+        if row[key] is not None and not require_string(row[key], f'{label}.{key}'):
+            raise ValidationError(f'{label}.{key} must be nonempty or null')
+    if category != 'Unit':
+        require_value(row['draw'], None, f'{label}.draw')
+        return
+    draw = require_object(row['draw'], f'{label}.draw')
+    require_exact_keys(draw, ('type_id', 'voxel', 'shp_frame', 'terrain_pair_available',
+                             'draw_state_visible', 'native_selector_bits'), f'{label}.draw')
+    if not require_string(draw['type_id'], f'{label}.draw.type_id'):
+        raise ValidationError(f'{label}.draw.type_id must be nonempty')
+    for key in ('voxel', 'terrain_pair_available', 'draw_state_visible'):
+        if type(draw[key]) is not bool:
+            raise ValidationError(f'{label}.draw.{key} must be a boolean')
+    if draw['shp_frame'] is not None:
+        _bounded_int(draw['shp_frame'], f'{label}.draw.shp_frame', 0, 65535)
+    _bounded_int(draw['native_selector_bits'], f'{label}.draw.native_selector_bits', 0, 14)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
            docking_state: bool = True, walk_state: bool = True,
-           action_line_inputs: bool = False) -> tuple[int, str]:
+           action_line_inputs: bool = False, disguise_inputs: bool = False) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -797,6 +830,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('cloak',) if 'cloak' in actor else ()),
                               *(('retask',) if 'retask' in actor else ()),
                               *(('action_line_inputs',) if action_line_inputs else ()),
+                              *(('disguise_inputs',) if disguise_inputs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -807,6 +841,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         raise ValidationError(f'{label}.category is unknown')
     if action_line_inputs:
         _action_line_inputs(actor['action_line_inputs'], category, f'{label}.action_line_inputs')
+    if disguise_inputs:
+        _disguise_inputs(actor['disguise_inputs'], category, f'{label}.disguise_inputs')
     if docking_state:
         _docking_state(actor, label)
     if building_state:
@@ -1631,7 +1667,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
             actor_label = f'{row_label}.actors[{index}]'
             identity, owner = _actor(value, actor_label, building_state=building_state,
                                      docking_state=docking_state, walk_state=walk_state,
-                                     action_line_inputs=profile.get('observe_action_line_inputs', False))
+                                     action_line_inputs=profile.get('observe_action_line_inputs', False),
+                                     disguise_inputs=profile.get('observe_disguise_inputs', False))
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:

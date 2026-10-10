@@ -1702,7 +1702,7 @@ impl GameEntity {
             order_intent: None,
             cloak: None,
             sensor_deposit: None,
-            disguise: None,
+            disguise: Some(DisguiseRuntime::new(construction_frame)),
             low_bridge_tube_state: None,
             capture_manager: None,
             spawn_manager: None,

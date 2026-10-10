@@ -1918,6 +1918,16 @@ impl Simulation {
         true
     }
 
+    /// A producer's plain Anim+19D store. Mirage's attached-ring tail
+    /// `746A9C..746B19` changes drawing without suspending the Anim AI.
+    pub(crate) fn set_anim_hidden(&mut self, id: AnimId, hidden: bool) -> bool {
+        let Some(anim) = self.anim_mut_by_id(id) else {
+            return false;
+        };
+        anim.draw_runtime.hidden = hidden;
+        true
+    }
+
     /// `AnimClass::SetOwnerHouse @ 0x00424CA0`: store `+0x180`.
     pub(crate) fn set_anim_owner_house(&mut self, id: AnimId, house: InternedId) -> bool {
         let Some(anim) = self.anim_mut_by_id(id) else {

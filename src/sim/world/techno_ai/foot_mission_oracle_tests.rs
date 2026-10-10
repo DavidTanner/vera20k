@@ -43,7 +43,7 @@ use crate::util::native_x87::MaskedX87Chop53;
 #[path = "area_guard_oracle_tests.rs"]
 mod area_guard_oracle_tests;
 
-pub(super) fn oracle() -> &'static Value {
+pub(in crate::sim::world::techno_ai) fn oracle() -> &'static Value {
     static CORPUS: OnceLock<Value> = OnceLock::new();
     CORPUS.get_or_init(|| {
         let value: Value = serde_json::from_str(crate::test_fixture::text(
@@ -58,11 +58,11 @@ pub(super) fn oracle() -> &'static Value {
     })
 }
 
-pub(super) fn signed(value: &Value) -> i32 {
+pub(in crate::sim::world::techno_ai) fn signed(value: &Value) -> i32 {
     value.as_i64().unwrap() as i32
 }
 
-pub(super) fn xyz(value: &Value) -> [i32; 3] {
+pub(in crate::sim::world::techno_ai) fn xyz(value: &Value) -> [i32; 3] {
     std::array::from_fn(|index| signed(&value[index]))
 }
 
@@ -96,7 +96,7 @@ fn sections_ini(sections: &Value) -> IniFile {
 /// layered/type/ART readers. Later passes project the original saved selected
 /// mode/map keys; their native readers retain E1/MTNK/weapon values. This does
 /// not stand in for archive-backed map or whole ScenarioLoad validation.
-pub(super) fn retail_rules() -> Option<RuleSet> {
+pub(in crate::sim::world::techno_ai) fn retail_rules() -> Option<RuleSet> {
     rules_with_native_reader_context(false, "handler_rules_after_physical")
 }
 
@@ -395,9 +395,9 @@ pub(super) fn assert_rng(sim: &Simulation, expected: &Value, name: &str) {
 /// than pointer magnitude. Native Logic and Display keep independent orders.
 /// The literal Foot rows call only the existing entity mask/latch owner: no
 /// test port of Foot's scanner or alternate class dispatch is introduced.
-pub(super) struct SuppliedFootFixture {
-    pub(super) sim: Simulation,
-    pub(super) actor: u64,
+pub(in crate::sim::world::techno_ai) struct SuppliedFootFixture {
+    pub(in crate::sim::world::techno_ai) sim: Simulation,
+    pub(in crate::sim::world::techno_ai) actor: u64,
     pointers: BTreeMap<String, u64>,
     cells: BTreeMap<String, (u16, u16)>,
 }
@@ -447,7 +447,7 @@ impl SuppliedFootFixture {
         self.pointers = mapped;
     }
 
-    pub(super) fn id(&self, pointer: &Value) -> Option<u64> {
+    pub(in crate::sim::world::techno_ai) fn id(&self, pointer: &Value) -> Option<u64> {
         let pointer = pointer.as_str().unwrap();
         if pointer == "0x0" {
             None
@@ -469,7 +469,7 @@ impl SuppliedFootFixture {
         self.target(pointer).map(NavTargetRef::from)
     }
 
-    pub(super) fn new(row: &Value, rules: &RuleSet) -> Self {
+    pub(in crate::sim::world::techno_ai) fn new(row: &Value, rules: &RuleSet) -> Self {
         let native = oracle();
         let input = &row["input"];
         let setup = &native["setup"];
@@ -1180,7 +1180,9 @@ fn original_rules_key_controls_match_sequential_production_reads() {
 /// prefixes. These are native getter receipts, not values calculated by Rust.
 /// Other terrain and whole-map path/zone initialization remain outside this
 /// fixture; full home queries use the retail map fixture in a separate test.
-pub(super) fn install_recorded_cell_coordinates(fixture: &mut SuppliedFootFixture) {
+pub(in crate::sim::world::techno_ai) fn install_recorded_cell_coordinates(
+    fixture: &mut SuppliedFootFixture,
+) {
     let stride = oracle()["world"]["zone_storage"]["stride"]
         .as_u64()
         .unwrap() as u16;
@@ -1368,7 +1370,10 @@ fn install_recorded_anytown_query_state(
     }
 }
 
-fn assert_foot_projection(fixture: &SuppliedFootFixture, row: &Value) {
+pub(in crate::sim::world::techno_ai) fn assert_foot_projection(
+    fixture: &SuppliedFootFixture,
+    row: &Value,
+) {
     let name = row["input"]["name"].as_str().unwrap();
     let expected = &row["after"];
     let actor = fixture.sim.substrate.entities.get(fixture.actor).unwrap();

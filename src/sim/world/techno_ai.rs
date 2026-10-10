@@ -1508,51 +1508,6 @@ fn techno_common_pre(
         return;
     }
     super::techno_ai_cloak::tick_stock_cloak_producer(sim, id, rules, overlay_registry);
-    let Some(entity) = sim.substrate.entities.get(id) else {
-        return;
-    };
-    let Some(object_type) = rules.object(sim.interner.resolve(entity.type_ref())) else {
-        return;
-    };
-    if !object_type.disguise_when_still || entity.locomotor.is_none() {
-        return;
-    }
-    // `UnitClass::UpdateDisguise @ 0x007468C0` asks the locomotor's Is_Moving
-    // (ILocomotion+0x10 at `0x007468F4` and `0x0074693D`), not whether an
-    // order is pending. A locomotor without its runtime reads as still.
-    let is_moving = crate::sim::movement::motion_query::is_moving(entity) == Some(true);
-    if is_moving {
-        if let Some(disguise) = sim
-            .substrate
-            .entities
-            .get_mut(id)
-            .and_then(|e| e.disguise.as_mut())
-        {
-            disguise.clear_unit();
-        }
-        return;
-    }
-    let blocked_by_contact = !entity.radio_contacts.is_empty();
-    let reveal_blocking = entity
-        .disguise
-        .as_ref()
-        .is_some_and(|state| state.reveal_blocks(sim.session.binary_frame));
-    if blocked_by_contact || reveal_blocking || rules.general.default_mirage_disguises.is_empty() {
-        return;
-    }
-
-    // `UnitClass::UpdateDisguise @ 0x007468c0`: one RandomRanged draw on every
-    // eligible unblocked update; selection is independent of the 7/8 scan cadence.
-    let last = rules.general.default_mirage_disguises.len() as u32 - 1;
-    let index = sim.scenario_rng.next_range_u32_inclusive(0, last) as usize;
-    let disguise_type = sim
-        .interner
-        .intern(&rules.general.default_mirage_disguises[index]);
-    let owner = sim.substrate.entities.get(id).map(|e| e.owner());
-    if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        let state = entity.disguise.get_or_insert_with(Default::default);
-        state.acquire(sim.session.binary_frame, Some(disguise_type), owner);
-    }
 }
 
 /// `damage_particle_live_until` sentinel for a spawned spark system whose

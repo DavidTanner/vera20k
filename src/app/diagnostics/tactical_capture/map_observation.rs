@@ -347,6 +347,13 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_action_line_inputs: Option<bool>,
+    /// Read retained disguise state and the actual body-builder decisions.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_disguise_inputs: Option<bool>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -414,6 +421,7 @@ impl MapCaptureProfile {
                     && self.observe_audio.is_none()
                     && self.allow_load_segments.is_none()
                     && self.observe_action_line_inputs.is_none()
+                    && self.observe_disguise_inputs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none()
@@ -1344,6 +1352,82 @@ struct MapGestureReceipt {
     keyboard: Option<MapKeyboardGestureReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     command_bar: Option<MapCommandBarGestureReceipt>,
+}
+
+fn disguise_inputs(
+    state: &AppState,
+    entity: &crate::sim::game_entity::GameEntity,
+) -> Result<Value> {
+    use crate::app::presentation::instances;
+    let Some(disguise) = entity.disguise.as_ref() else {
+        return Ok(Value::Null);
+    };
+    let runtime = state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .context("disguise simulation absent")?;
+    let sim = &runtime.simulation;
+    let draw = if entity.category == crate::map::entities::EntityCategory::Unit {
+        let local = crate::app::input::commands::preferred_local_owner_name(state);
+        let local_id = local.as_deref().and_then(|name| sim.interner.get(name));
+        let mut observer = instances::observer_draw_context(
+            sim,
+            entity,
+            local.as_deref(),
+            local_id,
+            state.rules(),
+        );
+        let chosen = instances::drawn_model_id(
+            entity,
+            &sim.interner,
+            state.rules(),
+            sim.session.binary_frame,
+            observer,
+        );
+        let voxel = instances::drawn_type_uses_voxel(entity, &chosen, &sim.interner, state.rules());
+        observer.drawn_voxel = Some(voxel);
+        let frame = (!voxel)
+            .then(|| {
+                instances::resolve_object_shp_frame(
+                    state,
+                    &chosen,
+                    entity,
+                    sim.session.binary_frame,
+                    None,
+                )
+            })
+            .flatten();
+        let terrain_pair = frame
+            .and_then(|frame| u8::try_from(frame).ok())
+            .is_some_and(|frame| {
+                state
+                    .match_state
+                    .match_presentation
+                    .overlay_atlas
+                    .as_ref()
+                    .and_then(|atlas| atlas.native_terrain_pair(&chosen, frame))
+                    .is_some()
+            });
+        let decision = crate::render::draw_state::DrawState::for_entity(
+            entity,
+            sim.session.binary_frame,
+            0,
+            observer,
+        );
+        json!({"type_id": chosen, "voxel": voxel, "shp_frame": frame,
+            "terrain_pair_available": terrain_pair, "draw_state_visible": decision.visible,
+            "native_selector_bits": decision.state.native_selector_bits()})
+    } else {
+        Value::Null
+    };
+    Ok(
+        json!({"active": disguise.is_disguised(), "creation_frame": disguise.creation_frame(),
+        "type_id": disguise.type_id().map(|id| sim.interner.resolve(id)),
+        "house": disguise.house().map(|id| sim.interner.resolve(id)),
+        "reveal_start": disguise.reveal_timer().start_frame(),
+        "reveal_duration": disguise.reveal_timer().duration(), "draw": draw}),
+    )
 }
 
 fn retask_observation(entity: &crate::sim::game_entity::GameEntity) -> Value {
@@ -2620,6 +2704,9 @@ impl TacticalCaptureSession {
                     "miner": miner,
                     "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
                 });
+                if profile.observe_disguise_inputs == Some(true) {
+                    observation["disguise_inputs"] = disguise_inputs(state, entity)?;
+                }
                 if profile.observe_action_line_inputs == Some(true) {
                     let inputs = if entity.category
                         == crate::map::entities::EntityCategory::Structure
@@ -3453,6 +3540,9 @@ mod tests {
         legacy.observe_action_line_inputs = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_disguise_inputs = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -3475,6 +3565,7 @@ mod tests {
         modern["observe_projectiles"] = json!(true);
         modern["observe_anim_types"] = json!(["BBBLELRG"]);
         modern["observe_action_line_inputs"] = json!(true);
+        modern["observe_disguise_inputs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         modern["observe_super_weapons"] = json!(true);
@@ -3490,6 +3581,7 @@ mod tests {
             "observe_projectiles",
             "observe_anim_types",
             "observe_action_line_inputs",
+            "observe_disguise_inputs",
             "camera_cell",
             "cursor_position",
             "terrain_cells",

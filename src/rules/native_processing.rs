@@ -303,6 +303,9 @@ struct GeneralTypeLists {
     /// same InfantryType list reader `0x0067BB10`: the types a `MakeInfantry=`
     /// anim's end creates (`AnimClass::AI @ 0x004249F9`).
     anim_to_infantry: Vec<String>,
+    /// Rules data+0xFFC/count+0x1008;671D3E uses TerrainType reader67BDD0.
+    /// Native reader/identity controls: spatial_oracle/mirage_disguise.
+    default_mirage_disguises: Vec<String>,
 }
 
 /// The `[General]` keys of [`GeneralTypeLists::paradrop_infantry`], in its
@@ -363,6 +366,20 @@ impl ProcessedRulesLayers {
             .into_iter()
             .flatten()
             .map(|member| (member.native_stored_id.as_str(), member.building_foundation))
+    }
+
+    /// Unit747620's retained frame fields after the last reached Rules body.
+    /// Missing Rules sections skip ART; the fixed ART itself is never layered.
+    pub(crate) fn unit_shp_read_states(
+        &self,
+    ) -> impl Iterator<Item = (&str, &crate::rules::shp_vehicle_sequence::UnitShpReadState)> {
+        self.native_type_construction_trace
+            .registry_state()
+            .families
+            .get(&RulesTypeFamily::Vehicle)
+            .into_iter()
+            .flatten()
+            .map(|member| (member.native_stored_id.as_str(), &member.unit_shp))
     }
 
     /// TechnoType +810/+814 state after the reached generic and FV readers.
@@ -604,6 +621,10 @@ impl ProcessedRulesLayers {
 
     pub(crate) fn anim_to_infantry(&self) -> &[String] {
         &self.general_type_lists.anim_to_infantry
+    }
+
+    pub(crate) fn default_mirage_disguises(&self) -> &[String] {
+        &self.general_type_lists.default_mirage_disguises
     }
 
     #[cfg(test)]
@@ -945,6 +966,8 @@ struct ProcessedType {
     /// BuildingType45DF13 initializes +EF0 to zero; ReadINI461225..46125D
     /// updates it from fixed ART after ObjectType5F933B reads effective Image.
     building_foundation: u8,
+    /// Unit ctor747167..7471B2 and reached fixed-ART reader7477C1..747AAE.
+    unit_shp: crate::rules::shp_vehicle_sequence::UnitShpReadState,
     /// TechnoType ctor71136F/711781, generic flag read71287E and FV pair
     /// reads747BBD..747E90, retained across every reached Rules pass.
     gunner_turrets: GunnerTurrets,
@@ -975,6 +998,7 @@ impl ProcessedType {
             native_stored_id,
             anim_art_read: false,
             building_foundation: 0,
+            unit_shp: Default::default(),
             gunner_turrets: GunnerTurrets::default(),
             recoil: crate::rules::recoil::RecoilConfig::default(),
             prerequisite: Vec::new(),
@@ -1380,6 +1404,13 @@ impl RulesPassProcessor {
                 if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
                     self.general_type_lists.anim_to_infantry = resolved;
                 }
+            } else if key == "DefaultMirageDisguises" {
+                // Keep actual FindOrAllocate identities, duplicate slots and
+                // empty/missing-layer retention. Null factory tokens are
+                // excluded by this shared native list reader.
+                if let Some(resolved) = self.resolve_list_from(section, key, family, 0x80) {
+                    self.general_type_lists.default_mirage_disguises = resolved;
+                }
             } else if matches!(
                 key,
                 "LightningWarhead"
@@ -1695,7 +1726,17 @@ impl RulesPassProcessor {
                             RulesTypeFamily::Animation,
                         );
                     }
-                    RulesTypeFamily::Vehicle => {}
+                    RulesTypeFamily::Vehicle => {
+                        // Object5F933B retains the Image buffer+1F8; Unit7477C1
+                        // uses that section without a type-name fallback. The
+                        // existing reached-body projection retains Image/Turret
+                        // defaults across only the admitted Rules passes.
+                        let image = effective.read_string("Image", &native_stored_id, 0x19);
+                        let has_turret = effective.read_bool("Turret", false);
+                        self.families.get_mut(&family).unwrap()[index]
+                            .unit_shp
+                            .read_pass(fixed_art.section_or_empty(&image), has_turret);
+                    }
                     RulesTypeFamily::Infantry => {
                         self.allocate_scalar_from(
                             &raw,

@@ -1562,6 +1562,9 @@ pub struct ObjectType {
     /// Parsed from `CanDisguise=yes` in rules.ini. Enables `Disguise` cursor
     /// when the selected Spy hovers over an eligible enemy infantry target.
     pub can_disguise: bool,
+    /// TechnoType+0xD30, constructor710AF0 false. UnitAI736486 and
+    /// TechnoReceiveDamage701FE6 exclude permanent disguises.
+    pub perma_disguise: bool,
     /// `DisguiseWhenStill=` — UnitClass idle Mirage disguise lifecycle gate.
     pub disguise_when_still: bool,
 
@@ -2690,7 +2693,11 @@ impl ObjectType {
             toggle_power: section.read_bool("TogglePower", category == ObjectCategory::Building),
             powered: section.read_bool("Powered", false),
             powered_special: section.read_bool("PoweredSpecial", false),
+            // Original714404..71446C reads this block in this order,
+            // retaining each current value across reached rules passes.
             can_disguise: section.read_bool("CanDisguise", false),
+            perma_disguise: section.read_bool("PermaDisguise", false),
+            detect_disguise: section.read_bool("DetectDisguise", false),
             disguise_when_still: section.read_bool("DisguiseWhenStill", false),
             wall: section.read_bool("Wall", false),
             to_overlay: None,
@@ -2780,7 +2787,6 @@ impl ObjectType {
             sensor_array: section.read_bool("SensorArray", false),
             sensors: section.read_bool("Sensors", false),
             sensors_sight: section.read_int("SensorsSight", 0).clamp(0, u8::MAX as i32) as u8,
-            detect_disguise: section.read_bool("DetectDisguise", false),
             detect_disguise_range: section
                 .read_int("DetectDisguiseRange", 0)
                 .clamp(0, u8::MAX as i32) as u8,

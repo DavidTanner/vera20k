@@ -918,7 +918,9 @@ use crate::sim::world::Simulation;
 // one private owner, replacing the lossy byte. Old bincode records cannot resume.
 // 318 -> 319: Guard commands retain a Cell/object/null post and no longer
 // serialize the competing OrderIntent::Guard anchor. Old commands cannot resume.
-const SNAPSHOT_VERSION: u32 = 319;
+// 319 -> 320: Mirage disguise owns the constructor-anchored timer and drops
+// the invented +1E4 packed-cell word. Prior bincode records cannot resume.
+const SNAPSHOT_VERSION: u32 = 320;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -3968,7 +3970,8 @@ mod tests {
         // 315 -> 316: the native airfield loop replaces the legacy dock FSM.
         // 316 -> 317: the local owner's retained sidebar insertion history.
         // 318 -> 319: Guard carries its native post, with one mission owner.
-        assert_eq!(super::SNAPSHOT_VERSION, 319);
+        // 319 -> 320: Mirage retains only its established timer words.
+        assert_eq!(super::SNAPSHOT_VERSION, 320);
     }
 
     #[test]
