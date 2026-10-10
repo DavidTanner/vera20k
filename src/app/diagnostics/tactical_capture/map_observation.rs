@@ -346,6 +346,13 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_electric_bolts: Option<bool>,
+    /// Read the existing bomb owner and observed actors' retained FireAt state.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_bombs: Option<bool>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -419,6 +426,7 @@ impl MapCaptureProfile {
                     && self.observe_disguise_inputs.is_none()
                     && self.observe_lasers.is_none()
                     && self.observe_electric_bolts.is_none()
+                    && self.observe_bombs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none()
@@ -1467,6 +1475,23 @@ fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -
                   "remaining": entity.rearm_timer.remaining(frame)}})
 }
 
+fn fire_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
+    // Existing immutable counters and timer queries only. In particular this
+    // neither completes a firing sequence nor draws GetROF's Scenario RNG.
+    json!({"last_fire_frame": entity.last_fire_frame,
+        "body_counter": entity.body_frame_counter,
+        "stage_value": entity.native_stage().value(),
+        "rearm": {"start_frame": entity.rearm_timer.start_frame(),
+            "duration": entity.rearm_timer.duration(),
+            "remaining": entity.rearm_timer.remaining(frame)}})
+}
+
+fn bomb_sample_count(snapshot: &crate::sim::bomb::BombObservation) -> usize {
+    // Count the owner snapshot and both independent collections, including
+    // index entries whose carrier record may be missing in a broken owner.
+    1 + snapshot.carriers.len() + snapshot.records.len()
+}
+
 #[derive(Debug, Serialize)]
 struct MapLaserObservation {
     detail: crate::app::presentation::detail::DetailObservation,
@@ -1675,6 +1700,8 @@ struct MapFrameObservation {
     #[serde(skip_serializing_if = "Option::is_none")]
     electric_bolts: Option<MapElectricBoltObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    bombs: Option<crate::sim::bomb::BombObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     input: Option<MapInputObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     audio_state: Option<Value>,
@@ -1863,6 +1890,7 @@ impl MapObservation {
                         .map_or(0, MapLaserObservation::sample_count),
                 )
             })
+            .and_then(|count| count.checked_add(frame.bombs.as_ref().map_or(0, bomb_sample_count)))
             .and_then(|count| {
                 count.checked_add(
                     frame
@@ -2909,6 +2937,9 @@ impl TacticalCaptureSession {
                     observation["prism"] =
                         prism_observation(entity, sim.session.binary_frame as i32);
                 }
+                if profile.observe_bombs == Some(true) {
+                    observation["fire"] = fire_observation(entity, sim.session.binary_frame as i32);
+                }
                 if profile.observe_action_line_inputs == Some(true) {
                     let inputs = if entity.category
                         == crate::map::entities::EntityCategory::Structure
@@ -3044,6 +3075,8 @@ impl TacticalCaptureSession {
             electric_bolts: (profile.observe_electric_bolts == Some(true))
                 .then(|| MapElectricBoltObservation::capture(state))
                 .transpose()?,
+            bombs: (profile.observe_bombs == Some(true))
+                .then(|| sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1)),
             input: profile
                 .gestures
                 .as_ref()
@@ -3446,6 +3479,7 @@ mod tests {
                     input: None,
                     lasers: None,
                     electric_bolts: None,
+                    bombs: None,
                     audio_state: Some(audio.clone()),
                 },
                 BTreeSet::new(),
@@ -3622,6 +3656,101 @@ mod tests {
     }
 
     #[test]
+    fn bomb_and_fire_snapshots_read_retained_owners_without_advancing_state() {
+        use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+        use crate::sim::{timer::CdTimer, world::Simulation};
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nIvanTimedDelay=450\n[InfantryTypes]\n0=IVAN\n\
+             [VehicleTypes]\n0=HTNK\n[IVAN]\nStrength=125\n[HTNK]\nStrength=400\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        let planter = sim
+            .spawn_object_at_height("IVAN", "Player", 10, 10, 0, 0, &rules)
+            .unwrap();
+        let carrier = sim
+            .spawn_object_at_height("HTNK", "Computer1", 11, 10, 0, 0, &rules)
+            .unwrap();
+        sim.session.binary_frame = 17;
+        sim.bomb_attach(planter, Some(carrier), &rules);
+        let entity = sim.substrate.entities.get_mut(planter).unwrap();
+        entity.last_fire_frame = 16;
+        entity.body_frame_counter = u32::MAX;
+        entity.rearm_timer = CdTimer::from_raw(16, 50);
+        let hash = sim.state_hash();
+        let rng = sim.rng_state();
+        let snapshot = sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1);
+        assert_eq!(snapshot.carriers, vec![carrier]);
+        assert_eq!(snapshot.records.len(), 1);
+        assert_eq!(snapshot.records[0].carrier_id, carrier);
+        assert_eq!(snapshot.records[0].planter_id, Some(planter));
+        assert_eq!(snapshot.records[0].planter_house, "Player");
+        assert_eq!(snapshot.records[0].start_frame, 17);
+        assert_eq!(snapshot.records[0].end_frame, 467);
+        assert_eq!(bomb_sample_count(&snapshot), 3);
+        assert_eq!(
+            fire_observation(sim.substrate.entities.get(planter).unwrap(), 17),
+            json!({"last_fire_frame": 16, "body_counter": u32::MAX, "stage_value": 0,
+                "rearm": {"start_frame": 16, "duration": 50, "remaining": 49}})
+        );
+        assert_eq!(sim.state_hash(), hash);
+        assert_eq!(sim.rng_state(), rng);
+        sim.bomb_defuse(carrier);
+        let retired = sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1);
+        assert!(retired.carriers.is_empty());
+        assert!(retired.records.is_empty());
+    }
+
+    #[test]
+    fn bomb_snapshots_charge_index_and_records_and_commit_only_within_budget() {
+        for available in [2, 3] {
+            let mut map = MapObservation {
+                sample_count: MAX_OBSERVATION_SAMPLES - available,
+                ..Default::default()
+            };
+            let snapshot = crate::sim::bomb::BombObservation {
+                carriers: vec![7],
+                records: vec![crate::sim::bomb::BombRecordObservation {
+                    carrier_id: 7,
+                    planter_id: None,
+                    planter_house: "Player".into(),
+                    start_frame: i32::MAX,
+                    end_frame: i32::MIN,
+                }],
+            };
+            let result = map.observe_frame(
+                MapFrameObservation {
+                    completed_steps: 0,
+                    simulation_tick: 0,
+                    binary_frame: 0,
+                    total_simulation_ms: 0,
+                    actors: vec![],
+                    houses: vec![],
+                    missing_actor_ids: vec![],
+                    terrain: vec![],
+                    effects: None,
+                    lasers: None,
+                    bombs: Some(snapshot),
+                    input: None,
+                    audio_state: None,
+                },
+                BTreeSet::new(),
+            );
+            assert_eq!(result.is_ok(), available == 3);
+            assert_eq!(map.frames.len(), usize::from(available == 3));
+            assert_eq!(
+                map.sample_count,
+                if available == 3 {
+                    MAX_OBSERVATION_SAMPLES
+                } else {
+                    MAX_OBSERVATION_SAMPLES - available
+                }
+            );
+        }
+    }
+
+    #[test]
     fn effect_snapshot_reads_filtered_live_owner_without_advancing_state() {
         use crate::rules::{art_data::ArtRegistry, ini_parser::IniFile, ruleset::RuleSet};
         use crate::sim::{
@@ -3695,6 +3824,7 @@ mod tests {
                         input: None,
                         lasers: None,
                         electric_bolts: None,
+                        bombs: None,
                         audio_state: None,
                     },
                     BTreeSet::new()
@@ -3796,6 +3926,9 @@ mod tests {
         legacy.observe_electric_bolts = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_bombs = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -3821,6 +3954,7 @@ mod tests {
         modern["observe_disguise_inputs"] = json!(true);
         modern["observe_lasers"] = json!(true);
         modern["observe_electric_bolts"] = json!(true);
+        modern["observe_bombs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         modern["observe_super_weapons"] = json!(true);
@@ -3839,6 +3973,7 @@ mod tests {
             "observe_disguise_inputs",
             "observe_lasers",
             "observe_electric_bolts",
+            "observe_bombs",
             "camera_cell",
             "cursor_position",
             "terrain_cells",
@@ -4087,6 +4222,7 @@ mod tests {
                 input: None,
                 lasers: None,
                 electric_bolts: None,
+                bombs: None,
                 audio_state: None,
             };
             if profile.observes_sidebar_step(&frame) {
@@ -4509,6 +4645,7 @@ mod tests {
                 input: None,
                 lasers: None,
                 electric_bolts: None,
+                bombs: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4529,6 +4666,7 @@ mod tests {
                 input: None,
                 lasers: None,
                 electric_bolts: None,
+                bombs: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4724,6 +4862,7 @@ mod tests {
             input: None,
             lasers: None,
             electric_bolts: None,
+            bombs: None,
             audio_state: None,
         };
         let mut map = initialized_map();

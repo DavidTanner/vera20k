@@ -52,6 +52,7 @@ class MapObservationTests(unittest.TestCase):
         self.effect_frames = {}
         self.laser_frames = {}
         self.electric_frames = {}
+        self.bomb_frames = {}
         self.input_frames = {}
         self.gesture_receipts = []
         self.keyboard_bindings = []
@@ -137,6 +138,8 @@ class MapObservationTests(unittest.TestCase):
                 frames[-1]['lasers'] = deepcopy(self.laser_frames.get(step, self.laser_snapshot()))
             if self.profile.get('observe_electric_bolts', False):
                 frames[-1]['electric_bolts'] = deepcopy(self.electric_frames.get(step, self.electric_snapshot()))
+            if self.profile.get('observe_bombs', False):
+                frames[-1]['bombs'] = deepcopy(self.bomb_frames.get(step, {'carriers': [], 'records': []}))
         manifest['observations'] = {
             'policy': observation.OBSERVATION_POLICY, 'owners': self.profile.get('observe_owners', []),
             'rule_types': deepcopy(self.rule_types),
@@ -1548,6 +1551,116 @@ class MapObservationTests(unittest.TestCase):
         actor['prism'] = {}
         with self.assertRaises(ValidationError):
             observation._actor(actor, 'actor', lasers=True)
+
+    @staticmethod
+    def bomb_record(carrier=8, planter=1):
+        return {'carrier_id': carrier, 'planter_id': planter, 'planter_house': 'Computer1',
+                'start_frame': 1, 'end_frame': 451}
+
+    @staticmethod
+    def fire_state():
+        return {'last_fire_frame': -1, 'body_counter': (1 << 32) - 1, 'stage_value': 2,
+                'rearm': {'start_frame': -1, 'duration': 0, 'remaining': 0}}
+
+    def test_bomb_owner_snapshots_and_fire_state_survive_retirement_and_sealed_recheck(self):
+        self.scripted_profile()
+        self.profile['observe_bombs'] = True
+        self.profile_path.write_text(json.dumps(self.profile))
+        for step, actors in self.actor_frames.items():
+            actors[0]['fire'] = self.fire_state()
+            if step >= 1:
+                actors[0]['target'] = None
+                actors[0]['fire']['last_fire_frame'] = 0
+        self.bomb_frames[1] = {'carriers': [8], 'records': [self.bomb_record()]}
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frames = report['capture']['observations']['frames']
+        self.assertEqual(frames[1]['bombs'], self.bomb_frames[1])
+        self.assertEqual(frames[1]['actors'][0]['fire'], self.actor_frames[1][0]['fire'])
+        self.assertEqual(frames[2]['bombs'], {'carriers': [], 'records': []})
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+
+    def test_bombs_opt_in_rejects_v1_presence_null_nonbool_and_unrequested_fields(self):
+        self.scripted_profile()
+        for enabled in (False, True):
+            observation._profile_extensions(dict(self.profile, observe_bombs=enabled))
+            with self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile,
+                    schema_version=observation.PROFILE_V1, observe_bombs=enabled))
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                observation._profile_extensions(dict(self.profile, observe_bombs=value))
+        with self.assertRaises(ValidationError):
+            observation._actor(self.actor(), 'actor', bombs=True)
+        actor = dict(self.actor(), fire=self.fire_state())
+        observation._actor(actor, 'actor', bombs=True)
+        with self.assertRaises(ValidationError):
+            observation._actor(actor, 'actor')
+        self.profile['observe_bombs'] = False
+        self.profile_path.write_text(json.dumps(self.profile))
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        self.assertTrue(all('bombs' not in frame and 'fire' not in frame['actors'][0]
+                            for frame in report['capture']['observations']['frames']))
+
+    def test_electric_and_bomb_observations_keep_both_actor_extensions(self):
+        self.scripted_profile()
+        self.profile.update(observe_electric_bolts=True, observe_bombs=True)
+        self.profile_path.write_text(json.dumps(self.profile))
+        for actors in self.actor_frames.values():
+            actors[0].update(prism=None, fire=self.fire_state())
+        self.bomb_frames[1] = {'carriers': [8], 'records': [self.bomb_record()]}
+        self.electric_frames[1] = self.electric_snapshot()
+        self.electric_frames[1]['rng']['main']['words'][249] = 0xffffffff
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        frame = report['capture']['observations']['frames'][1]
+        self.assertEqual(frame['electric_bolts'], self.electric_frames[1])
+        self.assertEqual(frame['bombs'], self.bomb_frames[1])
+        self.assertIsNone(frame['actors'][0]['prism'])
+        self.assertEqual(frame['actors'][0]['fire'], self.fire_state())
+        self.assertEqual(observation.validate_run(self.output)['status'], 'VALID')
+        self.output = self.root / 'combined-missing-fire'
+        del self.actor_frames[1][0]['fire']
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'INVALID')
+        self.assertTrue(any('fire' in error for error in report['errors']), report['errors'])
+
+    def test_bomb_snapshot_shape_identity_order_and_signed_values_are_strict(self):
+        valid = {'carriers': [8], 'records': [self.bomb_record()]}
+        self.assertEqual(observation._bombs(valid, 'bombs'), 3)
+        # Keep both owner reads independent; analysis can detect disagreement.
+        self.assertEqual(observation._bombs({'carriers': [9], 'records': [self.bomb_record()]}, 'bombs'), 3)
+        for key, value in (('carrier_id', 0), ('planter_id', True), ('planter_house', ''),
+                           ('start_frame', 1 << 31), ('end_frame', None), ('seen_by', 0)):
+            row = dict(self.bomb_record(), **{key: value})
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                observation._bombs({'carriers': [8], 'records': [row]}, 'bombs')
+        for snapshot in ({'carriers': [8, 8], 'records': []},
+                         {'carriers': [9, 8], 'records': []},
+                         {'carriers': [True], 'records': []},
+                         {'carriers': [], 'records': [self.bomb_record(), self.bomb_record()]},
+                         {'carriers': [], 'records': None}, {'carriers': [], 'records': [], 'extra': 0}):
+            with self.subTest(snapshot=snapshot), self.assertRaises(ValidationError):
+                observation._bombs(snapshot, 'bombs')
+        wrapped = dict(self.bomb_record(planter=None), start_frame=(1 << 31) - 1, end_frame=-(1 << 31))
+        observation._bombs({'carriers': [8], 'records': [wrapped]}, 'bombs')
+        for key, value in (('last_fire_frame', 1 << 63), ('body_counter', -1), ('stage_value', True),
+                           ('rearm', {'start_frame': 0, 'duration': True, 'remaining': 0})):
+            with self.subTest(key=key), self.assertRaises(ValidationError):
+                observation._fire(dict(self.fire_state(), **{key: value}), 'fire')
+
+    def test_bomb_index_and_records_share_aggregate_sample_budget_at_exact_boundary(self):
+        self.profile.update(schema_version=observation.PROFILE_V2, observe_bombs=True, ticks=0)
+        self.profile_path.write_text(json.dumps(self.profile))
+        self.bomb_frames[0] = {'carriers': [8], 'records': [self.bomb_record()]}
+        for budget, status in ((2, 'INVALID'), (3, 'VALID')):
+            self.output = self.root / f'bomb-budget-{budget}'
+            with patch.object(observation, 'MAX_OBSERVATION_SAMPLES', budget):
+                report = self.run_capture()
+            self.assertEqual(report['status'], status, report['errors'])
+            if status == 'INVALID':
+                self.assertTrue(any('sample budget' in error for error in report['errors']))
 
     def test_lasers_reject_malformed_owner_values_and_charge_the_sample_budget(self):
         for key, value in (('minimum', -1), ('frame_rate', 1 << 32), ('reduced', 1),
