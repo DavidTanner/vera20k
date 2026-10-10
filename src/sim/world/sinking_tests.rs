@@ -60,7 +60,7 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
         let (mut sim, rules, id) = fixture(input["relative_z"].as_i64().unwrap_or(0) as i32);
         sim.session.binary_frame = input["frame"].as_u64().unwrap() as u32;
         let seed = input["seed"].as_u64().unwrap_or(1);
-        sim.main_rng = SimRng::new(seed);
+        sim.main_rng = SimRng::new(seed).into();
         sim.scenario_rng = SimRng::new(seed);
         sim.mapgen_rng = SimRng::new(seed);
         sim.substrate.entities.get_mut(id).unwrap().sinking.active =
@@ -85,12 +85,12 @@ fn native_sink_suffix_preserves_cadence_coordinates_and_complete_rng_states() {
             "{name}"
         );
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                rng.native_state_hex(),
+                rng,
                 expected["rng"][stream]["after_hex"].as_str().unwrap(),
                 "{name} {stream}"
             );
@@ -275,7 +275,7 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
             input["move_sound"].as_u64().unwrap_or(0) != 0,
             0,
         );
-        sim.main_rng = SimRng::new(1);
+        sim.main_rng = SimRng::new(1).into();
         sim.scenario_rng = SimRng::new(1);
         sim.mapgen_rng = SimRng::new(1);
         sim.sound_events.clear();
@@ -328,12 +328,12 @@ fn native_sinking_sound_readers_and_reachable_edges_match() {
             "{name}"
         );
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                rng.native_state_hex(),
+                rng,
                 row["output"]["rng_after"][stream].as_str().unwrap(),
                 "{name} {stream}"
             );

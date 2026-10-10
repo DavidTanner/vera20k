@@ -616,7 +616,7 @@ impl App {
                 scenario_catalog,
                 skirmish_modes,
                 loading_session: None,
-                frontend_main_rng: crate::sim::rng::SimRng::new(u64::from(frontend_seed.value)),
+                frontend_main_rng: crate::sim::rng::MainRng::new(u64::from(frontend_seed.value)),
                 legacy_crt_rng: crate::util::legacy_crt_rng::LegacyCrtRng::default(),
                 next_match_correlation: 1,
                 random_map_generation: None,

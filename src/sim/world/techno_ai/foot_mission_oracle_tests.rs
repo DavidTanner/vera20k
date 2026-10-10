@@ -378,16 +378,16 @@ fn assert_weapon_reader_projection(rules: &RuleSet, expected: &Value, family: &s
 
 pub(super) fn assert_rng(sim: &Simulation, expected: &Value, name: &str) {
     for (stream, rng) in [
-        ("scenario", &sim.scenario_rng),
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("scenario", serde_json::to_value(&sim.scenario_rng).unwrap()),
+        ("main", serde_json::to_value(&sim.main_rng).unwrap()),
+        ("mapgen", serde_json::to_value(&sim.mapgen_rng).unwrap()),
     ] {
-        assert_eq!(rng.logical_view().words.len(), 250, "{name}: {stream}");
         assert_eq!(
-            serde_json::to_value(rng).unwrap(),
-            expected[stream],
-            "{name}: full {stream} RNG"
+            rng["state"].as_array().unwrap().len(),
+            250,
+            "{name}: {stream}"
         );
+        assert_eq!(rng, expected[stream], "{name}: full {stream} RNG");
     }
 }
 
@@ -527,7 +527,9 @@ impl SuppliedFootFixture {
         // cursor, including pre-fixture Main/MapGen history; no seed fitting.
         sim.scenario_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["scenario"].clone()).unwrap();
-        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone())
+            .unwrap()
+            .into();
         sim.mapgen_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["mapgen"].clone()).unwrap();
         let friendly = sim.interner.intern("SuppliedFriendlyHouse");

@@ -635,6 +635,154 @@ class MapObservationTests(unittest.TestCase):
         legacy['outputs'][0].pop('owner_role', None)
         observation._audio_observation(legacy, self.profile)
 
+    def audio_finish_metadata(self):
+        self.audio_receipt.update(live_event_count_at_finish=0, busy_channel_count_at_finish=0)
+        self.audio_receipt['outputs'][0].update(
+            event_serial=23, event_live_at_finish=False, channel_live_at_finish=False,
+            token_slot_occupied_at_finish=False, pending_payload_at_finish=False,
+            live_payload_at_finish=False)
+
+    def test_audio_retirement_snapshot_is_retained_and_exported_independently_of_completion(self):
+        self.audio_profile()
+        self.audio_finish_metadata()
+        # A completed Player may precede the next pool reap. Validity retains
+        # the owner evidence instead of treating terminal PCM as retirement.
+        self.audio_receipt.update(live_event_count_at_finish=1, busy_channel_count_at_finish=1)
+        self.audio_receipt['outputs'][0].update(event_live_at_finish=True, channel_live_at_finish=True,
+                                                token_slot_occupied_at_finish=True)
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        retained = report['capture']['observations']['audio']['outputs'][0]
+        self.assertTrue(retained['event_live_at_finish'])
+        self.assertTrue(retained['channel_live_at_finish'])
+        self.assertFalse(retained['pending_payload_at_finish'])
+        exported = observation.export_audio(self.output, self.root / 'audio-retirement-export')
+        for key in observation.AUDIO_FINISH_FIELDS:
+            self.assertEqual(exported['files'][0][key], retained[key])
+        for key in observation.AUDIO_POOL_FINISH_FIELDS:
+            self.assertEqual(exported[key], report['capture']['observations']['audio'][key])
+
+    def test_audio_retirement_accepts_explicit_unobserved_and_orphan_payloads(self):
+        self.audio_profile()
+        self.audio_finish_metadata()
+        for field in observation.AUDIO_FINISH_FIELDS[1:]:
+            self.audio_receipt['outputs'][0][field] = None
+        for field in observation.AUDIO_POOL_FINISH_FIELDS:
+            self.audio_receipt[field] = None
+        observation._audio_observation(self.audio_receipt, self.profile)
+        self.audio_finish_metadata()
+        # A stale payload must remain observable after token invalidation;
+        # it is an outcome for analysis, not an invalid protocol value.
+        self.audio_receipt['outputs'][0]['live_payload_at_finish'] = True
+        observation._audio_observation(self.audio_receipt, self.profile)
+        # A hard Stop can invalidate the token before the ordinary reaping
+        # pass; a reused slot is likewise independent of the old token.
+        self.audio_receipt['outputs'][0]['token_slot_occupied_at_finish'] = True
+        self.audio_receipt['live_event_count_at_finish'] = 1
+        observation._audio_observation(self.audio_receipt, self.profile)
+
+    def test_audio_retirement_rejects_partial_malformed_and_duplicate_allocation_tokens(self):
+        self.audio_profile()
+        self.audio_finish_metadata()
+        mutations = [lambda r: r['outputs'][0].pop('event_serial'),
+                     lambda r: r['outputs'][0].pop('live_payload_at_finish'),
+                     lambda r: r['outputs'][0].update(event_serial=True),
+                     lambda r: r['outputs'][0].update(event_serial=-1),
+                     lambda r: r['outputs'][0].update(event_serial=0),
+                     lambda r: r['outputs'][0].update(event_serial=1 << 32),
+                     lambda r: r['outputs'][0].update(event_serial=None),
+                     lambda r: r['outputs'][0].update(event_live_at_finish=0),
+                     lambda r: r['outputs'][0].update(pending_payload_at_finish='false'),
+                     lambda r: r['outputs'][0].update(live_payload_at_finish=None),
+                     lambda r: r['outputs'][0].update(channel_live_at_finish=True),
+                     lambda r: r['outputs'][0].update(event_live_at_finish=True),
+                     lambda r: r['outputs'][0].pop('token_slot_occupied_at_finish'),
+                     lambda r: r['outputs'][0].update(token_slot_occupied_at_finish=1),
+                     lambda r: r.pop('busy_channel_count_at_finish'),
+                     lambda r: r.update(live_event_count_at_finish=True),
+                     lambda r: r.update(live_event_count_at_finish=-1),
+                     lambda r: r.update(live_event_count_at_finish=301),
+                     lambda r: r.update(busy_channel_count_at_finish=14),
+                     lambda r: r.update(busy_channel_count_at_finish=1),
+                     lambda r: r.update(busy_channel_count_at_finish='0'),
+                     lambda r: r.update(busy_channel_count_at_finish=None)]
+        for index, mutate in enumerate(mutations):
+            candidate = deepcopy(self.audio_receipt)
+            mutate(candidate)
+            with self.subTest(index=index), self.assertRaises(ValidationError):
+                observation._audio_observation(candidate, self.profile)
+        candidate = deepcopy(self.audio_receipt)
+        second = deepcopy(candidate['outputs'][0])
+        second['submission'] = 1
+        candidate['outputs'].append(second)
+        with self.assertRaisesRegex(ValidationError, 'repeat one allocation token'):
+            observation._audio_observation(candidate, self.profile)
+        second['event_serial'] += 1
+        observation._audio_observation(candidate, self.profile)
+        third = deepcopy(second)
+        third['submission'] = 2
+        third['event_serial'] += 1
+        candidate['outputs'].append(third)
+        with self.assertRaisesRegex(ValidationError, 'event count exceeds requested bound'):
+            observation._audio_observation(candidate, self.profile)
+
+    def audio_playback_metadata(self):
+        self.audio_receipt['outputs'][0].update(
+            playback_clips=[{'name': 'vsqumova', 'filled_samples': 256, 'pulled_samples': 4}],
+            source_sample_count=256, source_state_alive_at_finish=False)
+
+    def test_audio_actual_playback_counts_and_source_retirement_are_retained_and_exported(self):
+        self.audio_profile()
+        self.audio_playback_metadata()
+        # Real ring fill can look ahead farther than the retained Player PCM
+        # budget. It is distinct from actual delivery or the capture count.
+        report = self.run_capture()
+        self.assertEqual(report['status'], 'VALID', report['errors'])
+        retained = report['capture']['observations']['audio']['outputs'][0]
+        self.assertEqual(retained['source_sample_count'], 256)
+        self.assertEqual(retained['pcm']['sample_count'], 4)
+        self.assertEqual(retained['playback_clips'][0]['pulled_samples'], 4)
+        exported = observation.export_audio(self.output, self.root / 'audio-playback-export')
+        for field in observation.AUDIO_PLAYBACK_FIELDS:
+            self.assertEqual(exported['files'][0][field], retained[field])
+
+    def test_audio_playback_preserves_unpulled_fills_and_retained_source_as_actual_outcomes(self):
+        self.audio_profile()
+        self.audio_playback_metadata()
+        row = self.audio_receipt['outputs'][0]
+        row['source_state_alive_at_finish'] = True
+        row['playback_clips'].append({'name': 'unpulled', 'filled_samples': 2, 'pulled_samples': 0})
+        row['resolved_samples'].append('unpulled')
+        row['source_sample_count'] += 2
+        observation._audio_observation(self.audio_receipt, self.profile)
+
+    def test_audio_playback_rejects_partial_forged_counts_unknown_names_and_unbounded_tables(self):
+        self.audio_profile()
+        self.audio_playback_metadata()
+        mutations = [lambda r: r['outputs'][0].pop('playback_clips'),
+                     lambda r: r['outputs'][0].pop('source_state_alive_at_finish'),
+                     lambda r: r['outputs'][0].update(source_state_alive_at_finish=None),
+                     lambda r: r['outputs'][0].update(source_state_alive_at_finish=0),
+                     lambda r: r['outputs'][0].update(playback_clips=None),
+                     lambda r: r['outputs'][0].update(playback_clips=[None]),
+                     lambda r: r['outputs'][0].update(playback_clips=r['outputs'][0]['playback_clips'] * 33),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(name=''),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(name='x' * 129),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(filled_samples=True),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(filled_samples=1 << 64),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(filled_samples=-1),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(pulled_samples=257),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(pulled_samples='4'),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(pulled_samples=-1),
+                     lambda r: r['outputs'][0]['playback_clips'][0].update(other=0),
+                     lambda r: r['outputs'][0].update(source_sample_count=255),
+                     lambda r: r['outputs'][0].update(resolved_samples=['undeclared'])]
+        for index, mutate in enumerate(mutations):
+            candidate = deepcopy(self.audio_receipt)
+            mutate(candidate)
+            with self.subTest(index=index), self.assertRaises(ValidationError):
+                observation._audio_observation(candidate, self.profile)
+
     def test_audio_profile_budget_presence_and_modifier_keys_are_explicit(self):
         self.audio_profile()
         config = deepcopy(self.profile['observe_audio'])

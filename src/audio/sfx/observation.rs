@@ -15,7 +15,9 @@ use std::time::Duration;
 use rodio::Source;
 use serde::Serialize;
 
+use super::playback::{PlaybackObservation, PlaybackObservationSnapshot};
 use super::{EventId, HandleOwner};
+use crate::audio::arbiter::{EventToken, SoundArbiter};
 use crate::audio::voice_queue::VoiceQueue;
 
 const MAX_ACTIONS: usize = 64;
@@ -32,8 +34,17 @@ pub(crate) struct PcmObservationConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::audio::arbiter::{EntryFacts, PlayRequest, TestPlayback};
+    use crate::rules::sound_ini::VOLUME_SCALE;
     use rodio::{Player, buffer::SamplesBuffer};
     use std::num::NonZero;
+
+    fn token(event: u32, serial: u32) -> EventToken {
+        EventToken {
+            event: EventId(event),
+            serial,
+        }
+    }
 
     fn observer(capacity: usize) -> PcmObserver {
         let mut observer = PcmObserver::new(PcmObservationConfig {
@@ -42,7 +53,7 @@ mod tests {
             max_samples_per_event: capacity,
         })
         .unwrap();
-        observer.submitted(EventId(1), "TEST", Some(vec!["sample".to_owned()]), 4, 0);
+        observer.submitted(token(1, 1), "TEST", Some(vec!["sample".to_owned()]), 4, 0);
         observer
     }
 
@@ -68,7 +79,7 @@ mod tests {
         let queue = source(samples.clone());
         let span = queue.current_span_len();
         let duration = queue.total_duration();
-        let mut tap = recorder.wrap(EventId(1), queue, 34).unwrap();
+        let mut tap = recorder.wrap(token(1, 1), queue, 34).unwrap();
         assert_eq!(tap.channels().get(), 2);
         assert_eq!(tap.sample_rate().get(), 22_050);
         assert_eq!(tap.current_span_len(), span);
@@ -92,7 +103,7 @@ mod tests {
         let (player, queue) = Player::new();
         player.set_volume(0.25);
         player.append(source(vec![1.0, -1.0, 0.0, 0.0]));
-        let mut tap = recorder.wrap(EventId(1), queue, 34).unwrap();
+        let mut tap = recorder.wrap(token(1, 1), queue, 34).unwrap();
         assert_eq!(
             tap.by_ref().take(4).collect::<Vec<_>>(),
             [0.25, -0.25, 0.0, 0.0]
@@ -102,7 +113,7 @@ mod tests {
         assert_eq!(tap.next(), Some(0.0));
         assert!(player.empty());
         assert!(!recorder.settled());
-        recorder.action(EventId(1), "completed", 68);
+        recorder.action(token(1, 1), "completed", 68);
         assert!(!recorder.settled(), "the real queue must also finish");
         drop(player);
         while tap.next().is_some() {}
@@ -130,7 +141,7 @@ mod tests {
                     NonZero::new(device_rate).unwrap(),
                 );
                 let player = if observed {
-                    recorder.connect_player(EventId(1), &mixer, 34).unwrap()
+                    recorder.connect_player(token(1, 1), &mixer, 34).unwrap()
                 } else {
                     Player::connect_new(&mixer)
                 };
@@ -143,7 +154,7 @@ mod tests {
                     bits.push(mixed.next().expect("connected queue").to_bits());
                 }
                 if observed {
-                    recorder.action(EventId(1), "completed", 68);
+                    recorder.action(token(1, 1), "completed", 68);
                 }
                 drop(player);
                 for sample in mixed {
@@ -167,12 +178,12 @@ mod tests {
     fn release_and_detach_do_not_complete_the_observed_output_or_rebind_old_owners() {
         for operation in ["release", "detach"] {
             let mut recorder = observer(8);
-            recorder.bind_owner(EventId(1), HandleOwner::Positional(7));
+            recorder.bind_owner(token(1, 1), HandleOwner::Positional(7));
             recorder.owner_action(HandleOwner::Positional(7), operation, 40);
             recorder.owner_action(HandleOwner::Positional(7), "release", 50);
             assert!(!recorder.settled());
-            recorder.action(EventId(1), "completed", 100);
-            recorder.action(EventId(1), "stopped", 101);
+            recorder.action(token(1, 1), "completed", 100);
+            recorder.action(token(1, 1), "stopped", 101);
             let report = recorder.finish();
             assert_eq!(
                 report.outputs[0]
@@ -194,26 +205,40 @@ mod tests {
             max_samples_per_event: 16,
         })
         .unwrap();
-        let event = EventId(0);
-        recorder.submitted(event, "TEST", Some(vec!["old".to_owned()]), 4, 0);
-        recorder.bind_owner(event, HandleOwner::Positional(7));
+        let old_token = token(0, 1);
+        let new_token = token(0, 2);
+        recorder.submitted(old_token, "TEST", Some(vec!["old".to_owned()]), 4, 0);
+        recorder.bind_owner(old_token, HandleOwner::Positional(7));
         let mut old = recorder
-            .wrap(event, source(vec![1.0, 2.0, 3.0, 4.0]), 34)
+            .wrap(old_token, source(vec![1.0, 2.0, 3.0, 4.0]), 34)
             .unwrap();
         assert_eq!(old.next(), Some(1.0));
-        recorder.action(event, "stopped", 68);
-        recorder.submitted(event, "TEST", Some(vec!["new".to_owned()]), 2, 69);
-        recorder.bind_owner(event, HandleOwner::Positional(8));
-        let mut new = recorder.wrap(event, source(vec![10.0, 20.0]), 103).unwrap();
+        recorder.submitted(new_token, "TEST", Some(vec!["new".to_owned()]), 2, 69);
+        recorder.bind_owner(new_token, HandleOwner::Positional(8));
+        let mut new = recorder
+            .wrap(new_token, source(vec![10.0, 20.0]), 103)
+            .unwrap();
+        // The older output is deliberately nonterminal when the slot is
+        // reused. Its delayed stop must reach its serial, not the newest row.
+        recorder.action(old_token, "stopped", 104);
+        recorder.bind_owner(old_token, HandleOwner::Positional(99));
+        recorder.samples(old_token, Some(vec!["stale".to_owned()]), 99);
+        assert!(recorder.contains(new_token));
         old.by_ref().for_each(drop);
         new.by_ref().for_each(drop);
-        recorder.action(event, "completed", 137);
+        assert!(!recorder.settled());
+        recorder.action(new_token, "completed", 137);
         assert!(recorder.settled());
+        assert_eq!(
+            recorder.observed_tokens().collect::<Vec<_>>(),
+            [old_token, new_token]
+        );
         let report = recorder.finish();
         let first = &report.outputs[0];
         let second = &report.outputs[1];
         assert_eq!((first.submission, second.submission), (0, 1));
         assert_eq!((first.event, second.event), (0, 0));
+        assert_eq!((first.event_serial, second.event_serial), (1, 2));
         assert_eq!((first.owner, second.owner), (Some(7), Some(8)));
         assert_eq!(first.resolved_samples, ["old"]);
         assert_eq!(second.resolved_samples, ["new"]);
@@ -251,6 +276,236 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["submitted", "started", "completed"]
         );
+    }
+
+    fn submit(arbiter: &mut SoundArbiter) -> EventToken {
+        let event = arbiter
+            .submit(
+                &PlayRequest {
+                    key: "TEST".to_owned(),
+                    facts: EntryFacts {
+                        priority: 2,
+                        limit: 5,
+                        control: 0,
+                        loop_count: 0,
+                        delay_ms: (0, 0),
+                        entry_volume_linear: VOLUME_SCALE,
+                    },
+                    volume_linear: VOLUME_SCALE,
+                    pan: VOLUME_SCALE / 2,
+                },
+                0,
+            )
+            .unwrap();
+        arbiter.event_token(event).unwrap()
+    }
+
+    #[test]
+    fn final_snapshot_reads_real_owner_after_pcm_completion_and_slot_reuse() {
+        let mut arbiter = SoundArbiter::new(0);
+        let old_token = submit(&mut arbiter);
+        let mut recorder = PcmObserver::new(PcmObservationConfig {
+            sound_ids: vec!["Test".to_owned()],
+            max_events: 2,
+            max_samples_per_event: 8,
+        })
+        .unwrap();
+        recorder.submitted(old_token, "TEST", None, 2, 0);
+        let mut old = recorder.wrap(old_token, source(vec![1.0, 2.0]), 0).unwrap();
+        old.by_ref().for_each(drop);
+        recorder.action(old_token, "completed", 34);
+        assert!(recorder.settled());
+
+        // Admission uses the actual arbiter owner. Decoder readiness is only
+        // a fixture input; no audio, native arithmetic or timing is claimed.
+        arbiter.update_tick(34, &mut TestPlayback::default());
+        recorder.snapshot(&arbiter, &[old_token], &[old_token]);
+        assert_eq!(arbiter.event_token(old_token.event), Some(old_token));
+        assert!(arbiter.token_has_channel(old_token));
+        assert_eq!(recorder.outputs[0].event_live_at_finish, Some(true));
+        assert_eq!(recorder.outputs[0].channel_live_at_finish, Some(true));
+        assert_eq!(
+            recorder.outputs[0].token_slot_occupied_at_finish,
+            Some(true)
+        );
+        assert_eq!(recorder.outputs[0].pending_payload_at_finish, Some(true));
+        assert_eq!(recorder.outputs[0].live_payload_at_finish, Some(true));
+        assert_eq!(recorder.live_event_count_at_finish, Some(1));
+        assert_eq!(recorder.busy_channel_count_at_finish, Some(1));
+
+        // Stop invalidates this serial and releases its channel immediately,
+        // but only the ordinary reaping pass frees the occupied pool slot.
+        arbiter.stop(old_token.event);
+        recorder.snapshot(&arbiter, &[], &[]);
+        assert_eq!(recorder.outputs[0].event_live_at_finish, Some(false));
+        assert_eq!(recorder.outputs[0].channel_live_at_finish, Some(false));
+        assert_eq!(
+            recorder.outputs[0].token_slot_occupied_at_finish,
+            Some(true)
+        );
+        assert_eq!(recorder.live_event_count_at_finish, Some(1));
+        assert_eq!(recorder.busy_channel_count_at_finish, Some(0));
+        arbiter.update_tick(68, &mut TestPlayback::default());
+        recorder.snapshot(&arbiter, &[], &[]);
+        assert_eq!(
+            recorder.outputs[0].token_slot_occupied_at_finish,
+            Some(false)
+        );
+        assert_eq!(recorder.live_event_count_at_finish, Some(0));
+
+        arbiter.clear_for_world_replacement();
+        let new_token = submit(&mut arbiter);
+        assert_eq!(old_token.event, new_token.event);
+        assert_ne!(old_token.serial, new_token.serial);
+        recorder.submitted(new_token, "TEST", None, 0, 68);
+        // An orphan old payload is observed even after its pool token died;
+        // it must not be hidden by checking only the new slot's liveness.
+        recorder.snapshot(&arbiter, &[new_token], &[old_token]);
+        assert_eq!(recorder.outputs[0].event_live_at_finish, Some(false));
+        assert_eq!(recorder.outputs[0].channel_live_at_finish, Some(false));
+        assert_eq!(
+            recorder.outputs[0].token_slot_occupied_at_finish,
+            Some(true)
+        );
+        assert_eq!(recorder.outputs[0].pending_payload_at_finish, Some(false));
+        assert_eq!(recorder.outputs[0].live_payload_at_finish, Some(true));
+        assert_eq!(recorder.outputs[1].event_live_at_finish, Some(true));
+        assert_eq!(recorder.outputs[1].channel_live_at_finish, Some(false));
+        assert_eq!(
+            recorder.outputs[1].token_slot_occupied_at_finish,
+            Some(true)
+        );
+        assert_eq!(recorder.outputs[1].pending_payload_at_finish, Some(true));
+        assert_eq!(recorder.outputs[1].live_payload_at_finish, Some(false));
+
+        arbiter.clear_for_world_replacement();
+        recorder.snapshot(&arbiter, &[], &[]);
+        let report = recorder.finish();
+        assert_eq!(report.live_event_count_at_finish, Some(0));
+        assert_eq!(report.busy_channel_count_at_finish, Some(0));
+        for output in report.outputs {
+            assert_eq!(output.event_live_at_finish, Some(false));
+            assert_eq!(output.channel_live_at_finish, Some(false));
+            assert_eq!(output.token_slot_occupied_at_finish, Some(false));
+            assert_eq!(output.pending_payload_at_finish, Some(false));
+            assert_eq!(output.live_payload_at_finish, Some(false));
+        }
+    }
+
+    #[test]
+    fn missing_final_owner_snapshot_is_explicitly_unobserved() {
+        let mut recorder = observer(8);
+        recorder.action(token(1, 1), "completed", 34);
+        assert!(recorder.settled());
+        let report = recorder.finish().into_json();
+        let output = &report["outputs"][0];
+        assert_eq!(output["event_serial"], 1);
+        for key in [
+            "event_live_at_finish",
+            "channel_live_at_finish",
+            "token_slot_occupied_at_finish",
+            "pending_payload_at_finish",
+            "live_payload_at_finish",
+        ] {
+            assert!(output[key].is_null());
+        }
+        assert!(report["live_event_count_at_finish"].is_null());
+        assert!(report["busy_channel_count_at_finish"].is_null());
+        assert!(output.get("playback_clips").is_none());
+        assert!(output.get("source_state_alive_at_finish").is_none());
+    }
+
+    #[test]
+    fn playback_owner_records_real_fill_pull_and_retirement_independent_of_queue_end() {
+        use super::super::playback::{PlaylistCursor, RingSource};
+        use super::super::{DecodedAudio, LoadedPlayback, PlaybackDraws};
+        use crate::rules::{ini_parser::IniFile, sound_ini::SoundRegistry};
+
+        // Synthetic decoded fixture bytes through the actual sound reader,
+        // loaded owner and ring. Counts are observation checks, not native
+        // playback arithmetic or production timing goldens.
+        let registry = SoundRegistry::from_ini(&IniFile::from_str(
+            "[SoundList]\n1=Test\n[Test]\nSounds=attack body decay\nControl=attack all decay\n",
+        ));
+        let entry = registry.get("Test").unwrap();
+        let mut draws = PlaybackDraws::new(|low, _| low);
+        let loaded = LoadedPlayback::load(entry, &mut draws, |_| {
+            Some(DecodedAudio {
+                samples: vec![0.25; 8],
+                sample_rate: 22_050,
+                channels: 2,
+                native_frame_bytes: 2,
+            })
+        })
+        .unwrap();
+        let mut cursor = PlaylistCursor::new(loaded.selected.clone(), entry.control, 0, 1);
+        let initial = cursor.prepare(&mut draws, true).unwrap();
+        let (source, control) = RingSource::new(
+            loaded,
+            cursor,
+            initial,
+            draws,
+            22_050,
+            VOLUME_SCALE / 2,
+            Some(&entry.sounds),
+        )
+        .unwrap();
+        let playback = source.observation().unwrap();
+        let mut recorder = observer(16_384);
+        recorder.playback(token(1, 2), playback.clone());
+        assert!(
+            recorder.outputs[0].playback.is_none(),
+            "wrong serial cannot bind"
+        );
+        recorder.playback(token(1, 1), playback.clone());
+        let mut tap = recorder.wrap(token(1, 1), source, 34).unwrap();
+        tap.by_ref().take(3).for_each(drop);
+        let prefix = playback.snapshot();
+        assert_eq!(prefix.source_sample_count, 24);
+        assert_eq!(
+            prefix
+                .clips
+                .iter()
+                .map(|clip| clip.pulled_samples)
+                .sum::<usize>(),
+            3
+        );
+        assert!(prefix.source_state_alive);
+
+        tap.by_ref().for_each(drop);
+        recorder.action(token(1, 1), "completed", 68);
+        assert!(
+            !recorder.settled(),
+            "ended queue still owns the loaded state"
+        );
+        drop(tap);
+        assert!(
+            !recorder.settled(),
+            "retained control still owns the loaded state"
+        );
+        drop(control);
+        assert!(recorder.settled());
+        let report = recorder.finish().into_json();
+        let output = &report["outputs"][0];
+        assert_eq!(
+            output["source_sample_count"], 24,
+            "queued count was replaced"
+        );
+        assert_eq!(
+            output["resolved_samples"],
+            serde_json::json!(["attack", "body", "decay"])
+        );
+        assert_eq!(output["source_state_alive_at_finish"], false);
+        assert!(
+            output["pcm"]["sample_count"].as_u64().unwrap() > 24,
+            "ring padding is observed PCM, not actual clip pulls"
+        );
+        let clips = output["playback_clips"].as_array().unwrap();
+        assert_eq!(clips.len(), 3);
+        for clip in clips {
+            assert_eq!(clip["filled_samples"], 8);
+            assert_eq!(clip["pulled_samples"], 8);
+        }
     }
 }
 
@@ -330,12 +585,19 @@ pub(crate) struct PcmFormat {
 pub(crate) struct ObservedOutput {
     pub submission: usize,
     pub event: u32,
+    pub event_serial: u32,
     pub owner: Option<u64>,
     pub owner_role: Option<&'static str>,
     pub sound_id: String,
     pub resolved_samples: Vec<String>,
     pub source_sample_count: usize,
     pub source_ended: bool,
+    pub event_live_at_finish: Option<bool>,
+    pub channel_live_at_finish: Option<bool>,
+    pub token_slot_occupied_at_finish: Option<bool>,
+    pub pending_payload_at_finish: Option<bool>,
+    pub live_payload_at_finish: Option<bool>,
+    playback: Option<PlaybackObservationSnapshot>,
     pub actions: Vec<OutputAction>,
     pub formats: Vec<PcmFormat>,
     pub sample_bits: Vec<u32>,
@@ -346,6 +608,8 @@ pub(crate) struct PcmObservationReport {
     pub outputs: Vec<ObservedOutput>,
     pub voice_actions: Vec<VoiceAction>,
     pub truncated: bool,
+    pub live_event_count_at_finish: Option<usize>,
+    pub busy_channel_count_at_finish: Option<usize>,
 }
 
 impl PcmObservationReport {
@@ -360,14 +624,26 @@ impl PcmObservationReport {
             }
             let finite = output.sample_bits.iter().filter(|bits| f32::from_bits(**bits).is_finite()).count();
             let nonzero = output.sample_bits.iter().filter(|bits| f32::from_bits(**bits) != 0.0).count();
-            serde_json::json!({"submission": output.submission, "event": output.event, "owner": output.owner, "owner_role": output.owner_role, "sound_id": output.sound_id,
+            let mut row = serde_json::json!({"submission": output.submission, "event": output.event, "event_serial": output.event_serial, "owner": output.owner, "owner_role": output.owner_role, "sound_id": output.sound_id,
                 "resolved_samples": output.resolved_samples, "source_sample_count": output.source_sample_count,
                 "source_ended": output.source_ended,
+                "event_live_at_finish": output.event_live_at_finish,
+                "channel_live_at_finish": output.channel_live_at_finish,
+                "token_slot_occupied_at_finish": output.token_slot_occupied_at_finish,
+                "pending_payload_at_finish": output.pending_payload_at_finish,
+                "live_payload_at_finish": output.live_payload_at_finish,
                 "actions": output.actions, "pcm": {"encoding": "f32le", "sample_count": output.sample_bits.len(),
                     "finite_count": finite, "nonzero_count": nonzero, "formats": output.formats,
-                    "sha256": crate::util::sha256::sha256_hex(&bytes), "hex": hex, "truncated": output.truncated}})
+                    "sha256": crate::util::sha256::sha256_hex(&bytes), "hex": hex, "truncated": output.truncated}});
+            if let Some(playback) = output.playback {
+                row["playback_clips"] = serde_json::json!(playback.clips);
+                row["source_state_alive_at_finish"] = serde_json::json!(playback.source_state_alive);
+            }
+            row
         }).collect::<Vec<_>>();
-        serde_json::json!({"outputs": outputs, "voice_actions": self.voice_actions, "truncated": self.truncated})
+        serde_json::json!({"outputs": outputs, "voice_actions": self.voice_actions, "truncated": self.truncated,
+            "live_event_count_at_finish": self.live_event_count_at_finish,
+            "busy_channel_count_at_finish": self.busy_channel_count_at_finish})
     }
 }
 
@@ -502,7 +778,7 @@ impl<S: Source> Source for ObservedSource<S> {
 }
 
 struct OutputRecord {
-    event: EventId,
+    token: EventToken,
     owner: Option<HandleOwner>,
     sound_id: String,
     samples: Vec<String>,
@@ -511,6 +787,12 @@ struct OutputRecord {
     actions: Vec<OutputAction>,
     pcm: Option<Arc<PcmStorage>>,
     terminal: bool,
+    playback: Option<PlaybackObservation>,
+    event_live_at_finish: Option<bool>,
+    channel_live_at_finish: Option<bool>,
+    token_slot_occupied_at_finish: Option<bool>,
+    pending_payload_at_finish: Option<bool>,
+    live_payload_at_finish: Option<bool>,
 }
 
 pub(super) struct PcmObserver {
@@ -519,16 +801,18 @@ pub(super) struct PcmObserver {
     outputs: Vec<OutputRecord>,
     voice_actions: Vec<VoiceAction>,
     truncated: bool,
+    live_event_count_at_finish: Option<usize>,
+    busy_channel_count_at_finish: Option<usize>,
 }
 
 impl PcmObserver {
-    // EventId is a reusable arbiter slot. Only the latest live submission
-    // receives owner actions; an earlier queue retains its own PCM storage
-    // while the real device drains it after a stop/world replacement.
-    fn active_index(&self, event: EventId) -> Option<usize> {
+    // The serial comes from the arbiter allocation. A delayed action cannot
+    // reach a later submission that reused its slot; an earlier queue keeps
+    // its own PCM storage while the real device drains it.
+    fn active_index(&self, token: EventToken) -> Option<usize> {
         self.outputs
             .iter()
-            .rposition(|output| output.event == event && !output.terminal)
+            .rposition(|output| output.token == token && !output.terminal)
     }
 
     pub(super) fn new(config: PcmObservationConfig) -> Result<Self, &'static str> {
@@ -539,6 +823,8 @@ impl PcmObserver {
             outputs: Vec::new(),
             voice_actions: Vec::new(),
             truncated: false,
+            live_event_count_at_finish: None,
+            busy_channel_count_at_finish: None,
         })
     }
 
@@ -594,7 +880,7 @@ impl PcmObserver {
 
     pub(super) fn submitted(
         &mut self,
-        event: EventId,
+        token: EventToken,
         key: &str,
         samples: Option<Vec<String>>,
         source_sample_count: usize,
@@ -608,7 +894,7 @@ impl PcmObserver {
             return;
         }
         self.outputs.push(OutputRecord {
-            event,
+            token,
             owner: None,
             sound_id: key.to_owned(),
             samples: samples.unwrap_or_default(),
@@ -617,12 +903,18 @@ impl PcmObserver {
             actions: Vec::new(),
             pcm: None,
             terminal: false,
+            playback: None,
+            event_live_at_finish: None,
+            channel_live_at_finish: None,
+            token_slot_occupied_at_finish: None,
+            pending_payload_at_finish: None,
+            live_payload_at_finish: None,
         });
-        self.action(event, "submitted", now_ms);
+        self.action(token, "submitted", now_ms);
     }
 
-    pub(super) fn bind_owner(&mut self, event: EventId, owner: HandleOwner) {
-        if let Some(index) = self.active_index(event) {
+    pub(super) fn bind_owner(&mut self, token: EventToken, owner: HandleOwner) {
+        if let Some(index) = self.active_index(token) {
             let output = &mut self.outputs[index];
             output.owner = Some(owner);
             output.bound = true;
@@ -631,11 +923,11 @@ impl PcmObserver {
 
     pub(super) fn samples(
         &mut self,
-        event: EventId,
+        token: EventToken,
         samples: Option<Vec<String>>,
         sample_count: usize,
     ) {
-        if let Some(index) = self.active_index(event) {
+        if let Some(index) = self.active_index(token) {
             let output = &mut self.outputs[index];
             output.source_sample_count = output.source_sample_count.saturating_add(sample_count);
             for sample in samples.into_iter().flatten() {
@@ -658,13 +950,21 @@ impl PcmObserver {
             .find(|output| output.owner == Some(owner) && output.bound && !output.terminal)
         {
             output.bound = false;
-            let event = output.event;
-            self.action(event, kind, now_ms);
+            let token = output.token;
+            self.action(token, kind, now_ms);
         }
     }
 
-    pub(super) fn action(&mut self, event: EventId, kind: &'static str, now_ms: u64) {
-        if let Some(index) = self.active_index(event) {
+    /// Keep only the playback owner's passive observation handle. It owns
+    /// neither loaded samples, the source cursor nor its RNG capability.
+    pub(super) fn playback(&mut self, token: EventToken, playback: PlaybackObservation) {
+        if let Some(index) = self.active_index(token) {
+            self.outputs[index].playback = Some(playback);
+        }
+    }
+
+    pub(super) fn action(&mut self, token: EventToken, kind: &'static str, now_ms: u64) {
+        if let Some(index) = self.active_index(token) {
             let output = &mut self.outputs[index];
             if output.actions.len() == MAX_ACTIONS {
                 self.truncated = true;
@@ -681,15 +981,15 @@ impl PcmObserver {
 
     pub(super) fn wrap<S: Source>(
         &mut self,
-        event: EventId,
+        token: EventToken,
         source: S,
         now_ms: u64,
     ) -> Option<ObservedSource<S>> {
-        let index = self.active_index(event)?;
+        let index = self.active_index(token)?;
         let output = &mut self.outputs[index];
         let pcm = Arc::new(PcmStorage::new(self.config.max_samples_per_event));
         output.pcm = Some(Arc::clone(&pcm));
-        self.action(event, "started", now_ms);
+        self.action(token, "started", now_ms);
         Some(ObservedSource {
             inner: source,
             storage: pcm,
@@ -702,19 +1002,45 @@ impl PcmObserver {
 
     pub(super) fn connect_player(
         &mut self,
-        event: EventId,
+        token: EventToken,
         mixer: &rodio::mixer::Mixer,
         now_ms: u64,
     ) -> Option<rodio::Player> {
         // Preserve Player::connect_new's exact new -> add ordering. The
         // caller sets gain and appends samples afterwards on both paths.
         let (player, queue) = rodio::Player::new();
-        mixer.add(self.wrap(event, queue, now_ms)?);
+        mixer.add(self.wrap(token, queue, now_ms)?);
         Some(player)
     }
 
-    pub(super) fn contains(&self, event: EventId) -> bool {
-        self.active_index(event).is_some()
+    pub(super) fn contains(&self, token: EventToken) -> bool {
+        self.active_index(token).is_some()
+    }
+
+    /// Retirement must check terminal rows too, even after their slot is reused.
+    pub(super) fn observed_tokens(&self) -> impl Iterator<Item = EventToken> + '_ {
+        self.outputs.iter().map(|output| output.token)
+    }
+
+    /// Final read-only ownership, independent of terminal actions or PCM.
+    /// Payload tokens come from SfxPlayer's existing pending/live owners,
+    /// including a stale payload retained after arbiter invalidation.
+    pub(super) fn snapshot(
+        &mut self,
+        arbiter: &SoundArbiter,
+        pending: &[EventToken],
+        live: &[EventToken],
+    ) {
+        self.live_event_count_at_finish = Some(arbiter.live_event_count());
+        self.busy_channel_count_at_finish = Some(arbiter.busy_channel_count());
+        for output in &mut self.outputs {
+            output.event_live_at_finish = Some(arbiter.is_live_token(output.token));
+            output.channel_live_at_finish = Some(arbiter.token_has_channel(output.token));
+            output.token_slot_occupied_at_finish =
+                Some(arbiter.event_slot_occupied(output.token.event));
+            output.pending_payload_at_finish = Some(pending.contains(&output.token));
+            output.live_payload_at_finish = Some(live.contains(&output.token));
+        }
     }
 
     pub(super) fn settled(&self) -> bool {
@@ -724,6 +1050,10 @@ impl PcmObserver {
                     .pcm
                     .as_ref()
                     .is_none_or(|pcm| pcm.ended.load(Ordering::Acquire))
+                && output
+                    .playback
+                    .as_ref()
+                    .is_none_or(|playback| !playback.snapshot().source_state_alive)
         })
     }
 
@@ -750,7 +1080,7 @@ impl PcmObserver {
     }
 
     pub(super) fn finish(self) -> PcmObservationReport {
-        let outputs = self
+        let outputs: Vec<ObservedOutput> = self
             .outputs
             .into_iter()
             .enumerate()
@@ -759,9 +1089,22 @@ impl PcmObserver {
                     .pcm
                     .as_ref()
                     .map_or_else(|| (Vec::new(), Vec::new(), false), |pcm| pcm.snapshot());
+                let playback = output.playback.as_ref().map(PlaybackObservation::snapshot);
+                let playback_truncated =
+                    playback.as_ref().is_some_and(|snapshot| snapshot.truncated);
+                let (resolved_samples, source_sample_count) = playback.as_ref().map_or_else(
+                    || (output.samples, output.source_sample_count),
+                    |snapshot| {
+                        (
+                            snapshot.resolved_samples.clone(),
+                            snapshot.source_sample_count,
+                        )
+                    },
+                );
                 ObservedOutput {
                     submission,
-                    event: output.event.0,
+                    event: output.token.event.0,
+                    event_serial: output.token.serial,
                     owner: output.owner.map(|owner| match owner {
                         HandleOwner::Positional(id) | HandleOwner::UnitVoice(id) => id,
                     }),
@@ -770,23 +1113,37 @@ impl PcmObserver {
                         HandleOwner::UnitVoice(_) => "unit_voice",
                     }),
                     sound_id: output.sound_id,
-                    resolved_samples: output.samples,
-                    source_sample_count: output.source_sample_count,
+                    resolved_samples,
+                    source_sample_count,
                     source_ended: output
                         .pcm
                         .as_ref()
                         .is_none_or(|pcm| pcm.ended.load(Ordering::Acquire)),
+                    event_live_at_finish: output.event_live_at_finish,
+                    channel_live_at_finish: output.channel_live_at_finish,
+                    token_slot_occupied_at_finish: output.token_slot_occupied_at_finish,
+                    pending_payload_at_finish: output.pending_payload_at_finish,
+                    live_payload_at_finish: output.live_payload_at_finish,
+                    playback,
                     actions: output.actions,
                     formats,
                     sample_bits,
-                    truncated,
+                    truncated: truncated || playback_truncated,
                 }
             })
             .collect();
+        let playback_truncated = outputs.iter().any(|output| {
+            output
+                .playback
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.truncated)
+        });
         PcmObservationReport {
             outputs,
             voice_actions: self.voice_actions,
-            truncated: self.truncated,
+            truncated: self.truncated || playback_truncated,
+            live_event_count_at_finish: self.live_event_count_at_finish,
+            busy_channel_count_at_finish: self.busy_channel_count_at_finish,
         }
     }
 }

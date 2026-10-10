@@ -391,7 +391,7 @@ mod tests {
                 CellListInsertion::PrependNonBuilding,
             );
         }
-        sim.main_rng = SimRng::new(seed);
+        sim.main_rng = SimRng::new(seed).into();
         sim.scenario_rng = SimRng::new(seed);
         sim.mapgen_rng = SimRng::new(seed);
         (sim, rules)
@@ -464,15 +464,11 @@ mod tests {
 
     fn assert_native_rng(sim: &Simulation, native: &Value, context: &str) {
         for (name, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
-            assert_eq!(
-                rng.native_state_hex(),
-                native[name],
-                "{context}: full {name} state"
-            );
+            assert_eq!(rng, native[name], "{context}: full {name} state");
         }
     }
 

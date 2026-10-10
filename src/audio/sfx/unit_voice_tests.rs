@@ -5,7 +5,7 @@
 //! do not assert whole-frame event delivery or asynchronous device scheduling.
 
 use super::*;
-use crate::sim::rng::{SimRng, trace_draws};
+use crate::sim::rng::{MainRng, SimRng, trace_draws};
 use serde_json::Value;
 use std::sync::OnceLock;
 
@@ -121,13 +121,11 @@ fn two_reached_gi_voices_share_admission_and_original_main_sample_continuation()
     }
 
     let service = boundary("audio_pump_1034");
-    let mut main = SimRng::from_native_state_hex_for_test(main_hex(&service["before"]));
+    let main: MainRng = SimRng::from_native_state_hex_for_test(main_hex(&service["before"])).into();
     let initial_main = main.native_state_hex();
     let mut clock = arbiter::AudioServiceClock::default();
     assert!(clock.admit(1000));
-    player.service_events(1000, registry, &assets, index, &mut |lo, hi| {
-        main.next_range_i32_inclusive(lo, hi)
-    });
+    player.service_events(1000, registry, &assets, index, &mut retained_draws(&main));
     player
         .observe_pcm(PcmObservationConfig {
             sound_ids: vec!["GIMove".into(), "CommandBar".into()],
@@ -195,16 +193,8 @@ fn two_reached_gi_voices_share_admission_and_original_main_sample_continuation()
     );
     assert!(clock.admit(1034));
 
-    let mut ranges = Vec::new();
-    let (_, raw) = trace_draws(|| {
-        player.service_events(1034, registry, &assets, index, &mut |lo, hi| {
-            let value = main.next_range_i32_inclusive(lo, hi);
-            if lo != hi {
-                ranges.push((lo, hi, value));
-            }
-            value
-        })
-    });
+    let (mut draw, ranges) = recorded_draws(&main);
+    let (_, raw) = trace_draws(|| player.service_events(1034, registry, &assets, index, &mut draw));
     let expected_ranges: Vec<_> = service["requests"]
         .as_array()
         .unwrap()
@@ -220,7 +210,7 @@ fn two_reached_gi_voices_share_admission_and_original_main_sample_continuation()
             })
         })
         .collect();
-    assert_eq!(ranges, expected_ranges);
+    assert_eq!(*ranges.lock().unwrap(), expected_ranges);
     assert_eq!(
         raw.iter()
             .map(|draw| draw["value"].clone())
@@ -393,7 +383,8 @@ fn shared_pool_admission_and_channel_shifts_match_original_main_draws() {
                 .as_str()
                 .unwrap()
         };
-        let mut main = SimRng::from_native_state_hex_for_test(main_hex(&history["initial"]));
+        let main: MainRng =
+            SimRng::from_native_state_hex_for_test(main_hex(&history["initial"])).into();
         let mut clock = arbiter::AudioServiceClock::default();
         let mut submitted = Vec::new();
         for boundary in history["boundaries"].as_array().unwrap() {
@@ -420,16 +411,10 @@ fn shared_pool_admission_and_channel_shifts_match_original_main_draws() {
                     main_hex(&boundary["before"]),
                     "{label}"
                 );
-                let mut ranges = Vec::new();
+                let (mut draw, ranges) = recorded_draws(&main);
                 let (_, raw) = trace_draws(|| {
                     if clock.admit(now) {
-                        player.service_events(now, &registry, &assets, index, &mut |lo, hi| {
-                            let value = main.next_range_i32_inclusive(lo, hi);
-                            if lo != hi {
-                                ranges.push((lo, hi, value));
-                            }
-                            value
-                        });
+                        player.service_events(now, &registry, &assets, index, &mut draw);
                     }
                 });
                 // Native controls run no device-worker iteration here. Keep
@@ -452,7 +437,7 @@ fn shared_pool_admission_and_channel_shifts_match_original_main_draws() {
                         })
                     })
                     .collect();
-                assert_eq!(ranges, expected_ranges, "{label}");
+                assert_eq!(*ranges.lock().unwrap(), expected_ranges, "{label}");
                 assert_eq!(
                     raw.iter()
                         .map(|draw| draw["value"].clone())
@@ -520,4 +505,32 @@ fn shared_pool_admission_and_channel_shifts_match_original_main_draws() {
         }
         player.stop_all();
     }
+}
+
+/// Test plumbing retains the real Main owner; the diagnostic log does not
+/// answer draws or execute a second sample-selection implementation.
+pub(super) fn retained_draws(main: &MainRng) -> PlaybackDraws {
+    let main = main.draws();
+    PlaybackDraws::new(move |low, high| main.ranged(low, high))
+}
+
+pub(super) fn recorded_draws(
+    main: &MainRng,
+) -> (
+    PlaybackDraws,
+    std::sync::Arc<std::sync::Mutex<Vec<(i32, i32, i32)>>>,
+) {
+    let main = main.draws();
+    let ranges = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = std::sync::Arc::clone(&ranges);
+    (
+        PlaybackDraws::new(move |low, high| {
+            let value = main.ranged(low, high);
+            if low != high {
+                log.lock().unwrap().push((low, high, value));
+            }
+            value
+        }),
+        ranges,
+    )
 }

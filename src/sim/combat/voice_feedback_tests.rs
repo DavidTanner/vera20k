@@ -84,7 +84,8 @@ fn damage_feedback_matches_original_draws_house_admission_coordinates_and_contin
         });
         sim.substrate.entities.insert(target);
         let warhead = sim.interner.intern("FeedbackWH");
-        sim.main_rng = SimRng::from_native_state_hex_for_test(boundary(row, "before", "main"));
+        sim.main_rng =
+            SimRng::from_native_state_hex_for_test(boundary(row, "before", "main")).into();
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(boundary(row, "before", "scenario"));
         sim.mapgen_rng = SimRng::from_native_state_hex_for_test(boundary(row, "before", "mapgen"));
@@ -139,12 +140,12 @@ fn damage_feedback_matches_original_draws_house_admission_coordinates_and_contin
             "{label}: raw Main order"
         );
         for (stream, actual) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                actual.native_state_hex(),
+                actual,
                 boundary(row, "after", stream),
                 "{label}: complete {stream}"
             );

@@ -221,7 +221,9 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
     ));
     sim.sound_events.clear();
     if row["rng_before"].is_object() {
-        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone())
+            .unwrap()
+            .into();
         sim.scenario_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["scenario"].clone()).unwrap();
         sim.mapgen_rng =
@@ -236,7 +238,13 @@ fn full_rng(sim: &Simulation) -> Value {
         json!({"disabled": rng.disabled, "index_a": rng.index_a,
             "index_b": rng.index_b, "state": rng.words})
     };
-    json!({"main":stream(views.main), "scenario":stream(views.scenario),
+    let main = crate::sim::rng::SimRngLogicalView {
+        disabled: views.main.disabled,
+        index_a: views.main.index_a,
+        index_b: views.main.index_b,
+        words: &views.main.words,
+    };
+    json!({"main":stream(main), "scenario":stream(views.scenario),
         "mapgen":stream(views.mapgen)})
 }
 

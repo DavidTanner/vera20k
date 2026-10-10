@@ -56,8 +56,7 @@ fn coordinate(point: Option<crate::sim::components::DriveCoord>) -> Value {
     point.map_or_else(|| json!([0, 0, 0]), |p| json!([p.x, p.y, p.z]))
 }
 
-fn rng_sha(rng: &crate::sim::rng::SimRng) -> String {
-    let hex = rng.native_state_hex();
+fn rng_sha(hex: String) -> String {
     let bytes: Vec<_> = hex
         .as_bytes()
         .chunks_exact(2)
@@ -191,7 +190,7 @@ fn paid_snapshot(
             "level":cell.level,"tile":cell.final_tile_index,"subtile":cell.final_sub_tile,
             "overlay":cell.bridge_facts.overlay_id.map_or(-1,i32::from),
             "state":cell.bridge_facts.state_byte},
-        "rng_sha256":{"main":rng_sha(&sim.main_rng),"scenario":rng_sha(&sim.scenario_rng),"mapgen":rng_sha(&sim.mapgen_rng)},
+        "rng_sha256":{"main":rng_sha(sim.main_rng.native_state_hex()),"scenario":rng_sha(sim.scenario_rng.native_state_hex()),"mapgen":rng_sha(sim.mapgen_rng.native_state_hex())},
     })
 }
 
@@ -274,7 +273,7 @@ fn command_paid_fv(
     // measured constructor/AI. Normalized water-impact Anims use this
     // stored speed through native5FB2E0, independently of frame pacing.
     assert!(sim.session.game_options.apply_in_game_speed(game_speed));
-    sim.main_rng = crate::sim::rng::SimRng::new(0);
+    sim.main_rng = crate::sim::rng::SimRng::new(0).into();
     sim.mapgen_rng = crate::sim::rng::SimRng::new(0);
     sim.scenario_rng = crate::sim::rng::SimRng::new(scenario_seed);
     let id = spawn_fv(scene, xyz);

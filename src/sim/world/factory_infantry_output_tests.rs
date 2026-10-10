@@ -625,7 +625,7 @@ fn ground_command_fixture(
         }
     }
     sim.main_rng =
-        SimRng::from_native_state_hex_for_test(ground_command_rng_hex(row, state, "main"));
+        SimRng::from_native_state_hex_for_test(ground_command_rng_hex(row, state, "main")).into();
     sim.mapgen_rng =
         SimRng::from_native_state_hex_for_test(ground_command_rng_hex(row, state, "mapgen"));
     sim.scenario_rng =
@@ -887,12 +887,12 @@ fn assert_ground_command_fields(sim: &Simulation, id: u64, row: &Value, state: &
         "{context}: Stage timer"
     );
     for (stream, actual) in [
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
-        ("scenario", &sim.scenario_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
     ] {
         assert_eq!(
-            actual.native_state_hex(),
+            actual,
             ground_command_rng_hex(row, state, stream),
             "{context}: complete {stream} RNG"
         );

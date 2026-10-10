@@ -696,19 +696,16 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
             // Match the native control's complete ambient streams after
             // setup. The physical Super section above is parsed by the same
             // production reader; ignoreDefenses bypasses armor calculation.
-            sim.main_rng = SimRng::new(1);
+            sim.main_rng = SimRng::new(1).into();
             sim.scenario_rng = SimRng::new(1);
             sim.mapgen_rng = SimRng::new(1);
             replay = sim.scenario_rng.clone();
             for (stream, rng) in [
-                ("main", &sim.main_rng),
-                ("scenario", &sim.scenario_rng),
-                ("mapgen", &sim.mapgen_rng),
+                ("main", sim.main_rng.native_state_hex()),
+                ("scenario", sim.scenario_rng.native_state_hex()),
+                ("mapgen", sim.mapgen_rng.native_state_hex()),
             ] {
-                assert_eq!(
-                    rng.native_state_hex(),
-                    repeat["rng_before"][stream].as_str().unwrap()
-                );
+                assert_eq!(rng, repeat["rng_before"][stream].as_str().unwrap());
             }
             let input = &repeat["input"];
             let retained = sim.substrate.entities.get(ship).unwrap();
@@ -746,14 +743,11 @@ fn a_heavy_ship_dying_on_water_sinks_without_its_explosion() {
             assert!(!retained.lifecycle.cell_marked);
             assert!(retained.in_logic_vector);
             for (stream, rng) in [
-                ("main", &sim.main_rng),
-                ("scenario", &sim.scenario_rng),
-                ("mapgen", &sim.mapgen_rng),
+                ("main", sim.main_rng.native_state_hex()),
+                ("scenario", sim.scenario_rng.native_state_hex()),
+                ("mapgen", sim.mapgen_rng.native_state_hex()),
             ] {
-                assert_eq!(
-                    rng.native_state_hex(),
-                    repeat["rng_after"][stream].as_str().unwrap()
-                );
+                assert_eq!(rng, repeat["rng_after"][stream].as_str().unwrap());
             }
             // Terminal UnitAI records a null-source loss before shared
             // UnInit. Its later once-only recorder must not count it twice.

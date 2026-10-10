@@ -1071,7 +1071,7 @@ fn move_sound_start_consumes_exactly_one_main_draw() {
     let mut sim = move_sound_test_sim();
     let scenario_before = sim.scenario_rng.state();
     let mapgen_before = sim.mapgen_rng.state();
-    let mut expected_main = sim.main_rng.clone();
+    let mut expected_main = sim.main_rng.snapshot_for_test();
 
     // Retail calls Random::Next even before modulo-by-one. Full native
     // vector, timer and paid-visit controls live in foot_move_sound.json.

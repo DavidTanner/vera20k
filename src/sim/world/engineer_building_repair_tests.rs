@@ -51,20 +51,20 @@ fn coord(value: &Value) -> DriveCoord {
 }
 
 fn install_rng(sim: &mut Simulation, native: &Value) {
-    sim.main_rng = SimRng::from_native_state_hex_for_test(native["main"].as_str().unwrap());
+    sim.main_rng = SimRng::from_native_state_hex_for_test(native["main"].as_str().unwrap()).into();
     sim.mapgen_rng = SimRng::from_native_state_hex_for_test(native["mapgen"].as_str().unwrap());
     sim.scenario_rng = SimRng::from_native_state_hex_for_test(native["scenario"].as_str().unwrap());
 }
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str) {
     for (name, rng) in [
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
-        ("scenario", &sim.scenario_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
     ] {
         // Do not dump the 250-word buffers on a failed comparison.
         assert!(
-            rng.native_state_hex() == native[name].as_str().unwrap(),
+            rng == native[name].as_str().unwrap(),
             "{boundary}: full {name} logical state differs"
         );
     }

@@ -158,7 +158,7 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
             sim.substrate.raw_cell_occupation.mark_ground(11, 10, bits);
         }
         sim.scenario_rng = SimRng::new(31);
-        sim.main_rng = SimRng::new(37);
+        sim.main_rng = SimRng::new(37).into();
         sim.mapgen_rng = SimRng::new(41);
         let cell = sim
             .resolved_terrain
@@ -172,12 +172,12 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
                 .unwrap()
         };
         for (name, rng) in [
-            ("scenario", &sim.scenario_rng),
-            ("main", &sim.main_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("main", sim.main_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert!(
-                rng.native_state_hex() == row["rng_before"][name].as_str().unwrap(),
+                rng == row["rng_before"][name].as_str().unwrap(),
                 "{input}: full {name} native prior"
             );
         }
@@ -197,12 +197,12 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
             "{input}: bracket cleanup"
         );
         for (name, rng) in [
-            ("scenario", &sim.scenario_rng),
-            ("main", &sim.main_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("main", sim.main_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert!(
-                rng.native_state_hex() == row["rng_after"][name].as_str().unwrap(),
+                rng == row["rng_after"][name].as_str().unwrap(),
                 "{input}: full {name} after entry"
             );
         }

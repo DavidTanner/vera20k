@@ -37,16 +37,11 @@ fn rng_hex<'a>(row: &'a Value, state: &Value, stream: &str) -> &'a str {
 
 fn assert_rng(sim: &Simulation, row: &Value, state: &Value) {
     for (name, stream) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
-        assert_eq!(
-            stream.native_state_hex(),
-            rng_hex(row, state, name),
-            "{}: {name}",
-            row["name"]
-        );
+        assert_eq!(stream, rng_hex(row, state, name), "{}: {name}", row["name"]);
     }
 }
 
@@ -180,7 +175,7 @@ fn fixture(corpus: &Value, row: &Value, retail: RetailBattleRules) -> Fixture {
     // Construction is outside the comparison. Continue all three actual
     // original process streams from the observed input boundary, without
     // reproducing their seed/draw arithmetic in this test.
-    sim.main_rng = SimRng::from_native_state_hex_for_test(rng_hex(row, before, "main"));
+    sim.main_rng = SimRng::from_native_state_hex_for_test(rng_hex(row, before, "main")).into();
     sim.scenario_rng = SimRng::from_native_state_hex_for_test(rng_hex(row, before, "scenario"));
     sim.mapgen_rng = SimRng::from_native_state_hex_for_test(rng_hex(row, before, "mapgen"));
     Fixture {

@@ -88,20 +88,19 @@ fn bound_retail_rules(random_rate: Option<&str>) -> Option<RuleSet> {
     Some(rules)
 }
 
-fn rng_state(rng: &SimRng) -> Value {
-    let hex = rng.native_state_hex();
+fn rng_state(state: crate::sim::rng::SimRngLogicalState) -> Value {
+    let hex = state.native_state_hex();
     let raw: Vec<u8> = hex
         .as_bytes()
         .chunks_exact(2)
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
         .collect();
-    let state = rng.logical_state();
     json!({"cursor": [state.index_a, state.index_b],
         "sha256": crate::util::sha256::sha256_hex(&raw)})
 }
 
 fn rngs(sim: &Simulation) -> Value {
-    json!({"main": rng_state(&sim.main_rng), "scenario": rng_state(&sim.scenario_rng)})
+    json!({"main": rng_state(sim.main_rng.logical_state()), "scenario": rng_state(sim.scenario_rng.logical_state())})
 }
 
 fn anim_state(sim: &Simulation, anim: &AnimObject) -> Value {
@@ -131,7 +130,7 @@ fn counts(sim: &Simulation) -> Value {
 
 fn scene(row: &Value, terminal: bool) -> (Simulation, u64) {
     let mut sim = Simulation::with_seed(31);
-    sim.main_rng = SimRng::new(31);
+    sim.main_rng = SimRng::new(31).into();
     sim.scenario_rng = SimRng::new(31);
     sim.session.binary_frame = row["supplied"]["frame"].as_i64().unwrap() as u32;
     sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(
@@ -290,7 +289,8 @@ fn restored(sim: &Simulation) -> Simulation {
         .sim;
     // Production restores live process streams around the native Scenario
     // seed-zero reset. This continuation has no constructor RNG left to draw.
-    result.main_rng = sim.main_rng.clone();
+    // These loaded controls run as independent test processes.
+    result.main_rng = sim.main_rng.snapshot_for_test().into();
     result.mapgen_rng = sim.mapgen_rng.clone();
     result.restore_after_snapshot_load().unwrap();
     result

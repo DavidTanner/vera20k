@@ -19,7 +19,7 @@ use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::occupancy::OccupancyGrid;
 use crate::sim::power_system::PowerState;
 use crate::sim::projectile::ProjectileDetonationReason;
-use crate::sim::rng::SimRng;
+use crate::sim::rng::{MainRng, SimRng};
 use crate::sim::vision::FogState;
 
 #[path = "infantry_fire_facing_tests.rs"]
@@ -4488,7 +4488,7 @@ fn a_building_with_no_die_sound_falls_back_to_the_global_building_die_sound() {
     .expect("building die-sound rules parse");
 
     let selected = |type_name: &str, category: EntityCategory| -> Vec<String> {
-        let mut rng = SimRng::new(11);
+        let rng = MainRng::new(11);
         let rng_before = rng.state();
         let mut sounds = Vec::new();
         super::append_selected_death_sounds(
@@ -4496,7 +4496,7 @@ fn a_building_with_no_die_sound_falls_back_to_the_global_building_die_sound() {
             category,
             rules.general.building_die_sound.as_deref(),
             true,
-            &mut rng,
+            &rng,
             4,
             7,
             &mut sounds,
@@ -4540,14 +4540,14 @@ fn a_building_with_no_die_sound_falls_back_to_the_global_building_die_sound() {
 [BuildingTypes]\n0=GAPOWR\n\n[GAPOWR]\nStrength=750\nArmor=wood\n",
     ))
     .expect("bare rules parse");
-    let mut rng = SimRng::new(11);
+    let rng = MainRng::new(11);
     let mut sounds = Vec::new();
     super::append_selected_death_sounds(
         bare.object("GAPOWR").expect("type"),
         EntityCategory::Structure,
         bare.general.building_die_sound.as_deref(),
         true,
-        &mut rng,
+        &rng,
         4,
         7,
         &mut sounds,

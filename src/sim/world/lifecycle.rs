@@ -3190,10 +3190,12 @@ impl Simulation {
     /// Each RNG stream's cursor, which every draw moves.
     #[cfg(test)]
     fn rng_cursors(&self) -> [(u8, i32, i32); 3] {
-        [&self.scenario_rng, &self.main_rng, &self.mapgen_rng].map(|rng| {
-            let view = rng.logical_view();
-            (view.disabled, view.index_a, view.index_b)
-        })
+        [
+            self.scenario_rng.logical_state(),
+            self.main_rng.logical_state(),
+            self.mapgen_rng.logical_state(),
+        ]
+        .map(|view| (view.disabled, view.index_a, view.index_b))
     }
 
     /// Represented entries in global ObjectClass construction order, each

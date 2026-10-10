@@ -90,7 +90,7 @@ fn drawing_scenario_leaves_main_untouched() {
 #[test]
 fn drawing_main_leaves_scenario_untouched() {
     let seed = 1234u64;
-    let mut sim = Simulation::with_seed(seed);
+    let sim = Simulation::with_seed(seed);
     let fresh = SimRng::new(seed);
     let mapgen_before = sim.mapgen_rng.state();
 
@@ -224,7 +224,7 @@ fn main_stream_matches_gamemd_random_ranged_0_7() {
     // gamemd emitted values (Random__RandomRanged 0x0065C7E0, seed 1) — the
     // same algorithm/stream a main-stream weapon-spread consumer will draw from.
     const GAMEMD_RANGED_0_7_SEED1: [u32; 5] = [5, 6, 1, 2, 1];
-    let mut sim = Simulation::with_seed(1);
+    let sim = Simulation::with_seed(1);
     for (i, &expected) in GAMEMD_RANGED_0_7_SEED1.iter().enumerate() {
         let got = sim.main_rng.next_range_u32_inclusive(0, 7);
         assert_eq!(
@@ -237,7 +237,7 @@ fn main_stream_matches_gamemd_random_ranged_0_7() {
 // --- Test 6: authoritative hash boundary (design §7.6) ---
 #[test]
 fn advancing_main_only_does_not_change_state_hash() {
-    let mut sim = Simulation::with_seed(99);
+    let sim = Simulation::with_seed(99);
     let before = sim.state_hash();
     sim.main_rng.next_u32();
     assert_eq!(
@@ -479,6 +479,39 @@ fn rng_views_name_all_three_streams() {
     sim.mapgen_rng.next_u32();
     let views = sim.rng_views();
     assert_eq!(views.scenario, sim.scenario_rng.logical_view());
-    assert_eq!(views.main, sim.main_rng.logical_view());
+    assert_eq!(views.main, sim.main_rng.logical_state());
     assert_eq!(views.mapgen, sim.mapgen_rng.logical_view());
+}
+
+#[test]
+fn in_scenario_load_retains_main_callback_draws_after_prepare_and_commit() {
+    let live = Simulation::with_seed(0x2A61);
+    let callback = live.presentation_main_draws();
+    let mut reference = SimRng::new(0x2A61);
+    let bytes = GameSnapshot::save(&live, 0, 0, "main-capability", 0);
+    let mut prepared = GameSnapshot::load(&bytes).unwrap().sim;
+    prepared.retain_in_scenario_process_state_from(&live);
+    let scenario = prepared.scenario_rng.logical_state();
+    let mapgen = prepared.mapgen_rng.logical_state();
+
+    let (callback, late_draw) = std::thread::spawn(move || {
+        let draw = callback.ranged(0, 4);
+        (callback, draw)
+    })
+    .join()
+    .unwrap();
+    assert_eq!(late_draw, reference.next_range_i32_inclusive(0, 4));
+    assert_eq!(live.main_rng.logical_state(), reference.logical_state());
+    assert_eq!(prepared.main_rng.logical_state(), reference.logical_state());
+
+    // Commit drops the old Simulation while a playback capability remains.
+    drop(live);
+    assert_eq!(callback.next_u32(), reference.next_u32());
+    assert_eq!(
+        prepared.presentation_main_draws().next_u32(),
+        reference.next_u32()
+    );
+    assert_eq!(prepared.main_rng.logical_state(), reference.logical_state());
+    assert_eq!(prepared.scenario_rng.logical_state(), scenario);
+    assert_eq!(prepared.mapgen_rng.logical_state(), mapgen);
 }

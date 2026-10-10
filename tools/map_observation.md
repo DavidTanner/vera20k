@@ -239,9 +239,57 @@ sample identities, decoded source sample count, action/context rows, format
 spans, exact little-endian f32 PCM bytes, finite/nonzero counts and SHA256.
 `submission` is the capture ordinal; `event` is a reusable production pool slot.
 A stopped old source can finish draining while a new submission reuses its slot.
+New outputs also retain `event_serial`, the allocation serial read from the
+existing arbiter owner at submission. Delayed binding, sample metadata and
+terminal actions match both slot and serial; they cannot complete a newer
+output that reused the slot.
 The PCM includes any Player queue filler silence. Completion requires both the
 existing SFX owner's terminal action and the device mixer pulling the queue to its end;
 recording is not cut off merely because a stop/release was requested.
+
+Immediately before finish, the SFX owner supplies its existing pending/live
+payload tokens and the observer reads the arbiter's token/channel queries.
+`event_live_at_finish`, `channel_live_at_finish`,
+`token_slot_occupied_at_finish`, `pending_payload_at_finish`
+and `live_payload_at_finish` preserve those independent ownership results.
+They are not inferred from `settled`, the terminal action or source end.
+Payload membership remains observable after token invalidation, so an orphan
+payload cannot disappear merely because its slot was recycled. A live finished
+event may still await the next ordinary service's reap after its Player ends.
+Token liveness describes that allocation; slot occupancy describes the physical
+pool slot, including a newer allocation or a dead record awaiting reap. An
+explicit Stop invalidates its serial before the reaping pass. Report-level
+`live_event_count_at_finish` and `busy_channel_count_at_finish` retain the
+arbiter's global live-list/channel counts, including unfiltered cues. Their
+capacities are the owner's 300 pool records and 13 ordinary channels.
+Without a final owner snapshot all five output values and both aggregate counts
+are `null`, explicitly unobserved. Historical receipts may omit the entire
+six-field output group and the two-field aggregate group; partial
+groups, malformed types and duplicate slot/serial submissions are rejected.
+The fixed metadata uses the existing bounded submission rows and receipt
+limit; no callback lock, allocation, RNG draw or audio decision is added.
+Exported audio metadata preserves both groups when present. A selected quiet
+capture can assert zero global counts and no token, occupied slot or payload;
+terminal PCM alone does not establish those cleanup boundaries.
+
+When the existing continuous playback owner supplies its passive observation
+handle, `resolved_samples` instead records actual clip starts copied into the
+ring, and `source_sample_count` records its nonpadding interleaved sample
+copies. Lookahead can copy a clip that Stop later discards. The optional
+`playback_clips` table therefore separately retains each loaded clip's `name`,
+`filled_samples` and actual iterator-delivered `pulled_samples`, before Player
+gain. Ring padding contributes to observed PCM but never to those clip counts.
+The table has the sound reader's maximum 32 loaded entries; starts retain the
+existing 128-name bound, and exhaustion sets truncation. Counter totals must
+equal `source_sample_count`, and pulls cannot exceed fills. Export preserves
+these values without decoding the assets again.
+`source_state_alive_at_finish` reads the playback owner's weak reference to
+its shared loaded clips, cursor and draw capability, independently of the
+observer's passive counters. The two-field playback group is omitted for
+historical paths without that handle; partial or malformed groups are rejected.
+The completion wait additionally requires this source state to retire, exact
+recorded tokens to be reaped, and matching pending/live SFX payloads to disappear.
+It adds no callback diagnostic lock, allocation or sample-selection decision.
 
 An action's `context` is the **last completed exact-step capture boundary**.
 It remains fixed during a step, including sound submission, and refreshes after

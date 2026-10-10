@@ -230,13 +230,13 @@ fn assert_stage(sim: &Simulation, id: u64, native: &Value, name: &str) {
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str, name: &str) {
     for (stream, rng) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.native_state_hex()),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         // Avoid printing all 250 table words on a failed comparison.
         assert!(
-            rng.native_state_hex() == native[stream][boundary].as_str().unwrap(),
+            rng == native[stream][boundary].as_str().unwrap(),
             "{name}: {stream} {boundary} complete native RNG"
         );
     }
@@ -906,7 +906,9 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
                 int(&poisoned["increment"]),
             ));
         sim.session.binary_frame = input["frame"].as_u64().unwrap() as u32;
-        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(row["rng_before"]["main"].clone())
+            .unwrap()
+            .into();
         sim.scenario_rng =
             serde_json::from_value::<SimRng>(row["rng_before"]["scenario"].clone()).unwrap();
         sim.mapgen_rng =

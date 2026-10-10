@@ -19,7 +19,10 @@ def read_words(u, ptr, count):
 
 
 class NativePcmObserver:
-    def __init__(self):
+    def __init__(self, *, raw_pcm=False):
+        # Preserve the established IMA-only corpus projection. Raw cached PCM
+        # producers explicitly opt into the original409D90 callback witness.
+        self.raw_pcm = raw_pcm
         self.state = dict(installation_count=0, sample_reads=[], blocks=[], callbacks=[], events=[])
         self.active = dict(sample=None, block=None, callback=None)
 
@@ -33,11 +36,13 @@ class NativePcmObserver:
         state['fixture'] = f
 
         def code(_u, pc, size, data):
+            if pc == 0x409D90 and not self.raw_pcm:
+                return
             if pc == 0x40ACD0:
                 if active['block'] is not None:
                     active['block']['nibble_calls'] += 1
                 return
-            if pc not in (0x408F80, 0x407DF5, 0x409DE0, 0x409B44, 0x409B68, 0x40AA70, 0x409F5A):
+            if pc not in (0x408F80, 0x407DF5, 0x409D90, 0x409DE0, 0x409B44, 0x409B68, 0x40AA70, 0x409F5A):
                 return
             sp = _u.reg_read(UC_X86_REG_ESP)
             if pc == 0x408F80:
@@ -62,7 +67,7 @@ class NativePcmObserver:
                            sample_after_hex=bytes(_u.mem_read(row['sample'], 0x20)).hex())
                 state['events'].append(['source_return', row['index'], pc])
                 active['sample'] = None
-            elif pc == 0x409DE0:
+            elif pc in (0x409D90, 0x409DE0):
                 require(active['callback'] is None, 'Nested decode callback')
                 output_count_ptr, source_ptr, source_count_ptr = read_words(_u, sp + 4, 3)
                 backend = _u.reg_read(UC_X86_REG_ECX)
@@ -74,6 +79,8 @@ class NativePcmObserver:
                            offered_source_bytes=r(source_count_ptr) if source_count_ptr else 0,
                            backend_prior_hex=bytes(_u.mem_read(backend, 0xC4)).hex(),
                            first_block=len(state['blocks']), output_writes=[])
+                if pc == 0x409D90:
+                    row['copy_callback'] = 'raw_pcm'
                 state['callbacks'].append(row)
                 state['events'].append(['callback_entry', row['index'], pc])
                 active['callback'] = row
@@ -125,7 +132,7 @@ class NativePcmObserver:
                 elif address == block['backend'] + 0x94:
                     block['count_writes'].append([pc, size, value & ((1 << (size * 8)) - 1)])
             callback = active['callback']
-            if callback is not None and pc in (0x409F16, 0x409F23):
+            if callback is not None and pc in (0x409F16, 0x409F23, 0x409DB8, 0x409DBF):
                 callback['output_writes'].append([pc, address - callback['destination'], size, value & ((1 << (size * 8)) - 1)])
 
         u.hook_add(UC_HOOK_CODE, code)

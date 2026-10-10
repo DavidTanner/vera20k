@@ -1991,10 +1991,10 @@ impl MapLoadInitial {
         let mapgen_continuation = simulation.rng_state().mapgen;
         let mut selector_cache =
             crate::map::tile_variant_selector::TileVariantSelectorCache::default();
-        let (mut scenario_fill_rng, mut variant_main_rng) = simulation.terrain_load_draws();
+        let (mut scenario_fill_rng, variant_main_rng) = simulation.terrain_load_draws();
         let mut scenario_fill_ranged =
             |low, high| scenario_fill_rng.next_range_u32_inclusive(low, high);
-        let mut variant_draw = || variant_main_rng.next_u32();
+        let mut variant_draw = move || variant_main_rng.next_u32();
         let mut variant_selector = selector_cache.begin_load(&mut variant_draw);
         let mut resolved_terrain =
             ResolvedTerrainGrid::build_with_variant_selector_and_shared_dummy(
@@ -2054,7 +2054,6 @@ impl MapLoadInitial {
         drop(variant_selector);
         drop(variant_draw);
         drop(scenario_fill_ranged);
-        drop(variant_main_rng);
         drop(scenario_fill_rng);
         // The native-id reservations the match load makes at this point: the
         // `[Tubes]` rows, then the launch branch's post-load particle system.
@@ -2668,10 +2667,10 @@ pub(crate) fn load_map_from_initial(
     let (mut staged_simulation, scenario_prefix_projection) = bootstrap_rng
         .into_stock_offline_staged_simulation(&scenario_descriptor, bound_scenario_prefix)?;
     staged_simulation.bind_shared_cell_dummy(shared_cell_dummy.clone());
-    let (mut scenario_fill_rng, mut variant_main_rng) = staged_simulation.terrain_load_draws();
+    let (mut scenario_fill_rng, variant_main_rng) = staged_simulation.terrain_load_draws();
     let mut scenario_fill_ranged =
         |low, high| scenario_fill_rng.next_range_u32_inclusive(low, high);
-    let mut variant_draw = || variant_main_rng.next_u32();
+    let mut variant_draw = move || variant_main_rng.next_u32();
     let mut variant_selector = tile_variant_selector_cache.begin_load(&mut variant_draw);
     // Native `MapClass::Resize @ 0x00565C10` reconstructs the fixed fallback
     // CellClass through `CellClass::Constructor @ 0x0047BBF0` before Fill and
@@ -2738,7 +2737,6 @@ pub(crate) fn load_map_from_initial(
     drop(variant_selector);
     drop(variant_draw);
     drop(scenario_fill_ranged);
-    drop(variant_main_rng);
     drop(scenario_fill_rng);
     // Bind the complete scheduler closure only after theater Tile##Anim rows
     // have resolved, but before any atlas or AnimClass construction. Missing

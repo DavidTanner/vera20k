@@ -200,31 +200,35 @@ impl AppState {
 }
 
 /// Main886B88 follows the currently installed scenario even while its world
-/// is retained behind the shell. Before the first scenario it lives with the
-/// frontend. A synchronous fresh load installs its already-advanced Main
-/// from ScenarioBootstrapRng; in-scenario Load preserves the live cursor.
+/// is retained behind the shell. Frontend retains the process cell; a fresh
+/// install moves in the already-advanced bootstrap cursor and binds the world
+/// to it. In-scenario Load preserves that cell, including outstanding draws.
 /// There is never a separately seeded audio/Theme cursor.
-pub(crate) fn process_main_draws<'a>(
-    runtime: Option<&'a mut crate::sim::runtime::SimRuntime>,
-    frontend: &'a mut crate::sim::rng::SimRng,
-) -> crate::sim::rng::MainRngDraws<'a> {
+pub(crate) fn process_main_draws(
+    runtime: Option<&mut crate::sim::runtime::SimRuntime>,
+    frontend: &mut crate::sim::rng::MainRng,
+) -> crate::sim::rng::MainRngDraws {
     match runtime {
         Some(runtime) => runtime.simulation.presentation_main_draws(),
-        None => crate::sim::rng::MainRngDraws::borrow(frontend),
+        None => frontend.draws(),
     }
 }
 
 #[cfg(test)]
 mod main_draw_tests {
     use super::process_main_draws;
-    use crate::sim::{rng::SimRng, runtime::SimRuntime, world::Simulation};
+    use crate::sim::{
+        rng::{MainRng, SimRng},
+        runtime::SimRuntime,
+        world::Simulation,
+    };
 
     #[test]
     fn process_main_draws_uses_frontend_only_before_a_world_is_installed() {
-        let mut frontend = SimRng::new(31);
+        let mut frontend = MainRng::new(31);
         let mut reference = SimRng::new(31);
         {
-            let mut main = process_main_draws(None, &mut frontend);
+            let main = process_main_draws(None, &mut frontend);
             assert_eq!(main.next_u32(), reference.next_u32());
             assert_eq!(
                 main.ranged(0, 99),
@@ -240,7 +244,7 @@ mod main_draw_tests {
         // The installed world remains authoritative when retained behind the
         // shell. There is deliberately no screen/active-frame switch here.
         for _ in 0..2 {
-            let mut main = process_main_draws(Some(&mut runtime), &mut frontend);
+            let main = process_main_draws(Some(&mut runtime), &mut frontend);
             assert_eq!(main.next_u32(), world_reference.next_u32());
         }
         let world_after = runtime.simulation.rng_state();
@@ -248,5 +252,40 @@ mod main_draw_tests {
         assert_eq!(world_after.scenario, world_before.scenario);
         assert_eq!(world_after.mapgen, world_before.mapgen);
         assert_eq!(frontend.logical_state(), frontend_before);
+    }
+
+    #[test]
+    fn fresh_scenario_install_moves_bootstrap_into_retained_process_main() {
+        let frontend = MainRng::new(31);
+        let retained = frontend.draws();
+        let mut installed = Simulation::with_seed(42);
+        let scenario = installed.rng_state().scenario;
+        let mapgen = installed.rng_state().mapgen;
+        let mut reference = SimRng::new(42);
+        for _ in 0..7 {
+            assert_eq!(installed.main_rng.next_u32(), reference.next_u32());
+        }
+        installed.install_fresh_process_main(&frontend);
+        assert_eq!(frontend.logical_state(), reference.logical_state());
+        assert_eq!(
+            retained.ranged(0, 4),
+            reference.next_range_i32_inclusive(0, 4)
+        );
+        assert_eq!(
+            installed.presentation_main_draws().next_u32(),
+            reference.next_u32()
+        );
+        assert_eq!(installed.rng_state().main, frontend.logical_state());
+        assert_eq!(installed.rng_state().scenario, scenario);
+        assert_eq!(installed.rng_state().mapgen, mapgen);
+
+        // A later fresh scenario reuses that same process cell again.
+        let mut replacement = Simulation::with_seed(99);
+        let mut next_reference = SimRng::new(99);
+        assert_eq!(replacement.main_rng.next_u32(), next_reference.next_u32());
+        replacement.install_fresh_process_main(&frontend);
+        drop(installed);
+        assert_eq!(retained.next_u32(), next_reference.next_u32());
+        assert_eq!(replacement.rng_state().main, next_reference.logical_state());
     }
 }

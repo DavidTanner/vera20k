@@ -381,7 +381,7 @@ fn original_unit_fire_update_rows() {
                 crate::sim::combat::veterancy::set_elite(entity);
             }
         }
-        sim.main_rng = SimRng::new(0x2A61);
+        sim.main_rng = SimRng::new(0x2A61).into();
         sim.sound_events.clear();
         let mut probe = SimRng::new(0x2A61);
         sim.unit_fire_update_tail(id, outcome, &rules);

@@ -28,6 +28,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZero;
+use std::sync::Arc;
 
 use rodio::buffer::SamplesBuffer;
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
@@ -35,8 +36,8 @@ use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::aud_file;
 use crate::audio::arbiter::{
-    self, ArbiterAction, EntryFacts, EventId, HandleOwner, PlayRequest, PlaybackService,
-    SoundArbiter,
+    self, ArbiterAction, EntryFacts, EventId, EventToken, HandleOwner, PlayRequest,
+    PlaybackService, SoundArbiter,
 };
 use crate::audio::voice_queue::VoiceQueue;
 use crate::audio::vox::{VoxNode, VoxQueue, VoxRequest};
@@ -46,38 +47,16 @@ use crate::rules::sound_ini::{
 use crate::util::native_x87::X87Chop53;
 
 mod observation;
+mod playback;
+use playback::{PlaybackControl, PlaylistCursor, RingSource};
+#[cfg(test)]
+mod gattling_loop_tests;
 #[cfg(test)]
 mod unit_voice_lifecycle_tests;
 #[cfg(test)]
 mod unit_voice_tests;
 pub(crate) use observation::{PcmObservationConfig, PcmObservationContext, PcmObservationReport};
 use observation::{PcmObserver, VoiceLatchState};
-
-/// How many passes of a sustaining cue are kept queued on its rodio player:
-/// the one that is sounding plus one waiting behind it.
-///
-/// **VERA-internal, gamemd equivalent UNCHECKED.** Native never queues ahead:
-/// `FUN_00405AC0`, installed at `ch+0xB4`, is the DirectSound
-/// buffer-needs-data callback, and it calls
-/// `SoundEvent::AdvancePlaylist @ 0x004047B0` the moment the device asks, so
-/// the chain is gapless by construction. rodio's `Player` exposes no such
-/// callback — only `append` and a queue length — so device servicing keeps
-/// one pass queued behind the sounding one instead. Trigger for the
-/// divergence: a `Loop=N` cue reads one pass further ahead than native does,
-/// so its next `Control=random all` playlist order may be drawn one pass
-/// earlier. Loaded sample choices and channel shifts are retained. Frequency:
-/// sustaining cues. Downstream risk: this changes interleaving on the shared
-/// process Main RNG with other sound, Theme and visual draws. The two-GI
-/// acknowledgement comparison uses one-shot cues and does not cover this
-/// device callback schedule or establish parity for looping cues. Native
-/// start also calls PreparePlayout twice (`0x004045D1`, `0x00404673`),
-/// resetting the playlist each time; random multiple-middle-sample cues can
-/// draw at `0x004047EA` in both calls. The cached Rust start prepares once.
-/// Trigger: an admitted random cue with multiple loaded middle samples.
-/// Effect/risk: a missing first-selection Main draw changes later cosmetic
-/// choices. Retail frequency is not established. GI RANDOM one-shots load
-/// one middle sample, so both native equal-bound requests draw no raw word.
-const LOOP_QUEUE_DEPTH: usize = 2;
 
 /// `VocClass::CalcVolumeAndPan @ 0x00750AC0` (`0x00750B0F..0x00750B17`):
 /// `maxRange = Range * 0x3C` pixels.
@@ -463,6 +442,23 @@ impl<F: FnMut(i32, i32) -> i32> SampleRng for F {
     }
 }
 
+/// Lifetime-safe draw capability supplied by the app's process Main owner.
+/// Clones call the same owner; audio never seeds, copies or reads its state.
+#[derive(Clone)]
+pub(crate) struct PlaybackDraws(Arc<dyn Fn(i32, i32) -> i32 + Send + Sync>);
+
+impl PlaybackDraws {
+    pub(crate) fn new(draw: impl Fn(i32, i32) -> i32 + Send + Sync + 'static) -> Self {
+        Self(Arc::new(draw))
+    }
+}
+
+impl SampleRng for PlaybackDraws {
+    fn ranged(&mut self, low: i32, high: i32) -> i32 {
+        (self.0)(low, high)
+    }
+}
+
 /// Per-play randomised facts drawn before the samples are chosen.
 ///
 /// gamemd-derived: `SoundEvent::UpdateState @ 0x004055C0` state 0
@@ -541,12 +537,11 @@ impl PlayShifts {
     }
 }
 
-/// Sample indices, in play order, for one pass of an event.
+/// Test-only finite inspection of the production one-buffer cursor.
 ///
 /// gamemd-derived: `SoundEvent::LoadSamples @ 0x004048B0` for events whose
-/// `Delay.min < 0x21` (`0x004048FB..0x00404ACD`, all 588 stock `Control=`
-/// entries except the 60 with a longer pre-delay, which reach the same
-/// first-pass result through `SelectNextSample @ 0x00404BB0`):
+/// `Delay.min < 0x21` (`0x004048FB..0x00404ACD`); the high-delay loader
+/// remains the separately recorded SelectNextSample404BB0 residual:
 /// 1. `Attack > 0`: load `samples[RandomRanged(0, Attack - 1)]`.
 /// 2. Without `ALL`: `RANDOM` loads `samples[RandomRanged(Attack, count -
 ///    Decay - 1)]`, otherwise `samples[Attack]` (the first body sample —
@@ -554,7 +549,7 @@ impl PlayShifts {
 /// 3. `Decay > 0`: load `samples[RandomRanged(count - Decay, count - 1)]`.
 /// Then `PreparePlayout @ 0x00404700` / `AdvancePlaylist @ 0x004047B0` play
 /// the loaded buffers: the attack buffer first when `Control=ATTACK`, the
-/// decay buffer last when `Control=DECAY`, and the rest in `RandomRanged(0,
+/// decay buffer after repetition ends when `Control=DECAY`, and the rest in `RandomRanged(0,
 /// remaining - 1)` pick-and-remove order for `RANDOM` or in load order
 /// otherwise.
 ///
@@ -583,8 +578,8 @@ pub fn select_playout(entry: &SoundEntry, rng: &mut impl SampleRng) -> Vec<usize
 /// `SoundEvent::StartPlayback @ 0x004054A0` and
 /// `SoundEvent::MarkStarted @ 0x004052E0` both set. So the attack sample is
 /// played on a cue's *first* pass only, never on a loop restart, and never at
-/// all on an owner-driven loop (`AnimClass::UpdateLoopingSound @ 0x00750D40`
-/// marks the event started the instant it allocates it).
+/// all on a750D40 reallocation, which invokes SkipAttack immediately.
+/// An initial owner-bound PlayAt7509E0 does play attack.
 ///
 /// The attack **index is still drawn** when it is not played: the draw lives
 /// in `SoundEvent::LoadSamples @ 0x004048B0`, which runs before the decision,
@@ -600,7 +595,7 @@ pub fn select_playout_pass(
 
 /// The low-delay LoadSamples4048B0 selection survives every playout pass.
 /// Re-entering PreparePlayout404700 never picks new sample handles or shifts.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LoadedSampleIndices {
     attack: Option<usize>,
     middle: Vec<usize>,
@@ -652,31 +647,22 @@ impl LoadedSampleIndices {
         }
     }
 
+    #[cfg(test)]
     fn playout_order(
         &self,
         control_flags: u32,
         rng: &mut impl SampleRng,
         plays_attack: bool,
     ) -> Vec<usize> {
-        let mut middle = self.middle.clone();
-        let mut order = Vec::with_capacity(middle.len() + 2);
-        // Native keeps the attack buffer first only under the ATTACK control flag,
-        // and the decay buffer last only under DECAY; without the flag the count is
-        // zero (see `SoundEntry::attack`), so both agree.
-        if plays_attack {
-            order.extend(self.attack);
+        // Test-only finite inspection uses the production one-buffer cursor.
+        // No alternative eager selection implementation lives in playback.
+        let mut cursor = PlaylistCursor::new(self.clone(), control_flags, 0, 1);
+        let mut order = Vec::new();
+        let mut selected = cursor.prepare(rng, plays_attack);
+        while let Some(index) = selected {
+            order.push(index);
+            selected = cursor.advance(rng);
         }
-        if control_flags & control::RANDOM != 0 {
-            while !middle.is_empty() {
-                let pick = rng.ranged(0, middle.len() as i32 - 1) as usize;
-                // `.min`: VERA-internal, see the note above — `SampleRng` is a
-                // public trait, so an out-of-contract impl must not panic here.
-                order.push(middle.remove(pick.min(middle.len() - 1)));
-            }
-        } else {
-            order.append(&mut middle);
-        }
-        order.extend(self.decay);
         order
     }
 }
@@ -690,12 +676,15 @@ pub(crate) struct DecodedAudio {
     pub(crate) sample_rate: u32,
     /// Always 2 (stereo) — we upmix mono sources for consistency.
     pub(crate) channels: u16,
+    /// Native decoded PCM frame width before mono is upmixed for rodio.
+    pub(crate) native_frame_bytes: u16,
 }
 
 impl DecodedAudio {
     /// Append another clip; the native playlist chains buffers back to back.
     /// A rate mismatch keeps the first clip (RESIDUAL: native streams each
     /// buffer at its own rate; no stock attack/decay set mixes rates).
+    #[cfg(test)]
     fn append(&mut self, mut other: DecodedAudio) {
         if other.sample_rate != self.sample_rate || other.channels != self.channels {
             log::warn!(
@@ -706,6 +695,14 @@ impl DecodedAudio {
             return;
         }
         self.samples.append(&mut other.samples);
+    }
+}
+
+impl Drop for SfxPlayer {
+    fn drop(&mut self) {
+        // Player::stop/Drop is asynchronous. Retained callback capabilities
+        // must be cancelled at the owner's lifetime boundary as well.
+        self.stop_all();
     }
 }
 
@@ -865,27 +862,47 @@ fn prepare_eva_stream_output(
 struct LiveSfxOutput {
     player: Player,
     gain: SfxOutputGain,
+    token: Option<EventToken>,
+    control: Option<PlaybackControl>,
 }
 
 impl LiveSfxOutput {
     fn new(player: Player, gain: SfxOutputGain, initial_volume: f32) -> Self {
         player.set_volume(initial_volume);
-        Self { player, gain }
+        Self {
+            player,
+            gain,
+            token: None,
+            control: None,
+        }
     }
 
     fn apply_scales(&self, scales: SfxOutputScales) {
         self.player.set_volume(self.gain.effective(scales));
+    }
+
+    /// One output cancellation owner. The boundary gate closes future Main
+    /// draws synchronously, before rodio retires its queued source.
+    fn stop(&self) {
+        if let Some(control) = &self.control {
+            control.cancel();
+        }
+        self.player.stop();
     }
 }
 
 /// One admitted event. Submission carries identity/gain only; shifts and
 /// samples are filled at their original service phases by PendingSampleService.
 struct PendingPlayback {
+    token: EventToken,
     key: String,
     channel: SfxChannel,
     shifts: Option<PlayShifts>,
     loaded: Option<LoadedPlayback>,
     prepared: Option<ResolvedPlayback>,
+    cursor: Option<PlaylistCursor>,
+    initial: Option<usize>,
+    source: Option<(RingSource, PlaybackControl)>,
 }
 
 /// Decoded sample handles selected once by LoadSamples4048B0. A loop uses
@@ -904,21 +921,47 @@ impl LoadedPlayback {
         if entry.sounds.is_empty() {
             return None;
         }
-        let selected = LoadedSampleIndices::load(entry, rng);
+        let requested = LoadedSampleIndices::load(entry, rng);
         let mut clips = BTreeMap::new();
-        for index in selected
+        let mut loaded_indices = Vec::new();
+        for index in requested
             .attack
             .into_iter()
-            .chain(selected.middle.iter().copied())
-            .chain(selected.decay)
+            .chain(requested.middle.iter().copied())
+            .chain(requested.decay)
         {
             if let Some(clip) = entry.sounds.get(index).and_then(|name| load(name)) {
                 clips.insert(index, clip);
+                loaded_indices.push(index);
             }
         }
+        // Original4048B0 retains successful sample handles compactly. The
+        // Prepare404700 first/last exclusions address that loaded table,
+        // not the missing names' original Sounds positions.
+        let attack = (entry.control & control::ATTACK != 0)
+            .then(|| loaded_indices.first().copied())
+            .flatten();
+        let decay = (entry.control & control::DECAY != 0)
+            .then(|| loaded_indices.last().copied())
+            .flatten();
+        let first = usize::from(attack.is_some());
+        let end = loaded_indices
+            .len()
+            .saturating_sub(usize::from(decay.is_some()));
+        let middle = if first <= end {
+            loaded_indices[first..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        let selected = LoadedSampleIndices {
+            attack,
+            middle,
+            decay,
+        };
         (!clips.is_empty()).then_some(Self { selected, clips })
     }
 
+    #[cfg(test)]
     fn prepare(
         &self,
         entry: &SoundEntry,
@@ -954,16 +997,30 @@ impl LoadedPlayback {
 }
 
 /// Borrowed service capability; it has no RNG cursor, event pool or device.
-struct PendingSampleService<'a, R> {
+struct PendingSampleService<'a> {
     pending: &'a mut BTreeMap<EventId, PendingPlayback>,
+    live: &'a BTreeMap<EventId, LiveSfxOutput>,
     registry: &'a SoundRegistry,
     assets: &'a AssetManager,
     audio_index: Option<&'a crate::assets::audio_bag::AudioIndex>,
-    rng: &'a mut R,
+    rng: &'a mut PlaybackDraws,
     observer: Option<&'a mut PcmObserver>,
 }
 
-impl<R: SampleRng> PlaybackService for PendingSampleService<'_, R> {
+impl PlaybackService for PendingSampleService<'_> {
+    fn stop_playout(&mut self, event: EventId) {
+        if let Some(output) = self.live.get(&event) {
+            output.stop();
+        }
+        if let Some((_, control)) = self
+            .pending
+            .get(&event)
+            .and_then(|pending| pending.source.as_ref())
+        {
+            control.cancel();
+        }
+    }
+
     fn channel_acquired(&mut self, event: EventId) -> i32 {
         let Some(pending) = self.pending.get_mut(&event) else {
             return 0;
@@ -991,7 +1048,7 @@ impl<R: SampleRng> PlaybackService for PendingSampleService<'_, R> {
                         observed_samples: self
                             .observer
                             .as_ref()
-                            .is_some_and(|observer| observer.contains(event))
+                            .is_some_and(|observer| observer.contains(pending.token))
                             .then(|| vec![pending.key.clone()]),
                     }
                 });
@@ -1007,60 +1064,72 @@ impl<R: SampleRng> PlaybackService for PendingSampleService<'_, R> {
         let Some(pending) = self.pending.get_mut(&event) else {
             return false;
         };
-        if pending.prepared.is_none() {
-            let Some(entry) = self.registry.get(&pending.key) else {
-                return false;
-            };
-            let Some(loaded) = &pending.loaded else {
-                return false;
-            };
-            pending.prepared = loaded.prepare(
-                entry,
-                self.rng,
-                pending
-                    .shifts
-                    .expect("channel admission precedes sample loading"),
-                plays_attack,
-                self.observer
-                    .as_ref()
-                    .is_some_and(|observer| observer.contains(event)),
-            );
+        // The labelled raw fallback is a single buffer, outside registered
+        // playlist semantics. Ordinary Voc entries share the cursor below.
+        if pending.prepared.is_some() {
+            return true;
         }
-        let Some(prepared) = &mut pending.prepared else {
+        let Some(entry) = self.registry.get(&pending.key) else {
             return false;
         };
-        if let Some(observer) = &mut self.observer {
-            observer.samples(
-                event,
-                prepared.observed_samples.take(),
-                prepared.decoded.samples.len(),
-            );
-        }
-        true
+        let Some(loaded) = &pending.loaded else {
+            return false;
+        };
+        let cursor = pending.cursor.get_or_insert_with(|| {
+            PlaylistCursor::new(
+                loaded.selected.clone(),
+                entry.control,
+                entry.delay_ms.0,
+                entry.loop_count,
+            )
+        });
+        pending.initial = cursor.prepare(self.rng, plays_attack);
+        pending
+            .initial
+            .is_some_and(|index| loaded.clips.contains_key(&index))
     }
-}
 
-/// Bookkeeping for a cue the arbiter reported as `sustaining`.
-struct LoopQueue {
-    key: String,
-    loaded: LoadedPlayback,
-    shifts: PlayShifts,
-    /// The pan the next queued pass is baked with.
-    ///
-    /// RESIDUAL (device expressiveness) — native re-drives pan continuously
-    /// through the channel's `ch+0x90` interp group, so a unit crossing the
-    /// screen pans smoothly mid-buffer. rodio's `Player::set_volume` is a
-    /// scalar with no per-channel form, so VERA bakes the pan into each
-    /// buffer and a sustaining cue's pan therefore steps at each loop pass.
-    /// Trigger: any moving looping emitter (Rocketeer, Terror Drone, Mig,
-    /// Floating Disc). Player effect: the stereo image updates in steps of
-    /// one loop pass rather than continuously; volume still glides. Frequency:
-    /// whenever such a unit moves. Downstream risk: none. Fixing it needs a
-    /// per-channel gain on a live source, which this sink does not offer.
-    pan: i32,
-    /// The loop budget is exhausted; stop topping up and let the buffer run
-    /// dry so the arbiter is told the playout ended.
-    finished: bool,
+    fn start_playout(&mut self, event: EventId, pan: i32) -> bool {
+        let Some(pending) = self.pending.get_mut(&event) else {
+            return false;
+        };
+        if pending.prepared.is_some() {
+            return true;
+        }
+        let (Some(loaded), Some(cursor), Some(initial)) = (
+            pending.loaded.take(),
+            pending.cursor.take(),
+            pending.initial,
+        ) else {
+            return false;
+        };
+        let rate = pending
+            .shifts
+            .expect("admitted channel")
+            .shifted_sample_rate(loaded.clips[&initial].sample_rate);
+        let observed_names = self
+            .observer
+            .as_ref()
+            .filter(|observer| observer.contains(pending.token))
+            .and_then(|_| self.registry.get(&pending.key))
+            .map(|entry| entry.sounds.as_slice());
+        pending.source = RingSource::new(
+            loaded,
+            cursor,
+            initial,
+            self.rng.clone(),
+            rate,
+            pan,
+            observed_names,
+        );
+        if let Some((source, _)) = &pending.source
+            && let Some(observation) = source.observation()
+            && let Some(observer) = &mut self.observer
+        {
+            observer.playback(pending.token, observation);
+        }
+        pending.source.is_some()
+    }
 }
 
 /// Shared ordinary Voc pool for effects and per-Techno acknowledgements,
@@ -1075,8 +1144,6 @@ pub struct SfxPlayer {
     pending: BTreeMap<EventId, PendingPlayback>,
     /// Started outputs, keyed by the arbiter event holding the channel.
     live: BTreeMap<EventId, LiveSfxOutput>,
-    /// Queue bookkeeping for the sustaining subset of [`Self::live`].
-    loops: BTreeMap<EventId, LoopQueue>,
     /// Presentation diagnostics only; absent in ordinary play. It never
     /// supplies an arbiter, sample-selection or simulation decision.
     pcm_observer: Option<PcmObserver>,
@@ -1172,7 +1239,6 @@ impl SfxPlayer {
             arbiter: SoundArbiter::new(0),
             pending: BTreeMap::new(),
             live: BTreeMap::new(),
-            loops: BTreeMap::new(),
             pcm_observer: None,
             now_ms: 0,
             vox: VoxQueue::new(),
@@ -1258,16 +1324,9 @@ impl SfxPlayer {
 
     /// Queue the cue held by an owner's positional VocHandle.
     ///
-    /// gamemd-derived: `AnimClass::UpdateLoopingSound @ 0x00750D40`, the
-    /// canonical driver of every sustained sound. The owner calls it with its
-    /// current coordinate; when the positional volume is above zero and no
-    /// live event is bound, a loopable entry allocates one and is immediately
-    /// marked started (`SoundEvent::MarkStarted @ 0x004052E0`, which is why an
-    /// owner-driven loop never replays its `Control=attack` sample); the
-    /// volume and pan are then re-driven and the handle re-pointed. When the
-    /// volume drops to zero the event is stopped and the handle cleared —
-    /// that clearing is what ends the loop, through the state-3 leash in
-    /// `SoundEvent::UpdateState @ 0x004057DC`.
+    /// Initial `VocClass::PlayAt7509E0` allocation leaves flags8 clear, so
+    /// Prepare404700 can play the attack clip. Later750D40 reallocation
+    /// skips it; that transition is owned by `update_looping_sound`.
     ///
     /// Inaudible requests use [`Self::bind_inaudible_animation_sound`]; ordinary
     /// positional re-drives use [`Self::update_looping_sound`].
@@ -1290,9 +1349,6 @@ impl SfxPlayer {
         else {
             return false;
         };
-        if facts.is_loopable() {
-            self.arbiter.mark_started(event);
-        }
         // The handle is bound either way: a one-shot still belongs to its
         // owner so `stop_animation_sound` can find it, it is just not leashed
         // (`UpdateState` state 3 checks `Control & LOOP` first).
@@ -1302,7 +1358,10 @@ impl SfxPlayer {
             &registry_key(sound_id),
         );
         if let Some(observer) = &mut self.pcm_observer {
-            observer.bind_owner(event, HandleOwner::Positional(anim_id));
+            observer.bind_owner(
+                self.arbiter.event_token(event).expect("new event"),
+                HandleOwner::Positional(anim_id),
+            );
         }
         true
     }
@@ -1355,9 +1414,6 @@ impl SfxPlayer {
             self.arbiter
                 .set_volume(event, gain.volume_linear().min(VOLUME_SCALE), now);
             self.arbiter.set_pan(event, gain.pan, now);
-            if let Some(queue) = self.loops.get_mut(&event) {
-                queue.pan = gain.pan;
-            }
             return true;
         }
         let (Some(gain), Some(key)) = (
@@ -1368,7 +1424,17 @@ impl SfxPlayer {
         ) else {
             return false;
         };
-        self.play_animation_sound_spatial(anim_id, &key, gain, registry)
+        let started = self.play_animation_sound_spatial(anim_id, &key, gain, registry);
+        if started
+            && let Some(event) = self
+                .arbiter
+                .validate_loop_handle(HandleOwner::Positional(anim_id))
+        {
+            // Original750DB3: SkipAttack4052E0 belongs to reallocation,
+            // including an initial request whose positional gain was zero.
+            self.arbiter.mark_started(event);
+        }
+        started
     }
 
     /// `VocClass::PlayAt @ 0x007509E0` with a handle while the owner is out of
@@ -1390,23 +1456,53 @@ impl SfxPlayer {
         );
     }
 
-    /// `SoundEvent::Release @ 0x00406060` on one owner's handle: a looping
-    /// cue stops repeating and plays out, and the handle is cleared.
+    /// `SoundEvent::Release @ 0x00406060` on one owner's handle: an uncounted
+    /// loop stops repeating and switches to decay at the next sound service.
+    /// The handle is cleared immediately; one-shots keep playing.
     /// Idempotent.
     pub fn release_animation_sound(&mut self, anim_id: u64) {
+        let event = self
+            .arbiter
+            .validate_loop_handle(HandleOwner::Positional(anim_id));
         if let Some(observer) = &mut self.pcm_observer {
             observer.owner_action(HandleOwner::Positional(anim_id), "release", self.now_ms);
         }
-        self.arbiter.release_owner(HandleOwner::Positional(anim_id));
+        let control = event
+            .and_then(|event| self.live.get(&event))
+            .and_then(|output| output.control.clone());
+        let mut update_event = || {
+            self.arbiter.release_owner(HandleOwner::Positional(anim_id));
+            event.is_some_and(|event| self.arbiter.playout_no_replay(event))
+        };
+        if let Some(control) = control {
+            control.update_no_replay(update_event);
+        } else {
+            update_event();
+        }
     }
 
-    /// `VocHandle405FD0`: prevent repetitions and discard the handle while
-    /// retaining the current playout. The arbiter remains the handle owner.
+    /// `VocHandle405FD0`: discard the handle and request the next state3
+    /// service to stop the current buffer and select decay if available.
+    /// The arbiter remains the handle and admission owner.
     pub fn detach_animation_sound(&mut self, owner: u64) {
+        let event = self
+            .arbiter
+            .validate_loop_handle(HandleOwner::Positional(owner));
         if let Some(observer) = &mut self.pcm_observer {
             observer.owner_action(HandleOwner::Positional(owner), "detach", self.now_ms);
         }
-        self.arbiter.detach_owner(HandleOwner::Positional(owner));
+        let control = event
+            .and_then(|event| self.live.get(&event))
+            .and_then(|output| output.control.clone());
+        let mut update_event = || {
+            self.arbiter.detach_owner(HandleOwner::Positional(owner));
+            event.is_some_and(|event| self.arbiter.playout_no_replay(event))
+        };
+        if let Some(control) = control {
+            control.update_no_replay(update_event);
+        } else {
+            update_event();
+        }
     }
 
     /// Whether `owner`'s handle still holds a live event: `0x00406130` on a
@@ -1485,7 +1581,7 @@ impl SfxPlayer {
             self.arbiter
                 .set_loop_handle(handle, admitted, &registry_key(&entry.id));
             if let (Some(observer), Some(event)) = (&mut self.pcm_observer, admitted) {
-                observer.bind_owner(event, handle);
+                observer.bind_owner(self.arbiter.event_token(event).expect("new event"), handle);
             }
         }
         if let (Some(observer), Some(before)) = (&mut self.pcm_observer, before) {
@@ -1694,17 +1790,25 @@ impl SfxPlayer {
             },
             self.now_ms,
         )?;
+        let token = self
+            .arbiter
+            .event_token(event)
+            .expect("new allocation has a serial");
         if let Some(observer) = &mut self.pcm_observer {
-            observer.submitted(event, &key, None, 0, self.now_ms);
+            observer.submitted(token, &key, None, 0, self.now_ms);
         }
         self.pending.insert(
             event,
             PendingPlayback {
+                token,
                 key,
                 channel,
                 shifts: None,
                 loaded: None,
                 prepared: None,
+                cursor: None,
+                initial: None,
+                source: None,
             },
         );
         Some(event)
@@ -1721,16 +1825,10 @@ impl SfxPlayer {
     /// separately, by suspending events ([`Self::set_paused`]).
     ///
     /// The app's shared `AudioServiceClock` separately gates Sound/Vox/Theme;
-    /// completion observation and sustaining-buffer refill also run between
-    /// those admitted main-thread passes.
-    pub(crate) fn service_device_outputs(
-        &mut self,
-        now_ms: u64,
-        registry: &SoundRegistry,
-        rng: &mut impl SampleRng,
-    ) {
+    /// completion observation also runs between admitted main-thread passes.
+    /// PCM quarter refill is driven by the continuous source.
+    pub(crate) fn service_device_outputs(&mut self, now_ms: u64) {
         self.now_ms = now_ms;
-        self.top_up_loop_queues(registry, rng);
         self.report_finished_outputs();
     }
 
@@ -1742,13 +1840,14 @@ impl SfxPlayer {
         registry: &SoundRegistry,
         assets: &AssetManager,
         audio_index: Option<&crate::assets::audio_bag::AudioIndex>,
-        rng: &mut impl SampleRng,
+        rng: &mut PlaybackDraws,
     ) {
         self.now_ms = now_ms;
         let actions = self.arbiter.update_tick(
             now_ms,
             &mut PendingSampleService {
                 pending: &mut self.pending,
+                live: &self.live,
                 registry,
                 assets,
                 audio_index,
@@ -1763,8 +1862,8 @@ impl SfxPlayer {
                     event,
                     volume_linear,
                     pan,
-                    sustaining,
-                } => self.start_output(event, volume_linear, pan, sustaining, now_ms),
+                    ..
+                } => self.start_output(event, volume_linear, pan, now_ms),
                 ArbiterAction::Gain {
                     event,
                     volume_linear,
@@ -1773,9 +1872,17 @@ impl SfxPlayer {
                     if let Some(output) = self.live.get_mut(&event) {
                         output.gain.base_linear = volume_linear;
                         output.apply_scales(scales);
+                        if let Some(control) = &output.control {
+                            control.set_pan(pan);
+                        }
                     }
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.pan = pan;
+                }
+                ArbiterAction::Decay { event } => {
+                    if let Some(output) = self.live.get(&event)
+                        && let (Some(control), Some(token)) = (&output.control, output.token)
+                        && !control.release_to_decay()
+                    {
+                        self.arbiter.notify_playout_ended(token);
                     }
                 }
                 ArbiterAction::Stop { event } => self.release_output(event),
@@ -1793,176 +1900,59 @@ impl SfxPlayer {
         self.advance_voice_queue(registry, assets, audio_index);
     }
 
-    /// Apply an `ArbiterAction::Start`: build the rodio player, bake the pan
-    /// into the buffer and queue the first pass.
-    fn start_output(
-        &mut self,
-        event: EventId,
-        volume_linear: i32,
-        pan: i32,
-        sustaining: bool,
-        now_ms: u64,
-    ) {
+    /// Attach the source prepared synchronously in StartPlayback4054A0's
+    /// service phase. Subsequent quarter fills use that same source owner.
+    fn start_output(&mut self, event: EventId, volume_linear: i32, pan: i32, now_ms: u64) {
         let Some(pending) = self.pending.remove(&event) else {
             return;
         };
-        let PendingPlayback {
-            key,
-            channel,
-            shifts,
-            loaded,
-            prepared,
-        } = pending;
-        let Some(resolved) = prepared else {
-            self.arbiter.stop(event);
+        let token = pending.token;
+        if !self.arbiter.is_live_token(token) {
             return;
+        }
+        let shifts = pending.shifts.expect("channel admission precedes playback");
+        let gain = SfxOutputGain {
+            base_linear: volume_linear,
+            buffer_linear: shifts.volume_linear(),
+            channel: pending.channel,
         };
-        let shifts = shifts.expect("channel admission precedes playback");
-        let mut decoded = resolved.decoded;
-        apply_pan(&mut decoded.samples, pan);
-        let prepared = PreparedSfxOutput::new(
-            decoded,
-            SfxOutputGain {
-                base_linear: volume_linear,
-                buffer_linear: shifts.volume_linear(),
-                channel,
-            },
-            self.output_scales(),
-        );
-        let PreparedSfxOutput {
-            decoded,
-            gain,
-            initial_volume,
-        } = prepared;
-        let (Some(channels), Some(sample_rate)) = (
-            NonZero::new(decoded.channels),
-            NonZero::new(decoded.sample_rate),
-        ) else {
-            self.arbiter.stop(event);
-            if let Some(observer) = &mut self.pcm_observer {
-                observer.action(event, "stopped", now_ms);
-            }
-            return;
-        };
-        let source = SamplesBuffer::new(channels, sample_rate, decoded.samples);
         let player = if let Some(observer) = self
             .pcm_observer
             .as_mut()
-            .filter(|observer| observer.contains(event))
+            .filter(|observer| observer.contains(token))
         {
             observer
-                .connect_player(event, self._device.mixer(), now_ms)
+                .connect_player(token, self._device.mixer(), now_ms)
                 .expect("observed event")
         } else {
             Player::connect_new(self._device.mixer())
         };
-        let output = LiveSfxOutput::new(player, gain, initial_volume);
-        output.player.append(source);
-        self.live.insert(event, output);
-        let _ = now_ms;
-        if sustaining && let Some(loaded) = loaded {
-            self.loops.insert(
-                event,
-                LoopQueue {
-                    key,
-                    loaded,
-                    shifts,
-                    pan,
-                    finished: false,
-                },
-            );
-        }
-    }
-
-    /// Keep every sustaining cue's buffer queue at [`LOOP_QUEUE_DEPTH`],
-    /// reusing its loaded samples and preparing the playlist for each
-    /// pass the way `AdvancePlaylist`'s LOOP branch re-enters
-    /// `SoundEvent::PreparePlayout @ 0x00404700` — so a `Control=random`
-    /// entry reshuffles its body order every pass, and the `Control=attack`
-    /// sample is not replayed (`flags & 8` is already set).
-    fn top_up_loop_queues(&mut self, registry: &SoundRegistry, rng: &mut impl SampleRng) {
-        for event in self.loops.keys().copied().collect::<Vec<_>>() {
-            loop {
-                let Some(queue) = self.loops.get(&event) else {
-                    break;
-                };
-                if queue.finished {
-                    break;
-                }
-                let queued = self
-                    .live
-                    .get(&event)
-                    .map_or(0, |output| output.player.len());
-                if queued >= LOOP_QUEUE_DEPTH {
-                    break;
-                }
-                if !self.arbiter.advance_loop(event) {
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.finished = true;
-                    }
-                    break;
-                }
-                let key = queue.key.clone();
-                let pan = queue.pan;
-                let Some(entry) = registry.get(&key).cloned() else {
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.finished = true;
-                    }
-                    break;
-                };
-                // `flags & 8` is set by now (`StartPlayback` at the latest), so
-                // `PreparePlayout` takes the `AdvancePlaylist` arm and the
-                // attack sample never heads a restarted pass.
-                let plays_attack = self.arbiter.plays_attack_sample(event);
-                let queue = self.loops.get(&event).expect("loop was retained");
-                let Some(resolved) = queue.loaded.prepare(
-                    &entry,
-                    rng,
-                    queue.shifts,
-                    plays_attack,
-                    self.pcm_observer
-                        .as_ref()
-                        .is_some_and(|observer| observer.contains(event)),
-                ) else {
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.finished = true;
-                    }
-                    break;
-                };
-                if let Some(observer) = &mut self.pcm_observer {
-                    observer.samples(
-                        event,
-                        resolved.observed_samples,
-                        resolved.decoded.samples.len(),
-                    );
-                }
-                let mut decoded = resolved.decoded;
-                apply_pan(&mut decoded.samples, pan);
-                let (Some(channels), Some(sample_rate)) = (
-                    NonZero::new(decoded.channels),
-                    NonZero::new(decoded.sample_rate),
-                ) else {
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.finished = true;
-                    }
-                    break;
-                };
-                if decoded.samples.is_empty() {
-                    // A zero-length pass would never raise the queue length
-                    // and would spin this loop.
-                    if let Some(queue) = self.loops.get_mut(&event) {
-                        queue.finished = true;
-                    }
-                    break;
-                }
-                let Some(output) = self.live.get(&event) else {
-                    break;
-                };
-                output
-                    .player
-                    .append(SamplesBuffer::new(channels, sample_rate, decoded.samples));
+        let mut output = LiveSfxOutput::new(player, gain, gain.effective(self.output_scales()));
+        output.token = Some(token);
+        if let Some((source, control)) = pending.source {
+            output.control = Some(control);
+            output.player.append(source);
+        } else if let Some(resolved) = pending.prepared {
+            let mut decoded = resolved.decoded;
+            apply_pan(&mut decoded.samples, pan);
+            let (Some(channels), Some(rate)) = (
+                NonZero::new(decoded.channels),
+                NonZero::new(decoded.sample_rate),
+            ) else {
+                self.arbiter.stop(event);
+                return;
+            };
+            if let Some(observer) = &mut self.pcm_observer {
+                observer.samples(token, resolved.observed_samples, decoded.samples.len());
             }
+            output
+                .player
+                .append(SamplesBuffer::new(channels, rate, decoded.samples));
+        } else {
+            self.arbiter.stop(event);
+            return;
         }
+        self.live.insert(event, output);
     }
 
     /// The device telling the arbiter that a playout ran dry with nothing
@@ -1978,22 +1968,32 @@ impl SfxPlayer {
             .map(|(event, _)| *event)
             .collect();
         for event in finished {
+            let Some(token) = self.output_token(event) else {
+                continue;
+            };
             if let Some(observer) = &mut self.pcm_observer {
-                observer.action(event, "completed", self.now_ms);
+                observer.action(token, "completed", self.now_ms);
             }
-            self.arbiter.notify_playout_ended(event);
+            self.arbiter.notify_playout_ended(token);
             self.release_output(event);
         }
     }
 
+    fn output_token(&self, event: EventId) -> Option<EventToken> {
+        self.pending
+            .get(&event)
+            .map(|pending| pending.token)
+            .or_else(|| self.live.get(&event).and_then(|output| output.token))
+    }
+
     fn release_output(&mut self, event: EventId) {
-        if let Some(observer) = &mut self.pcm_observer {
-            observer.action(event, "stopped", self.now_ms);
+        let token = self.output_token(event);
+        if let (Some(observer), Some(token)) = (&mut self.pcm_observer, token) {
+            observer.action(token, "stopped", self.now_ms);
         }
         self.pending.remove(&event);
-        self.loops.remove(&event);
         if let Some(output) = self.live.remove(&event) {
-            output.player.stop();
+            output.stop();
         }
     }
 
@@ -2100,20 +2100,21 @@ impl SfxPlayer {
     /// Hard-stop every SFX/voice source and discard queued announcements.
     pub fn stop_all(&mut self) {
         for event in self.live.keys().copied().collect::<Vec<_>>() {
-            if let Some(observer) = &mut self.pcm_observer {
-                observer.action(event, "stopped", self.now_ms);
+            let token = self.output_token(event);
+            if let (Some(observer), Some(token)) = (&mut self.pcm_observer, token) {
+                observer.action(token, "stopped", self.now_ms);
             }
         }
         for (_, output) in std::mem::take(&mut self.live) {
-            output.player.stop();
+            output.stop();
         }
         for event in self.pending.keys().copied().collect::<Vec<_>>() {
-            if let Some(observer) = &mut self.pcm_observer {
-                observer.action(event, "stopped", self.now_ms);
+            let token = self.output_token(event);
+            if let (Some(observer), Some(token)) = (&mut self.pcm_observer, token) {
+                observer.action(token, "stopped", self.now_ms);
             }
         }
         self.pending.clear();
-        self.loops.clear();
         self.arbiter.clear_for_world_replacement();
         // World replacement resets native Techno voice latches at
         // 70C231/70C23A/70C240; outgoing queued owners must not survive this
@@ -2142,11 +2143,23 @@ impl SfxPlayer {
     }
 
     pub(crate) fn observed_pcm_settled(&self) -> bool {
-        self.pcm_observer.as_ref().is_some_and(PcmObserver::settled)
+        self.pcm_observer.as_ref().is_some_and(|observer| {
+            observer.settled()
+                && observer.observed_tokens().all(|token| {
+                    self.arbiter.is_token_retired(token)
+                        && !self.pending.values().any(|pending| pending.token == token)
+                        && !self.live.values().any(|output| output.token == Some(token))
+                })
+        })
     }
 
     pub(crate) fn finish_pcm_observation(&mut self) -> Option<PcmObservationReport> {
-        self.pcm_observer.take().map(PcmObserver::finish)
+        self.pcm_observer.take().map(|mut observer| {
+            let pending: Vec<_> = self.pending.values().map(|value| value.token).collect();
+            let live: Vec<_> = self.live.values().filter_map(|value| value.token).collect();
+            observer.snapshot(&self.arbiter, &pending, &live);
+            observer.finish()
+        })
     }
 
     /// Get the current SFX master volume.
@@ -2312,6 +2325,12 @@ fn load_sfx(
                     samples: stereo,
                     sample_rate: bag_audio.sample_rate,
                     channels: 2,
+                    native_frame_bytes: bag_audio.channels
+                        * if entry.is_16bit() || entry.is_ima_adpcm() {
+                            2
+                        } else {
+                            1
+                        },
                 });
             }
         }
@@ -2340,6 +2359,7 @@ fn load_sfx(
         samples: stereo,
         sample_rate: header.sample_rate as u32,
         channels: 2,
+        native_frame_bytes: 2,
     })
 }
 
@@ -2392,6 +2412,12 @@ pub(crate) fn decode_wav(data: &[u8], filename: &str) -> Option<DecodedAudio> {
         samples: stereo,
         sample_rate: wav.sample_rate,
         channels: 2,
+        native_frame_bytes: wav.channels
+            * if wav.format_tag == 0x11 {
+                2
+            } else {
+                wav.bits_per_sample / 8
+            },
     })
 }
 
@@ -2433,13 +2459,13 @@ mod tests {
     /// This supplies neither sample choices nor independent RNG logic.
     struct TestAudioService {
         clock: arbiter::AudioServiceClock,
-        main: crate::sim::rng::SimRng,
+        main: crate::sim::rng::MainRng,
     }
     impl Default for TestAudioService {
         fn default() -> Self {
             Self {
                 clock: arbiter::AudioServiceClock::default(),
-                main: crate::sim::rng::SimRng::new(31),
+                main: crate::sim::rng::MainRng::new(31),
             }
         }
     }
@@ -2452,8 +2478,9 @@ mod tests {
             assets: &AssetManager,
             index: Option<&crate::assets::audio_bag::AudioIndex>,
         ) {
-            let mut draw = |low, high| self.main.next_range_i32_inclusive(low, high);
-            player.service_device_outputs(now, registry, &mut draw);
+            let main = self.main.draws();
+            let mut draw = PlaybackDraws::new(move |low, high| main.ranged(low, high));
+            player.service_device_outputs(now);
             if self.clock.admit(now) {
                 player.service_events(now, registry, assets, index, &mut draw);
             }
@@ -2939,6 +2966,7 @@ mod tests {
             samples: vec![value; frames * 2],
             sample_rate,
             channels: 2,
+            native_frame_bytes: 2,
         }
     }
 
@@ -2992,6 +3020,7 @@ mod tests {
             samples: vec![0.0, 0.0],
             sample_rate: 22_050,
             channels: 2,
+            native_frame_bytes: 2,
         }
     }
 
@@ -3407,8 +3436,9 @@ mod tests {
         use std::io::Write;
         use std::time::{Duration, Instant};
 
-        // Original handle controls are retained in fv_cell_attack/foot_move_sound:
-        // Release406060 and 405FD0 retain a current one-shot; Stop405D40 ends it.
+        // Original gattling_loop shared one-shot controls establish Release
+        // 406060 finishing the current buffer, while generic405FD0 requests
+        // DriverStop at the next state3 service. Stop405D40 acts immediately.
         // This is the production device consumer, not a supplied native channel
         // callback or an invented idle-lapse trigger. Sample RNG stays untouched.
         let (_root, assets) = crate::rules::retail_ini_fixture::retail_assets()
@@ -3491,12 +3521,15 @@ mod tests {
                     .iter()
                     .all(|bits| f32::from_bits(*bits).is_finite())
             );
-            if operation == "hard_stop" {
+            if operation != "release" {
                 assert!(
                     output.sample_bits.len() < output.source_sample_count,
-                    "device continued the entire one-shot after a hard stop"
+                    "device continued the entire one-shot after {operation}"
                 );
-                assert_eq!(output.actions.last().unwrap().kind, "stopped");
+                assert!(
+                    matches!(output.actions.last().unwrap().kind, "stopped" | "completed"),
+                    "device completion and next state3 retirement may race"
+                );
             } else {
                 assert!(output.sample_bits.len() >= output.source_sample_count);
                 assert!(

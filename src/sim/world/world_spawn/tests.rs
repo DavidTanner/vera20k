@@ -219,7 +219,8 @@ fn infantry_unlimbo_matches_native_gate_incoming_membership_and_signed_xy() {
             );
         }
         sim.main_rng =
-            SimRng::from_native_state_hex_for_test(row["rng_before"]["main"].as_str().unwrap());
+            SimRng::from_native_state_hex_for_test(row["rng_before"]["main"].as_str().unwrap())
+                .into();
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(row["rng_before"]["scenario"].as_str().unwrap());
         sim.mapgen_rng =
@@ -257,12 +258,12 @@ fn infantry_unlimbo_matches_native_gate_incoming_membership_and_signed_xy() {
             );
         }
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                rng.native_state_hex(),
+                rng,
                 row["rng_after"][stream].as_str().unwrap(),
                 "{name}: {stream}"
             );

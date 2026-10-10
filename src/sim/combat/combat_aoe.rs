@@ -3522,7 +3522,7 @@ mod tests {
                 );
             }
             world.session.binary_frame = 100;
-            world.main_rng = SimRng::new(7);
+            world.main_rng = SimRng::new(7).into();
             world.scenario_rng = SimRng::new(1);
             // Some(false) models campaign PlayerControl without IsHuman.
             world.session.game_mode_nonzero = false;

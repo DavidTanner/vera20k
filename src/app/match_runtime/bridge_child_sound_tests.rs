@@ -160,9 +160,14 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
             Some(playing),
             &sound_name.to_ascii_uppercase(),
         );
-        assert!(arbiter.update_tick(100, &mut TestPlayback::default()).iter().any(|action| matches!(
-            action, ArbiterAction::Start { event, sustaining: false, .. } if *event == playing
-        )));
+        assert!(
+            arbiter
+                .update_tick(100, &mut TestPlayback::default())
+                .iter()
+                .any(|action| matches!(
+                    action, ArbiterAction::Start { event, .. } if *event == playing
+                ))
+        );
         let GameSoundEvent::AnimationReleased { anim_id } = events[1] else {
             unreachable!("ordered app event checked above")
         };
@@ -178,7 +183,7 @@ fn retail_landing_child_reports_release_instead_of_cutting_samples() {
         );
         assert_eq!(arbiter.live_event_count(), 1);
         assert_eq!(arbiter.busy_channel_count(), 1);
-        arbiter.notify_playout_ended(playing);
+        arbiter.notify_playout_ended(arbiter.event_token(playing).unwrap());
         arbiter.update_tick(240, &mut TestPlayback::default());
         assert_eq!(arbiter.live_event_count(), 0);
         assert_eq!(arbiter.busy_channel_count(), 0);

@@ -47,12 +47,12 @@ fn append_sections(text: &mut String, sections: &Value) {
 
 fn assert_rng(sim: &Simulation, native: &Value, boundary: &str) {
     for (name, rng) in [
-        ("scenario", &sim.scenario_rng),
-        ("main", &sim.main_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("scenario", sim.scenario_rng.native_state_hex()),
+        ("main", sim.main_rng.native_state_hex()),
+        ("mapgen", sim.mapgen_rng.native_state_hex()),
     ] {
         assert!(
-            rng.native_state_hex() == native[name].as_str().unwrap(),
+            rng == native[name].as_str().unwrap(),
             "{boundary}: full {name} state"
         );
     }
@@ -397,7 +397,7 @@ impl Fixture {
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(prior["rng"]["scenario"].as_str().unwrap());
         sim.main_rng =
-            SimRng::from_native_state_hex_for_test(prior["rng"]["main"].as_str().unwrap());
+            SimRng::from_native_state_hex_for_test(prior["rng"]["main"].as_str().unwrap()).into();
         sim.mapgen_rng =
             SimRng::from_native_state_hex_for_test(prior["rng"]["mapgen"].as_str().unwrap());
         Self {

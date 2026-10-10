@@ -744,12 +744,12 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             );
         }
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert!(
-                rng.native_state_hex() == row["rng_pair"][stream]["before_hex"].as_str().unwrap(),
+                rng == row["rng_pair"][stream]["before_hex"].as_str().unwrap(),
                 "{name}: complete native {stream} caller RNG"
             );
         }
@@ -855,12 +855,12 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
         assert_eq!(after["counter"], before["counter"]);
         assert!(!sim.object_placement_scope_active());
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", sim.main_rng.native_state_hex()),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert!(
-                rng.native_state_hex() == row["rng_pair"][stream]["after_hex"].as_str().unwrap(),
+                rng == row["rng_pair"][stream]["after_hex"].as_str().unwrap(),
                 "{name}: complete native {stream} return RNG"
             );
         }
@@ -1276,7 +1276,7 @@ fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
         sim.scenario_rng =
             SimRng::from_native_state_hex_for_test(before["rng"]["scenario"].as_str().unwrap());
         sim.main_rng =
-            SimRng::from_native_state_hex_for_test(before["rng"]["main"].as_str().unwrap());
+            SimRng::from_native_state_hex_for_test(before["rng"]["main"].as_str().unwrap()).into();
         sim.mapgen_rng =
             SimRng::from_native_state_hex_for_test(before["rng"]["mapgen"].as_str().unwrap());
         sim.session.binary_frame = before["frame"].as_u64().unwrap() as u32;
@@ -1306,12 +1306,12 @@ fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
         assert!(sim.substrate.pending_delete.is_empty());
         assert!(!sim.object_placement_scope_active());
         for (name, rng) in [
-            ("scenario", &sim.scenario_rng),
-            ("main", &sim.main_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("main", sim.main_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                rng.native_state_hex(),
+                rng,
                 after["rng"][name].as_str().unwrap(),
                 "cancel full {name} state"
             );

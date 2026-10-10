@@ -132,11 +132,11 @@ pub(crate) struct FrontendState {
     /// MPModes rows used by the native Choose Map modal.
     pub(crate) skirmish_modes: Vec<crate::skirmish_modes::SkirmishGameMode>,
     pub(crate) loading_session: Option<crate::app::loading::pump::LoadingSession>,
-    /// Process Main before the first scenario. `process_main_draws` switches
-    /// audio, Theme and RMG to the installed simulation's continuation even
-    /// while that world is retained behind the shell. Fresh scenarios install
-    /// their loading-advanced Main; the setup seed comes from shell Scenario.
-    pub(crate) frontend_main_rng: crate::sim::rng::SimRng,
+    /// Retained process Main cell. A successful fresh install moves its
+    /// loading-advanced cursor here and binds the simulation to the same cell.
+    /// Audio, Theme and RMG continue that cursor behind the shell; the setup
+    /// seed before the first scenario comes from shell Scenario.
+    pub(crate) frontend_main_rng: crate::sim::rng::MainRng,
     /// UI-thread CRT state shared by storage dialogs, preserved across routes.
     /// Native tactical sparkle/network consumption is still an integration gap;
     /// do not infer exact post-game filenames from this initial state.

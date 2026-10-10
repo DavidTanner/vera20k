@@ -750,7 +750,7 @@ mod tests {
         sim.session.binary_frame = 100;
         sim.session.game_mode_nonzero = input["game_mode_nonzero"].as_bool().unwrap_or(true);
         sim.scenario_rng = SimRng::new(31);
-        sim.main_rng = SimRng::new(31);
+        sim.main_rng = SimRng::new(31).into();
         sim.mapgen_rng = SimRng::new(31);
         let owner = sim.interner.intern("FearOwner");
         let mut house = HouseState::new(
@@ -847,12 +847,12 @@ mod tests {
             "{name}: actual motion"
         );
         for (stream, rng) in [
-            ("scenario", &sim.scenario_rng),
-            ("main", &sim.main_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("scenario", sim.scenario_rng.native_state_hex()),
+            ("main", sim.main_rng.native_state_hex()),
+            ("mapgen", sim.mapgen_rng.native_state_hex()),
         ] {
             assert_eq!(
-                rng.native_state_hex(),
+                rng,
                 row["rng_after"][stream].as_str().unwrap(),
                 "{name}: full {stream} state"
             );
@@ -890,12 +890,12 @@ mod tests {
             }
             let (mut sim, rules) = fear_fixture(row);
             for (stream, rng) in [
-                ("scenario", &sim.scenario_rng),
-                ("main", &sim.main_rng),
-                ("mapgen", &sim.mapgen_rng),
+                ("scenario", sim.scenario_rng.native_state_hex()),
+                ("main", sim.main_rng.native_state_hex()),
+                ("mapgen", sim.mapgen_rng.native_state_hex()),
             ] {
                 assert_eq!(
-                    rng.native_state_hex(),
+                    rng,
                     row["rng_before"][stream].as_str().unwrap(),
                     "supplied full {stream} state"
                 );

@@ -1163,7 +1163,9 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
             })
             .unwrap();
         let entry = &class["rng_at_entry"];
-        sim.main_rng = serde_json::from_value::<SimRng>(entry["main"].clone()).unwrap();
+        sim.main_rng = serde_json::from_value::<SimRng>(entry["main"].clone())
+            .unwrap()
+            .into();
         sim.scenario_rng = serde_json::from_value::<SimRng>(entry["scenario"].clone()).unwrap();
         sim.mapgen_rng = serde_json::from_value::<SimRng>(entry["mapgen"].clone()).unwrap();
         let requested = NavTargetRef::Object { id: 2 };
@@ -1183,15 +1185,11 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
         };
         assert!(accepted, "{input}");
         for (stream, rng) in [
-            ("main", &sim.main_rng),
-            ("scenario", &sim.scenario_rng),
-            ("mapgen", &sim.mapgen_rng),
+            ("main", serde_json::to_value(&sim.main_rng).unwrap()),
+            ("scenario", serde_json::to_value(&sim.scenario_rng).unwrap()),
+            ("mapgen", serde_json::to_value(&sim.mapgen_rng).unwrap()),
         ] {
-            assert_eq!(
-                serde_json::to_value(rng).unwrap(),
-                class["rng_at_return"][stream],
-                "{input}: {stream}"
-            );
+            assert_eq!(rng, class["rng_at_return"][stream], "{input}: {stream}");
         }
         // Prove the sole target+4C read and the structural bit used by MoveTo
         // against its actual returned native Cell, not invented flat terrain.

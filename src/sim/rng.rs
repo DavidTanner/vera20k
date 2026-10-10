@@ -5,6 +5,7 @@
 //! inclusive sorted ranged draws, and rejection sampling.
 
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
 use crate::rng_continuation::MapGenRngContinuation;
 use crate::util::native_random;
@@ -74,21 +75,152 @@ pub struct SimRng {
     state: Vec<u32>,
 }
 
-/// Borrowed process Main draws. This capability cannot clone, seed, replace
-/// or retain the cursor; its owner keeps the complete RNG state.
-pub(crate) struct MainRngDraws<'a> {
-    rng: &'a mut SimRng,
+/// Owner of process Main886B88. Simulation, frontend and retained playback
+/// capabilities address the same cell; sharing never copies its cursor.
+/// Main remains outside Scenario saves and the deterministic world hash.
+#[derive(Debug)]
+pub(crate) struct MainRng {
+    state: Arc<Mutex<SimRng>>,
 }
 
-impl<'a> MainRngDraws<'a> {
-    pub(crate) fn borrow(rng: &'a mut SimRng) -> Self {
-        Self { rng }
+impl MainRng {
+    pub(crate) fn new(seed: u64) -> Self {
+        SimRng::new(seed).into()
     }
-    pub(crate) fn next_u32(&mut self) -> u32 {
-        self.rng.next_u32()
+
+    /// Retain draw access without exposing seed, replacement or RNG storage.
+    pub(crate) fn draws(&self) -> MainRngDraws {
+        MainRngDraws {
+            state: Arc::clone(&self.state),
+        }
     }
-    pub(crate) fn ranged(&mut self, low: i32, high: i32) -> i32 {
-        self.rng.next_range_i32_inclusive(low, high)
+
+    /// Bind another owner slot at a process/scenario handoff. The native
+    /// object stays in place, including draws made while a load is prepared.
+    pub(super) fn shared_owner(&self) -> Self {
+        Self {
+            state: Arc::clone(&self.state),
+        }
+    }
+
+    /// Move the finished bootstrap cursor into the retained process cell.
+    /// The app must synchronously cancel outgoing playback before this seam;
+    /// the staged bootstrap must have relinquished its terrain draw handles.
+    pub(super) fn install_from(&self, staged: Self) {
+        if Arc::ptr_eq(&self.state, &staged.state) {
+            return;
+        }
+        let state = Arc::try_unwrap(staged.state)
+            .expect("fresh Main bootstrap has no retained draw capabilities")
+            .into_inner()
+            .expect("Main RNG poisoned");
+        *self.state.lock().expect("Main RNG poisoned") = state;
+    }
+
+    pub(crate) fn next_u32(&self) -> u32 {
+        self.state.lock().expect("Main RNG poisoned").next_u32()
+    }
+
+    pub(crate) fn next_range_i32_inclusive(&self, low: i32, high: i32) -> i32 {
+        self.state
+            .lock()
+            .expect("Main RNG poisoned")
+            .next_range_i32_inclusive(low, high)
+    }
+
+    /// Observe one coherent boundary while callback draws can run elsewhere.
+    pub(crate) fn logical_state(&self) -> SimRngLogicalState {
+        self.state
+            .lock()
+            .expect("Main RNG poisoned")
+            .logical_state()
+    }
+
+    pub(crate) fn state(&self) -> u64 {
+        self.state.lock().expect("Main RNG poisoned").state()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn native_state_hex(&self) -> String {
+        self.logical_state().native_state_hex()
+    }
+
+    /// An explicitly detached test reference, never a live draw capability.
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> SimRng {
+        self.state.lock().expect("Main RNG poisoned").clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn into_rng_for_test(self) -> SimRng {
+        Arc::try_unwrap(self.state)
+            .expect("test Main has no retained draw capabilities")
+            .into_inner()
+            .expect("Main RNG poisoned")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn index_b(&self) -> i32 {
+        self.logical_state().index_b
+    }
+
+    #[cfg(test)]
+    pub(crate) fn next_range_u32_inclusive(&self, low: u32, high: u32) -> u32 {
+        self.state
+            .lock()
+            .expect("Main RNG poisoned")
+            .next_range_u32_inclusive(low, high)
+    }
+}
+
+impl From<SimRng> for MainRng {
+    fn from(state: SimRng) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(state)),
+        }
+    }
+}
+
+// Native fixture adapters only. The live Simulation field is serde-skipped:
+// saves never serialize or replace process Main886B88.
+#[cfg(test)]
+impl serde::Serialize for MainRng {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serde::Serialize::serialize(&*self.state.lock().expect("Main RNG poisoned"), serializer)
+    }
+}
+
+#[cfg(test)]
+impl<'de> serde::Deserialize<'de> for MainRng {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        <SimRng as serde::Deserialize>::deserialize(deserializer).map(Self::from)
+    }
+}
+
+/// Retained process Main draws. Clone shares the owner's cell; it cannot
+/// seed, replace, borrow simulation state or expose an independent cursor.
+#[derive(Clone)]
+pub(crate) struct MainRngDraws {
+    state: Arc<Mutex<SimRng>>,
+}
+
+impl MainRngDraws {
+    pub(crate) fn next_u32(&self) -> u32 {
+        self.state.lock().expect("Main RNG poisoned").next_u32()
+    }
+
+    /// Keep the entire native rejection-sampling operation under one lock.
+    pub(crate) fn ranged(&self, low: i32, high: i32) -> i32 {
+        self.state
+            .lock()
+            .expect("Main RNG poisoned")
+            .next_range_i32_inclusive(low, high)
     }
 }
 
@@ -111,6 +243,21 @@ pub struct SimRngLogicalState {
     pub index_a: i32,
     pub index_b: i32,
     pub words: [u32; RNG_TABLE_LEN],
+}
+
+#[cfg(test)]
+impl SimRngLogicalState {
+    /// Encode coherent boundary evidence in the original Random2Class form.
+    pub(crate) fn native_state_hex(&self) -> String {
+        let mut bytes = Vec::with_capacity(0x3f4);
+        bytes.extend_from_slice(&u32::from(self.disabled).to_le_bytes());
+        bytes.extend_from_slice(&self.index_a.to_le_bytes());
+        bytes.extend_from_slice(&self.index_b.to_le_bytes());
+        for word in &self.words {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
 }
 
 impl SimRng {
@@ -172,14 +319,7 @@ impl SimRng {
     /// Scenario RNG states in.
     #[cfg(test)]
     pub(crate) fn native_state_hex(&self) -> String {
-        let mut bytes = Vec::with_capacity(0x3f4);
-        bytes.extend_from_slice(&u32::from(self.disabled).to_le_bytes());
-        bytes.extend_from_slice(&self.index_a.to_le_bytes());
-        bytes.extend_from_slice(&self.index_b.to_le_bytes());
-        for word in &self.state {
-            bytes.extend_from_slice(&word.to_le_bytes());
-        }
-        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+        self.logical_state().native_state_hex()
     }
 
     /// Import a pinned original Random2Class comparison boundary. This reads
@@ -400,7 +540,41 @@ impl SimRng {
 
 #[cfg(test)]
 mod tests {
-    use super::SimRng;
+    use super::{MainRng, SimRng};
+
+    #[test]
+    fn cloned_main_capabilities_interleave_callback_and_owner_draws() {
+        let owner = MainRng::new(1);
+        let local = owner.draws();
+        let callback = local.clone();
+        let (requests, pending) = std::sync::mpsc::sync_channel::<()>(0);
+        let (answers, completed) = std::sync::mpsc::sync_channel(0);
+        let worker = std::thread::spawn(move || {
+            while pending.recv().is_ok() {
+                answers
+                    .send((callback.next_u32(), callback.ranged(0, 4)))
+                    .unwrap();
+            }
+        });
+        let mut reference = SimRng::new(1);
+        for _ in 0..32 {
+            let frozen = owner.logical_state();
+            let before = reference.logical_state();
+            assert_eq!(owner.next_u32(), reference.next_u32());
+            requests.send(()).unwrap();
+            let (raw, ranged) = completed.recv().unwrap();
+            assert_eq!(raw, reference.next_u32());
+            assert_eq!(ranged, reference.next_range_i32_inclusive(0, 4));
+            assert_eq!(local.next_u32(), reference.next_u32());
+            assert_eq!(owner.logical_state(), reference.logical_state());
+            assert_eq!(
+                frozen, before,
+                "owned evidence survives later callback draws"
+            );
+        }
+        drop(requests);
+        worker.join().unwrap();
+    }
 
     #[test]
     fn high_two_bits_match_original_mapgen_range_and_all_retained_words() {

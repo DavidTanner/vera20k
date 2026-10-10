@@ -334,16 +334,12 @@ fn assert_boundary(
         );
     }
     for (stream, rng) in [
-        ("main", &sim.main_rng),
-        ("scenario", &sim.scenario_rng),
-        ("mapgen", &sim.mapgen_rng),
+        ("main", sim.main_rng.logical_state()),
+        ("scenario", sim.scenario_rng.logical_state()),
+        ("mapgen", sim.mapgen_rng.logical_state()),
     ] {
         let native: SimRng = serde_json::from_value(row["rng_after"][stream].clone()).unwrap();
-        assert_eq!(
-            rng.logical_state(),
-            native.logical_state(),
-            "{name}: {stream} RNG"
-        );
+        assert_eq!(rng, native.logical_state(), "{name}: {stream} RNG");
     }
 }
 

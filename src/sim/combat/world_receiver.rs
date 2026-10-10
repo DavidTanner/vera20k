@@ -1280,7 +1280,7 @@ pub(crate) fn handle_death(
                     category,
                     rules.general.building_die_sound.as_deref(),
                     world.houses.get(&owner).is_some_and(|house| house.is_human),
-                    &mut world.main_rng,
+                    &world.main_rng,
                     rx,
                     ry,
                     &mut death_sounds,

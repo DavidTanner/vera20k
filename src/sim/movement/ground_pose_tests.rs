@@ -479,7 +479,8 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
         let mut restored = GameSnapshot::load(&bytes)
             .expect("moving ramp snapshot")
             .sim;
-        restored.main_rng = sim.main_rng.clone();
+        // The original and restored controls run as independent test processes.
+        restored.main_rng = sim.main_rng.snapshot_for_test().into();
         restored.mapgen_rng = sim.mapgen_rng.clone();
         restored
             .restore_after_snapshot_load()

@@ -192,7 +192,7 @@ use crate::sim::projectile::{
     projectile_bridge_crossing,
 };
 use crate::sim::radar::{RadarEventRequest, RadarEventType};
-use crate::sim::rng::{SimRng, SimRngLogicalState, SimRngLogicalView};
+use crate::sim::rng::{MainRng, SimRng, SimRngLogicalState, SimRngLogicalView};
 use crate::sim::scenario_session::ScenarioSession;
 use crate::sim::team_script_vm::TeamScriptVm;
 use crate::sim::tiberium::TiberiumPlacementObjectContext;
@@ -897,11 +897,12 @@ impl SimFireEvent {
     }
 }
 
-/// Borrowed names for the three native RNG authorities.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Named observations of the three native RNG authorities. Main is an owned
+/// coherent boundary because retained playback may draw on another thread.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SimulationRngViews<'a> {
     pub scenario: SimRngLogicalView<'a>,
-    pub main: SimRngLogicalView<'a>,
+    pub main: SimRngLogicalState,
     pub mapgen: SimRngLogicalView<'a>,
 }
 
@@ -915,6 +916,10 @@ pub struct SimulationRngState {
 
 fn deserialized_process_rng_placeholder() -> SimRng {
     SimRng::new(0)
+}
+
+fn deserialized_main_rng_placeholder() -> MainRng {
+    MainRng::new(0)
 }
 
 fn deserialize_scenario_rng_reset<'de, D>(deserializer: D) -> Result<SimRng, D::Error>
@@ -978,8 +983,8 @@ pub struct Simulation {
     /// Main/global RNG — gamemd `g_MainRng` (0x00886B88). This is a
     /// process-global cursor: it is neither part of ScenarioClass saves nor
     /// multiplayer checksums, and the live cursor continues across a load.
-    #[serde(skip, default = "deserialized_process_rng_placeholder")]
-    pub(crate) main_rng: SimRng,
+    #[serde(skip, default = "deserialized_main_rng_placeholder")]
+    pub(crate) main_rng: MainRng,
     /// Map-generator RNG — gamemd `g_MapGenRng` (0x00ABE890). VERA's fresh
     /// fixed-map construction uses `Random__Seed(0)`, matching the verified
     /// native fresh-process state; launch `.SED` generation installs its exact
@@ -2792,11 +2797,11 @@ impl Simulation {
         }
     }
 
-    /// Borrow all three logical RNG objects without exposing mutation.
+    /// Observe all three logical RNG objects without exposing mutation.
     pub fn rng_views(&self) -> SimulationRngViews<'_> {
         SimulationRngViews {
             scenario: self.scenario_rng.logical_view(),
-            main: self.main_rng.logical_view(),
+            main: self.main_rng.logical_state(),
             mapgen: self.mapgen_rng.logical_view(),
         }
     }
@@ -2834,7 +2839,7 @@ impl Simulation {
     /// load route has a distinct native handoff and does not use this seam.
     pub(crate) fn retain_in_scenario_process_state_from(&mut self, live: &Self) {
         self.session.seed = live.session.seed;
-        self.main_rng = live.main_rng.clone();
+        self.main_rng = live.main_rng.shared_owner();
         self.mapgen_rng = live.mapgen_rng.clone();
         self.bind_shared_cell_dummy(live.effective_shared_cell_dummy());
         self.substrate
@@ -2959,7 +2964,15 @@ impl Simulation {
     /// generation. Called only by sim's opaque bootstrap owner; Scenario
     /// remains independently owned by the Fill pass.
     pub(super) fn install_variant_advanced_main_rng(&mut self, main_rng: SimRng) {
-        self.main_rng = main_rng;
+        self.main_rng = main_rng.into();
+    }
+
+    /// Bind a successful fresh scenario to the retained process Main cell,
+    /// moving its terrain-advanced bootstrap cursor into that same identity.
+    /// App orchestration must first cancel the outgoing playback callbacks.
+    pub(crate) fn install_fresh_process_main(&mut self, process: &MainRng) {
+        let staged = std::mem::replace(&mut self.main_rng, process.shared_owner());
+        process.install_from(staged);
     }
 
     /// Install the exact cursor left by the accepted random-map generation.
@@ -3090,7 +3103,7 @@ impl Simulation {
             session,
             object_placement_scope_depth: 0,
             scenario_rng: SimRng::new(seed),
-            main_rng: SimRng::new(seed),
+            main_rng: MainRng::new(seed),
             mapgen_rng: SimRng::new(0),
             native_unique_ids: None,
             authored_tiberium_value_total: None,
@@ -3214,8 +3227,8 @@ impl Simulation {
 
     /// Process Main886B88, shared by native command voices, Voc and Theme.
     /// Draws remain outside Scenario/hash/save state; no copied audio cursor.
-    pub(crate) fn presentation_main_draws(&mut self) -> crate::sim::rng::MainRngDraws<'_> {
-        crate::sim::rng::MainRngDraws::borrow(&mut self.main_rng)
+    pub(crate) fn presentation_main_draws(&self) -> crate::sim::rng::MainRngDraws {
+        self.main_rng.draws()
     }
 
     /// Test/replay helper for the per-game Scenario/Main pair only.
@@ -3225,7 +3238,7 @@ impl Simulation {
     #[cfg(test)]
     pub(crate) fn reseed_scenario_and_main(&mut self, seed: u64) {
         self.scenario_rng = SimRng::new(seed);
-        self.main_rng = SimRng::new(seed);
+        self.main_rng.install_from(MainRng::new(seed));
         self.session.seed = seed;
     }
 
