@@ -1,19 +1,25 @@
-//! Original-executed Next/Previous4AA2B0/4AA380 and P5367F0 ->732280.
+//! Original-executed Next/Previous4AA2B0/4AA380, P5367F0 ->732280,
+//! Health733380 and Y5369F0 ->7336C0.
 //! Inputs, native results and execution boundaries are retained together in
 //! tools/input_oracle/selection_navigation.{py,json,meta.json,md}.
 //!
 //! These fixtures supply existing objects and retained display order. They do
 //! not establish object construction, display registration, RobotOffline,
 //! power/planning mode lifecycle, window redraw or final camera raster parity.
-//! P compares successful-add voices through the existing Main/voice owner.
+//! Selection histories compare successful-add voices through the existing
+//! Main/voice owner. Whole native cleanup boundaries are supplied inputs here;
+//! actual Rust expiry production/transport has separate lifecycle coverage.
 
 use super::super::{
     SelectionMutation, reconcile_selection_order_for_sim, resolve_selection_mutation,
     selected_stable_ids_in_order,
 };
-use super::{ObjectDirection, combatant_selection, combatant_selection_allowed, next_object};
+use super::{
+    CategoryNavigation, ObjectDirection, category_key, category_selection, combatant_selection,
+    entity_navigation_category, navigation_feedback, next_object, selection_navigation_allowed,
+};
 use crate::app::input::{camera, entity_pick};
-use crate::app::types::{TypeSelectInputState, TypeSelectOutcome};
+use crate::app::types::{CategoryNavigationKind, TypeSelectInputState, TypeSelectOutcome};
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::command::Command;
@@ -34,6 +40,11 @@ struct Corpus {
     command_histories: Vec<CommandHistory>,
     combatant_histories: Vec<CombatantHistory>,
     combatant_cleanup_histories: Vec<CombatantHistory>,
+    veterancy_histories: Vec<CombatantHistory>,
+    health_navigation_histories: Vec<CombatantHistory>,
+    veterancy_cleanup_histories: Vec<CombatantHistory>,
+    veterancy_rank_cases: Vec<serde_json::Value>,
+    enslaved_voice_histories: Vec<CombatantHistory>,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +52,8 @@ struct Actor {
     id: u64,
     kind: String,
     health: i32,
+    #[serde(default = "fixture_strength_default")]
+    strength: i32,
     limbo: bool,
     alive: bool,
     in_playfield: bool,
@@ -52,6 +65,12 @@ struct Actor {
     positive_primary_damage: bool,
     #[serde(default = "single_voice_default")]
     voice_list: Vec<i64>,
+    #[serde(default)]
+    enslaved_voice_list: Option<Vec<i64>>,
+    #[serde(default)]
+    veterancy_raw_bits: Option<u32>,
+    #[serde(default)]
+    cost: i32,
     owner: String,
     slave: bool,
     robot_offline: bool,
@@ -69,6 +88,11 @@ fn positive_primary_default() -> bool {
     true
 }
 
+fn fixture_strength_default() -> i32 {
+    // SelectionFixture supplies type+A0=100 unless a control declares it.
+    100
+}
+
 fn single_voice_default() -> Vec<i64> {
     vec![101]
 }
@@ -78,6 +102,8 @@ struct HouseControls {
     campaign: bool,
     other_human: bool,
     other_control: bool,
+    #[serde(default)]
+    other_passive: bool,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +114,10 @@ struct Inputs {
     house: HouseControls,
     #[serde(default = "fixture_seed_default")]
     seed: u64,
+    #[serde(default)]
+    navigation_trace: bool,
+    #[serde(default)]
+    enslaved_voice_trace: bool,
 }
 
 fn fixture_seed_default() -> u64 {
@@ -165,6 +195,8 @@ struct CombatantHistory {
     voice_enabled: bool,
     #[serde(default)]
     command_guard: u32,
+    #[serde(default)]
+    csf_sha256: Option<String>,
     steps: Vec<serde_json::Value>,
     rng_before_hex: BTreeMap<String, String>,
     rng_after_hex: BTreeMap<String, String>,
@@ -184,6 +216,16 @@ fn boundary_ids(boundary: &serde_json::Value) -> Vec<u64> {
     serde_json::from_value(boundary["selected"].clone()).unwrap()
 }
 
+fn boundary_screen_ids(boundary: &serde_json::Value) -> Vec<u64> {
+    // Actual Tactical expiry clears a record's pointer while retaining its
+    // slot/count. NULL holes do no work in731F70; compact only those holes.
+    serde_json::from_value::<Vec<Option<u64>>>(boundary["screen_order"].clone())
+        .unwrap()
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
 /// Supply original mode/scope inputs through the existing input owner.
 fn boundary_mode(boundary: &serde_json::Value) -> TypeSelectInputState {
     let mut input = TypeSelectInputState::default();
@@ -191,11 +233,852 @@ fn boundary_mode(boundary: &serde_json::Value) -> TypeSelectInputState {
         0 => {}
         1 => input.finish_combatant_selection(TypeSelectOutcome::Empty, false),
         2 => input.finish_tap(TypeSelectOutcome::Empty, false),
-        3 => input.finish_health_navigation(true),
+        3 => input.finish_category_navigation(CategoryNavigationKind::Health, true),
+        4 => input.finish_category_navigation(CategoryNavigationKind::Veterancy, true),
         mode => panic!("unexpected original selection mode {mode}"),
     }
     input.across_map = boundary["across_map"].as_bool().unwrap();
     input
+}
+
+#[test]
+fn veterancy_navigation_keeps_shared_snapshot_without_pointer_expiry() {
+    // Native733160 removes only a notified pointer; changing Alive or
+    // Deselect alone does not expire the shared Health/Y snapshot.
+    let corpus = corpus();
+    let history = &corpus.combatant_cleanup_histories[0];
+    let (mut sim, rules) = fixture(&history.inputs, &[]);
+    let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+    input.category_navigation.prepare(
+        CategoryNavigationKind::Health,
+        false,
+        vec![20, 40, 50],
+        vec![],
+    );
+    input
+        .category_navigation
+        .record_category(CategoryNavigationKind::Health, 0);
+    input
+        .type_select
+        .finish_category_navigation(CategoryNavigationKind::Health, true);
+    input.type_select.across_map = true;
+    sim.entities_mut()
+        .get_mut(20)
+        .unwrap()
+        .lifecycle
+        .object_alive = false;
+    sim.entities_mut().get_mut(40).unwrap().selected = false;
+
+    reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+
+    assert_eq!(input.category_navigation.candidates, [20, 40, 50]);
+    assert_eq!(input.type_select.selection_scope_view().0, "health");
+    assert!(input.type_select.across_map);
+}
+
+fn native_last_category(value: &serde_json::Value) -> Option<u8> {
+    match value.as_i64().unwrap() {
+        -1 => None,
+        category @ 0..=2 => Some(category as u8),
+        other => panic!("unexpected supplied native category {other}"),
+    }
+}
+
+fn assert_navigation_rng(sim: &Simulation, native: &serde_json::Value, label: &str) {
+    for (name, rng) in [
+        ("main", &sim.main_rng),
+        ("scenario", &sim.scenario_rng),
+        ("mapgen", &sim.mapgen_rng),
+    ] {
+        assert_eq!(
+            rng.native_state_hex(),
+            native[name].as_str().unwrap(),
+            "{label}: full {name} cursor/state"
+        );
+    }
+}
+
+fn assert_navigation_boundary(
+    input: &crate::app::input::state::MatchInputState,
+    sim: &Simulation,
+    native: &serde_json::Value,
+    label: &str,
+) {
+    assert_eq!(
+        input.selection_order,
+        boundary_ids(native),
+        "{label}: ledger"
+    );
+    assert_eq!(
+        input.follow_target,
+        serde_json::from_value::<Option<u64>>(native["follow"].clone()).unwrap(),
+        "{label}: Follow target"
+    );
+    assert_eq!(
+        input.follow_target.is_some(),
+        native["follow_enabled"].as_bool().unwrap(),
+        "{label}: Follow validity"
+    );
+    assert_eq!(
+        input.type_select.selection_scope_view().0,
+        boundary_mode(native).selection_scope_view().0,
+        "{label}: shared navigation mode"
+    );
+    assert_eq!(
+        input.type_select.across_map,
+        native["across_map"].as_bool().unwrap(),
+        "{label}: independent map byte"
+    );
+    let (candidates, health_category, veterancy_category) =
+        input.category_navigation.navigation_view();
+    assert_eq!(
+        candidates,
+        serde_json::from_value::<Vec<u64>>(native["retained_navigation"].clone()).unwrap(),
+        "{label}: shared retained snapshot/order"
+    );
+    assert_eq!(
+        health_category,
+        native_last_category(&native["health_category"]),
+        "{label}: last Health category"
+    );
+    assert_eq!(
+        veterancy_category,
+        native_last_category(&native["veterancy_category"]),
+        "{label}: last Y category"
+    );
+    for (id, actor) in native["actor_state"].as_object().unwrap() {
+        let id: u64 = id.parse().unwrap();
+        // Removed registry storage is a declared input in one cleanup control;
+        // native's still-mapped bytes do not prove a Rust destructor/free.
+        let Some(entity) = sim.entities().get(id) else {
+            assert!(
+                !native["map_order"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|member| member.as_u64() == Some(id)),
+                "{label}: unexpected registry loss for{id}"
+            );
+            continue;
+        };
+        assert_eq!(
+            entity.selected,
+            actor["selected"].as_bool().unwrap(),
+            "{label}: committed bit{id}"
+        );
+        assert_eq!(
+            entity.lifecycle.object_alive,
+            actor["alive"].as_bool().unwrap(),
+            "{label}: Alive{id}"
+        );
+        assert_eq!(
+            entity.lifecycle.in_limbo,
+            actor["limbo"].as_bool().unwrap(),
+            "{label}: Limbo{id}"
+        );
+        assert_eq!(
+            u64::from(entity.veterancy_raw.bits()),
+            actor["veterancy_raw_bits"].as_u64().unwrap(),
+            "{label}: raw experience{id}"
+        );
+        if let Some(present) = actor["slave_owner_present"].as_bool() {
+            assert_eq!(
+                entity.slave.owner().is_some(),
+                present,
+                "{label}: existing SlaveOwner{id}"
+            );
+        }
+    }
+}
+
+fn navigation_csf(histories: &[CombatantHistory]) -> Option<crate::assets::csf_file::CsfFile> {
+    let (_, assets) = crate::rules::retail_ini_fixture::retail_assets()?;
+    let bytes = assets
+        .load_file_from_mix("ra2md.csf")
+        .expect("active-retail language table")
+        .bytes;
+    let sha = crate::util::sha256::sha256_hex(&bytes);
+    for history in histories {
+        assert_eq!(
+            history.csf_sha256.as_deref(),
+            Some(sha.as_str()),
+            "{}: physical language identity",
+            history.id
+        );
+    }
+    Some(crate::assets::csf_file::CsfFile::from_bytes(&bytes).unwrap())
+}
+
+fn apply_history_selection(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    input: &mut crate::app::input::state::MatchInputState,
+    mutation: &SelectionMutation,
+    voice_enabled: bool,
+    step: &serde_json::Value,
+    label: &str,
+) -> Vec<serde_json::Value> {
+    use crate::sim::rng::trace_draws;
+    use serde_json::json;
+
+    let before_rng = sim.rng_state();
+    let effects = resolve_selection_mutation(
+        sim,
+        Some(rules),
+        std::mem::take(&mut input.selection_order),
+        input.follow_target,
+        step["before"]["placement"].as_bool().unwrap(),
+        mutation,
+    );
+    assert_eq!(
+        sim.rng_state(),
+        before_rng,
+        "{label}: selection consumes no RNG"
+    );
+    let native_adds: Vec<_> = step["selection_calls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|call| call["name"] == "select" && call["accepted"] == true)
+        .map(|call| call["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        effects.successful_adds, native_adds,
+        "{label}: Select admission order"
+    );
+    if effects.native_selection_mode_reset {
+        input.type_select.note_successful_selection_mutation(false);
+    }
+    input.selection_order = effects.ordered;
+    input.follow_target = effects.follow_target;
+    let (requests, draws) = trace_draws(|| {
+        effects.successful_adds.iter().filter_map(|&id| {
+            sim.selection_voice_request(rules, id, voice_enabled).map(|sound| {
+                json!({"id": id, "sound_id": sound.strip_prefix("Sound").unwrap().parse::<i64>().unwrap()})
+            })
+        }).collect::<Vec<_>>()
+    });
+    assert_eq!(
+        requests,
+        *step
+            .get("accepted_voice_requests")
+            .unwrap_or(&step["voice_requests"])
+            .as_array()
+            .unwrap(),
+        "{label}: accepted presentation voices"
+    );
+    assert_eq!(
+        draws
+            .iter()
+            .map(|draw| draw["value"].clone())
+            .collect::<Vec<_>>(),
+        *step["main_draws"].as_array().unwrap(),
+        "{label}: ordered raw Main voice draws"
+    );
+    // Exercise the real complete-snapshot receiver. Its simulation stores the
+    // flags; the one app ledger retains ObjectSelect's prepend/append order.
+    assert!(sim.apply_command(
+        "local",
+        &Command::Select {
+            entity_ids: input.selection_order.clone(),
+            additive: !mutation.clear,
+        },
+        Some(rules),
+    ));
+    requests
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Native feedback comparison binds the selection transaction and retail language input"
+)]
+fn compare_category_feedback(
+    sim: &Simulation,
+    rules: &RuleSet,
+    input: &crate::app::input::state::MatchInputState,
+    kind: CategoryNavigationKind,
+    category: u8,
+    has_candidates: bool,
+    csf: Option<&crate::assets::csf_file::CsfFile>,
+    step: &serde_json::Value,
+    label: &str,
+) {
+    let mixed = input.selection_order.iter().any(|&id| {
+        entity_navigation_category(sim, rules, id, kind).is_some_and(|value| value != category)
+    });
+    let mut keys = vec![category_key(kind, category)];
+    let displayed_category = if mixed {
+        keys.push("MSG:Mixed");
+        "MSG:Mixed"
+    } else {
+        keys[0]
+    };
+    keys.push(if !has_candidates {
+        "MSG:NavEmpty"
+    } else if input.selection_order.is_empty() {
+        "MSG:NoUnitsSel"
+    } else {
+        "MSG:UnitsWorth"
+    });
+    assert_eq!(
+        serde_json::json!(keys),
+        step["message_keys"],
+        "{label}: localized keys"
+    );
+    let Some(csf) = csf else {
+        // No-archive runs still compare membership, keys and all RNG states.
+        // Strict retail checks require the physical localized text below.
+        return;
+    };
+    let worth = input
+        .selection_order
+        .iter()
+        .filter_map(|&id| sim.entities().get(id))
+        .filter_map(|entity| {
+            rules
+                .object(sim.interner.resolve(entity.type_ref()))
+                .map(|object| sim.cost_of(entity.owner(), object, rules))
+        })
+        .fold(0_i32, i32::wrapping_add);
+    let text = navigation_feedback(
+        has_candidates,
+        input.selection_order.len(),
+        worth,
+        &csf.text(displayed_category),
+        &csf.text("MSG:NavEmpty"),
+        &csf.text("MSG:NoUnitsSel"),
+        &csf.text("MSG:UnitsWorth"),
+    );
+    let messages = step["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 1, "{label}: one silent navigation message");
+    assert_eq!(
+        text,
+        messages[0]["text"].as_str().unwrap(),
+        "{label}: native formatted text"
+    );
+    assert_eq!(
+        messages[0]["silent"], 1,
+        "{label}: native message has no sound"
+    );
+}
+
+fn replay_category_history(
+    history: &CombatantHistory,
+    csf: Option<&crate::assets::csf_file::CsfFile>,
+) -> usize {
+    let (mut sim, rules) = fixture(&history.inputs, &history.selected);
+    let before = &history.steps[0]["before"];
+    let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+    input.type_select = boundary_mode(before);
+    input.selection_order = history.selected.clone();
+    input.follow_target = serde_json::from_value(before["follow"].clone()).unwrap();
+    // These are supplied native inputs, including the deliberately forged
+    // mode-with-category-minus-one and duplicate-pointer boundary controls.
+    input.category_navigation = CategoryNavigation {
+        candidates: serde_json::from_value(before["retained_navigation"].clone()).unwrap(),
+        health_category: native_last_category(&before["health_category"]),
+        veterancy_category: native_last_category(&before["veterancy_category"]),
+    };
+    let current_house = sim.session.current_house.unwrap();
+    sim.houses.get_mut(&current_house).unwrap().is_defeated = history.command_guard != 0;
+    // SelectionFixture supplies original A8ED84=1000 for these histories.
+    sim.session.binary_frame = 1000;
+    let rank_cache: BTreeMap<_, _> = sim
+        .entities()
+        .values()
+        .map(|entity| {
+            (
+                entity.stable_id(),
+                (entity.veterancy_rank_cache, entity.elite_flash_frames),
+            )
+        })
+        .collect();
+    let mut target_lines = crate::app::presentation::target_lines::TargetLineState::default();
+    target_lines.start_timer(before["action_timer"][0].as_u64().unwrap() as u32);
+    let timer_before = target_lines.remaining_frames(sim.session.binary_frame);
+    let mut category_steps = 0;
+    // This records outputs returned by the real shared voice owner. It is an
+    // observer of native queued-byte continuation, not a second admission or
+    // RNG implementation and not an audio-device playback claim.
+    let mut pending_voices: BTreeMap<u64, i64> = if history.inputs.enslaved_voice_trace {
+        before["actor_state"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(id, actor)| (id.parse().unwrap(), actor["queued_voice"].as_i64().unwrap()))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
+    for (index, step) in history.steps.iter().enumerate() {
+        let label = format!("{} step {index} {}", history.id, step["command"]);
+        assert_navigation_boundary(&input, &sim, &step["before"], &label);
+        assert_navigation_rng(&sim, &step["rng_before_hex"], &label);
+        if history.inputs.enslaved_voice_trace {
+            assert!(
+                step["accepted_voice_requests"].is_array(),
+                "{label}: actual native writes"
+            );
+            for (&id, &sound) in &pending_voices {
+                assert_eq!(
+                    sound,
+                    step["before"]["actor_state"][id.to_string()]["queued_voice"]
+                        .as_i64()
+                        .unwrap(),
+                    "{label}: prior queued voice{id}"
+                );
+            }
+        }
+        let mut accepted_voice_requests = Vec::new();
+        match step["command"].as_str().unwrap() {
+            "health" | "veterancy" => {
+                let kind = if step["command"] == "health" {
+                    CategoryNavigationKind::Health
+                } else {
+                    CategoryNavigationKind::Veterancy
+                };
+                let screen = boundary_screen_ids(&step["before"]);
+                let before_rng = sim.rng_state();
+                let result = category_selection(
+                    &sim,
+                    &rules,
+                    &mut input.category_navigation,
+                    &input.type_select,
+                    kind,
+                    &screen,
+                    input.selection_order.clone(),
+                    step["key_word"].as_u64().unwrap() & 0x100 == 0,
+                );
+                assert_eq!(
+                    sim.rng_state(),
+                    before_rng,
+                    "{label}: snapshot/rank scan draws no RNG"
+                );
+                if let Some(result) = result {
+                    accepted_voice_requests = apply_history_selection(
+                        &mut sim,
+                        &rules,
+                        &mut input,
+                        &result.mutation,
+                        history.voice_enabled,
+                        step,
+                        &label,
+                    );
+                    compare_category_feedback(
+                        &sim,
+                        &rules,
+                        &input,
+                        kind,
+                        result.category,
+                        result.has_candidates,
+                        csf,
+                        step,
+                        &label,
+                    );
+                    // Native7335B6/733900 and7335C1/73390B write the final
+                    // category/mode only after voices and formatted feedback.
+                    input
+                        .category_navigation
+                        .record_category(kind, result.category);
+                    input
+                        .type_select
+                        .finish_category_navigation(kind, result.has_candidates);
+                    assert_eq!(
+                        input.type_select.selection_scope_view().2,
+                        None,
+                        "{label}: category feedback supersedes P/T outcome"
+                    );
+                } else {
+                    assert!(
+                        sim.houses[&current_house].is_defeated,
+                        "{label}: authoritative early guard"
+                    );
+                    for key in [
+                        "selection_calls",
+                        "voice_requests",
+                        "main_draws",
+                        "message_keys",
+                        "scope_writes",
+                        "category_writes",
+                    ] {
+                        assert!(
+                            step[key].as_array().unwrap().is_empty(),
+                            "{label}: guarded {key}"
+                        );
+                    }
+                }
+                super::super::apply_selection_action_line_policy_at_frame(
+                    &mut target_lines,
+                    sim.session.binary_frame,
+                    super::super::SelectionActionLinePolicy::Preserve,
+                );
+                assert_eq!(
+                    target_lines.remaining_frames(sim.session.binary_frame),
+                    timer_before,
+                    "{label}: actual Preserve timer owner"
+                );
+                assert_eq!(
+                    step["action_timer"], step["before"]["action_timer"],
+                    "{label}: original timer bytes retained"
+                );
+                for key in ["redraw", "cursor_calls", "timer_writes", "detach_calls"] {
+                    assert!(
+                        step[key].as_array().unwrap().is_empty(),
+                        "{label}: no {key}"
+                    );
+                }
+                assert!(step["center_coord"].is_null(), "{label}: no camera request");
+                assert_eq!(
+                    step["modes"], step["before"]["modes"],
+                    "{label}: targeting modes retained"
+                );
+                assert_eq!(
+                    step["placement"], step["before"]["placement"],
+                    "{label}: placement retained"
+                );
+                category_steps += 1;
+            }
+            "combatant" => {
+                input.type_select.prepare_combatant_scope();
+                let screen = boundary_screen_ids(&step["before"]);
+                let map: Vec<u64> =
+                    serde_json::from_value(step["before"]["map_order"].clone()).unwrap();
+                let result = combatant_selection(
+                    &sim,
+                    &rules,
+                    &screen,
+                    &map,
+                    &input.selection_order,
+                    step["key_word"].as_u64().unwrap() & 0x100 == 0,
+                    input.type_select.across_map,
+                );
+                accepted_voice_requests = apply_history_selection(
+                    &mut sim,
+                    &rules,
+                    &mut input,
+                    &result.mutation,
+                    history.voice_enabled,
+                    step,
+                    &label,
+                );
+                let outcome = if input.selection_order.is_empty() {
+                    TypeSelectOutcome::Empty
+                } else if result.across_map {
+                    TypeSelectOutcome::Map
+                } else {
+                    TypeSelectOutcome::Screen
+                };
+                input
+                    .type_select
+                    .finish_combatant_selection(outcome, result.across_map);
+            }
+            "ordinary_select" | "ordinary_deselect" | "unselect_all" => {
+                let mut mutation = SelectionMutation::default();
+                match step["command"].as_str().unwrap() {
+                    "ordinary_select" => mutation.select.push(step["id"].as_u64().unwrap()),
+                    "ordinary_deselect" => mutation.deselect.push(step["id"].as_u64().unwrap()),
+                    _ => mutation.clear = true,
+                }
+                accepted_voice_requests = apply_history_selection(
+                    &mut sim,
+                    &rules,
+                    &mut input,
+                    &mutation,
+                    history.voice_enabled,
+                    step,
+                    &label,
+                );
+            }
+            "pointer_expiry" => input
+                .category_navigation
+                .pointer_expired(step["id"].as_u64().unwrap()),
+            "supply_veterancy_raw_bits" => {
+                sim.entities_mut()
+                    .get_mut(step["id"].as_u64().unwrap())
+                    .unwrap()
+                    .veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(
+                    step["bits"].as_u64().unwrap() as u32,
+                );
+            }
+            "supply_actor_state" => {
+                let entity = sim
+                    .entities_mut()
+                    .get_mut(step["id"].as_u64().unwrap())
+                    .unwrap();
+                for (field, value) in step["fields"].as_object().unwrap() {
+                    match field.as_str() {
+                        "alive" => entity.lifecycle.object_alive = value.as_bool().unwrap(),
+                        "limbo" => entity.lifecycle.in_limbo = value.as_bool().unwrap(),
+                        "selected" => entity.selected = value.as_bool().unwrap(),
+                        "health" => entity.health.current = value.as_i64().unwrap() as i32,
+                        other => panic!("unsupported declared actor-state writer {other}"),
+                    }
+                }
+            }
+            "supply_command_guard" => {
+                // This compares the bounded admission condition only; arbitrary
+                // writes to A8B538 do not establish the whole defeat lifecycle.
+                sim.houses.get_mut(&current_house).unwrap().is_defeated =
+                    step["value"].as_u64().unwrap() != 0;
+            }
+            "free_slave_owner_writer" => {
+                // The fixture executes this original FreeSlaves writer only.
+                // Supply its resulting boundary through the existing link;
+                // this replay does not establish the whole release lifecycle.
+                assert_eq!(step["entry"], "0x6b0b6d", "{label}: original writer");
+                assert_eq!(step["stop"], "0x6b0b98", "{label}: writer boundary");
+                let entity = sim
+                    .entities_mut()
+                    .get_mut(step["id"].as_u64().unwrap())
+                    .unwrap();
+                entity.slave = crate::sim::slave_manager::SlaveLink::for_test(
+                    None,
+                    entity.slave.cargo().to_vec(),
+                );
+            }
+            "reset_selection_mode" => input.type_select.note_successful_selection_mutation(false),
+            "object_detach_all" | "object_conceal" => {
+                // Supply the executed native lifecycle boundary, then test the
+                // shared navigation leaf and its next command. Actual Rust
+                // broadcast/frame-output/app consumption is covered separately.
+                let id = step["id"].as_u64().unwrap();
+                input.category_navigation.pointer_expired(id);
+                accepted_voice_requests = apply_history_selection(
+                    &mut sim,
+                    &rules,
+                    &mut input,
+                    &SelectionMutation {
+                        deselect: vec![id],
+                        ..Default::default()
+                    },
+                    history.voice_enabled,
+                    step,
+                    &label,
+                );
+                let entity = sim.entities_mut().get_mut(id).unwrap();
+                entity.lifecycle.object_alive = step["actor_state"][id.to_string()]["alive"]
+                    .as_bool()
+                    .unwrap();
+                entity.lifecycle.in_limbo = step["actor_state"][id.to_string()]["limbo"]
+                    .as_bool()
+                    .unwrap();
+            }
+            "supply_selection_sources" => {
+                let map: Vec<u64> = serde_json::from_value(step["map_order"].clone()).unwrap();
+                for actor in &history.inputs.actors {
+                    if !map.contains(&actor.id) {
+                        sim.entities_mut().remove(actor.id);
+                    }
+                }
+            }
+            "type" => {
+                // The complete TypeSelect AppState path owns a window. This is
+                // an explicit original interleave boundary, not a Rust TypeSelect
+                // claim; subsequent Y snapshots are derived by the actual owner.
+                input.selection_order = boundary_ids(step);
+                input.follow_target = serde_json::from_value(step["follow"].clone()).unwrap();
+                input.type_select = boundary_mode(step);
+                for actor in &history.inputs.actors {
+                    sim.entities_mut().get_mut(actor.id).unwrap().selected = step["selected_flags"]
+                        [actor.id.to_string()]
+                    .as_bool()
+                    .unwrap();
+                }
+                for draw in step["main_draws"].as_array().unwrap() {
+                    assert_eq!(
+                        u64::from(sim.main_rng.next_u32()),
+                        draw.as_u64().unwrap(),
+                        "{label}: supplied TypeSelect continuation"
+                    );
+                }
+            }
+            other => panic!("unsupported original history command {other}"),
+        }
+        if history.inputs.enslaved_voice_trace {
+            for request in accepted_voice_requests {
+                pending_voices.insert(
+                    request["id"].as_u64().unwrap(),
+                    request["sound_id"].as_i64().unwrap(),
+                );
+            }
+            for (&id, &sound) in &pending_voices {
+                assert_eq!(
+                    sound,
+                    step["queued_voices"][id.to_string()].as_i64().unwrap(),
+                    "{label}: native queued voice{id}"
+                );
+            }
+        }
+        assert_navigation_boundary(&input, &sim, step, &label);
+        assert_navigation_rng(&sim, &step["rng_after_hex"], &label);
+        let mut continuation = sim.main_rng.clone();
+        for draw in step["main_next_four"].as_array().unwrap() {
+            assert_eq!(
+                u64::from(continuation.next_u32()),
+                draw.as_u64().unwrap(),
+                "{label}: next raw Main continuation"
+            );
+        }
+        for entity in sim.entities().values() {
+            assert_eq!(
+                (entity.veterancy_rank_cache, entity.elite_flash_frames),
+                rank_cache[&entity.stable_id()],
+                "{label}: navigation samples raw without announcing/promoting {}",
+                entity.stable_id()
+            );
+        }
+    }
+    assert_eq!(
+        sim.main_rng.native_state_hex(),
+        history.rng_after_hex["main"],
+        "{}: whole Main history",
+        history.id
+    );
+    assert_eq!(
+        sim.scenario_rng.native_state_hex(),
+        history.rng_after_hex["scenario"],
+        "{}: whole Scenario history",
+        history.id
+    );
+    assert_eq!(
+        sim.mapgen_rng.native_state_hex(),
+        history.rng_after_hex["mapgen"],
+        "{}: whole MapGen history",
+        history.id
+    );
+    for &draw in &history.main_next_four {
+        assert_eq!(
+            sim.main_rng.next_u32(),
+            draw,
+            "{}: final Main continuation",
+            history.id
+        );
+    }
+    category_steps
+}
+
+#[test]
+fn veterancy_histories_match_native_snapshot_cycle_feedback_and_rng() {
+    let corpus = corpus();
+    assert_eq!(corpus.veterancy_histories.len(), 38);
+    let csf = navigation_csf(&corpus.veterancy_histories);
+    let mut excluded = BTreeSet::new();
+    let mut compared = 0;
+    for history in &corpus.veterancy_histories {
+        if history
+            .inputs
+            .actors
+            .iter()
+            .any(|actor| actor.robot_offline || !actor.techno_cast)
+        {
+            excluded.insert(history.id.as_str());
+            continue;
+        }
+        compared += replay_category_history(history, csf.as_ref());
+    }
+    // RobotOffline still lacks a lifecycle owner; GameEntity supplies a typed
+    // Techno identity. Neither is silently mapped to a convenient fixture bit.
+    assert_eq!(
+        excluded,
+        BTreeSet::from(["fallback_robot_offline", "fallback_no_techno_cast"])
+    );
+    assert_eq!(compared, 62);
+}
+
+#[test]
+fn health_navigation_histories_match_native_shared_owner_source_and_guard() {
+    let corpus = corpus();
+    assert_eq!(corpus.health_navigation_histories.len(), 14);
+    let csf = navigation_csf(&corpus.health_navigation_histories);
+    let compared: usize = corpus
+        .health_navigation_histories
+        .iter()
+        .map(|history| replay_category_history(history, csf.as_ref()))
+        .sum();
+    assert_eq!(compared, 23);
+}
+
+#[test]
+fn veterancy_cleanup_histories_match_native_expiry_deselect_and_duplicate_order() {
+    let corpus = corpus();
+    assert_eq!(corpus.veterancy_cleanup_histories.len(), 13);
+    let csf = navigation_csf(&corpus.veterancy_cleanup_histories);
+    let compared: usize = corpus
+        .veterancy_cleanup_histories
+        .iter()
+        .map(|history| replay_category_history(history, csf.as_ref()))
+        .sum();
+    assert_eq!(compared, 18);
+}
+
+#[test]
+fn enslaved_selection_voices_match_native_lists_release_boundary_gates_and_rng() {
+    let corpus = corpus();
+    assert_eq!(corpus.enslaved_voice_histories.len(), 28);
+    let csf = navigation_csf(&corpus.enslaved_voice_histories);
+    let mut category_steps = 0;
+    let mut steps = 0;
+    let mut writer_boundaries = 0;
+    for history in &corpus.enslaved_voice_histories {
+        assert!(history.inputs.enslaved_voice_trace && history.inputs.navigation_trace);
+        assert!(history.inputs.actors.iter().all(|actor| {
+            actor.enslaved_voice_list.is_some() && !actor.robot_offline && actor.techno_cast
+        }));
+        for step in &history.steps {
+            for boundary in [&step["before"], step] {
+                for actor in boundary["actor_state"].as_object().unwrap().values() {
+                    assert!(actor["slave_owner_present"].is_boolean());
+                    assert!(actor["queued_voice"].is_i64());
+                }
+            }
+            assert_eq!(
+                step["voice_writes"].as_array().unwrap().len(),
+                step["accepted_voice_requests"].as_array().unwrap().len(),
+                "{}: retained actual QueueVoice writes, including rejection controls",
+                history.id
+            );
+            writer_boundaries += usize::from(step["command"] == "free_slave_owner_writer");
+        }
+        category_steps += replay_category_history(history, csf.as_ref());
+        steps += history.steps.len();
+    }
+    assert_eq!((steps, category_steps, writer_boundaries), (76, 68, 4));
+}
+
+#[test]
+fn veterancy_navigation_samples_original_raw_rank_without_cached_rank_writes() {
+    let corpus = corpus();
+    assert_eq!(corpus.veterancy_rank_cases.len(), 16);
+    let history = &corpus.veterancy_histories[0];
+    for row in &corpus.veterancy_rank_cases {
+        let (mut sim, rules) = fixture(&history.inputs, &[]);
+        let id = history.inputs.actors[0].id;
+        let entity = sim.entities_mut().get_mut(id).unwrap();
+        entity.veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(
+            row["raw_bits"].as_u64().unwrap() as u32,
+        );
+        // The executed750030 leaf never reads Techno's announced-rank cache.
+        // A deliberately stale valid value catches using it instead of raw.
+        entity.veterancy_rank_cache = ((row["rank"].as_u64().unwrap() + 1) % 3) as i8;
+        let cache = entity.veterancy_rank_cache;
+        let flash = entity.elite_flash_frames;
+        let before_rng = sim.rng_state();
+        assert_eq!(
+            entity_navigation_category(&sim, &rules, id, CategoryNavigationKind::Veterancy),
+            Some(row["rank"].as_u64().unwrap() as u8),
+            "{}: original750030 rank",
+            row["id"]
+        );
+        assert_eq!(sim.rng_state(), before_rng, "{}: no RNG", row["id"]);
+        let entity = sim.entities().get(id).unwrap();
+        assert_eq!(
+            (entity.veterancy_rank_cache, entity.elite_flash_frames),
+            (cache, flash),
+            "{}: read-only raw rank",
+            row["id"]
+        );
+        assert_navigation_rng(&sim, &row["rng_after_hex"], row["id"].as_str().unwrap());
+    }
 }
 
 #[test]
@@ -689,9 +1572,12 @@ fn combatant_shared_mode_health_retains_native_map_latch() {
             // ordinary on-screen actors. Health's first category may select
             // none even while its retained snapshot is nonempty.
             let mut input = boundary_mode(&step["before"]);
-            input.finish_health_navigation(!history.inputs.actors.is_empty());
+            input.finish_category_navigation(
+                CategoryNavigationKind::Health,
+                !history.inputs.actors.is_empty(),
+            );
             assert_eq!(
-                input.health_navigation_continues(),
+                input.category_navigation_continues(CategoryNavigationKind::Health),
                 step["selection_mode"] == 3,
                 "{}: Health mode",
                 history.id
@@ -717,10 +1603,10 @@ fn combatant_defeat_admission_matches_original_early_guard() {
         .find(|history| history.id == "guarded_P_preserves_all")
         .unwrap();
     let (mut sim, _) = fixture(&row.inputs, &row.selected);
-    assert!(combatant_selection_allowed(&sim));
+    assert!(selection_navigation_allowed(&sim));
     let local = sim.session.current_house.unwrap();
     sim.houses.get_mut(&local).unwrap().is_defeated = true;
-    assert!(!combatant_selection_allowed(&sim));
+    assert!(!selection_navigation_allowed(&sim));
     let step = &row.steps[0];
     for key in [
         "selected",
@@ -767,6 +1653,11 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
     // These are explicit source inputs to the production INI reader, not
     // asserted retail rosters or a second implementation of the predicates.
     let mut ini = String::new();
+    if inputs.navigation_trace {
+        // Declared native SelectionFixture rules+1700/+1708 inputs, not the
+        // constructor defaults: red defaults0.5 before retail authors25%.
+        ini.push_str("[AudioVisual]\nConditionYellow=50%\nConditionRed=25%\n");
+    }
     for (section, kind) in [
         ("InfantryTypes", "infantry"),
         ("VehicleTypes", "unit"),
@@ -781,21 +1672,72 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
         }
     }
     for actor in &inputs.actors {
+        assert!(actor.voice_list.iter().all(|&id| id >= -1));
+        assert!(
+            actor
+                .enslaved_voice_list
+                .iter()
+                .flatten()
+                .all(|&id| id >= -1)
+        );
         writeln!(
             ini,
-            "[ACTOR{}]\nStrength=100\nSelectable={}\nIsSelectableCombatant={}\nPrimary={}\nVoiceSelect={}",
+            "[ACTOR{}]\nStrength={}\nCost={}\nSelectable={}\nIsSelectableCombatant={}\nPrimary={}\nVoiceSelect={}",
             actor.id,
+            actor.strength,
+            actor.cost,
             if actor.selectable { "yes" } else { "no" },
             if actor.is_selectable_combatant { "yes" } else { "no" },
             if actor.positive_primary_damage { "GUN" } else { "QUIETGUN" },
-            actor.voice_list.iter().map(|id| format!("Sound{id}")).collect::<Vec<_>>().join(","),
+            actor.voice_list.iter().filter(|&&id| id >= 0).map(|id| format!("Sound{id}")).collect::<Vec<_>>().join(","),
         )
         .unwrap();
+        if let Some(voices) = &actor.enslaved_voice_list {
+            writeln!(
+                ini,
+                "VoiceSelectEnslaved={}",
+                voices
+                    .iter()
+                    .filter(|&&id| id >= 0)
+                    .map(|id| format!("Sound{id}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .unwrap();
+        }
     }
     ini.push_str(
         "[DOCKBUILDING]\nStrength=100\nFoundation=1x1\n[GUN]\nDamage=10\n[QUIETGUN]\nDamage=0\n",
     );
-    let rules = RuleSet::from_ini(&IniFile::from_str(&ini)).expect("native control types");
+    let mut rules = RuleSet::from_ini(&IniFile::from_str(&ini)).expect("native control types");
+    for actor in &inputs.actors {
+        let unbound = |voices: &[i64]| voices.contains(&-1);
+        if unbound(&actor.voice_list) || actor.enslaved_voice_list.as_deref().is_some_and(unbound) {
+            assert!(
+                inputs.enslaved_voice_trace,
+                "raw unresolved vectors require the declared native boundary"
+            );
+            let supplied_names = |voices: &[i64]| {
+                voices
+                    .iter()
+                    .map(|&id| match id {
+                        -1 => String::new(),
+                        0.. => format!("Sound{id}"),
+                        other => panic!("unsupported supplied sound index {other}"),
+                    })
+                    .collect()
+            };
+            // Original fixture vectors may deliberately contain ID-1; the
+            // real ReadSoundList cannot produce it. Supply only that declared
+            // boundary through RuleSet's fixture capability. Ordinary lists
+            // above still come from the actual exact-case INI reader.
+            rules.supply_selection_voice_vectors_for_test(
+                &format!("ACTOR{}", actor.id),
+                supplied_names(&actor.voice_list),
+                supplied_names(actor.enslaved_voice_list.as_deref().unwrap_or_default()),
+            );
+        }
+    }
     let mut sim = Simulation::with_seed(inputs.seed);
     let local = sim.interner.intern("local");
     let other = sim.interner.intern("other");
@@ -806,6 +1748,7 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
         .insert(local, HouseState::new(local, 0, None, true, 0, 10));
     let mut other_house = HouseState::new(other, 1, None, inputs.house.other_human, 0, 10);
     other_house.player_control = inputs.house.other_control;
+    other_house.multiplay_passive = inputs.house.other_passive;
     sim.houses.insert(other, other_house);
     for actor in &inputs.actors {
         assert!(!actor.robot_offline && actor.techno_cast);
@@ -842,6 +1785,9 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
         entity.in_playfield = actor.in_playfield;
         entity.discovery.discovered_by_current_house = actor.discovered;
         entity.selected = selected.contains(&actor.id);
+        if let Some(bits) = actor.veterancy_raw_bits {
+            entity.veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(bits);
+        }
         entity.foot_locomotor_swap_active = actor.locomotor_swap;
         if actor.mission_only {
             entity.mark_mission_only();
@@ -999,7 +1945,7 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
         // Native fixture input B0FE54=3, B0FE58=1. Reach that state through
         // the existing mode owner, then use its ordinary-selection reset.
         let mut type_select = TypeSelectInputState::default();
-        type_select.finish_health_navigation(true);
+        type_select.finish_category_navigation(CategoryNavigationKind::Health, true);
         type_select.across_map = true;
         assert_eq!(row.directions.len(), row.steps.len());
         for (index, (requested, expected)) in row.directions.iter().zip(&row.steps).enumerate() {
@@ -1083,7 +2029,7 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
                 row.id
             );
             assert_eq!(
-                type_select.health_navigation_continues(),
+                type_select.category_navigation_continues(CategoryNavigationKind::Health),
                 expected.selection_mode == 3,
                 "{} step {index}: selection mode",
                 row.id

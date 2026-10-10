@@ -324,6 +324,11 @@ pub(crate) enum LifecycleOutput {
     LineTrailDetached {
         stable_id: u64,
     },
+    /// DispatchPointerExpired7258D0 reaches navigation733160 at7259B1
+    /// for a Techno abstract pointer, regardless of announce-control or Alive.
+    ObjectPointerExpired {
+        stable_id: u64,
+    },
     RevealDisplay {
         stable_id: u64,
     },
@@ -4250,6 +4255,17 @@ impl Simulation {
         // and the BombList; a SpawnManager's slot guard reads the membership
         // before it.
         self.kamikaze.remove(expired_id);
+        // Dispatch7258D0's Techno-bit gate reaches733160 at7259B1 after
+        // Kamikaze Remove. Executed controls: input_oracle/selection_navigation.
+        // All typed GameEntity classes carry Abstract+14's Techno bit. Smudge
+        // does not, so it must not produce this handoff. It precedes native
+        // Tactical/Logic expiry and eventual DisplayRemove/Alive writes.
+        if expired_owner.is_some() {
+            self.lifecycle_outputs
+                .push(LifecycleOutput::ObjectPointerExpired {
+                    stable_id: expired_id,
+                });
+        }
     }
 
     /// ObjectClass::UnInit represented ordering.  Physical removal is deferred.

@@ -1,7 +1,9 @@
-//! Next/Previous536610/536A80, HealthNav536950 ->733380 and P5367F0 ->732280.
-//! Executed N/M controls: tools/input_oracle/selection_navigation.json.
+//! N/M536610/536A80, P5367F0 ->732280, Health536950 ->733380, Y5369F0 ->7336C0.
+//! Original body/caller/data and executed controls:
+//! tools/input_oracle/selection_navigation.{py,json,meta.json,md}.
 
 use super::{AppState, SelectionMutation};
+use crate::app::types::CategoryNavigationKind;
 use crate::assets::csf_file::{CsfArg, format_csf};
 use crate::map::entities::EntityCategory;
 
@@ -117,15 +119,30 @@ struct CombatantSelection {
     across_map: bool,
 }
 
-/// P732286's A8B538 guard is the local player's defeat latch:
+/// P732280, Health733380 and Y7336C0 share the A8B538 defeat guard:
 /// House4FC1B0..4FC205 sets it only for PlayerPtr; session52DA94 and
 /// cooperative setup5C38A8..5C3ABE clear it. The existing House outcome
 /// owner supplies this state; input keeps no competing defeat flag.
-fn combatant_selection_allowed(sim: &crate::sim::world::Simulation) -> bool {
+fn selection_navigation_allowed(sim: &crate::sim::world::Simulation) -> bool {
     !sim.session
         .current_house
         .and_then(|id| sim.houses.get(&id))
         .is_some_and(|house| house.is_defeated)
+}
+
+/// Shared owner arm of the P732580 and Health/Y7335F0 source predicates.
+/// Campaign reads only House+1ED; otherwise use the existing50B6F0 port.
+fn navigation_owner_controlled(
+    sim: &crate::sim::world::Simulation,
+    owner: crate::sim::intern::InternedId,
+) -> bool {
+    if sim.session.game_mode_nonzero {
+        sim.house_is_human_player(owner)
+    } else {
+        sim.houses
+            .get(&owner)
+            .is_some_and(|house| house.player_control)
+    }
 }
 
 /// P732280's local/alive collection precedes its combatant/dynamic screen
@@ -144,17 +161,7 @@ fn combatant_selection(
         clear: replace,
         ..Default::default()
     };
-    let player_owned = |owner| {
-        if sim.session.game_mode_nonzero {
-            sim.house_is_human_player(owner)
-        } else {
-            //732598's campaign arm reads only owner+1ED, unlike
-            // House50B6F0's human-or-control predicate.
-            sim.houses
-                .get(&owner)
-                .is_some_and(|house| house.player_control)
-        }
-    };
+    let player_owned = |owner| navigation_owner_controlled(sim, owner);
     // Tactical6DA770 drops a lone non-player-controlled selection before
     // testing the shared mode. Deselect clears Follow but retains that mode.
     let dropped = selected.first().copied().filter(|id| {
@@ -220,7 +227,7 @@ pub(super) fn execute_combatant_selection(state: &mut AppState) {
         .match_state
         .sim_runtime
         .as_ref()
-        .is_none_or(|rt| !combatant_selection_allowed(&rt.simulation))
+        .is_none_or(|rt| !selection_navigation_allowed(&rt.simulation))
     {
         return;
     }
@@ -290,32 +297,74 @@ pub(super) fn execute_combatant_selection(state: &mut AppState) {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct HealthNavigation {
+pub(crate) struct CategoryNavigation {
     candidates: Vec<u64>,
-    category: u8,
+    // Original845560/845564 start at -1. None retains that sentinel without
+    // treating a forged continuing mode as a previously visited category.
+    health_category: Option<u8>,
+    veterancy_category: Option<u8>,
 }
 
-impl HealthNavigation {
+impl CategoryNavigation {
     fn reset(&mut self, mode: &mut crate::app::types::TypeSelectInputState) {
         *self = Self::default();
         *mode = Default::default();
     }
-    pub(crate) fn retain(&mut self, alive: impl FnMut(&u64) -> bool) {
-        self.candidates.retain(alive);
+    /// Original733160 scans backward and stable-erases one last match. It
+    /// changes neither category, selection mode nor the independent map byte.
+    pub(crate) fn pointer_expired(&mut self, id: u64) {
+        if let Some(index) = self
+            .candidates
+            .iter()
+            .rposition(|candidate| *candidate == id)
+        {
+            self.candidates.remove(index);
+        }
     }
 
-    /// Fresh entry snapshots before clearing, and starts at critical even when
-    /// Shift is held. Later taps retain the snapshot and advance one category.
-    fn prepare(&mut self, continuing: bool, selected: Vec<u64>, visible: Vec<u64>) {
+    /// Read-only capture of the authoritative B0FE6C source and last categories.
+    pub(crate) fn navigation_view(&self) -> (&[u64], Option<u8>, Option<u8>) {
+        (
+            &self.candidates,
+            self.health_category,
+            self.veterancy_category,
+        )
+    }
+
+    fn category(&self, kind: CategoryNavigationKind) -> Option<u8> {
+        match kind {
+            CategoryNavigationKind::Health => self.health_category,
+            CategoryNavigationKind::Veterancy => self.veterancy_category,
+        }
+    }
+
+    fn record_category(&mut self, kind: CategoryNavigationKind, category: u8) {
+        debug_assert!(category < 3);
+        match kind {
+            CategoryNavigationKind::Health => self.health_category = Some(category),
+            CategoryNavigationKind::Veterancy => self.veterancy_category = Some(category),
+        }
+    }
+
+    /// Fresh entry snapshots before clearing and starts at critical/elite
+    /// even with Shift. Continuing taps retain the vector and advance only
+    /// this command's category. The caller records it after feedback.
+    fn prepare(
+        &mut self,
+        kind: CategoryNavigationKind,
+        continuing: bool,
+        selected: Vec<u64>,
+        visible: Vec<u64>,
+    ) -> u8 {
         if continuing {
-            self.category = (self.category + 1) % 3;
+            self.category(kind).map_or(0, |category| (category + 1) % 3)
         } else {
             self.candidates = if selected.is_empty() {
                 visible
             } else {
                 selected
             };
-            self.category = 0;
+            0
         }
     }
 }
@@ -324,7 +373,7 @@ impl HealthNavigation {
 /// Stable IDs can be reused by a new/restored world, so clearing only absent
 /// IDs is insufficient. Persistent bindings and CursorCheat are untouched.
 pub(crate) fn reset_for_world_replacement(input: &mut crate::app::input::state::MatchInputState) {
-    input.health_navigation.reset(&mut input.type_select);
+    input.category_navigation.reset(&mut input.type_select);
     input.selection_order.clear();
     input.selection_order_pending = false;
 }
@@ -346,102 +395,161 @@ fn health_category(current: i32, strength: i32, red: f64, yellow: f64) -> u8 {
     }
 }
 
-fn category_key(category: u8) -> &'static str {
-    match category {
-        0 => "MSG:Critical",
-        1 => "MSG:HeavilyDamaged",
-        _ => "MSG:Healthy",
+fn category_key(kind: CategoryNavigationKind, category: u8) -> &'static str {
+    match (kind, category) {
+        (CategoryNavigationKind::Health, 0) => "MSG:Critical",
+        (CategoryNavigationKind::Health, 1) => "MSG:HeavilyDamaged",
+        (CategoryNavigationKind::Health, _) => "MSG:Healthy",
+        (CategoryNavigationKind::Veterancy, 0) => "MSG:Elite",
+        (CategoryNavigationKind::Veterancy, 1) => "MSG:Veteran",
+        (CategoryNavigationKind::Veterancy, _) => "MSG:LittleExperience",
     }
 }
 
-pub(super) fn execute_health_navigation(state: &mut AppState) {
-    let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    else {
-        return;
-    };
-    let current = super::selected_stable_ids_in_order(
-        state
-            .match_state
-            .sim_runtime
-            .as_ref()
-            .map(|rt| &rt.simulation),
-        state.rules(),
-        &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
-    );
-    let continuing = state
-        .match_state
-        .input
-        .type_select
-        .health_navigation_continues();
-    let local = super::preferred_local_owner_name(state);
-    // 731F70 iterates the tactical draw array. The fallback predicate7335F0
-    // admits alive locally controlled mobile technos; current selection is
-    // copied without applying that fallback predicate (732050).
-    let visible = if !continuing && current.is_empty() {
-        crate::app::presentation::instances::tactical_screen_entity_encounter_order(state)
-            .into_iter()
+fn entity_navigation_category(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    id: u64,
+    kind: CategoryNavigationKind,
+) -> Option<u8> {
+    let entity = sim.entities().get(id)?;
+    match kind {
+        CategoryNavigationKind::Health => {
+            let object = rules.object(sim.interner.resolve(entity.type_ref()))?;
+            Some(health_category(
+                entity.health.current,
+                object.strength,
+                rules.general.condition_red,
+                rules.general.condition_yellow,
+            ))
+        }
+        // Y7336C0 calls750030 on live raw+150, never the announced-rank cache.
+        CategoryNavigationKind::Veterancy => {
+            Some(crate::sim::combat::veterancy::veterancy_level(entity.veterancy_raw) as u8)
+        }
+    }
+}
+
+struct CategorySelection {
+    mutation: SelectionMutation,
+    category: u8,
+    has_candidates: bool,
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "One native navigation transaction binds world, input owner and source orders"
+)]
+fn category_selection(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    navigation: &mut CategoryNavigation,
+    mode: &crate::app::types::TypeSelectInputState,
+    kind: CategoryNavigationKind,
+    screen_order: &[u64],
+    selected: Vec<u64>,
+    replace: bool,
+) -> Option<CategorySelection> {
+    if !selection_navigation_allowed(sim) {
+        return None;
+    }
+    let continuing = mode.category_navigation_continues(kind);
+    // Rust's typed GameEntity store represents the Techno abstract bit. The
+    // selected source732050 has no Alive/owner/building gate. Screen731F70
+    // applies7335F0 only when that selected source is empty.
+    let selected: Vec<_> = selected
+        .into_iter()
+        .filter(|id| sim.entities().contains(*id))
+        .collect();
+    let visible = if !continuing && selected.is_empty() {
+        screen_order
+            .iter()
+            .copied()
             .filter(|id| {
                 sim.entities().get(*id).is_some_and(|entity| {
                     entity.lifecycle.object_alive
                         && entity.category != EntityCategory::Structure
-                        && local.as_deref().is_some_and(|owner| {
-                            sim.interner
-                                .resolve(entity.owner())
-                                .eq_ignore_ascii_case(owner)
-                        })
+                        && navigation_owner_controlled(sim, entity.owner())
                 })
             })
             .collect()
     } else {
         Vec::new()
     };
-    let (red, yellow) = state.rules().map_or((0.25, 0.5), |rules| {
-        (rules.general.condition_red, rules.general.condition_yellow)
-    });
-    state
-        .match_state
-        .input
-        .health_navigation
-        .prepare(continuing, current, visible);
-    let navigation = &state.match_state.input.health_navigation;
-    let category = navigation.category;
+    let category = navigation.prepare(kind, continuing, selected, visible);
     let has_candidates = !navigation.candidates.is_empty();
     let mutation = SelectionMutation {
-        clear: !continuing || !state.match_state.input.hotkey_modifiers.shift_key(),
+        clear: !continuing || replace,
         select: navigation
             .candidates
             .iter()
             .copied()
-            .filter(|id| {
-                sim.entities().get(*id).is_some_and(|entity| {
-                    state
-                        .rules()
-                        .and_then(|rules| rules.object(sim.interner.resolve(entity.type_ref())))
-                        .is_some_and(|obj| {
-                            health_category(entity.health.current, obj.strength, red, yellow)
-                                == category
-                        })
-                })
-            })
+            .filter(|id| entity_navigation_category(sim, rules, *id, kind) == Some(category))
             .collect(),
         ..Default::default()
     };
-    super::apply_selection_mutation(
-        state,
+    Some(CategorySelection {
         mutation,
-        false,
-        super::SelectionVoicePolicy::EveryAdded,
+        category,
+        has_candidates,
+    })
+}
+
+pub(super) fn execute_category_navigation(state: &mut AppState, kind: CategoryNavigationKind) {
+    // Reject before asking the presentation owner for its tactical array.
+    if state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .is_none_or(|rt| !selection_navigation_allowed(&rt.simulation))
+    {
+        return;
+    }
+    let current = super::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|runtime| &runtime.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
     );
-    state
+    let screen = if !state
         .match_state
         .input
         .type_select
-        .finish_health_navigation(has_candidates);
+        .category_navigation_continues(kind)
+        && current.is_empty()
+    {
+        crate::app::presentation::instances::tactical_screen_entity_encounter_order(state)
+    } else {
+        Vec::new()
+    };
+    let result = {
+        let runtime = state.match_state.sim_runtime.as_ref().unwrap();
+        let rules = &runtime.resources.rules;
+        let input = &mut state.match_state.input;
+        category_selection(
+            &runtime.simulation,
+            rules,
+            &mut input.category_navigation,
+            &input.type_select,
+            kind,
+            &screen,
+            current,
+            !input.hotkey_modifiers.shift_key(),
+        )
+    };
+    let Some(result) = result else {
+        return;
+    };
+    super::apply_selection_mutation(
+        state,
+        result.mutation,
+        false,
+        super::SelectionVoicePolicy::EveryAdded,
+    );
     // The native direct Select calls do not start the mouse action-line timer.
     super::apply_selection_action_line_policy(state, super::SelectionActionLinePolicy::Preserve);
     let selected = super::selected_stable_ids_in_order(
@@ -455,22 +563,17 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
         state.match_state.input.selection_order_pending,
     );
     let sim = &state.match_state.sim_runtime.as_ref().unwrap().simulation;
+    let rules = state.rules().unwrap();
     let mixed = selected.iter().any(|id| {
-        sim.entities().get(*id).is_some_and(|entity| {
-            state
-                .rules()
-                .and_then(|rules| rules.object(sim.interner.resolve(entity.type_ref())))
-                .is_some_and(|obj| {
-                    health_category(entity.health.current, obj.strength, red, yellow) != category
-                })
-        })
+        entity_navigation_category(sim, rules, *id, kind)
+            .is_some_and(|category| category != result.category)
     });
     let label = localized(
         state,
         if mixed {
             "MSG:Mixed"
         } else {
-            category_key(category)
+            category_key(kind, result.category)
         },
     );
     // Native731E29 sums each object's Cost_Of for its own house
@@ -485,7 +588,7 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
         })
         .fold(0_i32, |total, cost| total.wrapping_add(cost));
     let text = navigation_feedback(
-        has_candidates,
+        result.has_candidates,
         selected.len(),
         worth,
         &label,
@@ -494,6 +597,13 @@ pub(super) fn execute_health_navigation(state: &mut AppState) {
         &localized(state, "MSG:UnitsWorth"),
     );
     crate::app::input::messages::post_selection_navigation_text(state, &text);
+    let input = &mut state.match_state.input;
+    input
+        .category_navigation
+        .record_category(kind, result.category);
+    input
+        .type_select
+        .finish_category_navigation(kind, result.has_candidates);
 }
 
 fn localized(state: &AppState, key: &str) -> String {
@@ -553,22 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn cycles_retained_selection_and_restarts_after_other_selection() {
-        let mut nav = HealthNavigation::default();
-        nav.prepare(false, vec![8, 3, 7], vec![99]);
-        assert_eq!((&nav.candidates, nav.category), (&vec![8, 3, 7], 0));
-        nav.prepare(true, vec![8], vec![99]);
-        assert_eq!((&nav.candidates, nav.category), (&vec![8, 3, 7], 1));
-        nav.retain(|id| *id != 3);
-        nav.prepare(true, vec![], vec![]);
-        assert_eq!((&nav.candidates, nav.category), (&vec![8, 7], 2));
-        nav.prepare(true, vec![], vec![]);
-        assert_eq!(nav.category, 0);
-        nav.prepare(false, vec![], vec![21, 20]);
-        assert_eq!(nav.candidates, vec![21, 20]);
-    }
-
-    #[test]
     fn health_bands_include_thresholds_and_recheck_current_damage() {
         let bands: Vec<_> = [0, 1, 25, 26, 50, 51, 100]
             .into_iter()
@@ -587,17 +681,189 @@ mod tests {
     }
 
     #[test]
-    fn world_replacement_drops_candidates_even_when_ids_are_reused() {
-        let mut nav = HealthNavigation::default();
-        let mut mode = crate::app::types::TypeSelectInputState::default();
-        nav.prepare(false, vec![8, 3], vec![]);
-        mode.finish_health_navigation(true);
-        nav.reset(&mut mode);
-        assert!(nav.candidates.is_empty());
-        assert!(!mode.health_navigation_continues());
-        nav.prepare(mode.health_navigation_continues(), vec![8], vec![]);
-        assert_eq!(nav.candidates, vec![8]);
-        assert_eq!(nav.category, 0);
+    fn veterancy_world_replacement_drops_candidates_even_when_ids_are_reused() {
+        let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+        input.category_navigation.prepare(
+            CategoryNavigationKind::Health,
+            false,
+            vec![8, 3],
+            vec![],
+        );
+        input
+            .category_navigation
+            .record_category(CategoryNavigationKind::Health, 1);
+        input
+            .category_navigation
+            .record_category(CategoryNavigationKind::Veterancy, 2);
+        input
+            .type_select
+            .finish_category_navigation(CategoryNavigationKind::Veterancy, true);
+        input.type_select.across_map = true;
+        input.selection_order = vec![8, 3];
+        input.selection_order_pending = true;
+        input.cursor_coordinates = true;
+
+        // This exact helper is called by accepted map replacement and prepared
+        // load commit. It is a Rust stale-ID regression, not native save proof.
+        reset_for_world_replacement(&mut input);
+
+        assert_eq!(
+            input.category_navigation.navigation_view(),
+            (&[][..], None, None)
+        );
+        assert_eq!(
+            input.type_select.selection_scope_view(),
+            ("ordinary", false, None)
+        );
+        assert!(input.selection_order.is_empty());
+        assert!(!input.selection_order_pending);
+        assert!(input.cursor_coordinates);
+        let category = input.category_navigation.prepare(
+            CategoryNavigationKind::Veterancy,
+            input
+                .type_select
+                .category_navigation_continues(CategoryNavigationKind::Veterancy),
+            vec![8],
+            vec![],
+        );
+        assert_eq!(input.category_navigation.candidates, vec![8]);
+        assert_eq!(category, 0);
+        assert_eq!(
+            input.category_navigation.veterancy_category, None,
+            "last category writes after feedback"
+        );
+    }
+
+    #[test]
+    fn veterancy_lifecycle_frame_handoff_expires_surviving_objects() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::rules::ruleset::RuleSet;
+        use crate::sim::components::Health;
+        use crate::sim::game_entity::GameEntity;
+        use crate::sim::world::{ConcealOutcome, LifecycleOutput, Simulation, TickLane};
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n[VehicleTypes]\n0=MTNK\n[AircraftTypes]\n\
+             [BuildingTypes]\n[MTNK]\nStrength=300\n",
+        ))
+        .unwrap();
+        for conceal in [false, true] {
+            let mut sim = Simulation::new();
+            let owner = sim.interner.intern("Americans");
+            let type_id = sim.interner.intern("MTNK");
+            for id in [10, 20, 30] {
+                sim.entities_mut()
+                    .insert(GameEntity::new_at_frame_zero_for_test(
+                        id,
+                        2,
+                        3,
+                        0,
+                        0,
+                        owner,
+                        Health { current: 100 },
+                        type_id,
+                        EntityCategory::Unit,
+                        0,
+                        5,
+                        true,
+                    ));
+            }
+            sim.reveal(20);
+            sim.advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+                .unwrap();
+            let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+            input.category_navigation.prepare(
+                CategoryNavigationKind::Veterancy,
+                false,
+                vec![10, 20, 30],
+                vec![],
+            );
+            input
+                .category_navigation
+                .record_category(CategoryNavigationKind::Health, 2);
+            input
+                .category_navigation
+                .record_category(CategoryNavigationKind::Veterancy, 1);
+            input
+                .type_select
+                .finish_category_navigation(CategoryNavigationKind::Veterancy, true);
+            input.type_select.across_map = true;
+            input.selection_order = vec![20];
+            // Deselect and its normal app reconciliation have no expiry fact.
+            sim.entities_mut().get_mut(20).unwrap().selected = false;
+            super::super::reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+            assert_eq!(input.category_navigation.candidates, [10, 20, 30]);
+
+            if conceal {
+                assert_eq!(sim.object_conceal(20), ConcealOutcome::Concealed);
+            } else {
+                sim.detach_all_pointer_expired(20, &rules, None);
+            }
+            assert!(sim.entities().get(20).unwrap().is_object_alive());
+            let frame = sim
+                .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+                .unwrap();
+            assert_eq!(
+                frame
+                    .lifecycle_outputs
+                    .iter()
+                    .filter(|output| {
+                        matches!(
+                            output,
+                            LifecycleOutput::ObjectPointerExpired { stable_id: 20 }
+                        )
+                    })
+                    .count(),
+                1,
+                "one control-insensitive navigation notification"
+            );
+            if conceal {
+                let expiry = frame
+                    .lifecycle_outputs
+                    .iter()
+                    .position(|output| {
+                        matches!(
+                            output,
+                            LifecycleOutput::ObjectPointerExpired { stable_id: 20 }
+                        )
+                    })
+                    .unwrap();
+                let display = frame
+                    .lifecycle_outputs
+                    .iter()
+                    .position(|output| {
+                        matches!(output, LifecycleOutput::DisplayRemove { stable_id: 20 })
+                    })
+                    .unwrap();
+                assert!(expiry < display);
+            }
+            // Consume actual lifecycle producer facts through the same owner
+            // sim_tick calls, without constructing a windowed AppState. This
+            // tests the Rust frame handoff, not full native world lifecycle.
+            for output in frame.lifecycle_outputs {
+                if let LifecycleOutput::ObjectPointerExpired { stable_id } = output {
+                    input.category_navigation.pointer_expired(stable_id);
+                }
+            }
+            assert_eq!(
+                input.category_navigation.navigation_view(),
+                (&[10, 30][..], Some(2), Some(1))
+            );
+            assert_eq!(
+                input.type_select.selection_scope_view(),
+                ("veterancy", true, None)
+            );
+            assert!(sim.entities().get(20).unwrap().is_object_alive());
+            let next = sim
+                .advance_app_frame(&[], None, None, 67, TickLane::Ordinary, None)
+                .unwrap();
+            assert!(
+                !next.lifecycle_outputs.iter().any(|output| {
+                    matches!(output, LifecycleOutput::ObjectPointerExpired { .. })
+                }),
+                "frame facts drain once"
+            );
+        }
     }
 
     #[test]

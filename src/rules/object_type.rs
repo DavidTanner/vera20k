@@ -501,6 +501,12 @@ pub struct ObjectType {
     /// retaining the prior vector on an empty/missing read. Production binds
     /// every resolved token, in order, against the fixed SOUNDMD catalog.
     pub voice_select: Vec<String>,
+    /// `VoiceSelectEnslaved=` at TechnoType+430. Constructor710DA4..710DBD
+    /// leaves an empty vector; reader712B87..712BF1 follows VoiceSelect
+    /// and uses the same ReadSoundList525430/default retention. VoiceSelect
+    /// chooses it while the instance's existing SlaveOwner is nonnull.
+    /// Executed constructor/reader/caller controls: input_oracle/selection_navigation.
+    pub voice_select_enslaved: Vec<String>,
     /// Sound ID played when this unit is ordered to move.
     pub voice_move: Option<String>,
     /// Sound ID played when this unit is ordered to attack.
@@ -2259,6 +2265,10 @@ impl ObjectType {
             crewed: section.read_bool("Crewed", false),
             voice_select: section
                 .read_sound_list("VoiceSelect")
+                .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
+                .unwrap_or_default(),
+            voice_select_enslaved: section
+                .read_sound_list("VoiceSelectEnslaved")
                 .map(|tokens| tokens.into_iter().map(str::to_owned).collect())
                 .unwrap_or_default(),
             voice_move: first_sound("VoiceMove"),

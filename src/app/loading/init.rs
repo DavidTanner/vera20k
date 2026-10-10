@@ -1750,7 +1750,7 @@ pub(crate) struct RandomMapEntityProjection {
     facing: u8,
     category: crate::map::entities::EntityCategory,
     sub_cell: u8,
-    veterancy: u16,
+    veterancy: Option<i32>,
     high: bool,
     mission: Option<crate::rules::mission_data::MissionType>,
     recruitable: (bool, bool),

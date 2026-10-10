@@ -3700,7 +3700,7 @@ mod tests {
             facing: 0,
             category: EntityCategory::Structure,
             sub_cell: 0,
-            veterancy: 0,
+            veterancy: None,
             high: false,
             mission: None,
             recruitable_a: true,

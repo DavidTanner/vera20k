@@ -68,8 +68,11 @@ pub struct MapEntity {
     pub category: EntityCategory,
     /// Sub-cell position for infantry (0–4). Always 0 for other categories.
     pub sub_cell: u8,
-    /// Veterancy level: 0=rookie, 100=veteran, 200=elite.
-    pub veterancy: u16,
+    /// Optional signed experience percentage, read with CRT `atoi`. Native
+    /// `SetFromPercent @ 0x007500E0` stores percent * 0.01 without a clamp;
+    /// absent tokens retain the constructor's accumulator. Structures have
+    /// no veterancy column.
+    pub veterancy: Option<i32>,
     /// Spawn on the bridge deck / high layer when the map placement marks it.
     pub high: bool,
     /// The authored `MISSION=` column, resolved through the engine's mission
@@ -223,7 +226,7 @@ fn parse_infantry_section(section: &IniSection, entities: &mut Vec<MapEntity>) {
         let sub_cell: u8 = u8::try_from(crt_atoi(fields[5])).unwrap_or(0).min(4);
         // Infantry facing is at field index 7 (after MISSION at index 6).
         let facing: u8 = facing_field(fields[7]);
-        let veterancy: u16 = veterancy_field(fields.get(9).copied());
+        let veterancy = veterancy_field(fields.get(9).copied());
 
         entities.push(MapEntity {
             owner,
@@ -313,8 +316,8 @@ fn parse_common_fields(fields: &[&str], category: EntityCategory, key: &str) -> 
     let facing: u8 = facing_field(fields[5]);
     // `[Structures]` field 8 is the AI-rebuild flag; a building line has no
     // veterancy column.
-    let veterancy: u16 = match category {
-        EntityCategory::Structure => 0,
+    let veterancy = match category {
+        EntityCategory::Structure => None,
         _ => veterancy_field(fields.get(8).copied()),
     };
 
@@ -389,8 +392,11 @@ fn facing_field(token: &str) -> u8 {
     crt_atoi(token).clamp(0, 255) as u8
 }
 
-fn veterancy_field(token: Option<&str>) -> u16 {
-    token.map_or(0, |token| u16::try_from(crt_atoi(token)).unwrap_or(0))
+/// Unit743495, Infantry51FD54 and Aircraft41B308 skip SetFromPercent for
+/// a null token; otherwise the original CRTatoi7C9BFD supplies a signed int.
+/// Executed controls: tools/input_oracle/selection_navigation.json.
+fn veterancy_field(token: Option<&str>) -> Option<i32> {
+    token.map(crt_atoi)
 }
 
 /// An optional `atoi != 0` column; absent is false.
@@ -439,7 +445,7 @@ mod tests {
         assert_eq!(entities[0].cell_y, 40);
         assert_eq!(entities[0].facing, 64);
         assert_eq!(entities[0].category, EntityCategory::Unit);
-        assert_eq!(entities[0].veterancy, 0);
+        assert_eq!(entities[0].veterancy, Some(0));
         assert!(!entities[0].high);
         assert!(entities[0].recruitable_a);
         assert!(!entities[0].recruitable_b);
@@ -448,7 +454,7 @@ mod tests {
         assert_eq!(entities[1].type_id, "HTNK");
         assert_eq!(entities[1].health, 200);
         assert_eq!(entities[1].facing, 128);
-        assert_eq!(entities[1].veterancy, 100);
+        assert_eq!(entities[1].veterancy, Some(100));
         assert!(!entities[1].high);
         assert!(!entities[1].recruitable_a);
         assert!(!entities[1].recruitable_b);
@@ -469,7 +475,7 @@ mod tests {
         assert_eq!(entities[0].sub_cell, 2);
         assert_eq!(entities[0].facing, 192);
         assert_eq!(entities[0].category, EntityCategory::Infantry);
-        assert_eq!(entities[0].veterancy, 200);
+        assert_eq!(entities[0].veterancy, Some(200));
         assert!(!entities[0].high);
         assert!(entities[0].recruitable_a);
         assert!(!entities[0].recruitable_b);
@@ -516,7 +522,7 @@ mod tests {
             .collect();
         assert_eq!(repairable, [true, true, false, false]);
         // Field 8 (AI rebuild, 1 on line 1) is no veterancy.
-        assert!(entities.iter().all(|entity| entity.veterancy == 0));
+        assert!(entities.iter().all(|entity| entity.veterancy.is_none()));
     }
 
     #[test]

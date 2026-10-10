@@ -757,15 +757,28 @@ gesture; they do not establish equality of the whole RNG state. These values
 come from the existing input/sidebar/simulation/audio owners. Voice requests
 are observed without draining the queue and do not prove audible playback.
 The optional `selection_scope` projection reads the shared TypeSelect scope
-owner: `mode` (`ordinary`, `combatant`, `type`, or `health`), `across_map`, and
-`last_outcome_key` (the retained HUD outcome's CSF key or `null`). CombatantSelect
-and TypeSelect have distinct modes while retaining the shared map-scope byte.
+owner: `mode` (`ordinary`, `combatant`, `type`, `health`, or `veterancy`),
+`across_map`, and `last_outcome_key` (the retained HUD outcome's CSF key or
+`null`). It also reads the category-navigation owner's ordered
+`retained_navigation` IDs and independent `health_category` and
+`veterancy_category` cursors. Each cursor starts at `-1`; `0..2` means
+critical/heavily damaged/healthy for Health and elite/veteran/little experience
+for Veterancy. Pointer expiry removes a retained entry; Deselect and Alive
+changes alone retain it. These projections read the owners without advancing
+navigation. The four navigation modes share the same map-scope byte.
+
+New actor rows report `veterancy_raw_bits` (the unsigned 32-bit experience
+accumulator representation), `veterancy_rank_cache` (`-1..2`) and
+`elite_flash_frames` (`0..65535`) from the existing entity owner. These fields
+distinguish live experience from the AI's sampled cache and promotion timer.
+Historical omission supplies no inferred rank or timer value.
 `hud_messages` reads actual
 localized message text rows in insertion order through `MessageList.messages()`;
 it neither posts nor expires a message and does not invent source keys for rows.
 New keyboard captures include both projections. Older sealed receipts may omit
 either; omission supplies no evidence about that state. One scope projection,
-each HUD row and each voice request count toward the retained-sample budget.
+every retained navigation ID (including duplicates), each HUD row and each
+voice request count toward the retained-sample budget.
 Ordered `selected_ids` and
 `selection_pending` continue to report the existing optimistic input selection,
 separately from commands queued for the next simulation step.

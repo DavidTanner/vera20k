@@ -888,7 +888,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         facing: 0,
         category: EntityCategory::Unit,
         sub_cell: 0,
-        veterancy: 0,
+        veterancy: Some(0),
         high: false,
         mission: None,
         recruitable_a: true,
@@ -2306,6 +2306,7 @@ fn lifecycle_authority_conceal_without_dirty_eligibility_still_clears_drawn_stat
     assert_eq!(
         sim.lifecycle_outputs,
         vec![
+            LifecycleOutput::ObjectPointerExpired { stable_id: 1 },
             LifecycleOutput::DisplayRemove { stable_id: 1 },
             LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
             LifecycleOutput::ClearDrawnState { stable_id: 1 },
@@ -2330,6 +2331,7 @@ fn lifecycle_authority_conceal_dirty_eligibility_emits_dirty_before_drawn_clear(
     assert_eq!(
         sim.lifecycle_outputs,
         vec![
+            LifecycleOutput::ObjectPointerExpired { stable_id: 1 },
             LifecycleOutput::DisplayRemove { stable_id: 1 },
             LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
             LifecycleOutput::DirtyTacticalRect { stable_id: 1 },
@@ -2521,6 +2523,7 @@ fn lifecycle_authority_conceal_outputs_match_release_order() {
     assert_eq!(
         sim.lifecycle_outputs,
         vec![
+            LifecycleOutput::ObjectPointerExpired { stable_id: 1 },
             LifecycleOutput::DisplayRemove { stable_id: 1 },
             LifecycleOutput::DetachAttachedAnims { stable_id: 1 },
             LifecycleOutput::DirtyTacticalRect { stable_id: 1 },

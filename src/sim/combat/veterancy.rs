@@ -93,12 +93,11 @@ pub fn veterancy_level(raw: NativeF32Bits) -> i8 {
     }
 }
 
-/// The raw accumulator a scenario-authored rank starts at.
+/// The raw accumulator for an explicit rank threshold.
 ///
-/// A map or scenario can place an already-veteran or already-elite object;
-/// native seeds the float directly (`VeterancyStruct::SetVeteran @ 0x00750090`
-/// writes 1.0f, `SetElite @ 0x007500B0` writes 2.0f), so the rank derived from
-/// the accumulator is right from the first tick.
+/// `VeterancyStruct::SetVeteran @ 0x00750090` writes 1.0f and
+/// `SetElite @ 0x007500B0` writes 2.0f. Authored map percentages instead use
+/// `raw_from_percent` and retain intermediate and negative experience.
 pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     if rank_u16 >= RANK_ELITE_U16 {
         NativeF32Bits::from_bits(ELITE_THRESHOLD_BITS)
@@ -107,6 +106,23 @@ pub fn raw_for_rank(rank_u16: u16) -> NativeF32Bits {
     } else {
         NativeF32Bits::POSITIVE_ZERO
     }
+}
+
+/// `VeterancyStruct::SetFromPercent @ 0x007500E0`: FILD signed int,
+/// FMUL double [0x007E3808], FSTP single. The file literal's bits are
+/// 0x3F847AE147AE147B. The existing integer-only numeric owner preserves the
+/// executed startup control word 0x0E7F (53-bit precision, chop), including
+/// the final single store; host floating-point rounding is not involved.
+/// There is no clamp, rank-cache write, RNG draw or timer write.
+/// Executed atoi/setter/rank controls for Unit, Infantry and Aircraft:
+/// tools/input_oracle/selection_navigation.{py,json,meta.json}.
+pub(crate) fn raw_from_percent(percent: i32) -> NativeF32Bits {
+    use crate::util::native_x87::{NativeF64Bits, X87Chop53};
+
+    let scale = X87Chop53::load_f64(NativeF64Bits::from_bits(0x3F84_7AE1_47AE_147B))
+        .expect("the native percent scale is finite");
+    X87Chop53::store_f32(X87Chop53::mul(X87Chop53::load_i32(percent), scale))
+        .expect("every signed i32 percentage fits in a finite single")
 }
 
 /// `VeterancyStruct::SetElite(1) @ 0x007500B0`: store 2.0f. The rank cache is

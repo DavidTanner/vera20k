@@ -789,7 +789,7 @@ mod tests {
                 facing: 64,
                 category: EntityCategory::Unit,
                 sub_cell: 0,
-                veterancy: 0,
+                veterancy: Some(0),
                 high: false,
                 mission: None,
                 recruitable_a: true,

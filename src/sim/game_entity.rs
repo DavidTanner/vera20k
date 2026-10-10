@@ -1494,10 +1494,6 @@ impl GameEntity {
             .set(unlimbo_barrel_target(fire_angle), frame);
     }
 
-    /// The class constructor's one rate write on `+0x388` (`Set_ROT @
-    /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
-    /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
-    /// and a building (`BuildingClass::Init` at `0x00442CA5`).
     /// Veterancy level sampled from [`Self::veterancy_raw`]: 0 = rookie,
     /// 100 = veteran, 200 = elite. The damage multiplier, the armour divisor,
     /// elite weapon selection and the chevron read it.
@@ -1506,12 +1502,23 @@ impl GameEntity {
     }
 
     /// Seed the accumulator at a rank's threshold (`SetVeteran @ 0x00750090`
-    /// writes 1.0f, `SetElite @ 0x007500B0` 2.0f; a rookie is 0.0f), as a
-    /// scenario-authored rank does.
+    /// writes 1.0f, `SetElite @ 0x007500B0` 2.0f; a rookie is 0.0f).
+    /// Map percentages use `set_veterancy_from_percent` instead.
     pub fn set_veterancy_rank(&mut self, rank_u16: u16) {
         self.veterancy_raw = crate::sim::combat::veterancy::raw_for_rank(rank_u16);
     }
 
+    /// Apply the native `SetFromPercent @ 0x007500E0` to the single raw
+    /// accumulator. Like the explicit rank setters, it leaves the cached
+    /// rank alone until the next Techno AI sample.
+    pub(crate) fn set_veterancy_from_percent(&mut self, percent: i32) {
+        self.veterancy_raw = crate::sim::combat::veterancy::raw_from_percent(percent);
+    }
+
+    /// The class constructor's one rate write on `+0x388` (`Set_ROT @
+    /// 0x004C9680`): the constant 127 for infantry (`0x00517BC5`), `ROT=`
+    /// (`Type+0x71C`) for a unit (`0x00735579`), an aircraft (`0x00413FE7`)
+    /// and a building (`BuildingClass::Init` at `0x00442CA5`).
     pub(crate) fn set_body_facing_rot(&mut self, type_rot: i32) {
         self.body_facing
             .set_rot(if self.category == EntityCategory::Infantry {

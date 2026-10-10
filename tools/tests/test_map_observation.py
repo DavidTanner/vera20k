@@ -285,6 +285,24 @@ class MapObservationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValidationError, 'object_alive'):
                     observation._actor(actor, 'actor')
 
+    def test_veterancy_owner_projections_preserve_raw_bits_and_legacy_absence(self):
+        actor = self.actor()
+        observation._actor(actor, 'historical')
+        for raw, cache, flash in ((0x3FC00000, -1, 0), (0x40000000, 0, 150),
+                                  (0x7FC00000, 2, 65535)):
+            with self.subTest(raw=raw):
+                projected = dict(actor, veterancy_raw_bits=raw,
+                                 veterancy_rank_cache=cache, elite_flash_frames=flash)
+                observation._actor(projected, 'projected')
+                self.assertEqual(projected['veterancy_raw_bits'], raw)
+        for key, values in (('veterancy_raw_bits', (-1, 1 << 32, True, None)),
+                            ('veterancy_rank_cache', (-2, 3, False, '0')),
+                            ('elite_flash_frames', (-1, 1 << 16, True, 1.5))):
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    with self.assertRaisesRegex(ValidationError, key):
+                        observation._actor(dict(actor, **{key: value}), 'bad')
+
     def cursor_profile(self):
         self.profile.update(schema_version=observation.PROFILE_V2,
                             width=4, height=4, cursor_position=[2, 1])
@@ -1104,6 +1122,30 @@ class MapObservationTests(unittest.TestCase):
             observation._local_input_observation(dict(historical, **projection), 'single-extension')
         self.assertEqual(observation._local_input_observation(local, 'extended'),
                          len(local['selection_voice_requests']) + 1 + len(local['hud_messages']))
+
+    def test_veterancy_snapshot_projection_preserves_independent_categories_and_charges_ids(self):
+        historical = dict(self.local_input_observation(), selection_scope={
+            'mode': 'ordinary', 'across_map': False, 'last_outcome_key': None})
+        self.assertEqual(observation._local_input_observation(historical, 'historical'), 1)
+        scope = {'mode': 'veterancy', 'across_map': True, 'last_outcome_key': None,
+                 'retained_navigation': [20, 40, 20, 50],
+                 'health_category': -1, 'veterancy_category': 0}
+        local = dict(self.local_input_observation(), selection_scope=scope)
+        self.assertEqual(observation._local_input_observation(local, 'projected'), 5)
+        mutations = [lambda row: row.update(retained_navigation=None),
+                     lambda row: row.update(retained_navigation=[0]),
+                     lambda row: row.update(retained_navigation=[True]),
+                     lambda row: row.update(retained_navigation=[1 << 64]),
+                     lambda row: row.update(health_category=-2),
+                     lambda row: row.update(health_category=True),
+                     lambda row: row.update(veterancy_category=3),
+                     lambda row: row.update(veterancy_category=None)]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(case=index):
+                bad = deepcopy(scope)
+                mutation(bad)
+                with self.assertRaises(ValidationError):
+                    observation._local_input_observation(dict(local, selection_scope=bad), 'bad')
 
     def test_selection_scope_and_hud_projection_reject_malformed_or_unbounded_rows(self):
         local = dict(self.local_input_observation(),
