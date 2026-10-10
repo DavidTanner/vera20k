@@ -1028,6 +1028,13 @@ fn advance_one_simulation_frame(
         // direct attachment or retained audio handle.
         for output in drained_lifecycle_outputs {
             match output {
+                LifecycleOutput::ObjectPointerExpired { stable_id } => {
+                    state
+                        .match_state
+                        .input
+                        .category_navigation
+                        .pointer_expired(stable_id);
+                }
                 LifecycleOutput::LogicVisit => {
                     state
                         .match_state

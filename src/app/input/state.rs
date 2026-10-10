@@ -37,8 +37,8 @@ pub(crate) struct MatchInputState {
     pub(crate) hotkey_modifiers: ModifiersState,
     /// Hybrid held/tap state for the retail TypeSelect command.
     pub(crate) type_select: crate::app::types::TypeSelectInputState,
-    pub(crate) health_navigation:
-        crate::app::input::dispatch::selection_navigation::HealthNavigation,
+    pub(crate) category_navigation:
+        crate::app::input::dispatch::selection_navigation::CategoryNavigation,
     /// Original CursorCheat toggle A8F7D8, consumed by tactical tooltips.
     pub(crate) cursor_coordinates: bool,
     /// One-shot Shift+S request, consumed at the next render submission.
@@ -106,7 +106,7 @@ impl MatchInputState {
             hotkey_bindings,
             hotkey_modifiers: ModifiersState::empty(),
             type_select: crate::app::types::TypeSelectInputState::default(),
-            health_navigation: Default::default(),
+            category_navigation: Default::default(),
             cursor_coordinates: false,
             retail_screenshot_requested: false,
         }

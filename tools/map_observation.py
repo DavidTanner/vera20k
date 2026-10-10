@@ -1123,6 +1123,9 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               'physical_leptons', 'on_bridge', 'health', 'active',
                               'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot',
                               *(('object_alive',) if 'object_alive' in actor else ()),
+                              *(('veterancy_raw_bits',) if 'veterancy_raw_bits' in actor else ()),
+                              *(('veterancy_rank_cache',) if 'veterancy_rank_cache' in actor else ()),
+                              *(('elite_flash_frames',) if 'elite_flash_frames' in actor else ()),
                               *(('building',) if building_state else ()),
                               *(('unit',) if 'unit' in actor else ()),
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
@@ -1179,6 +1182,11 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     for key in ('object_alive', 'cell_marked', 'in_logic_vector'):
         if key in actor and type(actor[key]) is not bool:
             raise ValidationError(f'{label}.{key} must be a boolean')
+    for key, low, high in (('veterancy_raw_bits', 0, (1 << 32) - 1),
+                           ('veterancy_rank_cache', -1, 2),
+                           ('elite_flash_frames', 0, (1 << 16) - 1)):
+        if key in actor:
+            _bounded_int(actor[key], f'{label}.{key}', low, high)
     mission = require_object(actor['mission'], f'{label}.mission')
     require_exact_keys(mission, ('current', 'queued', 'suspended', 'effective', 'handler_state',
                                 'start_frame', 'ai_counter', 'dispatch_timer'), f'{label}.mission')
@@ -1367,13 +1375,24 @@ def _local_input_observation(value: Any, label: str) -> int:
     if 'selection_scope' in row:
         scope_label = f'{label}.selection_scope'
         scope = require_object(row['selection_scope'], scope_label)
-        require_exact_keys(scope, ('mode', 'across_map', 'last_outcome_key'), scope_label)
-        if scope['mode'] not in ('ordinary', 'combatant', 'type', 'health'):
+        require_exact_keys(scope, ('mode', 'across_map', 'last_outcome_key',
+                                   *(('retained_navigation',) if 'retained_navigation' in scope else ()),
+                                   *(('health_category',) if 'health_category' in scope else ()),
+                                   *(('veterancy_category',) if 'veterancy_category' in scope else ())), scope_label)
+        if scope['mode'] not in ('ordinary', 'combatant', 'type', 'health', 'veterancy'):
             raise ValidationError(f'{scope_label}.mode is unknown')
         if type(scope['across_map']) is not bool:
             raise ValidationError(f'{scope_label}.across_map must be boolean')
         if scope['last_outcome_key'] not in (None, 'MSG:NothingSelected', 'MSG:SelAcrossMap', 'MSG:SelAcrossScreen'):
             raise ValidationError(f'{scope_label}.last_outcome_key is unknown')
+        if 'retained_navigation' in scope:
+            retained = require_array(scope['retained_navigation'], f'{scope_label}.retained_navigation')
+            for index, identity in enumerate(retained):
+                _bounded_int(identity, f'{scope_label}.retained_navigation[{index}]', 1, (1 << 64) - 1)
+            samples += len(retained)
+        for key in ('health_category', 'veterancy_category'):
+            if key in scope:
+                _bounded_int(scope[key], f'{scope_label}.{key}', -1, 2)
         samples += 1
     if 'hud_messages' in row:
         messages = require_array(row['hud_messages'], f'{label}.hud_messages')

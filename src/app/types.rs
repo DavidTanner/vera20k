@@ -75,6 +75,24 @@ enum SelectionNavigationMode {
     Combatant,
     Type,
     Health,
+    Veterancy,
+}
+
+/// Health733380 and Veterancy7336C0 share a retained source vector but keep
+/// independent last categories and restore distinct selection modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CategoryNavigationKind {
+    Health,
+    Veterancy,
+}
+
+impl CategoryNavigationKind {
+    fn selection_mode(self) -> SelectionNavigationMode {
+        match self {
+            Self::Health => SelectionNavigationMode::Health,
+            Self::Veterancy => SelectionNavigationMode::Veterancy,
+        }
+    }
 }
 
 impl TypeSelectInputState {
@@ -158,18 +176,19 @@ impl TypeSelectInputState {
         self.note_successful_selection_mutation(true);
     }
 
-    pub(crate) fn health_navigation_continues(&self) -> bool {
-        self.selection_mode == SelectionNavigationMode::Health
+    pub(crate) fn category_navigation_continues(&self, kind: CategoryNavigationKind) -> bool {
+        self.selection_mode == kind.selection_mode()
     }
 
     /// Read-only capture projection of the existing native mode/scope owner.
-    /// P mode1, T mode2 and Health mode3 share one scope byte.
+    /// P mode1, T mode2, Health mode3 and Y mode4 share one scope byte.
     pub(crate) fn selection_scope_view(&self) -> (&'static str, bool, Option<&'static str>) {
         let mode = match self.selection_mode {
             SelectionNavigationMode::Ordinary => "ordinary",
             SelectionNavigationMode::Combatant => "combatant",
             SelectionNavigationMode::Type => "type",
             SelectionNavigationMode::Health => "health",
+            SelectionNavigationMode::Veterancy => "veterancy",
         };
         (
             mode,
@@ -178,12 +197,17 @@ impl TypeSelectInputState {
         )
     }
 
-    /// 7335BC..7335D7 restores mode3 after the Select calls reset the mode.
-    pub(crate) fn finish_health_navigation(&mut self, has_candidates: bool) {
+    /// Health733380 /Y7336C0 restore mode3/4 after Select resets
+    /// the mode. Neither writes the P/T map byte B0FE64.
+    pub(crate) fn finish_category_navigation(
+        &mut self,
+        kind: CategoryNavigationKind,
+        has_candidates: bool,
+    ) {
         self.note_successful_selection_mutation(false);
         self.last_outcome = None;
         if has_candidates {
-            self.selection_mode = SelectionNavigationMode::Health;
+            self.selection_mode = kind.selection_mode();
         }
     }
 }
@@ -219,16 +243,20 @@ mod tests {
     #[test]
     fn health_and_type_navigation_share_selection_mode_reset() {
         let mut input = TypeSelectInputState::default();
-        input.finish_health_navigation(true);
-        assert!(input.health_navigation_continues());
+        input.finish_category_navigation(CategoryNavigationKind::Health, true);
+        assert!(input.category_navigation_continues(CategoryNavigationKind::Health));
         input.finish_tap(TypeSelectOutcome::Map, true);
-        assert!(!input.health_navigation_continues());
-        input.finish_health_navigation(true);
+        assert!(!input.category_navigation_continues(CategoryNavigationKind::Health));
+        input.finish_category_navigation(CategoryNavigationKind::Health, true);
         assert!(input.across_map);
         input.note_successful_selection_mutation(false);
-        assert!(!input.health_navigation_continues());
-        input.finish_health_navigation(false);
-        assert!(!input.health_navigation_continues());
+        assert!(!input.category_navigation_continues(CategoryNavigationKind::Health));
+        input.finish_category_navigation(CategoryNavigationKind::Veterancy, true);
+        assert!(input.category_navigation_continues(CategoryNavigationKind::Veterancy));
+        assert!(!input.category_navigation_continues(CategoryNavigationKind::Health));
+        assert!(input.across_map);
+        input.finish_category_navigation(CategoryNavigationKind::Veterancy, false);
+        assert!(!input.category_navigation_continues(CategoryNavigationKind::Veterancy));
     }
 
     #[test]

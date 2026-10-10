@@ -1470,7 +1470,10 @@ pub(crate) mod selection_navigation;
 
 fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
     match command {
-        HotkeyCommand::HealthNav => selection_navigation::execute_health_navigation(state),
+        HotkeyCommand::HealthNav => selection_navigation::execute_category_navigation(
+            state,
+            crate::app::types::CategoryNavigationKind::Health,
+        ),
         HotkeyCommand::CombatantSelect => selection_navigation::execute_combatant_selection(state),
         HotkeyCommand::NextObject => selection_navigation::execute_object_navigation(
             state,
@@ -1599,9 +1602,10 @@ fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
         // cannot commit every selected unit's path at one instant, cannot edit
         // nodes before committing, and cannot loop a path.
         HotkeyCommand::PlanningMode => {}
-        // VeterancyNav (Y5369F0 ->7336C0) remains a separate unported
-        // selection mechanism. P is owned by selection_navigation above.
-        HotkeyCommand::VeterancyNav => {}
+        HotkeyCommand::VeterancyNav => selection_navigation::execute_category_navigation(
+            state,
+            crate::app::types::CategoryNavigationKind::Veterancy,
+        ),
         // UNCHECKED residual, all still no-ops. Three of them are audio
         // triggers whose rules keys VERA already parses or could:
         // `PlaceBeacon` should place the beacon and play `[AudioVisual]
@@ -1994,7 +1998,7 @@ pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
     let Some(runtime) = state.match_state.sim_runtime.as_ref() else {
         state.match_state.input.selection_order.clear();
         state.match_state.input.selection_order_pending = false;
-        state.match_state.input.health_navigation = Default::default();
+        state.match_state.input.category_navigation = Default::default();
         state.match_state.input.type_select.reset_scope();
         return;
     };
@@ -2012,12 +2016,9 @@ fn reconcile_selection_order_for_sim(
     sim: &crate::sim::world::Simulation,
     rules: Option<&crate::rules::ruleset::RuleSet>,
 ) {
-    // 733160 removes expired objects from the retained navigation snapshot.
-    input.health_navigation.retain(|id| {
-        sim.entities()
-            .get(*id)
-            .is_some_and(|entity| entity.lifecycle.object_alive)
-    });
+    // Navigation733160 consumes actual pointer expiry through LifecycleOutput,
+    // independently of this membership ledger. Alive/Health/Deselect alone
+    // do not remove an entry from its retained vector.
     if input.selection_order_pending && sim.has_pending_selection_commands() {
         input.selection_order.retain(|id| {
             sim.entities()
