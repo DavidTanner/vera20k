@@ -673,7 +673,7 @@ mod tests {
         assert_eq!(inside_alpha, 255, "index 0 inside diamond should be opaque");
 
         // Pixel at (0, 0) is outside diamond → should be transparent.
-        let outside_alpha: u8 = rgba[0 * 4 + 3];
+        let outside_alpha: u8 = rgba[3];
         assert_eq!(
             outside_alpha, 0,
             "index 0 outside diamond should be transparent"
