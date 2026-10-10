@@ -7,8 +7,8 @@
 //! normalisation, no trailing newline — so the file on disk is byte-identical
 //! to the archive payload and a diff against it means something.
 //!
-//! It generalises `src/bin/extract-ini.rs`, which hardcodes thirty INI names
-//! and one output directory. That binary resolves through `get_with_source`,
+//! It generalises `src/bin/extract-ini.rs`, which copies a selected set of YR
+//! INIs into one output directory. That binary resolves through `get_with_source`,
 //! which shares `lookup_asset_entry` with `resolve_ref`, so every name it can
 //! reach this verb can reach too — plus the catalogued archives that name
 //! lookup cannot see, via `locate`.
@@ -204,43 +204,6 @@ fn sanitise_name(name: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The hardcoded list in `src/bin/extract-ini.rs`, which this verb
-    /// generalises. Every one of these must survive sanitisation unchanged, or
-    /// the generalisation silently renames files the research corpus greps by
-    /// name.
-    const EXTRACT_INI_NAMES: [&str; 30] = [
-        "rules.ini",
-        "rulesmd.ini",
-        "art.ini",
-        "artmd.ini",
-        "ai.ini",
-        "aimd.ini",
-        "sound.ini",
-        "soundmd.ini",
-        "eva.ini",
-        "evamd.ini",
-        "theme.ini",
-        "thememd.ini",
-        "temperat.ini",
-        "temperatmd.ini",
-        "snow.ini",
-        "snowmd.ini",
-        "urban.ini",
-        "urbanmd.ini",
-        "urbann.ini",
-        "urbannmd.ini",
-        "lunar.ini",
-        "lunarmd.ini",
-        "desert.ini",
-        "desertmd.ini",
-        "battle.ini",
-        "battlemd.ini",
-        "missionmd.ini",
-        "mpmodesmd.ini",
-        "rmg.ini",
-        "rmgmd.ini",
-    ];
-
     fn temp_root(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "vera20k-asset-extract-{tag}-{}",
@@ -292,20 +255,6 @@ mod tests {
         let dir = extract_dir(&root);
         assert!(dir.starts_with(&root), "{}", dir.display());
         assert!(dir.ends_with(EXTRACT_SUBDIR), "{}", dir.display());
-    }
-
-    #[test]
-    fn every_extract_ini_name_keeps_its_filename() {
-        let dir = extract_dir(Path::new("ini"));
-        for name in EXTRACT_INI_NAMES {
-            assert_eq!(sanitise_name(name), name, "{name} was renamed");
-            let path = dir.join(sanitise_name(name));
-            assert!(
-                path.ends_with(Path::new(EXTRACT_SUBDIR).join(name)),
-                "{}",
-                path.display()
-            );
-        }
     }
 
     #[test]

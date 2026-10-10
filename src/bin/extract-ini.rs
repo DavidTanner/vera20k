@@ -1,5 +1,5 @@
-//! Extract retail INI and data files from the .mix archives into `ini/`
-//! for research grepping and the retail-data tests.
+//! Extract selected Yuri's Revenge INIs from the configured retail assets into
+//! `ini/` for research and retail-data tests.
 //! Run from the repository root with: `cargo run --bin extract-ini [RA2_DIR]`
 //!
 //! The install folder comes from the optional argument, then `$RA2_DIR`,
@@ -26,46 +26,61 @@ fn main() {
 
     fs::create_dir_all(out_dir).expect("Failed to create ini/ directory");
 
-    // All INI files that gamemd.exe loads from .mix archives.
-    // Base RA2 files and YR (*md) patches listed together.
-    let files = [
+    // Standalone YR inputs. The active gamemd.exe never reads the RA2 base INIs.
+    // Scenario/map INIs are outside this fixed archive inventory.
+    let mut files: Vec<String> = [
         // Core gameplay
-        "rules.ini",
         "rulesmd.ini",
-        "art.ini",
         "artmd.ini",
-        "ai.ini",
         "aimd.ini",
+        "langrule.ini",
         // Audio/EVA
-        "sound.ini",
         "soundmd.ini",
-        "eva.ini",
         "evamd.ini",
-        "theme.ini",
         "thememd.ini",
         // Theater tilesets
-        "temperat.ini",
         "temperatmd.ini",
-        "snow.ini",
         "snowmd.ini",
-        "urban.ini",
         "urbanmd.ini",
-        "urbann.ini",
         "urbannmd.ini",
-        "lunar.ini",
         "lunarmd.ini",
-        "desert.ini",
         "desertmd.ini",
         // Campaign/multiplayer
-        "battle.ini",
         "battlemd.ini",
         "missionmd.ini",
-        // Multiplayer dialog
+        // Multiplayer and shell setup
         "mpmodesmd.ini",
+        "uimd.ini",
+        "mapselmd.ini",
+        "keyboardmd.ini",
+        "coopcampmd.ini",
         // Random map generator tuning
-        "rmg.ini",
         "rmgmd.ini",
-    ];
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+
+    // Use the same selected MPModesMD roster and row reader as the skirmish UI.
+    // The stock roster supplies nine rule-layer filenames; a modded roster may
+    // supply different ones. Only plain INI basenames can be written below ini/.
+    let modes = vera20k::skirmish_modes::skirmish_modes_from_assets(&asset_manager)
+        .expect("Could not enumerate game-mode INIs from MPModesMD.ini");
+    for mode in modes {
+        let name = mode.override_file.trim();
+        if name.is_empty() {
+            continue;
+        }
+        if name.chars().any(|ch| matches!(ch, '/' | '\\' | ':'))
+            || !name.to_ascii_lowercase().ends_with(".ini")
+        {
+            eprintln!("Skipping unsafe game-mode INI filename: {name}");
+            continue;
+        }
+        if !files.iter().any(|file| file.eq_ignore_ascii_case(name)) {
+            files.push(name.to_owned());
+        }
+    }
 
     let mut found = 0;
     let mut not_found = 0;
