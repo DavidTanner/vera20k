@@ -72,6 +72,7 @@ pub(crate) struct TypeSelectInputState {
 enum SelectionNavigationMode {
     #[default]
     Ordinary,
+    Combatant,
     Type,
     Health,
 }
@@ -135,6 +136,24 @@ impl TypeSelectInputState {
         self.last_outcome = Some(outcome);
     }
 
+    /// P732280 uses mode1; TypeSelect732950 uses mode2. They share only
+    /// B0FE64's scope byte. Switching commands restarts the screen preflight.
+    pub(crate) fn prepare_combatant_scope(&mut self) {
+        if self.selection_mode != SelectionNavigationMode::Combatant {
+            self.across_map = false;
+        }
+    }
+
+    pub(crate) fn finish_combatant_selection(
+        &mut self,
+        outcome: TypeSelectOutcome,
+        across_map: bool,
+    ) {
+        self.selection_mode = SelectionNavigationMode::Combatant;
+        self.across_map = across_map;
+        self.last_outcome = Some(outcome);
+    }
+
     pub(crate) fn reset_scope(&mut self) {
         self.note_successful_selection_mutation(true);
     }
@@ -143,9 +162,26 @@ impl TypeSelectInputState {
         self.selection_mode == SelectionNavigationMode::Health
     }
 
+    /// Read-only capture projection of the existing native mode/scope owner.
+    /// P mode1, T mode2 and Health mode3 share one scope byte.
+    pub(crate) fn selection_scope_view(&self) -> (&'static str, bool, Option<&'static str>) {
+        let mode = match self.selection_mode {
+            SelectionNavigationMode::Ordinary => "ordinary",
+            SelectionNavigationMode::Combatant => "combatant",
+            SelectionNavigationMode::Type => "type",
+            SelectionNavigationMode::Health => "health",
+        };
+        (
+            mode,
+            self.across_map,
+            self.last_outcome.map(TypeSelectOutcome::csf_key),
+        )
+    }
+
     /// 7335BC..7335D7 restores mode3 after the Select calls reset the mode.
     pub(crate) fn finish_health_navigation(&mut self, has_candidates: bool) {
-        self.reset_scope();
+        self.note_successful_selection_mutation(false);
+        self.last_outcome = None;
         if has_candidates {
             self.selection_mode = SelectionNavigationMode::Health;
         }
@@ -188,7 +224,7 @@ mod tests {
         input.finish_tap(TypeSelectOutcome::Map, true);
         assert!(!input.health_navigation_continues());
         input.finish_health_navigation(true);
-        assert!(!input.across_map);
+        assert!(input.across_map);
         input.note_successful_selection_mutation(false);
         assert!(!input.health_navigation_continues());
         input.finish_health_navigation(false);

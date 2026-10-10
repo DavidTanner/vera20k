@@ -10,13 +10,12 @@ use anyhow::Context;
 use crate::app::frontend::startup_options::{RetailStartupOptions, ScreenSize};
 use crate::app::persistence::options_profile::{RetailOptionsLoad, RetailOptionsProfile};
 
-use super::presentation::render;
 use super::{
     ActiveEventLoop, App, AppState, Arc, AssetManager, BTreeMap, BasicSection, BatchRenderer,
-    BitFont, GameConfig, GameScreen, GpuContext, HashMap, HashSet, HouseRoster, Instant,
-    ModifiersState, MusicPlayer, PhysicalSize, PlatformState, RandomMapGenerationRetention, Result,
-    SelectionState, SfxPlayer, SidebarChromeLayoutSpec, SidebarTab, StartupAudioDisposition,
-    Window, WindowAttributes, frontend::startup_splash,
+    BitFont, GameConfig, GameScreen, GpuContext, HashMap, HouseRoster, Instant, MusicPlayer,
+    PhysicalSize, PlatformState, RandomMapGenerationRetention, Result, SfxPlayer,
+    SidebarChromeLayoutSpec, SidebarTab, StartupAudioDisposition, Window, WindowAttributes,
+    frontend::startup_splash,
 };
 use crate::map::scenario_sources;
 
@@ -485,38 +484,7 @@ impl App {
             match_state: crate::app::match_runtime::state::MatchState {
                 startup: Default::default(),
                 sim_runtime: None,
-                input: crate::app::input::state::MatchInputState {
-                    minimap_dragging: false,
-                    selection_state: SelectionState::new(),
-                    selection_order: Vec::new(),
-                    selection_order_pending: false,
-                    selection_voice_enabled: true,
-                    queued_order_mode: render::OrderMode::Move,
-                    control_groups: vec![Vec::new(); 10],
-                    last_control_group_press: None,
-                    follow_target: None,
-                    targeting_mode: None,
-                    building_placement_preview: None,
-                    camera_x: 0.0,
-                    camera_y: 0.0,
-                    pending_camera_scroll: Default::default(),
-                    zoom_level: 1.0,
-                    zoom_target: 1.0,
-                    zoom_anchor_world: [0.0, 0.0],
-                    zoom_anchor_screen: [0.0, 0.0],
-                    edge_scroll: crate::app::input::camera::EdgeScrollState::default(),
-                    tactical_mouse: crate::app::input::camera::TacticalMouseState::default(),
-                    view_bookmarks: crate::app::input::camera::ViewBookmarks::default(),
-                    cursor_x: 0.0,
-                    cursor_y: 0.0,
-                    keys_held: HashSet::new(),
-                    hotkey_bindings,
-                    hotkey_modifiers: ModifiersState::empty(),
-                    type_select: crate::app::types::TypeSelectInputState::default(),
-                    health_navigation: Default::default(),
-                    cursor_coordinates: false,
-                    retail_screenshot_requested: false,
-                },
+                input: crate::app::input::state::MatchInputState::new(hotkey_bindings),
                 match_presentation: crate::app::presentation::state::MatchPresentationState {
                     sinking_waterlines: Default::default(),
                     barrel_image_pitches: Default::default(),

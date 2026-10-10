@@ -515,7 +515,8 @@ impl TryFrom<&[u8]> for CommandRecord {
 /// One gameplay command payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
-    /// Selection intent (kept for replay/debug parity; not authoritative sim state yet).
+    /// Complete local selection snapshot, committed through ObjectSelect
+    /// admission before live Logic. Kept as a command for replay/persistence.
     Select {
         entity_ids: Vec<u64>,
         additive: bool,

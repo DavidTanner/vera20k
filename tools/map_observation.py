@@ -1122,6 +1122,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
                               'in_limbo', 'dying', 'mission', 'target', 'archive', 'nav', 'foot',
+                              *(('object_alive',) if 'object_alive' in actor else ()),
                               *(('building',) if building_state else ()),
                               *(('unit',) if 'unit' in actor else ()),
                               *(('jumpjet',) if 'jumpjet' in actor else ()),
@@ -1173,9 +1174,9 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
     for key in ('on_bridge', 'active', 'in_limbo', 'dying'):
         if type(actor[key]) is not bool:
             raise ValidationError(f'{label}.{key} must be a boolean')
-    # Additive immutable lifecycle projection. Historical omission makes no
-    # claim about membership; new receipts provide both independent booleans.
-    for key in ('cell_marked', 'in_logic_vector'):
+    # Independent native-alive, cell membership and Logic membership projections.
+    # Historical omission supplies no inferred value for any lifecycle flag.
+    for key in ('object_alive', 'cell_marked', 'in_logic_vector'):
         if key in actor and type(actor[key]) is not bool:
             raise ValidationError(f'{label}.{key} must be a boolean')
     mission = require_object(actor['mission'], f'{label}.mission')
@@ -1325,7 +1326,9 @@ def _local_input_observation(value: Any, label: str) -> int:
     row = require_object(value, label)
     require_exact_keys(row, ('camera_top_left', 'camera_zoom', 'follow_target', 'repair_mode',
                              'sell_mode', 'targeting', 'main_rng_cursor', 'selection_voice_enabled',
-                             'selection_voice_requests'), label)
+                             'selection_voice_requests',
+                             *(('selection_scope',) if 'selection_scope' in row else ()),
+                             *(('hud_messages',) if 'hud_messages' in row else ())), label)
     position = require_array(row['camera_top_left'], f'{label}.camera_top_left')
     if len(position) != 2:
         raise ValidationError(f'{label}.camera_top_left must contain exactly two coordinates')
@@ -1358,7 +1361,28 @@ def _local_input_observation(value: Any, label: str) -> int:
         require_exact_keys(voice, ('speaker_id', 'sound_id'), voice_label)
         _bounded_int(voice['speaker_id'], f'{voice_label}.speaker_id', 1, (1 << 64) - 1)
         require_string(voice['sound_id'], f'{voice_label}.sound_id')
-    return len(voices)
+    samples = len(voices)
+    # Optional extensions preserve sealed historical keyboard receipts. These
+    # are owner projections, not a keyboard/selection algorithm in the wrapper.
+    if 'selection_scope' in row:
+        scope_label = f'{label}.selection_scope'
+        scope = require_object(row['selection_scope'], scope_label)
+        require_exact_keys(scope, ('mode', 'across_map', 'last_outcome_key'), scope_label)
+        if scope['mode'] not in ('ordinary', 'combatant', 'type', 'health'):
+            raise ValidationError(f'{scope_label}.mode is unknown')
+        if type(scope['across_map']) is not bool:
+            raise ValidationError(f'{scope_label}.across_map must be boolean')
+        if scope['last_outcome_key'] not in (None, 'MSG:NothingSelected', 'MSG:SelAcrossMap', 'MSG:SelAcrossScreen'):
+            raise ValidationError(f'{scope_label}.last_outcome_key is unknown')
+        samples += 1
+    if 'hud_messages' in row:
+        messages = require_array(row['hud_messages'], f'{label}.hud_messages')
+        if len(messages) > 14:
+            raise ValidationError(f'{label}.hud_messages exceeds the message slot cap')
+        for index, message in enumerate(messages):
+            require_string(message, f'{label}.hud_messages[{index}]')
+        samples += len(messages)
+    return samples
 
 
 def _input_observation(value: Any, label: str, *, local_input: bool = False) -> int:
