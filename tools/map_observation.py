@@ -3,6 +3,9 @@
 The Rust map_observation profile and capture manifest own the runtime schema.
 This wrapper binds their receipts to immutable inputs and actual frame bytes.
 
+Version 3 profiles accept named command types and unique actor selectors.
+``inspect`` summarizes checked captures and evaluates explicit outcome assertions.
+
 Profiles may request retained sidebar snapshots with ``observe_sidebar_steps``.
 A ``sidebar`` gesture names a current ``tab``, ``cameo`` (logical ``type_id``),
 ``scroll_up`` or ``scroll_down`` target. Rust resolves the retained hit area and
@@ -64,6 +67,7 @@ BUILDING_OBSERVATION_POLICY = 'map-ordinary-command-observation-v2'
 TRAJECTORY_OBSERVATION_POLICY = 'map-ordinary-command-observation-v1'
 PROFILE_V1 = 'vera20k.map-observation-profile.v1'
 PROFILE_V2 = 'vera20k.map-observation-profile.v2'
+PROFILE_V3 = 'vera20k.map-observation-profile.v3'
 MAX_OBSERVATION_SAMPLES = 100_000
 MAX_RECEIPT_BYTES = 128 * 1024 * 1024
 ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', 'Guard',
@@ -73,7 +77,7 @@ ORDER_VARIANTS = frozenset(('Select', 'Move', 'Stop', 'Attack', 'ForceAttack', '
 PRODUCTION_VARIANTS = frozenset(('QueueProduction', 'PlaceReadyBuilding'))
 EXTENSION_FIELDS = frozenset(('commands', 'gestures', 'observe_owners', 'observe_types',
                               'observe_projectiles', 'observe_anim_types', 'observe_action_line_inputs',
-                              'observe_disguise_inputs', 'observe_lasers',
+                              'observe_disguise_inputs', 'observe_lasers', 'observe_bombs',
                               'observe_audio', 'allow_load_segments',
                               'camera_cell', 'cursor_position', 'terrain_cells',
                               'observe_super_weapons', 'observe_sidebar_steps'))
@@ -309,14 +313,96 @@ def _gesture_policy(profile: Mapping[str, Any]) -> str:
             for row in profile.get('gestures', [])) else GESTURE_POLICY)
 
 
+def _binding_name(value: Any, label: str) -> str:
+    name = require_string(value, label)
+    if not 1 <= len(name.encode('utf-8')) <= 256:
+        raise ValidationError(f'{label} must contain 1..256 UTF-8 bytes')
+    return name
+
+
+def _symbolic_requests(payload: Mapping[str, Any], label: str) -> dict[str, Any]:
+    """Identify diagnostic references; Command's argument schema remains Rust-owned."""
+    references = {}
+    for variant, arguments in payload.items():
+        if not isinstance(arguments, dict):
+            continue
+        for field, value in arguments.items():
+            pointer = f'/{variant}/{field}'
+            if field in ('type_id', 'sw_type_id') and isinstance(value, str):
+                references[pointer] = _binding_name(value, f'{label}{pointer}')
+            elif field.endswith('_id') and field not in ('type_id', 'sw_type_id') and isinstance(value, dict):
+                references[pointer] = value
+            elif field in ('entity_ids', 'producer_ids') and isinstance(value, list):
+                references.update((f'{pointer}/{index}', item)
+                                  for index, item in enumerate(value) if isinstance(item, dict))
+    if len(references) > 256:
+        raise ValidationError(f'{label} exceeds 256 symbolic references')
+    for pointer, selector in references.items():
+        if not isinstance(selector, dict):
+            continue
+        where = f'{label}{pointer}'
+        require_exact_keys(selector, ('type_id', 'owner', *(('cell',) if 'cell' in selector else ())), where)
+        _binding_name(selector['type_id'], f'{where}.type_id')
+        _binding_name(selector['owner'], f'{where}.owner')
+        if 'cell' in selector:
+            _coordinate(selector['cell'], f'{where}.cell')
+    return references
+
+
+def _command_bindings(row: Mapping[str, Any], request: Mapping[str, Any],
+                      rule_types: list[Any], label: str) -> int:
+    """Check every recorded substitution, preserving every nonsymbolic argument."""
+    references = _symbolic_requests(request['payload'], f'{label}.request')
+    if not references:
+        if 'bindings' in row:
+            raise ValidationError(f'{label}.bindings present without symbolic references')
+        _require_equal(row['payload'], request['payload'], f'{label}.payload')
+        return 0
+    bindings = require_object(row.get('bindings'), f'{label}.bindings')
+    require_exact_keys(bindings, tuple(references), f'{label}.bindings')
+    resolved = {}
+    for pointer, wanted in references.items():
+        where = f'{label}.bindings[{pointer}]'
+        binding = require_object(bindings[pointer], where)
+        if isinstance(wanted, str):
+            require_exact_keys(binding, ('type_id', 'interned_id', 'category'), where)
+            require_value(binding['type_id'], wanted, f'{where}.type_id')
+            identity = _bounded_int(binding['interned_id'], f'{where}.interned_id', 0, (1 << 32) - 1)
+            if pointer.endswith('/sw_type_id'):
+                require_value(binding['category'], 'SuperWeapon', f'{where}.category')
+            elif not any(binding == registered for registered in rule_types):
+                raise ValidationError(f'{where} differs from the loaded rule_types registry')
+        else:
+            require_exact_keys(binding, ('stable_id', 'owner', 'type_id', 'cell'), where)
+            identity = _bounded_int(binding['stable_id'], f'{where}.stable_id', 1, (1 << 64) - 1)
+            for key in ('owner', 'type_id'):
+                require_value(binding[key], wanted[key], f'{where}.{key}')
+            _coordinate(binding['cell'], f'{where}.cell')
+            if 'cell' in wanted:
+                _require_equal(binding['cell'], wanted['cell'], f'{where}.cell')
+        resolved[pointer] = identity
+
+    def substitute(value: Any, pointer: str = '') -> Any:
+        if pointer in resolved:
+            return resolved[pointer]
+        if isinstance(value, dict):
+            return {key: substitute(item, f'{pointer}/{key}') for key, item in value.items()}
+        if isinstance(value, list):
+            return [substitute(item, f'{pointer}/{index}') for index, item in enumerate(value)]
+        return value
+
+    _require_equal(row['payload'], substitute(request['payload']), f'{label}.payload')
+    return len(bindings)
+
+
 def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool = True) -> None:
     """Check diagnostic syntax/budgets; Rust still owns Command/launch admission."""
     schema = profile.get('schema_version')
-    if schema not in (PROFILE_V1, PROFILE_V2):
+    if schema not in (PROFILE_V1, PROFILE_V2, PROFILE_V3):
         raise ValidationError(f'unsupported profile.schema_version: {schema!r}')
     required = {'schema_version', 'launch', 'seed', 'input_delay_ticks', 'ticks',
                 'width', 'height', 'timeout_seconds'}
-    allowed = required | (EXTENSION_FIELDS if schema == PROFILE_V2 else frozenset())
+    allowed = required | (EXTENSION_FIELDS if schema != PROFILE_V1 else frozenset())
     if not required <= profile.keys() or profile.keys() - allowed:
         raise ValidationError('profile fields differ from its declared schema_version')
     ticks = _bounded_int(profile.get('ticks'), 'profile.ticks', 0, 100_000)
@@ -336,6 +422,7 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
     if len(commands) > 1024:
         raise ValidationError('profile.commands exceeds 1024 rows')
     previous = 0
+    reference_count = 0
     for index, value in enumerate(commands):
         label = f'profile.commands[{index}]'
         command = require_object(value, label)
@@ -352,6 +439,12 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         variants = ORDER_VARIANTS | (PRODUCTION_VARIANTS if production_commands else frozenset())
         if len(payload) != 1 or next(iter(payload)) not in variants:
             raise ValidationError(f'{label}.payload is outside ordinary order coverage')
+        references = _symbolic_requests(payload, f'{label}.payload')
+        if references and schema != PROFILE_V3:
+            raise ValidationError(f'{label} symbolic references require profile v3')
+        reference_count += len(references)
+    if reference_count > 1024:
+        raise ValidationError('profile.commands exceeds 1024 symbolic references')
     if 'gestures' in profile:
         gestures = require_array(profile['gestures'], 'profile.gestures')
         if len(gestures) > 1024:
@@ -425,6 +518,8 @@ def _profile_extensions(profile: Mapping[str, Any], *, production_commands: bool
         raise ValidationError('profile.observe_disguise_inputs must be a boolean')
     if 'observe_lasers' in profile and type(profile['observe_lasers']) is not bool:
         raise ValidationError('profile.observe_lasers must be a boolean')
+    if 'observe_bombs' in profile and type(profile['observe_bombs']) is not bool:
+        raise ValidationError('profile.observe_bombs must be a boolean')
     if 'observe_super_weapons' in profile and type(profile['observe_super_weapons']) is not bool:
         raise ValidationError('profile.observe_super_weapons must be a boolean')
     if 'cursor_position' in profile:
@@ -879,10 +974,53 @@ def _lasers(value: Any, label: str) -> int:
     return 1 + len(live)
 
 
+def _bombs(value: Any, label: str) -> int:
+    snapshot = require_object(value, label)
+    require_exact_keys(snapshot, ('carriers', 'records'), label)
+    carriers = require_array(snapshot['carriers'], f'{label}.carriers')
+    previous = 0
+    for index, value in enumerate(carriers):
+        identity = _bounded_int(value, f'{label}.carriers[{index}]', 1, (1 << 64) - 1)
+        if identity <= previous:
+            raise ValidationError(f'{label}.carriers must be unique and increasing')
+        previous = identity
+    records = require_array(snapshot['records'], f'{label}.records')
+    previous = 0
+    for index, value in enumerate(records):
+        row_label = f'{label}.records[{index}]'
+        row = require_object(value, row_label)
+        require_exact_keys(row, ('carrier_id', 'planter_id', 'planter_house', 'start_frame', 'end_frame'), row_label)
+        identity = _bounded_int(row['carrier_id'], f'{row_label}.carrier_id', 1, (1 << 64) - 1)
+        if identity <= previous:
+            raise ValidationError(f'{label}.records must have unique increasing carrier IDs')
+        previous = identity
+        if row['planter_id'] is not None:
+            _bounded_int(row['planter_id'], f'{row_label}.planter_id', 1, (1 << 64) - 1)
+        if not require_string(row['planter_house'], f'{row_label}.planter_house'):
+            raise ValidationError(f'{row_label}.planter_house must be nonempty')
+        for key in ('start_frame', 'end_frame'):
+            _bounded_int(row[key], f'{row_label}.{key}', -(1 << 31), (1 << 31) - 1)
+    # Membership consistency and timing are gameplay assertions for analysis,
+    # not reconstructed by this structural receipt validator.
+    return 1 + len(carriers) + len(records)
+
+
+def _fire(value: Any, label: str) -> None:
+    row = require_object(value, label)
+    require_exact_keys(row, ('last_fire_frame', 'body_counter', 'stage_value', 'rearm'), label)
+    _bounded_int(row['last_fire_frame'], f'{label}.last_fire_frame', -(1 << 63), (1 << 63) - 1)
+    _bounded_int(row['body_counter'], f'{label}.body_counter', 0, (1 << 32) - 1)
+    _bounded_int(row['stage_value'], f'{label}.stage_value', -(1 << 31), (1 << 31) - 1)
+    rearm = require_object(row['rearm'], f'{label}.rearm')
+    require_exact_keys(rearm, ('start_frame', 'duration', 'remaining'), f'{label}.rearm')
+    for key in rearm:
+        _bounded_int(rearm[key], f'{label}.rearm.{key}', -(1 << 31), (1 << 31) - 1)
+
+
 def _actor(value: Any, label: str, *, building_state: bool = True,
            docking_state: bool = True, walk_state: bool = True,
            action_line_inputs: bool = False, disguise_inputs: bool = False,
-           lasers: bool = False) -> tuple[int, str]:
+           lasers: bool = False, bombs: bool = False) -> tuple[int, str]:
     actor = require_object(value, label)
     require_exact_keys(actor, ('stable_id', 'owner', 'type_id', 'category', 'cell',
                               'physical_leptons', 'on_bridge', 'health', 'active',
@@ -896,6 +1034,7 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
                               *(('action_line_inputs',) if action_line_inputs else ()),
                               *(('disguise_inputs',) if disguise_inputs else ()),
                               *(('prism',) if lasers else ()),
+                              *(('fire',) if bombs else ()),
                               *(('miner', 'radio') if docking_state else ())), label)
     identity = _bounded_int(actor['stable_id'], f'{label}.stable_id', 1, (1 << 64) - 1)
     owner = require_string(actor['owner'], f'{label}.owner')
@@ -910,6 +1049,8 @@ def _actor(value: Any, label: str, *, building_state: bool = True,
         _disguise_inputs(actor['disguise_inputs'], category, f'{label}.disguise_inputs')
     if lasers:
         _prism(actor['prism'], category, f'{label}.prism')
+    if bombs:
+        _fire(actor['fire'], f'{label}.fire')
     if docking_state:
         _docking_state(actor, label)
     if building_state:
@@ -1709,23 +1850,27 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
     requested = profile.get('commands', [])
     if len(commands) != len(requested):
         raise ValidationError('observations.commands differs from requested command count')
+    binding_samples = 0
     for index, (value, request) in enumerate(zip(commands, requested)):
         row_label = f'{label}.commands[{index}]'
         row = require_object(value, row_label)
         require_exact_keys(row, ('ordinal', 'issue_after_step', 'issued_simulation_tick',
-                                 'envelope_execute_tick', 'owner', 'payload'), row_label)
+                                 'envelope_execute_tick', 'owner', 'payload',
+                                 *(('bindings',) if 'bindings' in row and profile['schema_version'] == PROFILE_V3 else ())), row_label)
         tick, _ = _segment_clock(request['issue_after_step'], segments)
         for key, expected in (('ordinal', index), ('issue_after_step', request['issue_after_step']),
                               ('issued_simulation_tick', tick),
                               ('envelope_execute_tick', tick), ('owner', request['owner'])):
             require_value(row[key], expected, f'{row_label}.{key}')
-        _require_equal(row['payload'], request['payload'], f'{row_label}.payload')
+        binding_samples += _command_bindings(row, request, observations.get('rule_types', []), row_label)
     frames = require_array(observations['frames'], f'{label}.frames')
     ticks = profile['ticks']
     if len(frames) != ticks + 1:
         raise ValidationError(f'observations.frames must contain exactly {ticks + 1} rows including L0')
     seen = set()
-    sample_count = _gesture_observations(observations['gesture_input'], profile, segments) if gesture_input else 0
+    sample_count = binding_samples
+    if gesture_input:
+        sample_count += _gesture_observations(observations['gesture_input'], profile, segments)
     if 'observe_audio' in profile:
         sample_count += sum(_sound_state(row['restored_audio_state'], 'restored_audio_state')
                             for row in segments)
@@ -1741,6 +1886,7 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                                  *(('input',) if gesture_input else ()),
                                  *(('effects',) if effects else ()),
                                  *(('lasers',) if profile.get('observe_lasers', False) else ()),
+                                 *(('bombs',) if profile.get('observe_bombs', False) else ()),
                                  *(('audio_state',) if 'observe_audio' in profile else ()),
                                  *(('houses',) if docking_state else ())), row_label)
         tick, binary_frame = _segment_clock(step, segments)
@@ -1764,7 +1910,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
                                      docking_state=docking_state, walk_state=walk_state,
                                      action_line_inputs=profile.get('observe_action_line_inputs', False),
                                      disguise_inputs=profile.get('observe_disguise_inputs', False),
-                                     lasers=profile.get('observe_lasers', False))
+                                     lasers=profile.get('observe_lasers', False),
+                                     bombs=profile.get('observe_bombs', False))
             if identity <= previous_id:
                 raise ValidationError(f'{actor_label}.stable_id is repeated or out of order')
             if identity not in seen and owner not in owners:
@@ -1791,6 +1938,8 @@ def _observations(value: Any, profile: Mapping[str, Any], final: Mapping[str, An
             sample_count += _effects(row['effects'], profile, f'{row_label}.effects')
         if profile.get('observe_lasers', False):
             sample_count += _lasers(row['lasers'], f'{row_label}.lasers')
+        if profile.get('observe_bombs', False):
+            sample_count += _bombs(row['bombs'], f'{row_label}.bombs')
         if gesture_input:
             sample_count += _input_observation(row['input'], f'{row_label}.input',
                                                 local_input=_observes_local_input(profile))
@@ -2163,6 +2312,46 @@ def validate_run(directory: Path, *, allow_legacy_inputs: bool = False,
         return report
 
 
+def inspect_run(directory: Path, *, owners: list[str] | None = None,
+                types: list[str] | None = None, stable_ids: list[int] | None = None,
+                fields: list[str] | None = None, max_rows: int = 200,
+                expectations_path: Path | None = None,
+                allow_legacy_inputs: bool = False,
+                allow_legacy_clock: bool = False) -> dict[str, Any]:
+    """Summarize checked evidence; explicit assertions assess observed outcomes."""
+    from tools.map_observation_inspect import inspect_observations
+
+    report = _report('inspection', 'INVALID')
+    report.update(run_path=str(directory), run_validity='INVALID')
+    try:
+        checked = _load_run(directory, allow_legacy_inputs, allow_legacy_clock)
+        report.update(run_validity='VALID', source_manifest=checked.capture.manifest.public_identity())
+        observations = checked.capture.evidence.get('observations')
+        if observations is None:
+            raise ValidationError('run has no retained trajectory observations to inspect')
+        expectation_snapshot = None
+        expectations = None
+        if expectations_path is not None:
+            expectation_snapshot, expectations = load_json_file(
+                expectations_path, 'map observation expectations', maximum_length=256 * 1024)
+        result = inspect_observations(observations, owners=owners, types=types,
+            stable_ids=stable_ids, fields=fields, max_rows=max_rows, expectations=expectations)
+        try:
+            checked.check_unchanged()
+        except (OSError, ValueError):
+            report['run_validity'] = 'INVALID'
+            raise
+        if expectation_snapshot is not None:
+            assert_snapshot_unchanged(expectation_snapshot, 'map observation expectations')
+            report['expectations_input'] = expectation_snapshot.public_identity()
+        report.update(result)
+        assertion_status = result['assertions']['status']
+        report['status'] = 'INSPECTED' if assertion_status == 'NOT_REQUESTED' else assertion_status
+    except (OSError, ValueError) as exc:
+        report['errors'].append(str(exc))
+    return report
+
+
 def compare_runs(before: Path, after: Path, *,
                  allow_legacy_inputs: bool = False,
                  allow_legacy_clock: bool = False) -> dict[str, Any]:
@@ -2282,10 +2471,11 @@ def export_audio(directory: Path, output: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
-    operation = arguments.pop(0) if arguments and arguments[0] in ('validate', 'compare', 'export-audio') else 'capture'
+    operation = arguments.pop(0) if arguments and arguments[0] in ('validate', 'compare', 'export-audio', 'inspect') else 'capture'
     parser = argparse.ArgumentParser(description=__doc__,
                                      epilog='Offline commands: validate --run DIR; '
-                                            'compare --before DIR --after DIR (both need --output JSON).')
+                                            'compare --before DIR --after DIR; inspect --run DIR '
+                                            '[--owner HOUSE --type TYPE --expect JSON] (need --output JSON).')
     parser.add_argument('--output', type=Path, required=True)
     if operation == 'capture':
         parser.add_argument('--profile', type=Path, required=True)
@@ -2298,11 +2488,18 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument('--allow-legacy-inputs', action='store_true')
         parser.add_argument('--allow-legacy-clock', action='store_true',
                             help='Allow offline wall-clock v2 children; not comparable with diagnostic-clock children')
-        if operation in ('validate', 'export-audio'):
+        if operation in ('validate', 'export-audio', 'inspect'):
             parser.add_argument('--run', type=Path, required=True)
         else:
             parser.add_argument('--before', type=Path, required=True)
             parser.add_argument('--after', type=Path, required=True)
+        if operation == 'inspect':
+            parser.add_argument('--owner', dest='owners', action='append', help='Filter House names (repeatable)')
+            parser.add_argument('--type', dest='types', action='append', help='Filter actor INI type names (repeatable)')
+            parser.add_argument('--actor', dest='stable_ids', type=int, action='append', help='Filter stable actor IDs (repeatable)')
+            parser.add_argument('--field', dest='fields', action='append', help='Actor field path to follow (repeatable)')
+            parser.add_argument('--max-rows', type=int, default=200, help='Timeline row limit; assertions still inspect all requested samples')
+            parser.add_argument('--expect', type=Path, help='Absolute path to observed-outcome assertions JSON')
     args = parser.parse_args(arguments)
     try:
         if operation == 'capture':
@@ -2312,13 +2509,19 @@ def main(argv: list[str] | None = None) -> int:
             result_path = args.output / 'run.json'
             status = 0 if report['status'] == 'VALID' else 1
         else:
-            directories = [args.run] if operation in ('validate', 'export-audio') else [args.before, args.after]
+            directories = [args.run] if operation in ('validate', 'export-audio', 'inspect') else [args.before, args.after]
             _check_output_outside_runs(args.output, directories)
             if operation == 'export-audio':
                 report = export_audio(args.run, args.output)
                 print(f'EXPORTED: {args.output}')
                 return 0
-            if operation == 'validate':
+            if operation == 'inspect':
+                report = inspect_run(args.run, owners=args.owners, types=args.types,
+                                     stable_ids=args.stable_ids, fields=args.fields, max_rows=args.max_rows,
+                                     expectations_path=args.expect,
+                                     allow_legacy_inputs=args.allow_legacy_inputs,
+                                     allow_legacy_clock=args.allow_legacy_clock)
+            elif operation == 'validate':
                 report = validate_run(args.run, allow_legacy_inputs=args.allow_legacy_inputs,
                                       allow_legacy_clock=args.allow_legacy_clock)
             else:
@@ -2327,7 +2530,8 @@ def main(argv: list[str] | None = None) -> int:
                                       allow_legacy_clock=args.allow_legacy_clock)
             result_path = write_json_exclusive(args.output, report, maximum_length=MAX_RECEIPT_BYTES,
                                               compact=True)
-            status = {'VALID': 0, 'MATCH': 0, 'MISMATCH': 1, 'INVALID': 2}[report['status']]
+            status = {'VALID': 0, 'MATCH': 0, 'INSPECTED': 0, 'PASS': 0,
+                      'MISMATCH': 1, 'FAIL': 1, 'INVALID': 2}[report['status']]
     except (OSError, ValueError) as exc:
         print(f'map observation: {exc}', file=sys.stderr)
         return 2
