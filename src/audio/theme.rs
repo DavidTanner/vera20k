@@ -12,6 +12,13 @@
 //! `0x00721210`, `Is_Allowed` `0x00721140`, `Next_Song` `0x00720A80`,
 //! `Queue_Song` `0x00720B20`, `Play_Song` `0x00720BB0`, `Stop` `0x00720EA0`,
 //! `AI` `0x007209D0` (audio pump `0x00406F70`, every screen, > 33 ms).
+//!
+//! VERA presentation extension: append available, normal RA2 `THEME.INI`
+//! entries after the unchanged YR catalog. Native YR never merges that file.
+//! YR keeps every existing index and wins case-insensitive key collisions;
+//! both catalogs use the same native readers, scan, playlist and player.
+//! A larger playlist intentionally changes shuffle ranges and rejection draws
+//! on the existing shared Main RNG; it does not introduce another RNG owner.
 
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::aud_file;
@@ -37,6 +44,7 @@ use crate::rules::ini_parser::{IniFile, IniSection};
 /// inaudible, per fade).
 const THEME_FADE_MS: u64 = 1_000;
 const THEME_INI_NAME: &str = "thememd.ini";
+const RA2_THEME_INI_NAME: &str = "theme.ini";
 const MENU_THEME_SECTION: &str = "INTRO";
 /// `Next_Song` shuffle rejection budget (`CMP EDI,0x3E8` @ `0x00720AC6`).
 const SHUFFLE_TRIES: u32 = 1_000;
@@ -180,7 +188,8 @@ pub(crate) struct ThemeRuntime {
 }
 
 impl ThemeRuntime {
-    /// Catalog load `0x00720590` + scan `0x007207F0`, once per process.
+    /// Catalog load `0x00720590` + scan `0x007207F0`, once per process, with
+    /// the requested RA2 gameplay playlist extension appended afterwards.
     pub(crate) fn initialize_catalog(&mut self, assets: &AssetManager) {
         if self.catalog_loaded {
             return;
@@ -190,15 +199,26 @@ impl ThemeRuntime {
         {
             self.entries = catalog_from_ini(&ini);
         }
-        for entry in &mut self.entries {
-            let wav = (!entry.sound.is_empty())
-                .then(|| assets.get_ref(&format!("{}.wav", entry.sound)))
-                .flatten();
-            entry.available = wav.is_some();
-            entry.duration_seconds = wav
-                .and_then(crate::assets::wav_file::WavFile::parse)
-                .and_then(|wav| wav.native_duration_seconds())
-                .unwrap_or(0);
+        scan_catalog_availability(&mut self.entries, assets);
+
+        // Read RA2 independently: merging INIs would let its INTRO, SCORE,
+        // LOADING and CREDITS sections replace the YR lifecycle themes.
+        if let Some(bytes) = assets.get_ref(RA2_THEME_INI_NAME)
+            && let Ok(ini) = IniFile::from_bytes(bytes)
+        {
+            let mut ra2_entries = catalog_from_ini(&ini);
+            scan_catalog_availability(&mut ra2_entries, assets);
+            for entry in ra2_entries {
+                if entry.normal
+                    && entry.available
+                    && !self
+                        .entries
+                        .iter()
+                        .any(|yr| yr.key.eq_ignore_ascii_case(&entry.key))
+                {
+                    self.entries.push(entry);
+                }
+            }
         }
         self.catalog_loaded = true;
     }
@@ -800,6 +820,21 @@ fn find_section<'a>(ini: &'a IniFile, name: &str) -> Option<&'a IniSection> {
     })
 }
 
+/// Native catalog scan `0x007207F0`: WAV availability and declared metadata
+/// supply the playlist row; the shared player owns subsequent decoding.
+fn scan_catalog_availability(entries: &mut [ThemeEntry], assets: &AssetManager) {
+    for entry in entries {
+        let wav = (!entry.sound.is_empty())
+            .then(|| assets.get_ref(&format!("{}.wav", entry.sound)))
+            .flatten();
+        entry.available = wav.is_some();
+        entry.duration_seconds = wav
+            .and_then(crate::assets::wav_file::WavFile::parse)
+            .and_then(|wav| wav.native_duration_seconds())
+            .unwrap_or(0);
+    }
+}
+
 /// Catalog load `0x00720590`: every non-empty `[Themes]` value in source
 /// order becomes an entry keyed by that value (duplicates re-read the existing
 /// entry); `0x00720480` fills the section fields with the ctor defaults
@@ -848,13 +883,13 @@ pub(crate) fn catalog_from_ini(ini: &IniFile) -> Vec<ThemeEntry> {
             .to_string();
         entry.scenario = section.read_int("Scenario", entry.scenario);
         entry.normal = section.read_bool("Normal", entry.normal);
-        if entry.normal {
-            // The string-table label read `0x00529160` copies up to 0x3FF bytes.
-            entry.name_key = section.read_string("Name", "", 0x400);
-        }
         entry.repeat = section.read_bool("Repeat", entry.repeat);
         if let Some(side) = section.read_name("Side", 0x80) {
             entry.side_name = Some(side.to_string());
+        }
+        if entry.normal {
+            // The string-table label read `0x00529160` copies up to 0x3FF bytes.
+            entry.name_key = section.read_string("Name", "", 0x400);
         }
     }
     entries
@@ -991,18 +1026,22 @@ mod tests {
         assert_eq!(theme.from_name(""), -1);
     }
 
-    /// Catalog load `0x00720590` opens only `THEMEMD.INI` (`0x00825D94`); the
-    /// RA2 `theme.ini` is never merged. Scan `0x007207F0` marks availability
-    /// from `Sound + ".WAV"`.
+    /// Native catalog fields and indices remain authoritative when the VERA
+    /// presentation extension appends available RA2 gameplay entries. Scan
+    /// `0x007207F0` marks availability from `Sound + ".WAV"`.
     #[test]
-    fn catalog_reads_thememd_only_and_scans_wav_availability() {
+    fn ra2_catalog_appends_available_gameplay_without_overwriting_yr_entries() {
         let dir =
             std::env::temp_dir().join(format!("vera20k-theme-catalog-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("test asset dir");
         std::fs::write(
             dir.join("theme.ini"),
-            "[Themes]\n1=Grinder\n2=Drok\n[Grinder]\nSound=Grinder\nNormal=yes\n\
-             [Drok]\nSound=Drok\nNormal=yes\nRepeat=yes\n",
+            "[Themes]\n1=Grinder\n2=drok\n3=intro\n4=Unavailable\n5=Hidden\n6=Silent\n\
+             [Grinder]\nSound=Grinder\nName=THEME:Grinder\nNormal=yes\n\
+             [drok]\nSound=Grinder\nNormal=yes\nRepeat=yes\n\
+             [intro]\nSound=Grinder\nNormal=yes\nRepeat=no\n\
+             [Unavailable]\nSound=Absent\n[Hidden]\nSound=Grinder\nNormal=no\n\
+             [Silent]\nName=THEME:Silent\n",
         )
         .expect("write theme.ini");
         std::fs::write(
@@ -1034,8 +1073,10 @@ mod tests {
         let mut theme = ThemeRuntime::default();
         theme.initialize_catalog(&assets);
         let keys: Vec<&str> = theme.entries().iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(keys, ["INTRO", "Drok"], "theme.ini [Themes] is not merged");
-        assert_eq!(theme.from_name("Grinder"), THEME_NONE);
+        assert_eq!(keys, ["INTRO", "Drok", "Grinder"]);
+        assert_eq!(theme.from_name("Grinder"), 2);
+        assert_eq!(theme.entries()[0].sound, "Drok");
+        assert_eq!(theme.entries()[1].sound, "Drok");
         assert!(theme.entries()[0].repeat && !theme.entries()[0].normal);
         assert!(
             !theme.entries()[1].repeat,
@@ -1051,13 +1092,119 @@ mod tests {
             theme.entries()[0].name_key.is_empty(),
             "Normal=no omits Name lookup"
         );
+        assert_eq!(theme.entries()[2].name_key, "THEME:Grinder");
+        assert!(
+            theme.is_allowed(2),
+            "RA2 reaches the existing playlist owner"
+        );
 
-        // Missing THEMEMD.INI leaves an empty catalog even with theme.ini present.
+        // Missing RA2 metadata leaves the original YR catalog intact.
+        std::fs::remove_file(dir.join("theme.ini")).expect("remove theme.ini");
+        let assets = AssetManager::from_loose_root_for_test(&dir);
+        let mut theme = ThemeRuntime::default();
+        theme.initialize_catalog(&assets);
+        assert_eq!(theme.entries().len(), 2);
+
+        // Both optional inputs missing leave an empty catalog.
         std::fs::remove_file(dir.join("thememd.ini")).expect("remove thememd.ini");
         let assets = AssetManager::from_loose_root_for_test(&dir);
         let mut theme = ThemeRuntime::default();
         theme.initialize_catalog(&assets);
         assert!(theme.entries().is_empty());
+        std::fs::remove_dir_all(dir).expect("remove theme test assets");
+    }
+
+    #[test]
+    fn retail_ra2_music_reaches_catalog_and_shared_decoder() {
+        let Some((_, assets)) = crate::rules::retail_ini_fixture::retail_assets() else {
+            return;
+        };
+        let mut theme = ThemeRuntime::default();
+        theme.initialize_catalog(&assets);
+        let yr_keys = [
+            "INTRO",
+            "SCORE",
+            "LOADING",
+            "CREDITS",
+            "RA2Options",
+            "BrainFreeze",
+            "Drok",
+            "Deceiver",
+            "PhatAttack",
+            "BullyKit",
+            "DefendTheBase",
+            "Tactics",
+            "TranceLVania",
+        ];
+        let ra2_keys = [
+            "Grinder",
+            "Power",
+            "Fortification",
+            "InDeep",
+            "Tension",
+            "EagleHunter",
+            "IndustroFunk",
+            "200Meters",
+            "BlowItUp",
+            "Destroy",
+            "Burn",
+            "Motorized",
+            "HM2",
+        ];
+        let keys: Vec<&str> = theme
+            .entries()
+            .iter()
+            .map(|entry| entry.key.as_str())
+            .collect();
+        assert_eq!(&keys[..yr_keys.len()], &yr_keys);
+        assert_eq!(&keys[yr_keys.len()..], &ra2_keys);
+        assert_eq!(
+            theme
+                .entries()
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| theme.is_allowed(*index as i32))
+                .count(),
+            21,
+        );
+        assert_eq!(theme.entries()[0].sound, "Drok");
+        assert_eq!(theme.entries()[1].sound, "ScoreX");
+        assert_eq!(theme.entries()[2].sound, "Bully");
+        assert_eq!(theme.entries()[3].sound, "OptionX");
+        let csf = crate::assets::csf_file::CsfFile::from_bytes(
+            assets.get_ref("ra2md.csf").expect("retail string table"),
+        )
+        .expect("retail CSF parses");
+
+        for (offset, key) in ra2_keys.iter().enumerate() {
+            let index = yr_keys.len() + offset;
+            let entry = &theme.entries()[index];
+            assert_eq!(theme.from_name(key), index as i32);
+            assert!(
+                theme.is_allowed(index as i32),
+                "{key} reaches the Sound list"
+            );
+            assert!(entry.duration_seconds > 0, "{key} has retail WAV duration");
+            assert!(
+                csf.get(&entry.name_key).is_some(),
+                "{key} has its retail display name"
+            );
+            assert_eq!(
+                assets
+                    .resolve_ref(&format!("{}.wav", entry.sound))
+                    .unwrap()
+                    .source_archive,
+                "theme.mix",
+                "{key} resolves from original RA2 music",
+            );
+            let prepared = prepare_track(&entry.sound, &assets).expect("RA2 music decodes");
+            assert_eq!(prepared.sample_rate, 22_050);
+            assert!(!prepared.samples.is_empty());
+        }
+        let intro = assets
+            .resolve_ref("Drok.wav")
+            .expect("YR INTRO remains available");
+        assert_eq!(intro.source_archive, "thememd.mix");
     }
 
     #[test]
