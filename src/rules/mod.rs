@@ -87,8 +87,9 @@
 //!   0x005D67B0); no scenario-named `.INI`, `TMCJ4F.INI` or `[Digest]` handling.
 //!
 //! ### Retail INIs in tests
-//! - `cargo run --bin extract-ini` fills the gitignored `ini/`, RA2 base files included;
-//!   mode INIs and maps are not extracted (use `asset`/`asset-browser`).
+//! - `cargo run --bin extract-ini` fills the gitignored `ini/` with selected
+//!   standalone YR INIs and mode overrides from the selected `MPModesMD.ini`;
+//!   scenario/map INIs are not extracted (use `asset`/`asset-browser`).
 //! - `retail_ini_fixture.rs`: a missing file prints SKIPPED and passes unless
 //!   `VERA20K_REQUIRE_RETAIL_INI=1`; `retail_rules_and_art()` has no LANGRULE, mode or
 //!   map layer. Test-only `load_rules_with_merged_ini` runs the production stack.
