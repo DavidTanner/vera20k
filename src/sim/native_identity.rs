@@ -124,6 +124,11 @@ pub(crate) enum NativeMapTubeConstructionError {
 }
 
 impl Simulation {
+    /// Immutable Scenario+214 cursor for capture. Reading never reserves IDs.
+    pub(crate) fn native_identity_cursor(&self) -> Option<u32> {
+        self.native_unique_ids.as_ref().map(|cursor| cursor.value)
+    }
+
     /// Assign AbstractClass+10 at the constructor boundary, before class
     /// registration, optional constructor draws, or a later failed admission.
     /// Original410230/68BCB0; never derived from the Rust stable handle.

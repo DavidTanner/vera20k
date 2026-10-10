@@ -182,11 +182,12 @@ pub(crate) fn render_game(
         .match_presentation
         .cached_overlay_instances = world.overlay;
 
-    let combat_lights = state
-        .match_state
-        .match_presentation
-        .combat_lights
-        .draw_records();
+    let combat_lights = {
+        let presentation = &state.match_state.match_presentation;
+        presentation
+            .combat_lights
+            .draw_records(&mut presentation.detail.borrow_mut())
+    };
     state.renderer.combat_light_renderer.prepare(
         &state.renderer.gpu,
         &combat_lights,
@@ -221,12 +222,44 @@ pub(crate) fn render_game(
         state.match_state.input.camera_x,
         state.match_state.input.camera_y,
     ];
+    let viewport = crate::render::surface_line::SurfaceLineViewport {
+        camera: camera.map(|v| v.floor() as i32),
+        clip: [tactical_x, tactical_y, tactical_w, tactical_h].map(|v| (v as f32 / z) as i32),
+        z_origin_y: native_z_origin_y as i32,
+        zoom: z,
+    };
+    let palette = (!state
+        .match_state
+        .match_presentation
+        .electric_bolts
+        .is_empty())
+    .then(|| {
+        let bytes = state
+            .process_assets
+            .manager()
+            .and_then(|assets| assets.get_ref("palette.pal"))
+            .expect("ready tactical assets include PALETTE.PAL");
+        let palette = crate::assets::pal_file::Palette::from_bytes(bytes)
+            .expect("validated retail PALETTE.PAL");
+        crate::render::electric_bolt::ElectricBoltPalette::from_palette(&palette)
+    });
+    let presentation = &mut state.match_state.match_presentation;
+    // Tactical6D466E executes once, before6D4673 trails, even when this
+    // composite ran no Logic. GPU uploads never consume the process cursor.
+    let bolt_lines = {
+        let mut main = crate::app::state::process_main_draws(
+            state.match_state.sim_runtime.as_mut(),
+            &mut state.frontend.frontend_main_rng,
+        );
+        presentation
+            .electric_bolts
+            .composite(viewport, palette, &mut main)
+    };
     let sim = state
         .match_state
         .sim_runtime
         .as_ref()
         .map(|runtime| runtime.view().simulation());
-    let presentation = &mut state.match_state.match_presentation;
     let segments = presentation.line_trails.composite(|id| {
         sim.and_then(|sim| sim.projectiles.get(id))
             .map(|bullet| bullet.position)
@@ -237,13 +270,9 @@ pub(crate) fn render_game(
         &state.renderer.gpu.device,
         &state.renderer.gpu.queue,
         presentation.lasers.draws(),
+        bolt_lines,
         segments,
-        crate::render::surface_line::SurfaceLineViewport {
-            camera: camera.map(|v| v.floor() as i32),
-            clip: [tactical_x, tactical_y, tactical_w, tactical_h].map(|v| (v as f32 / z) as i32),
-            z_origin_y: native_z_origin_y as i32,
-            zoom: z,
-        },
+        viewport,
         || {
             let mut detail = presentation.detail.borrow_mut();
             let enough_fps = detail.frame_rate() >= detail.minimum_frame_rate();

@@ -29,6 +29,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
 use crate::rules::ruleset::PrismSupportRules;
 use crate::sim::combat::AttackTarget;
+use crate::sim::combat::receiver_fixture::with_building_fire_stub;
 use crate::sim::mission::MissionDispatchTimer;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::projectile::ProjectileCoord;
@@ -484,6 +485,8 @@ fn prism_recruitment_matches_the_original() {
             target,
             0,
             FireError::Ok,
+            ObjectAiCtx::default(),
+            &mut false,
         );
         assert_eq!(
             i64::from(returns),
@@ -653,18 +656,23 @@ fn prism_support_bonus_matches_the_original() {
             Some(other) => panic!("{name}: GetFireError {other}"),
         }
         let draws_before = fixture.scenario_state();
-        process_delayed_fire(
-            &mut fixture.sim,
-            master,
-            &fixture.rules,
-            ObjectAiCtx::default(),
-        );
+        let (_, calls) = with_building_fire_stub(None, || {
+            process_delayed_fire(
+                &mut fixture.sim,
+                master,
+                &fixture.rules,
+                ObjectAiCtx::default(),
+                &mut false,
+            )
+        });
         assert_eq!(
             fixture.scenario_state(),
             draws_before,
             "{name}: no Scenario draw"
         );
-        let requested = fixture.sim.fire_requests.buildings.remove(&master);
+        let requested = calls
+            .first()
+            .map(|(_, shot, multiplier)| (*shot, *multiplier));
         let fire_at = row["calls"]
             .as_array()
             .unwrap()
@@ -672,7 +680,7 @@ fn prism_support_bonus_matches_the_original() {
             .find(|call| call[0] == "fire_at");
         match (requested, fire_at) {
             (None, None) => {}
-            (Some(BuildingShot::Delayed { slot, target }), Some(fire_at)) => {
+            (Some((BuildingShot::Delayed { slot, target }, multiplier)), Some(fire_at)) => {
                 let native_slot = if fire_at[2] == 1 {
                     WeaponSlot::Secondary
                 } else {
@@ -690,7 +698,6 @@ fn prism_support_bonus_matches_the_original() {
                         .map(|attack| attack.target),
                     "{name} target"
                 );
-                let multiplier = fixture.sim.take_support_bonus(master, &fixture.rules);
                 assert_eq!(
                     Some(i64::from(multiplier)),
                     row["bullet_multiplier"].as_i64(),
@@ -770,8 +777,9 @@ fn prism_support_beam_matches_the_original() {
             supporter,
             &fixture.rules,
             ObjectAiCtx::default(),
+            &mut false,
         );
-        assert!(fixture.sim.fire_requests.buildings.is_empty(), "{name}");
+        assert!(fixture.sim.fire_events.is_empty(), "{name}");
         assert_eq!(
             fixture.scenario_state(),
             draws_before,
@@ -819,15 +827,12 @@ fn apply_event(fixture: &mut Fixture, action: &str, building: u64) {
 /// Every `cadence` row through BuildingClass::Update's mission pieces, per
 /// frame and per building in the row's Logic order as the oracle runs them:
 /// the two ready checks around MissionClass::AI, then ProcessDelayedFire.
-/// A requested FireAt is served where VERA's combat phase emits it, after
-/// every building's turn, as the oracle answers it: its bullet takes the
-/// support bonus and its rearm is exactly ROF 45. The turns after the
-/// shooter's see its request, not the rearm native FireAt already started
-/// (`k_shooter_rearms_before_a_later_walk`), and its state is compared once
-/// served. Per turn: whether MissionClass::AI ran a handler, and the Attack
-/// return; each recruit, arm, beam and shot with its multiplier; and the
-/// building's count, delayed fire, rearm, mission and target, against the
-/// native frames. A
+/// The oracle replaces FireAt with a bullet return and exact ROF45; this
+/// caller-only replay installs the same substitute at the synchronous live
+/// receiver boundary. Later tower visits read the actual rearm immediately,
+/// including `k_shooter_rearms_before_a_later_walk`. Each returned bullet's
+/// support multiplier and the entire per-tower state are compared before
+/// moving to the next native object. Full live-fire tests run separately.
 /// Guard dispatch's `RandomRanged(0, 2)` is pinned by
 /// `building_guard_attack.json`'s replay; here VERA's delay is checked to be
 /// AARate's 14 plus 0..=2 and replaced by the native one, since each
@@ -868,7 +873,6 @@ fn prism_cadence_matches_the_original() {
                 let building = fixture.id(event[2].as_str().unwrap());
                 apply_event(&mut fixture, event[1].as_str().unwrap(), building);
             }
-            let mut served = Vec::new();
             for &id in &order {
                 let building = fixture.name(id).to_string();
                 let at = format!("{name} frame {k} {building}");
@@ -886,6 +890,7 @@ fn prism_cadence_matches_the_original() {
                     id,
                     Some(&fixture.rules),
                     ObjectAiCtx::default(),
+                    &mut false,
                 );
                 let entity = fixture.sim.substrate.entities.get_mut(id).unwrap();
                 let timer = entity.mission.dispatch_timer();
@@ -944,51 +949,44 @@ fn prism_cadence_matches_the_original() {
                         fire: DelayedFire::SupportBeam { .. },
                     })
                 );
-                process_delayed_fire(&mut fixture.sim, id, &fixture.rules, ObjectAiCtx::default());
+                let (_, calls) = with_building_fire_stub(Some(ROF), || {
+                    process_delayed_fire(
+                        &mut fixture.sim,
+                        id,
+                        &fixture.rules,
+                        ObjectAiCtx::default(),
+                        &mut false,
+                    )
+                });
                 assert_eq!(beaming, native_event("beam").is_some(), "{at} beam");
                 beams += usize::from(beaming);
-                match (
-                    fixture.sim.fire_requests.buildings.get(&id),
-                    native_event("shot"),
-                ) {
-                    (None, None) => fixture.assert_state(id, native, &at),
+                match (calls.as_slice(), native_event("shot")) {
+                    ([], None) => {}
                     (
-                        Some(BuildingShot::Delayed {
-                            slot: WeaponSlot::Primary,
-                            ..
-                        }),
+                        [
+                            (
+                                called_id,
+                                BuildingShot::Delayed {
+                                    slot: WeaponSlot::Primary,
+                                    ..
+                                },
+                                multiplier,
+                            ),
+                        ],
                         Some(shot),
                     ) => {
-                        let multiplier = shot[3].as_i64().unwrap();
-                        served.push((id, multiplier, native, at));
+                        assert_eq!(*called_id, id, "{at} firer");
+                        assert_eq!(
+                            i64::from(*multiplier),
+                            shot[3].as_i64().unwrap(),
+                            "{at} multiplier"
+                        );
+                        shots += 1;
                     }
-                    (shot, native) => panic!("{at}: shot {shot:?}, native {native:?}"),
+                    (calls, native) => panic!("{at}: calls {calls:?}, native {native:?}"),
                 }
-            }
-            // The combat phase's FireAt, after every building's turn.
-            for (id, native_multiplier, native, at) in served {
-                let request = fixture.sim.fire_requests.buildings.remove(&id);
-                assert!(
-                    matches!(
-                        request,
-                        Some(BuildingShot::Delayed {
-                            slot: WeaponSlot::Primary,
-                            ..
-                        })
-                    ),
-                    "{at}"
-                );
-                let multiplier = fixture.sim.take_support_bonus(id, &fixture.rules);
-                assert_eq!(i64::from(multiplier), native_multiplier, "{at} multiplier");
-                let entity = fixture.sim.substrate.entities.get_mut(id).unwrap();
-                entity.rearm_timer.start(now, ROF);
-                shots += 1;
                 fixture.assert_state(id, native, &at);
             }
-            assert!(
-                fixture.sim.fire_requests.buildings.is_empty(),
-                "{name} frame {k}"
-            );
         }
     }
     // Every recruit, arm, beam and shot of the rows.

@@ -17,7 +17,7 @@
 //! - Per-particle animation state machine + 25%-on-even-frame random drift.
 
 use super::wind::{SMOKE_WIND_DX, SMOKE_WIND_DY};
-use super::{Particle, ParticleSystem, make_particle};
+use super::{Particle, ParticleSystem};
 use crate::rules::particle_type::{ParticleType, ParticleTypeId};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::rng::SimRng;
@@ -74,7 +74,7 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
             break;
         }
         let pt = rules.particle_type(spec.next_id);
-        sys.particles.push(make_child(spec, pt, sim.particle_rng()));
+        sys.particles.push(make_child(spec, pt, sim));
     }
 
     // Phase 3 — spawn a new particle if conditions allow.
@@ -92,8 +92,7 @@ pub(super) fn tick_system(sys: &mut ParticleSystem, sim: &mut Simulation, rules:
                         sys.coords.y + off_y,
                         sys.coords.z + 10,
                     );
-                    sys.particles
-                        .push(make_particle(holds, spawn_pos, pt, sim.particle_rng()));
+                    sys.particles.push(Particle::new(holds, spawn_pos, pt, sim));
                 }
             }
         }
@@ -159,8 +158,8 @@ struct ChildSpec {
     translucency: u8,
 }
 
-fn make_child(spec: ChildSpec, pt: &ParticleType, rng: &mut SimRng) -> Particle {
-    let mut p = make_particle(spec.next_id, spec.coords, pt, rng);
+fn make_child(spec: ChildSpec, pt: &ParticleType, sim: &mut Simulation) -> Particle {
+    let mut p = Particle::new(spec.next_id, spec.coords, pt, sim);
     p.velocity = spec.velocity;
     p.translucency = spec.translucency;
     p
@@ -188,23 +187,9 @@ mod tests {
     use glam::IVec3;
 
     fn fake_system(type_id: ParticleSystemTypeId) -> ParticleSystem {
-        ParticleSystem {
-            stable_id: 0,
-            in_logic_vector: false,
-            type_id,
-            coords: IVec3::ZERO,
-            offset: IVec3::ZERO,
-            particles: Vec::new(),
-            spawn_timer: SimFixed::from_num(1),
-            lifetime: -1,
-            spark_spawn_frames: 0,
-            facing: 0x1D,
-            attached_entity: None,
-            owner_entity: None,
-            target_coords: IVec3::ZERO,
-            owner_house: None,
-            done_spawning: false,
-        }
+        let mut system = ParticleSystem::test_fixture(0, type_id, IVec3::ZERO);
+        system.spawn_timer = SimFixed::from_num(1);
+        system
     }
 
     fn parse(ini_text: &str) -> RuleSet {
@@ -238,12 +223,8 @@ mod tests {
         let mut sys = fake_system(ParticleSystemTypeId(0));
         // Seed one SmkA particle with lifetime=1 so it dies this tick.
         let pt_a = rules.particle_type(ParticleTypeId(0));
-        let mut parent = make_particle(
-            ParticleTypeId(0),
-            IVec3::new(1000, 2000, 0),
-            pt_a,
-            sim.particle_rng(),
-        );
+        let mut parent =
+            Particle::new(ParticleTypeId(0), IVec3::new(1000, 2000, 0), pt_a, &mut sim);
         parent.lifetime_remaining = 1;
         sys.particles.push(parent);
 
@@ -345,12 +326,7 @@ mod tests {
         );
         let pt = rules.particle_type(ParticleTypeId(0));
         let mut sim = Simulation::new();
-        let mut p = make_particle(
-            ParticleTypeId(0),
-            IVec3::new(0, 0, 0),
-            pt,
-            sim.particle_rng(),
-        );
+        let mut p = Particle::new(ParticleTypeId(0), IVec3::new(0, 0, 0), pt, &mut sim);
         move_smoke_with_wind(&mut p, pt, 3);
         // SMOKE_WIND_DX[3] = 2 → coords.x advanced by +2 (smoke table, not gas).
         assert_eq!(p.coords.x, 2);

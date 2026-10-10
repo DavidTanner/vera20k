@@ -194,7 +194,7 @@ impl RocketHost for RocketProcessHost<'_> {
         let warhead_ref = self.sim.interner.intern(warhead);
         self.sim
             .combat_light_requests
-            .push(crate::sim::combat::CombatLightRequest {
+            .push(crate::sim::combat::CombatLightRequest::Impact {
                 target_id: None,
                 damage,
                 warhead_ref,

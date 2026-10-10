@@ -1870,8 +1870,8 @@ mod tests {
         let mut dst = [0u8; 16 * 16];
         scale_block_8x8_to_16x16(&src, &mut dst, 16);
 
-        assert_eq!(dst[0 * 16 + 0], 0);
-        assert_eq!(dst[0 * 16 + 1], 0);
+        assert_eq!(dst[0], 0);
+        assert_eq!(dst[1], 0);
         assert_eq!(dst[1 * 16 + 0], 0);
         assert_eq!(dst[1 * 16 + 1], 0);
 

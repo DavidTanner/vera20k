@@ -747,7 +747,7 @@ fn techno_ai_shell(
             // Update's ready checks, never here.
             clear_passive_target_off_mission(sim, id, rules);
             mission_counter_step(sim, id);
-            building_missions::dispatch(sim, id, rules, ctx);
+            building_missions::dispatch(sim, id, rules, ctx, &mut outcome.bridge_state_changed);
             if sim
                 .substrate
                 .entities
@@ -784,7 +784,13 @@ fn techno_ai_shell(
             // computer's low-credit sale or auto-repair start, then the
             // repair step.
             if let Some(rules) = rules {
-                building_missions::process_delayed_fire(sim, id, rules, ctx);
+                building_missions::process_delayed_fire(
+                    sim,
+                    id,
+                    rules,
+                    ctx,
+                    &mut outcome.bridge_state_changed,
+                );
                 // Building4401A3..4401AF: allegiance belongs to this object's
                 // AI tail, before repair/power and factory work. Earlier
                 // native returns admit only a live, nonzero-health building.

@@ -86,6 +86,52 @@ fn game_speed_command_sim() -> (Simulation, crate::sim::intern::InternedId) {
 }
 
 #[test]
+fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
+    // Original MainTick55D8AB/55D8B4 -> P5367F0/732280 commits Select
+    // before Logic55DC9E. ObjectReceiveDamage5F57AF -> Foot4D9720 ->
+    // ObjectDetach5F5280 then Deselect5F44A0 wins in that same frame.
+    // Execute those owners at their phase boundaries; this supplies the
+    // exact-zero input without claiming a full native fatal-hit execution.
+    let (mut sim, owner) = game_speed_command_sim();
+    let mut infantry = GameEntity::test_default(1, "E1", "Local", 30, 40);
+    infantry.owner = owner;
+    infantry.type_ref = sim.interner.intern("E1");
+    infantry.category = EntityCategory::Infantry;
+    infantry.lifecycle.object_alive = true;
+    infantry.lifecycle.in_limbo = false;
+    infantry.selected = false;
+    sim.substrate.entities.insert(infantry);
+    let commands = [CommandEnvelope::new(
+        owner,
+        1,
+        Command::Select {
+            entity_ids: vec![1],
+            additive: false,
+        },
+    )];
+
+    let ingress_count = sim.apply_due_frame_ingress_commands(&commands, None, 1);
+    let selected_before_logic = sim.entities().get(1).unwrap().selected;
+    sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
+    sim.object_destroy_callback(1, UninitContext::default());
+    assert!(!sim.entities().get(1).unwrap().selected);
+    let (tail_count, spawned) = sim.apply_due_commands(&commands, None, 1, None);
+
+    assert!(
+        !sim.entities().get(1).unwrap().selected,
+        "an earlier selection must not undo same-frame Destroy/Deselect"
+    );
+    assert!(selected_before_logic, "local Select commits before Logic");
+    assert_eq!((ingress_count, tail_count, spawned), (1, 0, false));
+    assert!(sim.entities().get(1).unwrap().is_object_alive());
+    assert!(!sim.entities().get(1).unwrap().lifecycle.in_limbo);
+    // A distinct later real P remains admitted, as the executed native
+    // infantry_health_zero_alive_true control pins. Do not add a health gate.
+    assert!(sim.try_select_object(1, None));
+    assert!(sim.entities().get(1).unwrap().selected);
+}
+
+#[test]
 fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
     let (mut sim, owner) = game_speed_command_sim();
     let (mut control, _) = game_speed_command_sim();
@@ -248,41 +294,20 @@ fn particle_frame_boundary_fixture(frame_count: u16) -> (Simulation, RuleSet) {
 
     let mut sim = Simulation::with_seed(0xEFFE_C705);
     let stable_id = sim.allocate_stable_id();
-    let particle = Particle {
-        type_id: ParticleTypeId(0),
-        coords: IVec3::ZERO,
-        origin: IVec3::ZERO,
-        direction: [SIM_ZERO; 3],
-        velocity: SIM_ZERO,
-        lifetime_remaining: 100,
-        damage_counter: 0,
-        state_ai_advance: 0,
-        animation_state: 0,
-        translucency: 0,
-        marked_for_deletion: false,
-        drift_x: 0,
-        drift_y: 0,
-        drift_z: 0,
-        spark: None,
-        prev_delta: [SIM_ZERO; 3],
-        state_advance_counter: 0,
+    let particle = {
+        let mut particle = Particle::test_fixture(ParticleTypeId(0), IVec3::ZERO);
+        particle.origin = IVec3::ZERO;
+        particle.lifetime_remaining = 100;
+        particle
     };
-    sim.particle_systems_mut().insert(ParticleSystem {
-        stable_id,
-        in_logic_vector: false,
-        type_id: ParticleSystemTypeId(0),
-        coords: IVec3::ZERO,
-        offset: IVec3::ZERO,
-        particles: vec![particle],
-        spawn_timer: SIM_ZERO,
-        lifetime: 100,
-        spark_spawn_frames: 0,
-        facing: 0,
-        attached_entity: None,
-        owner_entity: None,
-        target_coords: IVec3::ZERO,
-        owner_house: None,
-        done_spawning: true,
+    sim.particle_systems_mut().insert({
+        let mut system =
+            ParticleSystem::test_fixture(stable_id, ParticleSystemTypeId(0), IVec3::ZERO);
+        system.particles = vec![particle];
+        system.lifetime = 100;
+        system.facing = 0;
+        system.done_spawning = true;
+        system
     });
     assert!(sim.reveal_particle_system(stable_id, None));
     (sim, rules)

@@ -12,6 +12,7 @@ use super::*;
 use crate::map::resolved_terrain::test_flat_ground_grid;
 use crate::rules::ini_parser::IniFile;
 use crate::sim::combat::gattling::{GattlingState, gattling_sound_owner};
+use crate::sim::combat::receiver_fixture::with_building_fire_stub;
 use crate::sim::combat::veterancy::RANK_ELITE_U16;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::mission::MissionDispatchTimer;
@@ -292,21 +293,32 @@ fn gattling_attack_matches_the_original() {
             (entity.gattling.report_latch(), entity.gattling.stage())
         };
         let events = row["events"].as_array().unwrap();
-        let returns = with_draws(&mut sim, row, |sim| {
-            let Some((target, weapon)) = attack_prelude(sim, building, &rules) else {
-                return 1;
-            };
-            let asked = events
-                .iter()
-                .find(|event| event[0] == "fire_error")
-                .unwrap();
-            assert_eq!(
-                i64::from(weapon),
-                asked[2].as_i64().unwrap(),
-                "{name} SelectWeapon"
-            );
-            let code = CODES[input["errors"][0].as_u64().unwrap() as usize];
-            attack_arm(sim, building, &rules, target, weapon, code)
+        let (returns, fire_calls) = with_building_fire_stub(None, || {
+            with_draws(&mut sim, row, |sim| {
+                let Some((target, weapon)) = attack_prelude(sim, building, &rules) else {
+                    return 1;
+                };
+                let asked = events
+                    .iter()
+                    .find(|event| event[0] == "fire_error")
+                    .unwrap();
+                assert_eq!(
+                    i64::from(weapon),
+                    asked[2].as_i64().unwrap(),
+                    "{name} SelectWeapon"
+                );
+                let code = CODES[input["errors"][0].as_u64().unwrap() as usize];
+                attack_arm(
+                    sim,
+                    building,
+                    &rules,
+                    target,
+                    weapon,
+                    code,
+                    ObjectAiCtx::default(),
+                    &mut false,
+                )
+            })
         });
         assert_eq!(
             i64::from(returns),
@@ -331,7 +343,10 @@ fn gattling_attack_matches_the_original() {
         );
         let fire_at = events.iter().find(|event| event[0] == "fire_at");
         assert_eq!(
-            sim.fire_requests.buildings.get(&building).copied(),
+            fire_calls
+                .iter()
+                .find(|(id, _, _)| *id == building)
+                .map(|(_, shot, _)| *shot),
             fire_at.map(|event| BuildingShot::Mission {
                 weapon: event[2].as_i64().unwrap() as i32,
                 target: TargetKind::Entity(target),
@@ -341,7 +356,23 @@ fn gattling_attack_matches_the_original() {
         assert_gattling(&sim, building, row, latch_before, stage_before);
         if let Some(event) = fire_at {
             let elite = state_is_elite(input);
-            let shot = combat_phase_shot(&mut sim, &rules, building);
+            // A second run uses the complete live receiver (no boundary
+            // substitute) to check the selected slot before Gattling advances.
+            let (mut live, firer, victim) = fixture(&rules, kind(input), (8, 5));
+            prepare(&mut live, firer, input);
+            aim_at(&mut live, firer, victim);
+            let (aimed, weapon) = attack_prelude(&mut live, firer, &rules).unwrap();
+            attack_arm(
+                &mut live,
+                firer,
+                &rules,
+                aimed,
+                weapon,
+                FireError::Ok,
+                ObjectAiCtx::default(),
+                &mut false,
+            );
+            let shot = live_shot(&live, firer);
             assert_eq!(
                 shot,
                 Some((
@@ -364,31 +395,14 @@ fn weapon_name(slot: u64, elite: bool) -> String {
     format!("{}{slot}", if elite { 'E' } else { 'W' })
 }
 
-/// Runs the combat phase over the frame's requests and answers the
-/// building's shot: the weapon it fired and what at.
-fn combat_phase_shot(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    building: u64,
-) -> Option<(String, TargetKind)> {
-    let requests = std::mem::take(&mut sim.fire_requests);
-    let result = sim.tick_combat_with_fatal_lifecycle(
-        rules,
-        None,
-        67,
-        &[building],
-        &Default::default(),
-        &requests,
-        &[],
-    );
-    result
-        .consequences
-        .fire_events()
+/// Observe the shot already emitted before the caller returned.
+fn live_shot(sim: &Simulation, building: u64) -> Option<(String, TargetKind)> {
+    sim.fire_events
         .iter()
         .find(|event| event.attacker_id == building)
         .map(|event| {
             (
-                sim.interner.resolve(event.weapon_id).to_string(),
+                sim.interner.resolve(event.weapon_id).to_owned(),
                 event.target,
             )
         })
@@ -397,8 +411,7 @@ fn combat_phase_shot(
 /// A later object retargeting the building after its visit (a bullet's
 /// retaliation later in the Logic pass, say) leaves the visit's shot alone:
 /// native's FireAt ran inside the visit (`0x0044B6D0`), at that visit's
-/// TarCom with its weapon, so the combat phase fires the request's weapon at
-/// the request's target.
+/// TarCom with its weapon, before any later retarget can change it.
 #[test]
 fn a_retarget_after_the_visit_keeps_the_visits_shot() {
     let rules = rules(36, 50, true);
@@ -409,18 +422,65 @@ fn a_retarget_after_the_visit_keeps_the_visits_shot() {
     aim_at(&mut sim, building, target);
     let (aimed, weapon) = attack_prelude(&mut sim, building, &rules).unwrap();
     assert_eq!(
-        attack_arm(&mut sim, building, &rules, aimed, weapon, FireError::Ok),
+        attack_arm(
+            &mut sim,
+            building,
+            &rules,
+            aimed,
+            weapon,
+            FireError::Ok,
+            ObjectAiCtx::default(),
+            &mut false
+        ),
         1
     );
     aim_at(&mut sim, building, other);
     assert_eq!(
-        combat_phase_shot(&mut sim, &rules, building),
+        live_shot(&sim, building),
         Some(("W0".to_string(), TargetKind::Entity(target)))
     );
     let entity = sim.substrate.entities.get(building).unwrap();
     assert_eq!(
         entity.attack_target.as_ref().map(|attack| attack.target),
         Some(TargetKind::Entity(other))
+    );
+}
+
+/// Original44B6D0 returns from FireAt before44B6EF charges Gattling and
+/// before the next Logic object. A deferred request cannot supply its rearm
+/// or effect to that next caller (including Tesla's appended Spark system).
+#[test]
+fn building_fire_finishes_before_the_mission_returns() {
+    let rules = rules(36, 50, true);
+    let (mut sim, building, target) = fixture(&rules, "GAT", (8, 5));
+    aim_at(&mut sim, building, target);
+    let (aimed, weapon) = attack_prelude(&mut sim, building, &rules).unwrap();
+    attack_arm(
+        &mut sim,
+        building,
+        &rules,
+        aimed,
+        weapon,
+        FireError::Ok,
+        ObjectAiCtx::default(),
+        &mut false,
+    );
+    assert!(
+        sim.substrate
+            .entities
+            .get(building)
+            .unwrap()
+            .rearm_timer
+            .remaining(FRAME as i32)
+            > 0,
+        "FireAt must rearm before returning to the mission, not after Logic"
+    );
+    assert_eq!(
+        sim.fire_events
+            .iter()
+            .filter(|event| event.attacker_id == building)
+            .count(),
+        1
     );
 }
 

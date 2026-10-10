@@ -65,7 +65,7 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
         for cell in &mut world.resolved_terrain.as_mut().unwrap().cells {
             cell.level = 6;
         }
-        if input["receiver_mode"] != "empty" {
+        let receiver = if input["receiver_mode"] != "empty" {
             let id = world
                 .spawn_object("FV", "Americans", 10, 20, 0, &rules)
                 .unwrap();
@@ -81,7 +81,10 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
                 ),
                 InvulnKind::IronCurtain,
             ));
-        }
+            Some(id)
+        } else {
+            None
+        };
         world.intern_rule_type_ids(&rules);
         world.resolve_type_handles(&rules);
         world.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(
@@ -126,6 +129,7 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             },
         );
         let main_before = world.main_rng.logical_state();
+        assert!(world.particle_systems().is_empty(), "{name}");
         let output = commit_projectiles(
             &mut world,
             &mut ReceiverRun::default(),
@@ -144,6 +148,54 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             output.effects.explosion_effects.is_empty(),
             "{name}: constructed inline"
         );
+        // The original harness substitutes Unit ReceiveDamage737C90. Our
+        // real receiver crosses FV's yellow threshold and synchronously
+        // admits its damage smoke before returning to the impact caller.
+        // Assert this one excluded allocation explicitly; do not treat the
+        // isolated native cursor as a whole-receiver identity golden.
+        let receiver_allocations = u32::from(input["receiver_mode"] == "receiver");
+        assert_eq!(
+            world.particle_systems().len(),
+            receiver_allocations as usize,
+            "{name}"
+        );
+        if receiver_allocations == 1 {
+            let receiver = receiver.unwrap();
+            let fv = rules.object("FV").unwrap();
+            assert_eq!(fv.strength, 200);
+            assert_eq!(fv.damage_particle_systems, ["SparkSys", "SmallGreySSys"]);
+            let (id, smoke) = world.particle_systems().iter().next().unwrap();
+            assert_eq!(
+                smoke.type_id,
+                rules.ps_type_id_by_name("SmallGreySSys").unwrap()
+            );
+            assert_eq!(
+                smoke.native_unique_id() as u32,
+                (row["native_cursor_before"].as_u64().unwrap() as u32).wrapping_add(1),
+                "{name}"
+            );
+            assert!(smoke.particles.is_empty(), "{name}: no smoke AI visit yet");
+            assert_eq!(smoke.owner_entity, Some(receiver));
+            assert_eq!(
+                world
+                    .substrate
+                    .entities
+                    .get(receiver)
+                    .unwrap()
+                    .damage_smoke_system_id,
+                Some(*id)
+            );
+        } else if let Some(receiver) = receiver {
+            assert!(
+                world
+                    .substrate
+                    .entities
+                    .get(receiver)
+                    .unwrap()
+                    .damage_smoke_system_id
+                    .is_none()
+            );
+        }
         let anims = world
             .substrate
             .anims
@@ -176,14 +228,12 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             row["constructor"]["z_adjust"],
             "{name}"
         );
+        let expected_cursor = (row["native_cursor_after"].as_u64().unwrap() as u32)
+            .wrapping_add(receiver_allocations);
+        assert_eq!(anim.native_unique_id as u32, expected_cursor, "{name}");
         assert_eq!(
-            serde_json::json!(anim.native_unique_id),
-            row["native_cursor_after"],
-            "{name}"
-        );
-        assert_eq!(
-            serde_json::json!(world.native_unique_ids.as_ref().unwrap().current_raw()),
-            row["native_cursor_after"],
+            world.native_unique_ids.as_ref().unwrap().current_raw(),
+            expected_cursor,
             "{name}"
         );
         let hex = world.scenario_rng.native_state_hex();

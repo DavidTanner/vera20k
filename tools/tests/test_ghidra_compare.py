@@ -293,6 +293,13 @@ class FrameTests(Disconnected):
         self.assertEqual(mapping[f'{BASE + 6:08x}'], [[-12, 4]])
         self.assertEqual(result['conflicts'], [])
 
+    def test_native_frame_includes_stack_operand_at_entry(self):
+        # Original gamemd.exe 0x465380 begins with MOV EAX,[ESP+8].
+        code = '8b442408c3'
+        mapping, result = frames.NativeFrames([row(code)], image(code)).code('0x00401000')
+        self.assertEqual(mapping[f'{BASE:08x}'], [[8, 4]])
+        self.assertEqual(result['conflicts'], [])
+
     def test_conflicting_native_stack_equations_are_reported(self):
         code = '6a01c3'
         _, result = frames.NativeFrames([row(code)], image(code)).code('0x00401000')

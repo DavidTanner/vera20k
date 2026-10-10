@@ -61,9 +61,9 @@ mod move_cell_input;
 mod move_sound;
 pub(crate) use move_sound::MoveSoundState;
 #[cfg(test)]
-mod move_sound_tests;
-#[cfg(test)]
 mod main_sound_identity_tests;
+#[cfg(test)]
+mod move_sound_tests;
 #[cfg(test)]
 mod native_cell_input_test_fixture;
 mod navigation;
@@ -281,8 +281,8 @@ impl SimFrameOutput {
 /// Front-end admission lane for one Main_Tick call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TickLane {
-    /// Normal gameplay: commands/input dispatch in the Main_Tick tail after
-    /// the live object/global update walk.
+    /// Normal gameplay: local selection/session ingress before live Logic,
+    /// then EventClass gameplay dispatch in the Main_Tick tail.
     Ordinary,
     /// LAN/WOL modal pump: service PerTickUpdate and the late tail only.
     NetworkModal,
@@ -1062,9 +1062,8 @@ pub struct Simulation {
     /// immediately after the movement call returns.
     #[serde(skip)]
     pub(crate) pending_lifecycle_requests: Vec<LifecycleRequest>,
-    /// The shots the objects' own missions asked the combat phase for this
-    /// frame (aircraft strike visits, building FireAt arms). Filled by the
-    /// live pass, drained by combat in the same frame.
+    /// Aircraft strike requests retained by the existing aircraft receiver.
+    /// Building, Unit and Infantry FireAt commit within their live slots.
     #[serde(skip)]
     pub(crate) fire_requests: crate::sim::combat::FireRequests,
     /// BulletClass AI results produced in mixed Logic order and consumed at
@@ -1165,8 +1164,9 @@ pub struct Simulation {
     /// Derived cache: the marked-structure movement cells last published into
     /// `path_grid`. Source of truth is the marked structures themselves
     /// (`navigation::structure_movement_cells`). A full navigation rebuild
-    /// resets it; frame-end structure publication republishes only the union
-    /// of this set and the current one, skipping cells already current.
+    /// resets it; synchronous Mark/Recalc publication updates affected cells.
+    /// Frame-end structure publication reconciles the union of this set and
+    /// the current one, skipping cells already current.
     #[serde(skip)]
     structure_navigation_cells: BTreeSet<(u16, u16)>,
     #[serde(skip)]
@@ -1914,8 +1914,21 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> damage_consequences::DamageCommitReceipt {
         #[cfg(test)]
+        if let crate::sim::combat::world_receiver::FireVisit::Building { id, shot } = &visit
+            && crate::sim::combat::receiver_fixture::substitute_building_fire(
+                self, *id, *shot, rules,
+            )
+        {
+            return damage_consequences::DamageCommitReceipt {
+                area_result: None,
+                structure_destroyed: false,
+                bridge_state_changed: false,
+            };
+        }
+        #[cfg(test)]
         let observed_direct = match &visit {
             crate::sim::combat::world_receiver::FireVisit::Direct { id, .. } => Some(*id),
+            crate::sim::combat::world_receiver::FireVisit::Building { id, .. } => Some(*id),
             _ => None,
         };
         #[cfg(test)]
@@ -5258,7 +5271,6 @@ impl Simulation {
             .union(&self.structure_navigation_cells)
             .copied()
             .collect();
-        self.structure_navigation_cells = current.clone();
         self.publish_recalculated_cells_with_presence(rules, &candidates, &current);
     }
 
@@ -5325,12 +5337,22 @@ impl Simulation {
         overlay_updates
     }
 
-    /// Publish completed overlay/terrain Recalcs (`CellClass::RecalcAttributes`
+    /// Publish completed structure/overlay/terrain Recalcs (`CellClass::RecalcAttributes`
     /// @ `0x0047D2B0`) through the one-cell navigation owner. Zone IDs are not
     /// touched: gamemd's non-wall Mark (`0x005FC570`) and ReduceTiberium
     /// (`0x00480A80`) run no zone helper, and the wall, sale and terrain owners
     /// run theirs themselves.
     fn publish_recalculated_cells(&mut self, rules: &RuleSet, cells: &[(u16, u16)]) {
+        // During initial map Reveal no navigation views are installed yet;
+        // their first full rebuild reads every admitted Mark. Avoid scanning
+        // all structures once per placement before that rebuild.
+        if cells.is_empty()
+            || (self.path_grid.is_none()
+                && self.zone_grid.is_none()
+                && self.terrain_costs.is_empty())
+        {
+            return;
+        }
         let blocked = navigation::structure_blocked_among(
             &self.substrate.entities,
             &self.interner,
@@ -5364,6 +5386,14 @@ impl Simulation {
         if let Err(error) = published {
             log::warn!("Recalc navigation publication fell back to a rebuild: {error}");
             let _ = self.rebuild_dynamic_navigation(rules);
+            return;
+        }
+        for &coord in cells {
+            if blocked.contains(&coord) {
+                self.structure_navigation_cells.insert(coord);
+            } else {
+                self.structure_navigation_cells.remove(&coord);
+            }
         }
     }
 
@@ -6324,7 +6354,8 @@ impl Simulation {
         let mut bridge_state_changed = false;
 
         if lane == TickLane::Ordinary {
-            executed_commands += self.apply_due_frame_ingress_commands(commands, execute_tick);
+            executed_commands +=
+                self.apply_due_frame_ingress_commands(commands, rules, execute_tick);
         }
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::SessionCommands);
@@ -6430,8 +6461,8 @@ impl Simulation {
             );
         }
 
-        // Aircraft and building missions ran in their own LogicVector slots
-        // during the live pass; combat runs the shots they requested.
+        // Aircraft missions retain their existing deferred receiver. Building
+        // shots already finished in their own dynamic Logic slots.
         let fire_requests = std::mem::take(&mut self.fire_requests);
 
         // Wake anims under moving units on water (native gate and cadence in
@@ -6454,9 +6485,9 @@ impl Simulation {
 
             // --- Phase 5: Combat + Turret rotation ---
             // DEPENDS ON: vision/fog (targeting uses fog state), power (cloaking).
-            // Units and Infantry fired in their own live slots after paid
-            // movement. Units also committed Facing_Update. This tail hosts
-            // the remaining classes;
+            // Buildings, Units and Infantry fired in their own live slots.
+            // Units also committed Facing_Update after paid movement. This
+            // tail hosts the remaining classes;
             // tick_turret_rotation excludes Units whose facing is already owned.
             // tick_c4_plants hosts the pending C4 detonation. Its damage
             // is applied here so combat-pre conditions (invulnerability, dying)

@@ -341,11 +341,18 @@ impl Calls {
             .combat_light_requests
             .iter()
             .map(|request| {
-                assert!(!request.force_create && request.flags == 0);
-                (
-                    request.damage,
-                    [request.coord.x, request.coord.y, request.coord.z],
-                )
+                let crate::sim::combat::CombatLightRequest::Impact {
+                    force_create,
+                    flags,
+                    damage,
+                    coord,
+                    ..
+                } = request
+                else {
+                    panic!("storm impact light");
+                };
+                assert!(!force_create && *flags == 0);
+                (*damage, [coord.x, coord.y, coord.z])
             })
             .collect();
         let anims = sim
@@ -1010,6 +1017,29 @@ fn a_strike_constructs_its_bolt_and_explosion_at_the_cell() {
                 && anim.draw_flags == 0x600
         }),
         "the bolt takes the (0, 1, 0x600, 0, 0) row"
+    );
+}
+
+/// The production `[General]` reader and ordinary strike must use the named
+/// bolt type, rather than the stock `WCLBOLT1..3` list.
+#[test]
+fn renamed_general_weather_bolt_reaches_ground_strike() {
+    let ini = IniFile::from_str(
+        "[General]\nWeatherConBolts=CUSTOMBOLT\nLightningWarhead=LWH\n\
+         [Warheads]\n0=LWH\n[LWH]\nCellSpread=0\n",
+    );
+    let mut rules = RuleSet::from_ini(&ini).expect("renamed bolt rules");
+    let mut art = ArtRegistry::from_ini(&IniFile::from_str("[CUSTOMBOLT]\nLayer=ground\n"));
+    art.bind_anim_frame_count_for_test("CUSTOMBOLT", 10);
+    rules.replace_art_registry_for_test(art);
+    assert_eq!(rules.general.weather_con_bolts, ["CUSTOMBOLT"]);
+
+    let mut sim = Simulation::with_seed(1);
+    strike(&mut sim, &rules, (5, 5), None);
+    let custom = sim.interner.intern("CUSTOMBOLT");
+    assert!(
+        sim.anims().any(|(_, anim)| anim.type_id == custom),
+        "the production strike must construct the renamed bolt"
     );
 }
 

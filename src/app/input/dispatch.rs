@@ -1471,6 +1471,7 @@ pub(crate) mod selection_navigation;
 fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
     match command {
         HotkeyCommand::HealthNav => selection_navigation::execute_health_navigation(state),
+        HotkeyCommand::CombatantSelect => selection_navigation::execute_combatant_selection(state),
         HotkeyCommand::NextObject => selection_navigation::execute_object_navigation(
             state,
             selection_navigation::ObjectDirection::Next,
@@ -1598,29 +1599,9 @@ fn dispatch_retail_hotkey(state: &mut AppState, command: HotkeyCommand) {
         // cannot commit every selected unit's path at one instant, cannot edit
         // nodes before committing, and cannot loop a path.
         HotkeyCommand::PlanningMode => {}
-        // DEFERRED (row 86, GSI-14.05's selection-cycling half). Control groups
-        // themselves are implemented; these two verbs are not, and each needs
-        // its own mechanism rather than a shared one.
-        //
-        // `CombatantSelect` (P, Execute 0x005367F0) and `VeterancyNav`
-        // (Y, Execute 0x005369F0) share a prologue that hands
-        // `!(key >> 8) & 1` — the INVERTED Shift bit — to 0x00732280 and
-        // 0x007336C0 respectively. `FUN_00732280` is the closest of the four to
-        // landable: it is the TypeSelect escalation machine VERA already owns
-        // (`g_bTypeSelectAcrossMap`, `g_SelectionMode`, and the same
-        // screen/map/empty CSF feedback triple, string ids 0x3F5 / 0x3F3 /
-        // 0x3F1) driven by a different member predicate — a drawn-list test
-        // `FUN_007342C0` (`entry->+0x14 & 1`) plus a type flag at
-        // `TechnoTypeClass+0xDBC`, whose INI key is UNCHECKED. So closing it is
-        // "reuse `compute_type_select_tap`'s scope machinery with a combatant
-        // predicate", not new infrastructure.
-        //
-        // Trigger: pressing P or Y. Player effect: the key does nothing.
-        // Frequency: occasional — control groups carry this load in ordinary
-        // play. Downstream risk: none for Veterancy's app-side selection;
-        // CombatantSelect touches the shared TypeSelect scope latch, so it
-        // should land beside that machinery rather than duplicating it.
-        HotkeyCommand::CombatantSelect | HotkeyCommand::VeterancyNav => {}
+        // VeterancyNav (Y5369F0 ->7336C0) remains a separate unported
+        // selection mechanism. P is owned by selection_navigation above.
+        HotkeyCommand::VeterancyNav => {}
         // UNCHECKED residual, all still no-ops. Three of them are audio
         // triggers whose rules keys VERA already parses or could:
         // `PlaceBeacon` should place the beacon and play `[AudioVisual]
@@ -2010,44 +1991,47 @@ fn selection_membership_committed(sim: &crate::sim::world::Simulation, ordered: 
 /// Synchronize the app ledger after the due selection commands and lifecycle
 /// removals have committed for this frame.
 pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
-    let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    else {
+    let Some(runtime) = state.match_state.sim_runtime.as_ref() else {
         state.match_state.input.selection_order.clear();
         state.match_state.input.selection_order_pending = false;
         state.match_state.input.health_navigation = Default::default();
         state.match_state.input.type_select.reset_scope();
         return;
     };
+    reconcile_selection_order_for_sim(
+        &mut state.match_state.input,
+        &runtime.simulation,
+        Some(&runtime.resources.rules),
+    );
+}
+
+/// Reconcile the existing input owner against its bound simulation. Kept
+/// independent of the window so lifecycle boundaries use this same path.
+fn reconcile_selection_order_for_sim(
+    input: &mut crate::app::input::state::MatchInputState,
+    sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
+) {
     // 733160 removes expired objects from the retained navigation snapshot.
-    state.match_state.input.health_navigation.retain(|id| {
+    input.health_navigation.retain(|id| {
         sim.entities()
             .get(*id)
             .is_some_and(|entity| entity.lifecycle.object_alive)
     });
-    if state.match_state.input.selection_order_pending {
-        let before_retain = state.match_state.input.selection_order.len();
-        state.match_state.input.selection_order.retain(|id| {
+    if input.selection_order_pending && sim.has_pending_selection_commands() {
+        input.selection_order.retain(|id| {
             sim.entities()
                 .get(*id)
                 .is_some_and(|entity| entity.lifecycle.object_alive)
         });
-        if state.match_state.input.selection_order.len() != before_retain {
-            state.match_state.input.type_select.reset_scope();
-        }
-        if !selection_membership_committed(sim, &state.match_state.input.selection_order) {
-            return;
-        }
-        state.match_state.input.selection_order_pending = false;
         return;
     }
-    let prior_len = state.match_state.input.selection_order.len();
-    let reconciled: Vec<u64> = state
-        .match_state
-        .input
+    // MainTick55D8AB/55D8B4 commits local Select before Logic55DC9E.
+    // A consumed snapshot may have been refused or then deselected by
+    // ObjectDestroy/Conceal. Trust committed bits once the queue is drained,
+    // rather than waiting forever for those bits to equal the provisional
+    // ledger. Deselect5F44A0/expiry733160 do not reset mode or map scope.
+    let reconciled: Vec<u64> = input
         .selection_order
         .iter()
         .copied()
@@ -2057,13 +2041,10 @@ pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
                 .is_some_and(|entity| entity.selected)
         })
         .collect();
-    let lifecycle_removed = reconciled.len() < prior_len;
-    let reconciled = admit_missing_selected_ids(reconciled, sim, state.rules());
-    if lifecycle_removed {
-        state.match_state.input.type_select.reset_scope();
-    }
-    state.match_state.input.selection_order = reconciled;
-    state.match_state.input.selection_order_pending = false;
+    let reconciled = admit_missing_selected_ids(reconciled, sim, rules);
+    debug_assert!(selection_membership_committed(sim, &reconciled));
+    input.selection_order = reconciled;
+    input.selection_order_pending = false;
 }
 
 fn apply_selection_mutation(
@@ -2159,9 +2140,10 @@ fn resolve_selection_mutation(
         .filter(|id| {
             let remove = mutation.clear || deselected.contains(id);
             if remove {
-                native_selection_mode_reset = true;
                 // Deselect's Follow clear precedes Select, even for a singleton
                 // that will immediately be reselected. A final-set diff loses it.
+                //5F44A0 itself retains SelectionMode; UnselectAll and a
+                // successful new Select are the reset callers.
                 if follow_target == Some(*id) {
                     follow_target = None;
                 }
