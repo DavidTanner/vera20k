@@ -474,7 +474,7 @@ impl Simulation {
                     health,
                     type_id,
                     map_ent.category,
-                    map_ent.veterancy,
+                    0,
                     sight_range,
                     uses_voxel,
                     sim.session.binary_frame,
@@ -527,6 +527,15 @@ impl Simulation {
                 if map_ent.category == EntityCategory::Structure {
                     ge.ai_sellable = map_ent.structure_ai_sellable;
                     ge.ai_repairable = map_ent.structure_ai_repairable;
+                }
+                // The map readers apply optional signed percentages after the
+                // class constructor (including Init_Managers) and before Unlimbo:
+                // Unit7434A9 ->7435D0, Infantry51FD68 ->51FE52,
+                // Aircraft41B31C ->41B39B. A missing token preserves whatever
+                // the shared constructor installed; explicit zero resets it.
+                // Executed setter controls: input_oracle/selection_navigation.
+                if let Some(percent) = map_ent.veterancy {
+                    ge.set_veterancy_from_percent(percent);
                 }
                 let (stable_id, outcome) =
                     sim.unlimbo_authored_techno(ge, map_ent.health, rules, overlay_registry);

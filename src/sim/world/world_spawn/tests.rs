@@ -377,7 +377,7 @@ fn map_entity(type_id: &str, category: EntityCategory, cell: (u16, u16)) -> MapE
         facing: 0,
         category,
         sub_cell: 0,
-        veterancy: 0,
+        veterancy: Some(0),
         high: false,
         mission: None,
         recruitable_a: true,
@@ -394,6 +394,93 @@ fn install_american_house(sim: &mut Simulation) {
         owner,
         crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10),
     );
+}
+
+/// Original Unit743495, Infantry51FD54 and Aircraft41B308 execute the
+/// optional token/CRTatoi/SetFromPercent7500E0 boundary before Unlimbo.
+/// The corpus supplies already-tokenized pointers, not a whole native map
+/// load. This regression takes those tokens through the real Rust map parser
+/// and shared spawn owner, with physical retail Battle rules and ART.
+#[test]
+fn map_veterancy_seed_matches_native_percent_and_rank() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/input_oracle/selection_navigation.json",
+    ))
+    .unwrap();
+    let rows = corpus["map_veterancy_seed_cases"].as_array().unwrap();
+    let mut kinds = std::collections::BTreeSet::new();
+    let mut compared = 0;
+    for row in rows {
+        let id = row["id"].as_str().unwrap();
+        let kind = row["kind"].as_str().unwrap();
+        let token = row["token"].as_str();
+        // An empty string is an authored CRT boundary control, but strtok
+        // cannot produce it. Missing tokens are comparable to this ordinary
+        // fresh-constructor route only when the native input raw is zero.
+        if token.is_some_and(str::is_empty)
+            || (token.is_none() && row["raw_bits_before"].as_u64() != Some(0))
+        {
+            continue;
+        }
+        let (section, mut line) = match kind {
+            "unit" => ("Units", "Americans,MTNK,256,30,40,0,Guard,None".to_string()),
+            "infantry" => (
+                "Infantry",
+                "Americans,E1,256,30,40,0,Guard,0,None".to_string(),
+            ),
+            "aircraft" => (
+                "Aircraft",
+                "Americans,ORCA,256,30,40,0,Guard,None".to_string(),
+            ),
+            _ => panic!("unknown native map veterancy kind {kind}"),
+        };
+        if let Some(token) = token {
+            line.push(',');
+            line.push_str(token);
+        }
+        let ini = IniFile::from_str(&format!("[{section}]\n0={line}\n"));
+        let placements = crate::map::entities::parse_map_entities(&ini);
+        assert_eq!(placements.len(), 1, "{id}: {token:?}");
+        let native_percent = row["parsed_percent"]
+            .as_i64()
+            .map(|value| i32::try_from(value).unwrap());
+        assert_eq!(placements[0].veterancy, native_percent, "{id}: {token:?}");
+        let mut sim = Simulation::with_seed(0x0075_00E0);
+        install_american_house(&mut sim);
+        assert_eq!(
+            sim.spawn_from_map(&placements, Some(&retail.rules)),
+            1,
+            "{id}: {token:?}"
+        );
+        let entity = sim.substrate.entities.values().next().unwrap();
+        assert_eq!(
+            u64::from(entity.veterancy_raw.bits()),
+            row["raw_bits_after"].as_u64().unwrap(),
+            "native map token {id}: {token:?}"
+        );
+        assert_eq!(
+            i64::from(crate::sim::combat::veterancy::veterancy_level(
+                entity.veterancy_raw
+            )),
+            row["rank"].as_i64().unwrap(),
+            "native rank after map token {id}: {token:?}"
+        );
+        assert_eq!(
+            entity.veterancy_rank_cache,
+            crate::sim::combat::veterancy::LEVEL_UNSAMPLED,
+            "percent seeding must not announce a promotion: {id}"
+        );
+        kinds.insert(kind);
+        compared += 1;
+    }
+    assert_eq!(
+        kinds,
+        std::collections::BTreeSet::from(["aircraft", "infantry", "unit"])
+    );
+    assert_eq!(compared, 81, "native percent and atoi boundary controls");
 }
 
 /// Radio65A750 and Building43BCBD..43BCD5 execute unchanged in the retained
@@ -1446,7 +1533,7 @@ fn techno_constructor_routes_preserve_components_and_authored_overrides() {
                 0 => {
                     let mut authored = map_entity(type_id, category, (4, 4));
                     authored.health = 128;
-                    authored.veterancy = 100;
+                    authored.veterancy = Some(100);
                     authored.facing = 64;
                     authored.sub_cell = 3;
                     authored.recruitable_a = false;

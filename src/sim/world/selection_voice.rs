@@ -8,11 +8,12 @@
 //! loading advances it before gameplay; in-scenario restore retains its live
 //! continuation through `retain_in_scenario_process_state_from`.
 //!
-//! RESIDUAL: enslaved and offline Robot receivers choose type+430/+44C in
-//! VoiceSelect708EB0. Their lifecycle and separate voice lists remain outside
-//! this normal type+414 path. The process audio service borrows this same Main
-//! continuation through Simulation's RNG capability; these selection controls
-//! alone do not establish its device/queue behavior.
+//! VoiceSelect708EB5 checks the existing SlaveOwner+2DC before choosing
+//! type+430 instead of the normal+414 list. Both paths use this one owner.
+//! RESIDUAL: offline Robot receivers choose type+44C; their power lifecycle
+//! and separate voice list remain outside this path. The process audio service
+//! borrows this same Main continuation through Simulation's RNG capability.
+//! These selection controls alone do not establish its device/queue behavior.
 
 use super::Simulation;
 use crate::rules::ruleset::RuleSet;
@@ -43,7 +44,12 @@ impl Simulation {
             return None;
         }
         let object = rules.object(self.interner.resolve(entity.type_ref()))?;
-        self.voice_request_from_list(&object.voice_select, voices_enabled, human_player)
+        let voices = if entity.slave.owner().is_some() {
+            &object.voice_select_enslaved
+        } else {
+            &object.voice_select
+        };
+        self.voice_request_from_list(voices, voices_enabled, human_player)
     }
 
     /// QueueMegaMission6FFCBD..6FFDA5's default voice arm, used by AreaGuard

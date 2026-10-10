@@ -3715,6 +3715,9 @@ impl RuleSet {
             object.voice_select = section.map_or_else(Vec::new, |section| {
                 sounds.read_rules_sound_list(section, "VoiceSelect")
             });
+            object.voice_select_enslaved = section.map_or_else(Vec::new, |section| {
+                sounds.read_rules_sound_list(section, "VoiceSelectEnslaved")
+            });
             object.move_sound = section.map_or_else(Vec::new, |section| {
                 sounds.read_rules_sound_list(section, "MoveSound")
             });
@@ -4794,7 +4797,7 @@ impl RuleSet {
         // Rules text is identical. Empty versus nonempty vectors gates Main
         // draws; list order/duplicates select the sound. Hash effective lists
         // in canonical type order, independently of registry insertion order.
-        b"resolved-type-sound-lists-v1".hash(&mut hasher);
+        b"resolved-type-sound-lists-v2".hash(&mut hasher);
         self.object_list
             .iter()
             .map(|object| {
@@ -4802,6 +4805,7 @@ impl RuleSet {
                     (object.category, object.id.to_ascii_uppercase()),
                     (
                         &object.voice_select,
+                        &object.voice_select_enslaved,
                         &object.move_sound,
                         &object.voice_special_attack,
                         &object.voice_feedback,
@@ -5438,6 +5442,25 @@ impl RuleSet {
         {
             weapon.speed = speed;
         }
+    }
+
+    /// Supply original fixture vectors that the real sound reader cannot
+    /// produce (notably a nonempty vector containing native sound ID -1,
+    /// represented by an empty name). This is an explicit input boundary,
+    /// not ReadSoundList or sound-catalog binding evidence.
+    #[cfg(test)]
+    pub(crate) fn supply_selection_voice_vectors_for_test(
+        &mut self,
+        type_id: &str,
+        normal: Vec<String>,
+        enslaved: Vec<String>,
+    ) {
+        let handle = self
+            .type_handle(type_id)
+            .expect("native fixture type exists");
+        let object = &mut self.object_list[handle.0 as usize];
+        object.voice_select = normal;
+        object.voice_select_enslaved = enslaved;
     }
 
     #[cfg(test)]

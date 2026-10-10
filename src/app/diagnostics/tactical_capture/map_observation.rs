@@ -859,21 +859,31 @@ struct MapTargetingObservation {
     type_id: String,
 }
 
-/// Projection of the shared TypeSelect/CombatantSelect/HealthNav scope owner.
+/// Read-only projection of the shared selection mode and Health/Y snapshot.
 #[derive(Debug, Serialize)]
 struct MapSelectionScopeObservation {
     mode: &'static str,
     across_map: bool,
     last_outcome_key: Option<&'static str>,
+    retained_navigation: Vec<u64>,
+    health_category: i32,
+    veterancy_category: i32,
 }
 
 impl MapSelectionScopeObservation {
-    fn capture(scope: &crate::app::types::TypeSelectInputState) -> Self {
+    fn capture(
+        scope: &crate::app::types::TypeSelectInputState,
+        navigation: &crate::app::input::dispatch::selection_navigation::CategoryNavigation,
+    ) -> Self {
         let (mode, across_map, last_outcome_key) = scope.selection_scope_view();
+        let (candidates, health, veterancy) = navigation.navigation_view();
         Self {
             mode,
             across_map,
             last_outcome_key,
+            retained_navigation: candidates.to_vec(),
+            health_category: health.map_or(-1, i32::from),
+            veterancy_category: veterancy.map_or(-1, i32::from),
         }
     }
 }
@@ -936,7 +946,10 @@ impl MapLocalInputObservation {
                     _ => None,
                 })
                 .collect(),
-            selection_scope: MapSelectionScopeObservation::capture(&input.type_select),
+            selection_scope: MapSelectionScopeObservation::capture(
+                &input.type_select,
+                &input.category_navigation,
+            ),
             hud_messages: state
                 .match_state
                 .match_presentation
@@ -975,7 +988,10 @@ impl MapInputObservation {
     fn sample_count(&self) -> usize {
         self.selected_ids.len()
             + self.local_input.as_ref().map_or(0, |input| {
-                input.selection_voice_requests.len() + 1 + input.hud_messages.len()
+                input.selection_voice_requests.len()
+                    + 1
+                    + input.selection_scope.retained_navigation.len()
+                    + input.hud_messages.len()
             })
     }
 }
@@ -2823,6 +2839,9 @@ impl TacticalCaptureSession {
                     "cell": [entity.position.rx, entity.position.ry],
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
                     "health": entity.health.current, "active": entity.is_active(),
+                    "veterancy_raw_bits": entity.veterancy_raw.bits(),
+                    "veterancy_rank_cache": entity.veterancy_rank_cache,
+                    "elite_flash_frames": entity.elite_flash_frames,
                     "object_alive": entity.is_object_alive(),
                     "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
                     "mission": {"current": entity.mission.current().raw(),
@@ -3707,11 +3726,19 @@ mod tests {
     #[test]
     fn selection_scope_projection_and_hud_rows_serialize_and_charge_samples() {
         let mut scope = crate::app::types::TypeSelectInputState::default();
+        let navigation =
+            crate::app::input::dispatch::selection_navigation::CategoryNavigation::default();
         assert_eq!(
-            serde_json::to_value(MapSelectionScopeObservation::capture(&scope)).unwrap(),
-            json!({"mode": "ordinary", "across_map": false, "last_outcome_key": null})
+            serde_json::to_value(MapSelectionScopeObservation::capture(&scope, &navigation))
+                .unwrap(),
+            json!({"mode": "ordinary", "across_map": false, "last_outcome_key": null,
+                "retained_navigation": [], "health_category": -1, "veterancy_category": -1})
         );
         scope.finish_tap(crate::app::types::TypeSelectOutcome::Map, true);
+        let mut observed_scope = MapSelectionScopeObservation::capture(&scope, &navigation);
+        // The sample limit counts every retained entry, including duplicates
+        // that native733160 erases one at a time.
+        observed_scope.retained_navigation = vec![7, 9, 7];
         let input = MapInputObservation {
             selected_ids: vec![7, 9],
             selection_pending: true,
@@ -3730,7 +3757,7 @@ mod tests {
                     speaker_id: 7,
                     sound_id: "SelectVoice".into(),
                 }],
-                selection_scope: MapSelectionScopeObservation::capture(&scope),
+                selection_scope: observed_scope,
                 hud_messages: vec![
                     "Units selected across SCREEN.".into(),
                     "Units selected across MAP.".into(),
@@ -3739,13 +3766,14 @@ mod tests {
         };
         assert_eq!(
             input.sample_count(),
-            6,
-            "two selections, one voice, one scope and two HUD rows"
+            9,
+            "two selections, one voice, one scope, three retained entries and two HUD rows"
         );
         let observed = serde_json::to_value(&input).unwrap();
         assert_eq!(
             observed["local_input"]["selection_scope"],
-            json!({"mode": "type", "across_map": true, "last_outcome_key": "MSG:SelAcrossMap"})
+            json!({"mode": "type", "across_map": true, "last_outcome_key": "MSG:SelAcrossMap",
+                "retained_navigation": [7, 9, 7], "health_category": -1, "veterancy_category": -1})
         );
         assert_eq!(
             observed["local_input"]["hud_messages"],
