@@ -1,7 +1,7 @@
 //! Application facade and shared imports for the focused orchestrator modules
 //! under `app/`. GPU initialization remains deferred to `resumed()`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -27,7 +27,6 @@ use crate::render::bit_font::BitFont;
 use crate::render::gpu::GpuContext;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::ui::sidebar::{SidebarChromeLayoutSpec, SidebarTab};
-use crate::sim::selection::SelectionState;
 use crate::ui::game_screen::GameScreen;
 use crate::ui::shell::controller::ShellKey;
 use crate::ui::skirmish_shell::{SavedSeedBrowserState, SavedSeedMode};

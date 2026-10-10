@@ -11,8 +11,13 @@ use crate::skirmish_launch::{LaunchStartPosition, PreFillHouseRoster, SkirmishLa
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+#[path = "map_observation/command_bindings.rs"]
+mod command_bindings;
+use command_bindings::{MapScheduledCommand, production_type_names};
+
 const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
 const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
+const PROFILE_V3: &str = "vera20k.map-observation-profile.v3";
 const CHILD_SCHEMA: &str = "vera20k.map-observation.v7";
 const OBSERVATION_POLICY: &str = "map-ordinary-command-observation-v4";
 const MAX_COMMANDS: usize = 1024;
@@ -63,15 +68,6 @@ impl MapAudioProfile {
         );
         Ok(())
     }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct MapScheduledCommand {
-    issue_after_step: u32,
-    owner: String,
-    #[serde(deserialize_with = "deserialize_command")]
-    payload: Command,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -230,24 +226,6 @@ fn sidebar_tab_name(tab: crate::ui::sidebar::SidebarTab) -> &'static str {
     }
 }
 
-// Reuse Command's one serde schema, but reject fields that its permissive
-// enum deserializer would otherwise discard. No second command parser here.
-fn deserialize_command<'de, D>(deserializer: D) -> std::result::Result<Command, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-    let command: Command =
-        serde_json::from_value(value.clone()).map_err(serde::de::Error::custom)?;
-    let canonical = serde_json::to_value(&command).map_err(serde::de::Error::custom)?;
-    if value != canonical {
-        return Err(serde::de::Error::custom(
-            "command payload has unrecognized or noncanonical fields",
-        ));
-    }
-    Ok(command)
-}
-
 /// The observed House's Supers in interned-id order: the id a profile's
 /// `LaunchSuperWeapon` names and the state the sidebar reads.
 fn super_weapon_rows(sim: &crate::sim::world::Simulation, owner: &str) -> Value {
@@ -361,6 +339,13 @@ pub(crate) struct MapCaptureProfile {
         skip_serializing_if = "Option::is_none"
     )]
     observe_lasers: Option<bool>,
+    /// Read the existing bomb owner and observed actors' retained FireAt state.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    observe_bombs: Option<bool>,
     #[serde(
         default,
         deserialize_with = "deserialize_present",
@@ -414,7 +399,10 @@ impl MapCaptureProfile {
 
     fn validate(&self) -> Result<()> {
         ensure!(
-            matches!(self.schema_version.as_str(), PROFILE_V1 | PROFILE_V2),
+            matches!(
+                self.schema_version.as_str(),
+                PROFILE_V1 | PROFILE_V2 | PROFILE_V3
+            ),
             "unsupported map observation schema"
         );
         if self.schema_version == PROFILE_V1 {
@@ -430,6 +418,7 @@ impl MapCaptureProfile {
                     && self.observe_action_line_inputs.is_none()
                     && self.observe_disguise_inputs.is_none()
                     && self.observe_lasers.is_none()
+                    && self.observe_bombs.is_none()
                     && self.camera_cell.is_none()
                     && self.cursor_position.is_none()
                     && self.terrain_cells.is_none()
@@ -461,7 +450,18 @@ impl MapCaptureProfile {
             "too many scheduled commands"
         );
         let mut previous = 0;
+        let mut symbolic_count = 0;
         for command in self.commands() {
+            let count = command.symbolic_count();
+            ensure!(
+                count == 0 || self.schema_version == PROFILE_V3,
+                "symbolic commands require map observation profile v3"
+            );
+            symbolic_count += count;
+            ensure!(
+                symbolic_count <= MAX_COMMANDS,
+                "profile exceeds 1024 symbolic command bindings"
+            );
             ensure!(
                 command.issue_after_step >= previous && command.issue_after_step < self.ticks,
                 "commands must be ordered by issue_after_step before the final step"
@@ -818,6 +818,8 @@ struct MapCommandReceipt {
     envelope_execute_tick: u64,
     owner: String,
     payload: Command,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bindings: Option<std::collections::BTreeMap<String, Value>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -857,6 +859,25 @@ struct MapTargetingObservation {
     type_id: String,
 }
 
+/// Projection of the shared TypeSelect/CombatantSelect/HealthNav scope owner.
+#[derive(Debug, Serialize)]
+struct MapSelectionScopeObservation {
+    mode: &'static str,
+    across_map: bool,
+    last_outcome_key: Option<&'static str>,
+}
+
+impl MapSelectionScopeObservation {
+    fn capture(scope: &crate::app::types::TypeSelectInputState) -> Self {
+        let (mode, across_map, last_outcome_key) = scope.selection_scope_view();
+        Self {
+            mode,
+            across_map,
+            last_outcome_key,
+        }
+    }
+}
+
 /// Read-only values from the current input, sidebar, simulation and audio owners.
 /// Pending voice requests are observed before playback, not evidence of audible output.
 #[derive(Debug, Serialize)]
@@ -870,6 +891,9 @@ struct MapLocalInputObservation {
     main_rng_cursor: [i32; 2],
     selection_voice_enabled: bool,
     selection_voice_requests: Vec<MapSelectionVoiceRequest>,
+    selection_scope: MapSelectionScopeObservation,
+    /// Actual localized rows in insertion order; observing never posts/expires a row.
+    hud_messages: Vec<String>,
 }
 
 impl MapLocalInputObservation {
@@ -912,6 +936,15 @@ impl MapLocalInputObservation {
                     _ => None,
                 })
                 .collect(),
+            selection_scope: MapSelectionScopeObservation::capture(&input.type_select),
+            hud_messages: state
+                .match_state
+                .match_presentation
+                .message_list
+                .messages()
+                .iter()
+                .map(|message| message.text.clone())
+                .collect(),
         }
     }
 }
@@ -941,10 +974,9 @@ impl MapInputObservation {
 
     fn sample_count(&self) -> usize {
         self.selected_ids.len()
-            + self
-                .local_input
-                .as_ref()
-                .map_or(0, |input| input.selection_voice_requests.len())
+            + self.local_input.as_ref().map_or(0, |input| {
+                input.selection_voice_requests.len() + 1 + input.hud_messages.len()
+            })
     }
 }
 
@@ -1464,6 +1496,23 @@ fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -
                   "remaining": entity.rearm_timer.remaining(frame)}})
 }
 
+fn fire_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
+    // Existing immutable counters and timer queries only. In particular this
+    // neither completes a firing sequence nor draws GetROF's Scenario RNG.
+    json!({"last_fire_frame": entity.last_fire_frame,
+        "body_counter": entity.body_frame_counter,
+        "stage_value": entity.native_stage().value(),
+        "rearm": {"start_frame": entity.rearm_timer.start_frame(),
+            "duration": entity.rearm_timer.duration(),
+            "remaining": entity.rearm_timer.remaining(frame)}})
+}
+
+fn bomb_sample_count(snapshot: &crate::sim::bomb::BombObservation) -> usize {
+    // Count the owner snapshot and both independent collections, including
+    // index entries whose carrier record may be missing in a broken owner.
+    1 + snapshot.carriers.len() + snapshot.records.len()
+}
+
 #[derive(Debug, Serialize)]
 struct MapLaserObservation {
     detail: crate::app::presentation::detail::DetailObservation,
@@ -1574,6 +1623,8 @@ struct MapFrameObservation {
     effects: Option<MapEffectObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     lasers: Option<MapLaserObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bombs: Option<crate::sim::bomb::BombObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     input: Option<MapInputObservation>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1760,6 +1811,7 @@ impl MapObservation {
                         .map_or(0, MapLaserObservation::sample_count),
                 )
             })
+            .and_then(|count| count.checked_add(frame.bombs.as_ref().map_or(0, bomb_sample_count)))
             .and_then(|count| {
                 count.checked_add(
                     frame
@@ -2002,12 +2054,7 @@ impl TacticalCaptureSession {
             // an interner entry or translating a production command.
             let rules = state.rules().context("loaded rules absent")?;
             let mut rule_types = Vec::new();
-            for (category, names) in [
-                ("Infantry", &rules.infantry_ids),
-                ("Unit", &rules.vehicle_ids),
-                ("Aircraft", &rules.aircraft_ids),
-                ("Structure", &rules.building_ids),
-            ] {
+            for (category, names) in production_type_names(rules) {
                 for name in names {
                     let handle = sim
                         .interner
@@ -2202,13 +2249,32 @@ impl TacticalCaptureSession {
                 issued_tick == self.map_state()?.expected_clock(completed_steps, true).0,
                 "command issue is outside exact-step boundary"
             );
+            // Resolve against the current owner state at this issue boundary,
+            // including objects produced by earlier ordinary commands.
+            let sim = &state
+                .match_state
+                .sim_runtime
+                .as_ref()
+                .context("command simulation absent")?
+                .simulation;
+            let rules = state.rules().context("command rules absent")?;
+            let (payload, bindings) = command.resolve(sim, rules)?;
+            let sample_count = self
+                .map_state()?
+                .sample_count
+                .checked_add(bindings.as_ref().map_or(0, std::collections::BTreeMap::len))
+                .context("command binding sample count overflow")?;
+            ensure!(
+                sample_count <= MAX_OBSERVATION_SAMPLES,
+                "command bindings exceed observation sample budget"
+            );
             // The sole ordinary input producer owns envelope encoding, stamping
             // and queuing. This diagnostic does not add the input-delay setting
             // or bypass ordinary House/actor admission in the next frame.
             let execute_tick = crate::app::input::commands::try_schedule_command(
                 state,
                 &command.owner,
-                command.payload.clone(),
+                payload.clone(),
             )
             .context("ordinary command producer refused scheduled input")?;
             ensure!(
@@ -2216,13 +2282,15 @@ impl TacticalCaptureSession {
                 "ordinary producer changed the issue stamp"
             );
             let map = self.map_state_mut()?;
+            map.sample_count = sample_count;
             map.commands.push(MapCommandReceipt {
                 ordinal: map.commands.len(),
                 issue_after_step: command.issue_after_step,
                 issued_simulation_tick: issued_tick,
                 envelope_execute_tick: execute_tick,
                 owner: command.owner,
-                payload: command.payload,
+                payload,
+                bindings,
             });
         }
     }
@@ -2755,6 +2823,7 @@ impl TacticalCaptureSession {
                     "cell": [entity.position.rx, entity.position.ry],
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
                     "health": entity.health.current, "active": entity.is_active(),
+                    "object_alive": entity.is_object_alive(),
                     "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
                     "mission": {"current": entity.mission.current().raw(),
                         "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
@@ -2776,6 +2845,9 @@ impl TacticalCaptureSession {
                 if profile.observe_lasers == Some(true) {
                     observation["prism"] =
                         prism_observation(entity, sim.session.binary_frame as i32);
+                }
+                if profile.observe_bombs == Some(true) {
+                    observation["fire"] = fire_observation(entity, sim.session.binary_frame as i32);
                 }
                 if profile.observe_action_line_inputs == Some(true) {
                     let inputs = if entity.category
@@ -2901,6 +2973,8 @@ impl TacticalCaptureSession {
             lasers: (profile.observe_lasers == Some(true))
                 .then(|| MapLaserObservation::capture(state))
                 .transpose()?,
+            bombs: (profile.observe_bombs == Some(true))
+                .then(|| sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1)),
             input: profile
                 .gestures
                 .as_ref()
@@ -3275,6 +3349,7 @@ mod tests {
                     effects: None,
                     input: None,
                     lasers: None,
+                    bombs: None,
                     audio_state: Some(audio.clone()),
                 },
                 BTreeSet::new(),
@@ -3451,6 +3526,101 @@ mod tests {
     }
 
     #[test]
+    fn bomb_and_fire_snapshots_read_retained_owners_without_advancing_state() {
+        use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+        use crate::sim::{timer::CdTimer, world::Simulation};
+
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[General]\nIvanTimedDelay=450\n[InfantryTypes]\n0=IVAN\n\
+             [VehicleTypes]\n0=HTNK\n[IVAN]\nStrength=125\n[HTNK]\nStrength=400\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        let planter = sim
+            .spawn_object_at_height("IVAN", "Player", 10, 10, 0, 0, &rules)
+            .unwrap();
+        let carrier = sim
+            .spawn_object_at_height("HTNK", "Computer1", 11, 10, 0, 0, &rules)
+            .unwrap();
+        sim.session.binary_frame = 17;
+        sim.bomb_attach(planter, Some(carrier), &rules);
+        let entity = sim.substrate.entities.get_mut(planter).unwrap();
+        entity.last_fire_frame = 16;
+        entity.body_frame_counter = u32::MAX;
+        entity.rearm_timer = CdTimer::from_raw(16, 50);
+        let hash = sim.state_hash();
+        let rng = sim.rng_state();
+        let snapshot = sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1);
+        assert_eq!(snapshot.carriers, vec![carrier]);
+        assert_eq!(snapshot.records.len(), 1);
+        assert_eq!(snapshot.records[0].carrier_id, carrier);
+        assert_eq!(snapshot.records[0].planter_id, Some(planter));
+        assert_eq!(snapshot.records[0].planter_house, "Player");
+        assert_eq!(snapshot.records[0].start_frame, 17);
+        assert_eq!(snapshot.records[0].end_frame, 467);
+        assert_eq!(bomb_sample_count(&snapshot), 3);
+        assert_eq!(
+            fire_observation(sim.substrate.entities.get(planter).unwrap(), 17),
+            json!({"last_fire_frame": 16, "body_counter": u32::MAX, "stage_value": 0,
+                "rearm": {"start_frame": 16, "duration": 50, "remaining": 49}})
+        );
+        assert_eq!(sim.state_hash(), hash);
+        assert_eq!(sim.rng_state(), rng);
+        sim.bomb_defuse(carrier);
+        let retired = sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1);
+        assert!(retired.carriers.is_empty());
+        assert!(retired.records.is_empty());
+    }
+
+    #[test]
+    fn bomb_snapshots_charge_index_and_records_and_commit_only_within_budget() {
+        for available in [2, 3] {
+            let mut map = MapObservation {
+                sample_count: MAX_OBSERVATION_SAMPLES - available,
+                ..Default::default()
+            };
+            let snapshot = crate::sim::bomb::BombObservation {
+                carriers: vec![7],
+                records: vec![crate::sim::bomb::BombRecordObservation {
+                    carrier_id: 7,
+                    planter_id: None,
+                    planter_house: "Player".into(),
+                    start_frame: i32::MAX,
+                    end_frame: i32::MIN,
+                }],
+            };
+            let result = map.observe_frame(
+                MapFrameObservation {
+                    completed_steps: 0,
+                    simulation_tick: 0,
+                    binary_frame: 0,
+                    total_simulation_ms: 0,
+                    actors: vec![],
+                    houses: vec![],
+                    missing_actor_ids: vec![],
+                    terrain: vec![],
+                    effects: None,
+                    lasers: None,
+                    bombs: Some(snapshot),
+                    input: None,
+                    audio_state: None,
+                },
+                BTreeSet::new(),
+            );
+            assert_eq!(result.is_ok(), available == 3);
+            assert_eq!(map.frames.len(), usize::from(available == 3));
+            assert_eq!(
+                map.sample_count,
+                if available == 3 {
+                    MAX_OBSERVATION_SAMPLES
+                } else {
+                    MAX_OBSERVATION_SAMPLES - available
+                }
+            );
+        }
+    }
+
+    #[test]
     fn effect_snapshot_reads_filtered_live_owner_without_advancing_state() {
         use crate::rules::{art_data::ArtRegistry, ini_parser::IniFile, ruleset::RuleSet};
         use crate::sim::{
@@ -3523,6 +3693,7 @@ mod tests {
                         effects: Some(snapshot),
                         input: None,
                         lasers: None,
+                        bombs: None,
                         audio_state: None,
                     },
                     BTreeSet::new()
@@ -3531,6 +3702,63 @@ mod tests {
         );
         assert_eq!(observation.sample_count, MAX_OBSERVATION_SAMPLES - 1);
         assert!(observation.frames.is_empty());
+    }
+
+    #[test]
+    fn selection_scope_projection_and_hud_rows_serialize_and_charge_samples() {
+        let mut scope = crate::app::types::TypeSelectInputState::default();
+        assert_eq!(
+            serde_json::to_value(MapSelectionScopeObservation::capture(&scope)).unwrap(),
+            json!({"mode": "ordinary", "across_map": false, "last_outcome_key": null})
+        );
+        scope.finish_tap(crate::app::types::TypeSelectOutcome::Map, true);
+        let input = MapInputObservation {
+            selected_ids: vec![7, 9],
+            selection_pending: true,
+            target_line_remaining: 0,
+            target_line_active: false,
+            local_input: Some(MapLocalInputObservation {
+                camera_top_left: [0.0, 0.0],
+                camera_zoom: 1.0,
+                follow_target: None,
+                repair_mode: false,
+                sell_mode: false,
+                targeting: None,
+                main_rng_cursor: [0, 103],
+                selection_voice_enabled: true,
+                selection_voice_requests: vec![MapSelectionVoiceRequest {
+                    speaker_id: 7,
+                    sound_id: "SelectVoice".into(),
+                }],
+                selection_scope: MapSelectionScopeObservation::capture(&scope),
+                hud_messages: vec![
+                    "Units selected across SCREEN.".into(),
+                    "Units selected across MAP.".into(),
+                ],
+            }),
+        };
+        assert_eq!(
+            input.sample_count(),
+            6,
+            "two selections, one voice, one scope and two HUD rows"
+        );
+        let observed = serde_json::to_value(&input).unwrap();
+        assert_eq!(
+            observed["local_input"]["selection_scope"],
+            json!({"mode": "type", "across_map": true, "last_outcome_key": "MSG:SelAcrossMap"})
+        );
+        assert_eq!(
+            observed["local_input"]["hud_messages"],
+            json!([
+                "Units selected across SCREEN.",
+                "Units selected across MAP."
+            ])
+        );
+        assert_eq!(
+            scope.selection_scope_view(),
+            ("type", true, Some("MSG:SelAcrossMap")),
+            "read-only observation preserves the shared owner"
+        );
     }
 
     #[test]
@@ -3621,6 +3849,9 @@ mod tests {
         legacy.observe_lasers = Some(false);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
+        legacy.observe_bombs = Some(false);
+        assert!(legacy.validate().is_err());
+        let mut legacy = example();
         legacy.cursor_position = Some([720, 556]);
         assert!(legacy.validate().is_err());
         let mut legacy = example();
@@ -3645,6 +3876,7 @@ mod tests {
         modern["observe_action_line_inputs"] = json!(true);
         modern["observe_disguise_inputs"] = json!(true);
         modern["observe_lasers"] = json!(true);
+        modern["observe_bombs"] = json!(true);
         modern["cursor_position"] = json!([720, 556]);
         modern["gestures"] = json!([]);
         modern["observe_super_weapons"] = json!(true);
@@ -3662,6 +3894,7 @@ mod tests {
             "observe_action_line_inputs",
             "observe_disguise_inputs",
             "observe_lasers",
+            "observe_bombs",
             "camera_cell",
             "cursor_position",
             "terrain_cells",
@@ -3692,6 +3925,44 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn symbolic_commands_require_v3_preserve_source_and_bound_total_bindings() {
+        let mut value = serde_json::to_value(example()).unwrap();
+        value["schema_version"] = json!(PROFILE_V3);
+        value["ticks"] = json!(3);
+        value["commands"] = json!([
+            {"issue_after_step": 0, "owner": "Computer1",
+                "payload": {"QueueProduction": {"type_id": "MTNK"}}},
+            {"issue_after_step": 2, "owner": "Computer1",
+                "payload": {"Stop": {"entity_id": {
+                    "type_id": "MTNK", "owner": "Computer1", "cell": [10, 11]}}}}
+        ]);
+        let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+        profile.validate().unwrap();
+        assert_eq!(serde_json::to_value(profile).unwrap(), value);
+        for version in [PROFILE_V1, PROFILE_V2] {
+            value["schema_version"] = json!(version);
+            let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
+            assert!(profile.validate().is_err());
+        }
+        value["schema_version"] = json!(PROFILE_V3);
+        let selector = json!({"type_id": "MTNK", "owner": "Computer1"});
+        let command = json!({"issue_after_step": 0, "owner": "Computer1",
+            "payload": {"Select": {"entity_ids": vec![selector; 256], "additive": false}}});
+        value["commands"] = json!(vec![command.clone(); 4]);
+        serde_json::from_value::<MapCaptureProfile>(value.clone())
+            .unwrap()
+            .validate()
+            .unwrap();
+        value["commands"] = json!(vec![command; 5]);
+        assert!(
+            serde_json::from_value::<MapCaptureProfile>(value)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]
@@ -3871,6 +4142,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                bombs: None,
                 audio_state: None,
             };
             if profile.observes_sidebar_step(&frame) {
@@ -4292,6 +4564,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                bombs: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4311,6 +4584,7 @@ mod tests {
                 effects: None,
                 input: None,
                 lasers: None,
+                bombs: None,
                 audio_state: None,
             },
             BTreeSet::from([7]),
@@ -4336,11 +4610,13 @@ mod tests {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
                 payload: Command::Stop { entity_id: 1 },
+                symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
                 payload: Command::DeployMcv { entity_id: 2 },
+                symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 2,
@@ -4350,6 +4626,7 @@ mod tests {
                     target_rx: 87,
                     target_ry: 53,
                 },
+                symbolic: None,
             },
         ]);
         profile.validate().unwrap();
@@ -4365,6 +4642,7 @@ mod tests {
                 envelope_execute_tick: 0,
                 owner: command.owner,
                 payload: command.payload,
+                bindings: None,
             });
         }
         assert!(map.pending_command(&profile, 1).unwrap().is_none());
@@ -4410,7 +4688,10 @@ mod tests {
         for invalid_id in [json!("GAPOWR"), json!(true), json!(1.5), json!(u64::MAX)] {
             let mut invalid = value.clone();
             invalid["commands"][0]["payload"]["QueueProduction"]["type_id"] = invalid_id;
-            assert!(serde_json::from_value::<MapCaptureProfile>(invalid).is_err());
+            assert!(
+                serde_json::from_value::<MapCaptureProfile>(invalid)
+                    .map_or(true, |profile| profile.validate().is_err())
+            );
         }
         for invalid_id in [json!("ENGINEER"), json!(true), json!(1.5), json!(-1)] {
             let mut invalid = value.clone();
@@ -4498,6 +4779,7 @@ mod tests {
             effects: None,
             input: None,
             lasers: None,
+            bombs: None,
             audio_state: None,
         };
         let mut map = initialized_map();

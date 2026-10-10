@@ -755,6 +755,30 @@ impl Simulation {
         }
     }
 
+    /// FireAt's FireOnce team branch (`0x006FF905..0x006FF91C`): release
+    /// the team's mission target through `Assign_Mission_Target @ 0x006E9050`,
+    /// then mark its script action complete (`+0x80`). The cursor advances
+    /// at the next ordinary Team AI visit, not during the shot. Membership,
+    /// focus, member orders and the pending flag retain their existing owners.
+    /// Native execution: `tools/projectile_oracle/fire_once.py`.
+    pub(crate) fn team_fire_once_complete(
+        &mut self,
+        firer: u64,
+        rules: &RuleSet,
+        registry: Option<&OverlayTypeRegistry>,
+    ) {
+        let Some(team_id) = self.team_script_vm.member_team.get(&firer).copied() else {
+            return;
+        };
+        self.team_assign_mission_target(team_id, None, rules, registry);
+        // FireAt rereads Foot+0x5D4 after the member setters return.
+        if let Some(team_id) = self.team_script_vm.member_team.get(&firer)
+            && let Some(team) = self.team_script_vm.teams.get_mut(team_id)
+        {
+            team.advance_pending = true;
+        }
+    }
+
     /// `TeamClass::Scan_Limit @ 0x006EC3A0`, from a Drive or Ship member's
     /// path tail (`0x004B2EB6`) when it stopped holding a target it cannot
     /// fire at: the team drops its mission target, and each member, in list

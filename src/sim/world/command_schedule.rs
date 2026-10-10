@@ -47,6 +47,15 @@ impl Simulation {
         self.pending_commands.clone()
     }
 
+    /// Whether provisional local selection still has authoritative queued
+    /// work. Derive this from the existing queue; selected-bit equality cannot
+    /// distinguish an unconsumed snapshot from later lifecycle deselection.
+    pub(crate) fn has_pending_selection_commands(&self) -> bool {
+        self.pending_commands
+            .iter()
+            .any(|command| matches!(command.payload, Command::Select { .. }))
+    }
+
     /// Speed the next ordinary frame will observe after all due offline
     /// Options transitions execute in canonical house/insertion order.
     ///
@@ -486,16 +495,24 @@ impl Simulation {
     }
 
     fn command_uses_frame_ingress(command: &Command) -> bool {
-        matches!(command, Command::SetGameSpeed { .. })
+        matches!(
+            command,
+            Command::SetGameSpeed { .. } | Command::Select { .. }
+        )
     }
 
-    /// Apply offline session transitions before triggers and the live-object
-    /// walk. Native offline Options stores GameSpeed before the next Main_Tick;
-    /// VERA transports the transition as a replayable command, then admits it
-    /// at this dedicated ingress instead of the ordinary EventClass tail.
+    /// Apply session/local-input transitions before triggers and live Logic.
+    /// Offline Options stores GameSpeed before the next MainTick. Native
+    /// MainTick55D8AB/55D8B4 -> Command Execute5367F0 -> P732280/Select5F4520
+    /// also commits local selection before Logic55DC9E, unlike EventClass's
+    /// late tail. Transport its snapshot through the existing receiver here,
+    /// so a same-frame Destroy/Deselect cannot be undone by delayed replay.
+    /// Source/order and executed cleanup controls:
+    /// tools/input_oracle/selection_navigation.{py,json,meta.json,md}.
     pub(super) fn apply_due_frame_ingress_commands(
         &mut self,
         commands: &[CommandEnvelope],
+        rules: Option<&RuleSet>,
         execute_tick: u64,
     ) -> usize {
         let mut executed_commands = 0usize;
@@ -505,11 +522,16 @@ impl Simulation {
                     && command.owner == owner
                     && Self::command_uses_frame_ingress(&command.payload)
             }) {
-                let Command::SetGameSpeed { speed } = &command.payload else {
-                    unreachable!("frame-ingress predicate admitted a non-session command");
-                };
-                if self.houses.contains_key(&owner) {
-                    let _ = self.session.game_options.apply_in_game_speed(*speed);
+                match &command.payload {
+                    Command::SetGameSpeed { speed } => {
+                        if self.houses.contains_key(&owner) {
+                            let _ = self.session.game_options.apply_in_game_speed(*speed);
+                        }
+                    }
+                    Command::Select { .. } => {
+                        let _ = self.apply_one_due_command(command, rules, None);
+                    }
+                    _ => unreachable!("frame-ingress predicate admitted a tail command"),
                 }
                 // Preserve the established dispatcher convention: every due
                 // envelope is consumed/counts even when validation rejects it.

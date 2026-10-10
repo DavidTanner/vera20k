@@ -5,10 +5,117 @@
 and retains a hidden-window GPU readback. This is a production observation, not a
 native comparator or a gameplay/pixel parity certification.
 
+## Named commands and outcome inspection
+
+Use `vera20k.map-observation-profile.v3` to name command targets without a separate
+ID-discovery run. All v2 fields remain available. Numeric v1/v2 profiles and their
+receipt shapes are unchanged. In a v3 command payload:
+
+- `type_id` accepts a literal loaded production type such as `"GAPOWR"`.
+- `sw_type_id` accepts the SuperWeapon section, such as `"IronCurtainSpecial"`.
+- Actor ID fields accept `{"type_id":"HTNK","owner":"VERA-OBSERVER"}`,
+  optionally with `"cell":[44,54]` to disambiguate. `Select.entity_ids` and
+  `SetRally.producer_ids` can mix numeric IDs and selectors.
+
+Names are case sensitive, nonempty, and at most 256 UTF-8 bytes. Actor selectors
+resolve **at the command's `issue_after_step` boundary**, using the current living,
+active, non-limbo actors. A missing or ambiguous selection stops the capture before
+that command is queued; the tool never chooses the first match. Each command
+resolves its selectors afresh, so a later command can address a newly produced unit.
+Use a recorded numeric ID when subsequent commands must retain one actor despite
+movement or ownership changes. A cell means the actor's cell at the issue boundary.
+Rule-name lookup reads the existing registry and interner; it creates no types.
+
+```json
+{"issue_after_step":4510,"owner":"VERA-OBSERVER",
+ "payload":{"LaunchSuperWeapon":{"sw_type_id":"IronCurtainSpecial",
+                                    "target_rx":44,"target_ry":54}}}
+```
+
+The ordinary command producer still owns encoding and scheduling, and simulation
+owners still decide gameplay admission. The receipt's `payload` is the numeric
+command actually queued. Symbolic commands also retain `bindings`, keyed by JSON
+pointer, with each resolved actor identity/location or rule name/category/handle.
+There are at most 256 bindings per command and 1024 per profile; each binding costs
+one observation sample. The wrapper checks every substitution and preserves all
+other arguments. `VALID` continues to mean a valid capture, not a successful order.
+
+The [named Iron Curtain profile](map_observation.symbolic-iron-curtain.example.json)
+uses the existing stock scenario, two location-qualified tank selectors and a named
+superweapon. Its [expectations](map_observation.symbolic-iron-curtain.expectations.json)
+check readiness before the order and the observed charge restart afterward.
+
+Inspect a completed capture without restarting the game:
+
+```sh
+python -m tools.map_observation inspect --run /absolute/capture \
+  --owner VERA-OBSERVER \
+  --expect /absolute/checkout/tools/map_observation.symbolic-iron-curtain.expectations.json \
+  --output /absolute/inspection.json
+```
+
+`inspect` uses the existing checked-run reader, including retained input and frame
+byte validation. Its compact report contains actor changes, House economy changes,
+superweapon readiness/charge transitions and queued commands. Command rows explicitly
+leave gameplay outcome unobserved; assertions assess requested effects separately.
+Repeat `--owner`, `--type` or `--actor` to filter the timeline. Actor filters bind
+the first observed identity and continue following that stable ID across ownership or
+type changes within one load epoch. A quickload can reuse object IDs, so the timeline
+starts a new `observation_epoch` and binds filters afresh. Type/actor filters suppress
+House rows; command rows are filtered only by owner.
+`--field health --field mission.effective` replaces the default actor
+fields. `--max-rows 200` bounds the timeline and reports omitted rows, without
+truncating assertion evaluation. Dotted field paths address retained object keys.
+
+An expectation file declares one or more explicit checks:
+
+```json
+{"schema_version":"vera20k.map-observation-expectations.v1","assertions":[
+  {"name":"power plant repaired",
+   "subject":{"actor":{"type_id":"GAPOWR","owner":"VERA-OBSERVER","bind_step":1000}},
+   "eventually":{"from_step":1500,"through_step":1650},
+   "field":"health","op":"eq","value":750}
+]}
+```
+
+Subjects are `actor` (a `stable_id`, or a type/optional owner/cell selector), `house`
+(an owner string), or `super_weapon` (`owner` and exact `type`). A named assertion
+binds exactly one actor at `bind_step` (default 0), then follows its stable ID within
+that load epoch; it never substitutes another matching actor. Actor assertions
+crossing a quickload report identity as `UNOBSERVED`, even when type and ID match.
+Bind after creation for produced actors, and after quickload for restored actors.
+Numeric `stable_id` subjects also accept `bind_step` to select the load epoch.
+Times are `at_step`, inclusive `eventually`, or inclusive `always` windows, all in
+monotonic **completed steps**; simulation clocks can rewind after quickload.
+Operators are `eq`, `ne`, `lt`, `le`, `gt`, `ge`. Equality distinguishes JSON types.
+The synthetic actor field `present:false` requires an explicit missing-ID receipt;
+it establishes absence from observation, not death or its cause.
+
+An observed witness can pass `eventually`; an observed counterexample fails `always`.
+Otherwise unavailable fields, ambiguous bindings or missing samples produce
+`UNOBSERVED`, which fails the assertion suite. Reports retain the first matching,
+failing and unavailable samples plus coverage counts. Assertions are independent of
+timeline filters and bounded to 128 checks and 1,000,000 requested samples.
+Enable the corresponding `observe_owners`, `observe_types` and optional observations
+in the capture profile: an offline report cannot recover unrecorded state.
+
+Exit status is 0 for `INSPECTED` or assertion `PASS`, 1 for assertion `FAIL` (including
+unobserved requirements), and 2 for invalid evidence/input. Reports distinguish
+capture validity from assertion results. They establish only the declared retained
+samples, not command causality, between-frame behavior or native parity.
+
 Foot observations include `pending_entry_500`, the pending-entry owner's stable
 target handle or `null`. This read-only field is independent of NavCom, mission
 and admitted radio contacts. Older sealed v6 receipts remain accepted without
 the field; its absence supplies no evidence about pending entry.
+
+Actor `object_alive`, when present, reads `GameEntity::is_object_alive()` from
+the existing ObjectClass lifecycle owner. It is independent of Health and the
+transitional `active` projection (`object_alive && !dying`); retained Die1/Die2
+infantry can have Health0, `dying=true`, `active=false` and `object_alive=true`.
+Observing it sends no selection or lifecycle mutation. Historical sealed
+receipts may omit it, and omission supplies no observed Alive value. The fixed
+boolean remains part of the existing one-sample actor row.
 
 Actor `retask` reads the existing `suspended_target` and `suspended_nav`
 references alongside current `target`, `archive`, `nav` and mission fields.
@@ -96,6 +203,21 @@ payload/countdown, and rearm timer. These are owner snapshots, not inferred
 firing events or proof that a beam reached the GPU. One detail row and each live
 beam count toward the shared sample budget. False/absent adds no fields; v1
 rejects the option, and present null/nonboolean values are invalid.
+
+Optional v2 `observe_bombs: true` adds `bombs` at L0 and each committed frame.
+The bomb owner independently reads its sorted carrier index and the carried
+records: carrier and planter stable IDs, planter House, and signed start/end
+frames. A null planter preserves pointer expiry. The observer neither refreshes
+BombVisible nor calls Attach, expiry, clock, Defuse or any other gameplay
+callback. Every observed actor also receives `fire`: its existing last-fire
+frame, Foot body counter, shared Stage value and signed rearm timer. Current
+actor `target`, mission and Foot Doing/firing latch retain their ordinary fields.
+Together these boundary values can associate a real attach or defuse with a
+same-turn target clear; they do not create firing events or certify native
+arithmetic or whole-weapon parity. The owner snapshot plus each carrier index
+entry and each carried record count toward the shared 100000-sample budget;
+the 128 MiB receipt limit is unchanged. False/absent adds no frame or actor
+fields, v1 rejects any presence, and present null/nonboolean values are invalid.
 
 Optional v2 `observe_audio` records device-mixer queue pulls from requested ordinary
 SFX Players. For example:
@@ -524,8 +646,11 @@ keyboard edge owner used by `WindowEvent::KeyboardInput`:
 }
 ```
 
-Keys are one ASCII letter or digit, or `Escape`. They carry no modifiers and
-are not command names. The loaded `KEYBOARDMD.INI` bindings and registered
+Keys are one ASCII letter or digit, or `Escape`. They are not command names.
+An optional unique `modifiers` list contains literal `Ctrl`, `Shift`, `Alt`,
+and/or `Super` edges, for example `{"kind":"key","key":"P","modifiers":["Shift"]}`.
+The shared modifier owner presses them before the key and releases them in
+reverse order before rendering. The loaded `KEYBOARDMD.INI` bindings and registered
 startup defaults resolve them in production. Each keyboard receipt reports the
 production `encoded_key`, resolved registered `binding_command` (or `null`),
 and observed held-key press/release state. The capture never dispatches a
@@ -555,14 +680,25 @@ before/after values can witness immediate Main stream draws during an input
 gesture; they do not establish equality of the whole RNG state. These values
 come from the existing input/sidebar/simulation/audio owners. Voice requests
 are observed without draining the queue and do not prove audible playback.
-They count toward the retained-sample budget. Ordered `selected_ids` and
+The optional `selection_scope` projection reads the shared TypeSelect scope
+owner: `mode` (`ordinary`, `combatant`, `type`, or `health`), `across_map`, and
+`last_outcome_key` (the retained HUD outcome's CSF key or `null`). CombatantSelect
+and TypeSelect have distinct modes while retaining the shared map-scope byte.
+`hud_messages` reads actual
+localized message text rows in insertion order through `MessageList.messages()`;
+it neither posts nor expires a message and does not invent source keys for rows.
+New keyboard captures include both projections. Older sealed receipts may omit
+either; omission supplies no evidence about that state. One scope projection,
+each HUD row and each voice request count toward the retained-sample budget.
+Ordered `selected_ids` and
 `selection_pending` continue to report the existing optimistic input selection,
 separately from commands queued for the next simulation step.
 
 Mouse-only profiles retain their previous policies and receipt shapes. Keyboard
 and sidebar/tactical gestures may share one profile; all its input observations
 then include the extended local state. No save/load state replacement is added
-to this harness.
+by these observations. The admitted literal quicksave/quickload route above
+can replace the world through its existing production owner.
 
 The selection-navigation profiles use authored clear-ground maps with unchanged
 retail type rules and assets. They disable starting MCVs and starting units, place
@@ -1730,7 +1866,7 @@ its disappearance produces a missing-ID row. The transcript includes
 `type_filter` only when requested. House and terrain observations are unchanged,
 and filtering never changes the simulation or increases the sample budget.
 
-First retain L0 to discover the actual generated AMCV, MTNK and E1 stable IDs and
+For numeric profiles, first retain L0 to discover the actual generated AMCV, MTNK and E1 stable IDs and
 positions. A short ordinary deployment probe then discovers the actual GACNST
 created by the AI MCV. Seal the final profile with those IDs and observed timings:
 

@@ -1,4 +1,4 @@
-//! Next/Previous536610/536A80 and HealthNav536950 ->733380.
+//! Next/Previous536610/536A80, HealthNav536950 ->733380 and P5367F0 ->732280.
 //! Executed N/M controls: tools/input_oracle/selection_navigation.json.
 
 use super::{AppState, SelectionMutation};
@@ -110,6 +110,183 @@ pub(super) fn execute_object_navigation(state: &mut AppState, direction: ObjectD
     crate::app::input::camera::center_view_on_selection(state);
     state.platform.window.request_redraw();
     // No selected-action-line timer start, Scenario draw or Detach in this path.
+}
+
+struct CombatantSelection {
+    mutation: SelectionMutation,
+    across_map: bool,
+}
+
+/// P732286's A8B538 guard is the local player's defeat latch:
+/// House4FC1B0..4FC205 sets it only for PlayerPtr; session52DA94 and
+/// cooperative setup5C38A8..5C3ABE clear it. The existing House outcome
+/// owner supplies this state; input keeps no competing defeat flag.
+fn combatant_selection_allowed(sim: &crate::sim::world::Simulation) -> bool {
+    !sim.session
+        .current_house
+        .and_then(|id| sim.houses.get(&id))
+        .is_some_and(|house| house.is_defeated)
+}
+
+/// P732280's local/alive collection precedes its combatant/dynamic screen
+/// preflight. Final ObjectSelect admission remains in the shared ledger;
+/// a refused Select can keep this call on-screen with no final members.
+fn combatant_selection(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    screen_order: &[u64],
+    map_order: &[u64],
+    selected: &[u64],
+    replace: bool,
+    mut across_map: bool,
+) -> CombatantSelection {
+    let mut mutation = SelectionMutation {
+        clear: replace,
+        ..Default::default()
+    };
+    let player_owned = |owner| {
+        if sim.session.game_mode_nonzero {
+            sim.house_is_human_player(owner)
+        } else {
+            //732598's campaign arm reads only owner+1ED, unlike
+            // House50B6F0's human-or-control predicate.
+            sim.houses
+                .get(&owner)
+                .is_some_and(|house| house.player_control)
+        }
+    };
+    // Tactical6DA770 drops a lone non-player-controlled selection before
+    // testing the shared mode. Deselect clears Follow but retains that mode.
+    let dropped = selected.first().copied().filter(|id| {
+        selected.len() == 1
+            && sim
+                .entities()
+                .get(*id)
+                .is_some_and(|entity| !player_owned(entity.owner()))
+    });
+    if let Some(id) = dropped {
+        mutation.deselect.push(id);
+    }
+    // TypeSelect__AliveLocalOwnerPredicate732580 does not read Health,
+    // Limbo, discovery or in-playfield state. These are not N/M candidates.
+    let local_alive = |id: &u64| {
+        sim.entities()
+            .get(*id)
+            .is_some_and(|entity| entity.lifecycle.object_alive && player_owned(entity.owner()))
+    };
+    // Final7325C0 calls the existing dynamic13C prefix and Object138 owner.
+    // RobotOffline+1C8 requires the separate powered-unit lifecycle; the
+    // existing prefix documents that unmodeled prerequisite.
+    let combatant = |id: &u64| {
+        sim.entities().get(*id).is_some_and(|entity| {
+            entity.category != EntityCategory::Structure
+                && rules
+                    .object(sim.interner.resolve(entity.type_ref()))
+                    .is_some_and(|object| object.is_selectable_combatant)
+                && crate::app::input::entity_pick::selection_dynamic_prefix(
+                    entity,
+                    sim.entities(),
+                    Some(rules),
+                    Some(&sim.interner),
+                )
+                && sim.object_is_selectable(*id, Some(rules))
+        })
+    };
+    let screen: Vec<_> = if across_map {
+        Vec::new()
+    } else {
+        screen_order.iter().copied().filter(local_alive).collect()
+    };
+    if !across_map {
+        let selected: std::collections::HashSet<_> = selected.iter().copied().collect();
+        across_map = !screen
+            .iter()
+            .any(|id| combatant(id) && (dropped == Some(*id) || !selected.contains(id)));
+    }
+    let candidates = if across_map {
+        map_order.iter().copied().filter(local_alive).collect()
+    } else {
+        screen
+    };
+    mutation.select = candidates.into_iter().filter(combatant).collect();
+    CombatantSelection {
+        mutation,
+        across_map,
+    }
+}
+
+pub(super) fn execute_combatant_selection(state: &mut AppState) {
+    if state
+        .match_state
+        .sim_runtime
+        .as_ref()
+        .is_none_or(|rt| !combatant_selection_allowed(&rt.simulation))
+    {
+        return;
+    }
+    state
+        .match_state
+        .input
+        .type_select
+        .prepare_combatant_scope();
+    let result = {
+        let Some(sim) = state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation)
+        else {
+            return;
+        };
+        let Some(rules) = state.rules() else {
+            return;
+        };
+        let selected = super::selected_stable_ids_in_order(
+            Some(sim),
+            Some(rules),
+            &state.match_state.input.selection_order,
+            state.match_state.input.selection_order_pending,
+        );
+        combatant_selection(
+            sim,
+            rules,
+            &crate::app::presentation::instances::tactical_screen_entity_encounter_order(state),
+            &super::map_entity_creation_order(sim.entities()),
+            &selected,
+            !state.match_state.input.hotkey_modifiers.shift_key(),
+            state.match_state.input.type_select.across_map,
+        )
+    };
+    super::apply_selection_mutation(
+        state,
+        result.mutation,
+        false,
+        super::SelectionVoicePolicy::EveryAdded,
+    );
+    let selected = super::selected_stable_ids_in_order(
+        state
+            .match_state
+            .sim_runtime
+            .as_ref()
+            .map(|rt| &rt.simulation),
+        state.rules(),
+        &state.match_state.input.selection_order,
+        state.match_state.input.selection_order_pending,
+    );
+    let outcome = if selected.is_empty() {
+        crate::app::types::TypeSelectOutcome::Empty
+    } else if result.across_map {
+        crate::app::types::TypeSelectOutcome::Map
+    } else {
+        crate::app::types::TypeSelectOutcome::Screen
+    };
+    state
+        .match_state
+        .input
+        .type_select
+        .finish_combatant_selection(outcome, result.across_map);
+    crate::app::input::messages::post_type_select_feedback(state, outcome.csf_key());
+    super::apply_selection_action_line_policy(state, super::SelectionActionLinePolicy::Preserve);
 }
 
 #[derive(Debug, Default)]

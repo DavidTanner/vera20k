@@ -281,8 +281,8 @@ impl SimFrameOutput {
 /// Front-end admission lane for one Main_Tick call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TickLane {
-    /// Normal gameplay: commands/input dispatch in the Main_Tick tail after
-    /// the live object/global update walk.
+    /// Normal gameplay: local selection/session ingress before live Logic,
+    /// then EventClass gameplay dispatch in the Main_Tick tail.
     Ordinary,
     /// LAN/WOL modal pump: service PerTickUpdate and the late tail only.
     NetworkModal,
@@ -6311,7 +6311,8 @@ impl Simulation {
         let mut bridge_state_changed = false;
 
         if lane == TickLane::Ordinary {
-            executed_commands += self.apply_due_frame_ingress_commands(commands, execute_tick);
+            executed_commands +=
+                self.apply_due_frame_ingress_commands(commands, rules, execute_tick);
         }
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::SessionCommands);

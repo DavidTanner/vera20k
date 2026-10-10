@@ -56,7 +56,7 @@ pub(crate) struct MatchInputState {
     /// temporarily suppress and restore this latch.
     pub(crate) selection_voice_enabled: bool,
     /// Pending order mode for the next right-click command.
-    pub(crate) queued_order_mode: crate::app::presentation::render::OrderMode,
+    pub(crate) queued_order_mode: crate::app::types::OrderMode,
     /// Control group slots (0-9) storing stable entity ids.
     pub(crate) control_groups: Vec<Vec<u64>>,
     /// Slot and wall-clock instant of the last plain control-group recall, for
@@ -76,6 +76,42 @@ pub(crate) struct MatchInputState {
 }
 
 impl MatchInputState {
+    /// Construct the match input owner with the ordinary startup defaults.
+    pub(crate) fn new(hotkey_bindings: crate::app::input::hotkeys::HotkeyBindings) -> Self {
+        Self {
+            minimap_dragging: false,
+            selection_state: crate::sim::selection::SelectionState::new(),
+            selection_order: Vec::new(),
+            selection_order_pending: false,
+            selection_voice_enabled: true,
+            queued_order_mode: crate::app::types::OrderMode::Move,
+            control_groups: vec![Vec::new(); 10],
+            last_control_group_press: None,
+            follow_target: None,
+            targeting_mode: None,
+            building_placement_preview: None,
+            camera_x: 0.0,
+            camera_y: 0.0,
+            pending_camera_scroll: Default::default(),
+            zoom_level: 1.0,
+            zoom_target: 1.0,
+            zoom_anchor_world: [0.0, 0.0],
+            zoom_anchor_screen: [0.0, 0.0],
+            edge_scroll: crate::app::input::camera::EdgeScrollState::default(),
+            tactical_mouse: crate::app::input::camera::TacticalMouseState::default(),
+            view_bookmarks: crate::app::input::camera::ViewBookmarks::default(),
+            cursor_x: 0.0,
+            cursor_y: 0.0,
+            keys_held: HashSet::new(),
+            hotkey_bindings,
+            hotkey_modifiers: ModifiersState::empty(),
+            type_select: crate::app::types::TypeSelectInputState::default(),
+            health_navigation: Default::default(),
+            cursor_coordinates: false,
+            retail_screenshot_requested: false,
+        }
+    }
+
     /// The cursor in whole window pixels, rounded to nearest: the position the
     /// shell screens and the gadget layer hit-test with.
     pub(crate) fn cursor_px(&self) -> (i32, i32) {

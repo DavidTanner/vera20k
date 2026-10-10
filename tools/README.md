@@ -37,6 +37,7 @@ points; the exhaustive oracle/tool inventory remains tracked in issue #746.
 | Capture and certify tactical routes | [tactical certification](tactical_certification/README.md) |
 | Measure resident unit-atlas texture pages and sprite counts | [production map observation](map_observation.md#resident-unit-atlas-measurement) |
 | Validate retained map captures or compare exact production observations | [map observation](map_observation.md), `python -m tools.map_observation compare` |
+| Name scenario command targets, inspect timelines and assert observed effects | [named commands and inspection](map_observation.md#named-commands-and-outcome-inspection), `python -m tools.map_observation inspect` |
 | Load a chosen retail map, step, capture and exit | [map observation](map_observation.md), `python -m tools.map_observation` |
 | Run one bounded child with retained diagnostics | `tools.child_process.run_child` (shared by capture wrappers) |
 | Check shell UI matrices | [exact shell matrix](exact_shell_ui_matrix/README.md) |
