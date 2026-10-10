@@ -6,6 +6,8 @@
 //! default shell path.
 //! Skirmish setup intentionally uses RA2's MNSCRNS/MNSCRNL backgrounds
 //! through SHELL.PAL as a presentation preference.
+//! User-requested YR parity exception: preserve this RA2 background during
+//! future parity work unless the user explicitly asks to change it.
 
 use std::collections::HashMap;
 

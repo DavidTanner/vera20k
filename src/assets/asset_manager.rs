@@ -336,6 +336,8 @@ impl AssetManager {
         // VERA presentation extension: native YR mounts THEME.MIX only when
         // THEMEMD.MIX is absent. Keep MD first, then make original RA2 music
         // available to the shared Theme catalog without displacing YR files.
+        // Preserve this user-requested parity exception during future parity
+        // work unless the user explicitly asks to change the music catalog.
         manager.mount_named_archive("theme.mix", false)?;
         manager.mount_native_movie_media(media_mode)?;
 

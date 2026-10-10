@@ -19,6 +19,8 @@
 //! both catalogs use the same native readers, scan, playlist and player.
 //! A larger playlist intentionally changes shuffle ranges and rejection draws
 //! on the existing shared Main RNG; it does not introduce another RNG owner.
+//! User-requested YR parity exception: preserve this expanded gameplay playlist
+//! during future parity work unless the user explicitly asks to change it.
 
 use crate::assets::asset_manager::AssetManager;
 use crate::assets::aud_file;
