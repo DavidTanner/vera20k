@@ -1013,6 +1013,29 @@ fn a_strike_constructs_its_bolt_and_explosion_at_the_cell() {
     );
 }
 
+/// The production `[General]` reader and ordinary strike must use the named
+/// bolt type, rather than the stock `WCLBOLT1..3` list.
+#[test]
+fn renamed_general_weather_bolt_reaches_ground_strike() {
+    let ini = IniFile::from_str(
+        "[General]\nWeatherConBolts=CUSTOMBOLT\nLightningWarhead=LWH\n\
+         [Warheads]\n0=LWH\n[LWH]\nCellSpread=0\n",
+    );
+    let mut rules = RuleSet::from_ini(&ini).expect("renamed bolt rules");
+    let mut art = ArtRegistry::from_ini(&IniFile::from_str("[CUSTOMBOLT]\nLayer=ground\n"));
+    art.bind_anim_frame_count_for_test("CUSTOMBOLT", 10);
+    rules.replace_art_registry_for_test(art);
+    assert_eq!(rules.general.weather_con_bolts, ["CUSTOMBOLT"]);
+
+    let mut sim = Simulation::with_seed(1);
+    strike(&mut sim, &rules, (5, 5), None);
+    let custom = sim.interner.intern("CUSTOMBOLT");
+    assert!(
+        sim.anims().any(|(_, anim)| anim.type_id == custom),
+        "the production strike must construct the renamed bolt"
+    );
+}
+
 /// The explosion's crater (AnimClass::Start) reduces the ore before the
 /// area damage clears what is left; dense ore still blocks the crater.
 #[test]
