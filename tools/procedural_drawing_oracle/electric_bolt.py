@@ -1160,7 +1160,7 @@ def generate():
 
 
 def metadata():
-    return native.provenance(scope=__doc__, assumptions=[
+    result = native.provenance(scope=__doc__, assumptions=[
         'Original EBolt4C1E10/4C2A60/4C1F20/4C2830/4C29E0 and packed4BFD30 execute unchanged; supplied fixtures are bounded components, not a complete Scenario or Windows frame.',
         'Birth executes original FireAt6FF4CC..6FF656, including its IsLaser precedence, IsElectricBolt gate, Spawn6FD570, real SelectWeapon6F3330, BuildingGetWeapon/GetFLH and target coordinate receivers. Isolated birth rows record the Spark constructor boundary; spark_cases hand off their original-derived endpoints to a fresh native Init plus complete ParticleSystem62DC50 and first two live Logic55B5FF..55B61B visits. Earlier Bullet production/damage/report/rearm and later ammo/reveal are outside this slice.',
         'Physical CoilBolt/Invisible/Electric, SparkSys/Spark/DefaultSparkSystem/Gravity read through original constructors and readers from exact lexical strings in RULESMD, optionalLANGRULE, MPBattleMD and XMP03T4. Physical IO/cache preparation is supplied. TESLA/GAPOWR FLH/foundation inputs reuse original BuildingType constructor and reader slices. Prepared instance locations match the ordinary production fixture; no whole Scenario load claim.',
@@ -1193,6 +1193,12 @@ def metadata():
                          anim_complete=0x424B31, anim_uninit=0x4255B0, pointer_expiry=0x7258D0,
                          light_ctor=0x5FF250, light_update=0x5FF390, light_draw=0x5FF850,
                          light_masks=0x5FF420, light_rgb565=0x7DEEFA))
+    result['reproduction_commands'] = {
+        'working_directory': 'repository root with the configured retail installation',
+        'check': 'python -m tools.procedural_drawing_oracle.electric_bolt --check',
+        'write': 'python -m tools.procedural_drawing_oracle.electric_bolt --write',
+    }
+    return result
 
 
 if __name__ == '__main__':

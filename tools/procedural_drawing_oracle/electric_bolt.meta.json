@@ -71,6 +71,11 @@
     "light_masks": "0x005FF420",
     "light_rgb565": "0x007DEEFA"
   },
+  "reproduction_commands": {
+    "working_directory": "repository root with the configured retail installation",
+    "check": "python -m tools.procedural_drawing_oracle.electric_bolt --check",
+    "write": "python -m tools.procedural_drawing_oracle.electric_bolt --write"
+  },
   "source_normalized_lf_sha256": {
     "tools.bridge_click_oracle": "b2879a5172b5fe778fbc8f8d98374b124ea1120aefe5e960764bd27a99183026",
     "tools.input_oracle.fast_scroll": "fc23d236ec33e0e60168e7c9174d8c52b7970dafee4ea071d018f780d2aeadc4",
@@ -121,7 +126,7 @@
     "tools.spatial_oracle.unit_scatter_state": "c8269a41294316c97f990051506c4a9d9dbe923d8143a54a1a92c69645d2a112",
     "tools.spatial_oracle.unit_source_scatter": "3384579566b40ebcc9d8d56d53a0736655eb3a15a6bf7f08730611b15852a009",
     "tools.spatial_oracle.walk_head_occupation": "d888f824965dc41badb92827d9f4befdf06eb1dd33559a3f68eadc3b7c54f6c8",
-    "producer": "88729f7b909c5453d0f3fdcb93c4917f750b2ca5ad23a8a1580ff59fbf0dce9f"
+    "producer": "c5457d6908720da28374ad98999e77494f45e75c9dd6993fe12366c90035cff0"
   },
   "payload_sha256": "07b391dfbc5eac40186e38a97a4a7c15f1f57fc8d4be96acb21b0134b2540c74"
 }
