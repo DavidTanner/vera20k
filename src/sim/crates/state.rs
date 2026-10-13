@@ -296,13 +296,12 @@ mod tests {
             cell_x: -7,
             cell_y: 31,
         };
-        let empty_families = [&[][..], &[][..], &[][..], &[][..], &[][..]];
         assert_eq!(
             baseline
-                .compute_retail_multiplayer_checksum(empty_families)
+                .compute_retail_multiplayer_checksum()
                 .expect("baseline checksum"),
             changed
-                .compute_retail_multiplayer_checksum(empty_families)
+                .compute_retail_multiplayer_checksum()
                 .expect("changed checksum")
         );
     }

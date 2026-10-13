@@ -712,6 +712,30 @@ mod retail_construction_tests {
                 "runtime-backed headless execution diverged at tick {tick}"
             );
         }
+
+        // The same pair on the multiplayer Queue_AI route: both instances
+        // store an identical retail sync checksum every frame.
+        for scenario in [&mut a, &mut b] {
+            scenario
+                .runtime
+                .simulation
+                .set_command_queue_route(crate::sim::world::CommandQueueRoute::Multiplayer);
+        }
+        for tick in 0..60u32 {
+            let [checksum_a, checksum_b] = [&mut a, &mut b].map(|scenario| {
+                tick_with_due_commands(scenario)
+                    .multiplayer_checksum
+                    .expect("multiplayer route checksums every frame")
+            });
+            assert!(
+                checksum_a.checksum.is_ok(),
+                "retail registries cover every display/Logic entry: {checksum_a:?}"
+            );
+            assert_eq!(
+                checksum_a, checksum_b,
+                "multiplayer sync checksum diverged at tick {tick}"
+            );
+        }
     }
 
     #[test]

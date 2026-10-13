@@ -6,39 +6,26 @@
 //! it also consumes one additional Scenario RNG sample for the native diagnostic
 //! snapshot path.
 
-#[cfg(test)]
 use crate::map::entities::EntityCategory;
-#[cfg(test)]
 use crate::sim::game_entity::GameEntity;
 use crate::sim::world::Simulation;
-#[cfg(test)]
 use crate::util::native_x87::{NativeF32Bits, X87Chop53};
 
-pub const DISPLAY_LAYER_COUNT: usize = 5;
-
-#[cfg(test)]
 const RTTI_UNIT: i32 = 1;
-#[cfg(test)]
 const RTTI_AIRCRAFT: i32 = 2;
 const RTTI_ANIM: i32 = 4;
-#[cfg(test)]
 const RTTI_BUILDING: i32 = 6;
-#[cfg(test)]
 const RTTI_BULLET: i32 = 8;
-#[cfg(test)]
 const RTTI_INFANTRY: i32 = 0x0f;
-#[cfg(test)]
 const RTTI_PARTICLE_SYSTEM: i32 = 0x18;
-#[cfg(test)]
 const RTTI_TERRAIN: i32 = 0x24;
-#[cfg(test)]
+/// `VoxelAnimClass` WhatAmI: vtable `0x007F6318` +0x2c is `0x0074AB20`
+/// (`MOV EAX, 0x29; RET`).
+const RTTI_VOXEL_ANIM: i32 = 0x29;
 const RTTI_WAVE: i32 = 0x240;
 const SYNC_EXEMPT_ANIM_ID: i32 = -2;
-#[cfg(test)]
 const LEPTONS_PER_CELL: i32 = crate::util::lepton::LEPTONS_PER_CELL_I32;
-#[cfg(test)]
 const CELL_CENTER_LEPTON: i32 = crate::util::lepton::CELL_CENTER_LEPTON_I32;
-#[cfg(test)]
 const WAVE_EXTENDED_ENDPOINT_SCALE: NativeF32Bits = NativeF32Bits::from_bits(0x3f86_6666);
 
 /// One ObjectClass entry as seen by a display-layer checksum pass.
@@ -87,8 +74,8 @@ pub enum MultiplayerChecksumError {
         "house registration order covers {registered} entries but the house store has {stored}"
     )]
     HouseOrderCoverage { registered: usize, stored: usize },
-    #[error("LogicClass checksum entry {0} is absent from every object registry")]
-    MissingLogicObject(u64),
+    #[error("checksum display/LogicClass entry {0} is absent from every object registry")]
+    MissingObject(u64),
     #[error("LogicClass Wave {id} has invalid native wave type {wave_type}")]
     InvalidWaveType { id: u64, wave_type: u8 },
 }
@@ -175,7 +162,6 @@ fn coordinate_term(world_x: i32, world_y: i32) -> u32 {
     (x as u32).wrapping_add((y as u32).wrapping_mul(0x1_0000))
 }
 
-#[cfg(test)]
 #[inline]
 fn entity_world_xy(entity: &GameEntity) -> (i32, i32) {
     (
@@ -188,7 +174,6 @@ fn entity_world_xy(entity: &GameEntity) -> (i32, i32) {
     )
 }
 
-#[cfg(test)]
 #[inline]
 fn terrain_world_xy(rx: u16, ry: u16) -> (i32, i32) {
     // gamemd-derived: `TerrainClass__Constructor @ 0x0071BB90` converts the
@@ -199,7 +184,6 @@ fn terrain_world_xy(rx: u16, ry: u16) -> (i32, i32) {
     )
 }
 
-#[cfg(test)]
 #[inline]
 fn wave_object_axis(source: i32, target: i32, wave_type: u8) -> Option<i32> {
     let scale = match wave_type {
@@ -213,7 +197,6 @@ fn wave_object_axis(source: i32, target: i32, wave_type: u8) -> Option<i32> {
     i32::try_from(X87Chop53::ftol_i64(X87Chop53::add(source_term, target_term)).ok()?).ok()
 }
 
-#[cfg(test)]
 #[inline]
 fn wave_world_xy(wave: &crate::sim::wave::Wave) -> Option<(i32, i32)> {
     // gamemd-derived: `WaveClass__Constructor @ 0x0075E950` Reveals at the
@@ -225,7 +208,6 @@ fn wave_world_xy(wave: &crate::sim::wave::Wave) -> Option<(i32, i32)> {
     ))
 }
 
-#[cfg(test)]
 #[inline]
 fn secondary_facing(entity: &GameEntity, frame: u32) -> u16 {
     entity
@@ -234,7 +216,6 @@ fn secondary_facing(entity: &GameEntity, frame: u32) -> u16 {
         .map_or(0, |facing| facing.current(frame))
 }
 
-#[cfg(test)]
 #[inline]
 fn entity_rtti(category: EntityCategory) -> i32 {
     match category {
@@ -248,17 +229,35 @@ fn entity_rtti(category: EntityCategory) -> i32 {
 impl Simulation {
     /// Compute one active-retail multiplayer checksum.
     ///
-    /// `display_layers` must be the five native display vectors in their stored
-    /// order. Rust does not currently own those vectors in `sim`, so the
-    /// presentation owner supplies the exact point-in-time views.
-    /// This method must be called only by the admitted multiplayer-frame path:
-    /// it consumes exactly two Scenario RNG samples and therefore must never run
-    /// for an offline frame or a diagnostic-only `state_hash()` request.
-    #[cfg(test)]
-    pub fn compute_retail_multiplayer_checksum(
+    /// gamemd-derived: `Compute_Game_Sync_Checksum @ 0x0064DAB0` folds the
+    /// Infantry, Unit and Building class arrays, every House's MapIsClear
+    /// byte, the five DisplayClass layer vectors (`0x008A0360`, stride 24) in
+    /// stored order, the LogicClass vector, and one Scenario RNG sample, then
+    /// `FUN_00650A90` consumes a second sample for its diagnostic snapshot.
+    ///
+    /// Its only per-frame caller is `Queue_AI_Multiplayer @ 0x006475F0`
+    /// (`0x00647684`), which `Queue_AI @ 0x00647260` selects for GameMode
+    /// 1..=4 (jump table `0x006475D8`). Campaign and skirmish frames never
+    /// call it, so the two RNG draws must never run offline or for a
+    /// diagnostic-only `state_hash()` request.
+    pub(crate) fn compute_retail_multiplayer_checksum(
         &mut self,
-        display_layers: [&[ChecksumObject]; DISPLAY_LAYER_COUNT],
     ) -> Result<MultiplayerChecksumFrame, MultiplayerChecksumError> {
+        let objects = self.fold_checksum_objects();
+        // Native has no error exit: both Scenario samples are drawn even when
+        // VERA cannot resolve an entry, so the stream stays in native step.
+        let checksum_rng_sample = self.scenario_rng.next_u32();
+        let diagnostic_rng_sample = self.scenario_rng.next_u32();
+        let mut checksum = objects?;
+        checksum.fold_value(checksum_rng_sample);
+        Ok(MultiplayerChecksumFrame {
+            value: checksum.value(),
+            diagnostic_rng_sample,
+        })
+    }
+
+    /// Every fold before the Scenario sample, in native order.
+    fn fold_checksum_objects(&self) -> Result<RetailChecksumAccumulator, MultiplayerChecksumError> {
         let frame = self.session.binary_frame;
         let mut checksum = RetailChecksumAccumulator::new();
 
@@ -306,54 +305,80 @@ impl Simulation {
             checksum.fold_house(u8::from(house.map_is_clear));
         }
 
-        for layer in display_layers {
-            for &object in layer {
-                checksum.fold_object(object);
-            }
+        // Layers 0..4 in index order, each in its stored member order.
+        for &stable_id in self.display_layers().ordered_ids() {
+            checksum.fold_object(self.checksum_object(stable_id)?);
         }
-
         for &stable_id in self.substrate.logic.as_slice() {
-            // gamemd-derived: active `Compute_Game_Sync_Checksum @ 0x0064DAB0`
-            // reads ObjectClass +0x9c/+0xa0 directly and folds the full virtual
-            // WhatAmI value in stored LogicClass order.
-            let object = if let Some(entity) = self.substrate.entities.get(stable_id) {
+            checksum.fold_object(self.checksum_object(stable_id)?);
+        }
+        Ok(checksum)
+    }
+
+    /// The ObjectClass view both the display-layer and LogicClass folds read.
+    ///
+    /// gamemd-derived: `0x0064DAB0` reads ObjectClass +0x9c/+0xa0 directly
+    /// and folds the full virtual WhatAmI value (vt+0x2c).
+    fn checksum_object(&self, stable_id: u64) -> Result<ChecksumObject, MultiplayerChecksumError> {
+        use crate::sim::world::ObjectKind;
+        let missing = MultiplayerChecksumError::MissingObject(stable_id);
+        let object = match self.classify_object(stable_id).ok_or(missing)? {
+            ObjectKind::Entity => {
+                let entity = self.substrate.entities.get(stable_id).ok_or(missing)?;
                 let (world_x, world_y) = entity_world_xy(entity);
                 ChecksumObject::new(world_x, world_y, entity_rtti(entity.category), 0)
-            } else if let Some(anim) = self.substrate.anims.get(stable_id) {
+            }
+            ObjectKind::Anim => {
+                let anim = self.substrate.anims.get(stable_id).ok_or(missing)?;
                 ChecksumObject::new(
                     anim.world_coord.x,
                     anim.world_coord.y,
                     RTTI_ANIM,
                     anim.native_unique_id,
                 )
-            } else if let Some(system) = self.substrate.particle_systems.get(stable_id) {
+            }
+            ObjectKind::VoxelAnim => {
+                // `VoxelAnimClass::AI` refreshes ObjectClass +0x9c from the
+                // bounce body every visit; `world_coord` is that conversion.
+                let piece = self.substrate.voxel_anims.get(stable_id).ok_or(missing)?;
+                let coord = piece.world_coord();
+                ChecksumObject::new(coord.x, coord.y, RTTI_VOXEL_ANIM, 0)
+            }
+            ObjectKind::ParticleSystem => {
+                let system = self
+                    .substrate
+                    .particle_systems
+                    .get(stable_id)
+                    .ok_or(missing)?;
                 ChecksumObject::new(system.coords.x, system.coords.y, RTTI_PARTICLE_SYSTEM, 0)
-            } else if let Some(terrain) = self.production.terrain_objects.get(&stable_id) {
+            }
+            ObjectKind::Terrain => {
+                let terrain = self
+                    .production
+                    .terrain_objects
+                    .get(&stable_id)
+                    .ok_or(missing)?;
                 let (world_x, world_y) = terrain_world_xy(terrain.rx, terrain.ry);
                 ChecksumObject::new(world_x, world_y, RTTI_TERRAIN, 0)
-            } else if let Some(projectile) = self.projectiles.get(stable_id) {
+            }
+            ObjectKind::Projectile => {
+                let projectile = self.projectiles.get(stable_id).ok_or(missing)?;
                 ChecksumObject::new(projectile.position.x, projectile.position.y, RTTI_BULLET, 0)
-            } else if let Some(wave) = self.waves.get(stable_id) {
+            }
+            ObjectKind::Wave => {
+                let wave = self.waves.get(stable_id).ok_or(missing)?;
                 let (world_x, world_y) =
                     wave_world_xy(wave).ok_or(MultiplayerChecksumError::InvalidWaveType {
                         id: stable_id,
                         wave_type: wave.wave_type,
                     })?;
                 ChecksumObject::new(world_x, world_y, RTTI_WAVE, 0)
-            } else {
-                return Err(MultiplayerChecksumError::MissingLogicObject(stable_id));
-            };
-            checksum.fold_object(object);
-        }
-
-        let checksum_rng_sample = self.scenario_rng.next_u32();
-        checksum.fold_value(checksum_rng_sample);
-        let diagnostic_rng_sample = self.scenario_rng.next_u32();
-
-        Ok(MultiplayerChecksumFrame {
-            value: checksum.value(),
-            diagnostic_rng_sample,
-        })
+            }
+            // SmudgeClass never joins Logic or a display layer (lifecycle
+            // asserts it), so a smudge id here is a registry defect.
+            ObjectKind::Smudge => return Err(missing),
+        };
+        Ok(object)
     }
 }
 
@@ -567,9 +592,7 @@ mod tests {
         let checksum_sample = reference.next_u32();
         let diagnostic_sample = reference.next_u32();
 
-        let frame = sim
-            .compute_retail_multiplayer_checksum([&[], &[], &[], &[], &[]])
-            .unwrap();
+        let frame = sim.compute_retail_multiplayer_checksum().unwrap();
 
         assert_eq!(frame.value, checksum_sample);
         assert_eq!(frame.diagnostic_rng_sample, diagnostic_sample);
@@ -586,12 +609,8 @@ mod tests {
         let checksum_sample = reference.next_u32();
         let diagnostic_sample = reference.next_u32();
 
-        let first_frame = first
-            .compute_retail_multiplayer_checksum([&[], &[], &[], &[], &[]])
-            .unwrap();
-        let second_frame = second
-            .compute_retail_multiplayer_checksum([&[], &[], &[], &[], &[]])
-            .unwrap();
+        let first_frame = first.compute_retail_multiplayer_checksum().unwrap();
+        let second_frame = second.compute_retail_multiplayer_checksum().unwrap();
 
         assert_eq!(
             first_frame.value,
@@ -619,12 +638,155 @@ mod tests {
         let checksum_sample = reference.next_u32();
         let diagnostic_sample = reference.next_u32();
 
-        let frame = sim
-            .compute_retail_multiplayer_checksum([&[], &[], &[], &[], &[]])
-            .unwrap();
+        let frame = sim.compute_retail_multiplayer_checksum().unwrap();
 
         assert_eq!(frame.value, checksum_sample);
         assert_eq!(frame.diagnostic_rng_sample, diagnostic_sample);
+        assert_eq!(sim.scenario_rng.next_u32(), reference.next_u32());
+    }
+
+    #[test]
+    fn display_layers_fold_in_layer_order_before_the_logic_vector() {
+        use crate::sim::world::display_layers::DisplayLayer;
+        let mut sim = Simulation::with_seed(0x64da);
+        let top = sim.allocate_stable_id();
+        sim.substrate.anims.insert(test_anim(top, 5, 40, 50));
+        let surface = sim.allocate_stable_id();
+        sim.substrate.anims.insert(test_anim(surface, 6, 70, 80));
+        let logic = sim.allocate_stable_id();
+        sim.substrate.anims.insert(test_anim(logic, 7, 100, 110));
+        // Submission order is deliberately the reverse of layer order.
+        assert!(
+            sim.substrate
+                .display
+                .submit(top, Some(DisplayLayer::TOP), &|_| 0)
+        );
+        assert!(
+            sim.substrate
+                .display
+                .submit(surface, Some(DisplayLayer::SURFACE), &|_| 0)
+        );
+        sim.register_live_object(logic);
+        let mut reference = sim.scenario_rng.clone();
+        let checksum_sample = reference.next_u32();
+
+        let frame = sim.compute_retail_multiplayer_checksum().unwrap();
+
+        let mut expected = RetailChecksumAccumulator::new();
+        expected.fold_object(ChecksumObject::new(70, 80, 4, 6));
+        expected.fold_object(ChecksumObject::new(40, 50, 4, 5));
+        expected.fold_object(ChecksumObject::new(100, 110, 4, 7));
+        expected.fold_value(checksum_sample);
+        assert_eq!(frame.value, expected.value());
+    }
+
+    #[test]
+    fn gsi_16_11_dangling_display_id_is_a_hard_error() {
+        let mut sim = Simulation::new();
+        assert!(sim.substrate.display.submit(
+            92,
+            Some(crate::sim::world::display_layers::DisplayLayer::AIR),
+            &|_| 0
+        ));
+
+        assert_eq!(
+            sim.compute_retail_multiplayer_checksum(),
+            Err(MultiplayerChecksumError::MissingObject(92))
+        );
+    }
+
+    #[test]
+    fn only_the_multiplayer_queue_route_checksums_a_frame() {
+        use crate::sim::world::{CommandQueueRoute, FrameEffects, TickLane};
+        let mut single = Simulation::with_seed(0x6476);
+        let mut multi = Simulation::with_seed(0x6476);
+        multi.set_command_queue_route(CommandQueueRoute::Multiplayer);
+        let frame = multi.session.binary_frame;
+        let mut expected_rng = single.scenario_rng.clone();
+
+        let advance = |sim: &mut Simulation| {
+            sim.advance_app_frame(
+                &[],
+                None,
+                None,
+                67,
+                TickLane::Ordinary,
+                None,
+                FrameEffects::default(),
+            )
+            .expect("empty frame completes")
+        };
+        let single_output = advance(&mut single);
+        let multi_output = advance(&mut multi);
+
+        assert_eq!(single_output.multiplayer_checksum, None);
+        let sync = multi_output
+            .multiplayer_checksum
+            .expect("Queue_AI_Multiplayer stores one checksum per frame");
+        assert_eq!(sync.frame, frame, "stamped with the pre-commit frame");
+        let checksum_sample = expected_rng.next_u32();
+        let diagnostic_sample = expected_rng.next_u32();
+        assert_eq!(
+            sync.checksum,
+            Ok(super::MultiplayerChecksumFrame {
+                value: checksum_sample,
+                diagnostic_rng_sample: diagnostic_sample,
+            })
+        );
+        // The empty frame draws nothing else, so the single-player stream is
+        // exactly the multiplayer stream minus the two checksum draws.
+        assert_eq!(
+            single.rng_state().scenario,
+            Simulation::with_seed(0x6476).rng_state().scenario
+        );
+        assert_eq!(multi.rng_state().scenario, expected_rng.logical_state());
+    }
+
+    #[test]
+    fn voxel_anim_debris_folds_in_the_air_layer_and_logic_with_whatami_0x29() {
+        use crate::rules::ini_parser::IniFile;
+        use crate::rules::voxel_anim_type::{VoxelAnimType, VoxelAnimTypeId};
+        let mut sim = Simulation::with_seed(0x74ab);
+        let id = sim.allocate_stable_id();
+        let tire = VoxelAnimType::from_ini_section(
+            "TIRE",
+            IniFile::from_str("[TIRE]\nDuration=150\n")
+                .section("TIRE")
+                .unwrap(),
+        );
+        let piece = crate::sim::voxel_anim::spawn_debris_piece(
+            id,
+            VoxelAnimTypeId(0),
+            &tire,
+            None,
+            IVec3::new(1280, 2560, 96),
+            &mut crate::sim::rng::SimRng::new(1),
+        )
+        .unwrap();
+        let coord = piece.world_coord();
+        sim.substrate.voxel_anims.insert(piece);
+        assert!(sim.reveal_voxel_anim(id));
+        let mut reference = sim.scenario_rng.clone();
+
+        let frame = sim.compute_retail_multiplayer_checksum().unwrap();
+
+        let object = ChecksumObject::new(coord.x, coord.y, 0x29, 0);
+        let mut expected = RetailChecksumAccumulator::new();
+        expected.fold_object(object);
+        expected.fold_object(object);
+        expected.fold_value(reference.next_u32());
+        assert_eq!(frame.value, expected.value());
+    }
+
+    #[test]
+    fn an_unresolved_entry_still_draws_both_scenario_samples() {
+        let mut sim = Simulation::with_seed(0x64da);
+        sim.substrate.logic.set_order_for_test(vec![93]);
+        let mut reference = sim.scenario_rng.clone();
+        reference.next_u32();
+        reference.next_u32();
+
+        assert!(sim.compute_retail_multiplayer_checksum().is_err());
         assert_eq!(sim.scenario_rng.next_u32(), reference.next_u32());
     }
 
@@ -634,8 +796,8 @@ mod tests {
         sim.substrate.logic.set_order_for_test(vec![91]);
 
         assert_eq!(
-            sim.compute_retail_multiplayer_checksum([&[], &[], &[], &[], &[]]),
-            Err(MultiplayerChecksumError::MissingLogicObject(91))
+            sim.compute_retail_multiplayer_checksum(),
+            Err(MultiplayerChecksumError::MissingObject(91))
         );
     }
 }

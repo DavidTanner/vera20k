@@ -157,7 +157,7 @@ pub(crate) use object_entry::FootEntryReceiver;
 #[cfg(test)]
 pub(crate) use substrate::DeferredDeleteQueue;
 pub use substrate::EnterOrderCounter;
-pub(crate) use substrate::{DeferredDeleteTicket, ObjectSubstrate};
+pub(crate) use substrate::{DeferredDeleteTicket, ObjectKind, ObjectSubstrate};
 pub(crate) use world_spawn::{GeneratedTechnoInitError, GeneratedTechnoInitTable};
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -291,6 +291,32 @@ pub(crate) struct SimFrameOutput {
     pub fire_events: Vec<SimFireEvent>,
     pub combat_lights: Vec<crate::sim::combat::CombatLightRequest>,
     pub(crate) lighting_events: Vec<crate::sim::light_sources::LightingEvent>,
+    /// The retail sync checksum this frame's multiplayer `Queue_AI` computed
+    /// for the native history ring; `None` on single-player routes and on
+    /// frames that terminated before the tail.
+    pub(crate) multiplayer_checksum: Option<FrameSyncChecksum>,
+}
+
+/// One frame's retail multiplayer checksum, stamped with the pre-commit
+/// native frame it describes (`Frame` when `0x00647684` runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FrameSyncChecksum {
+    pub frame: u32,
+    pub checksum: Result<
+        crate::sim::multiplayer_checksum::MultiplayerChecksumFrame,
+        crate::sim::multiplayer_checksum::MultiplayerChecksumError,
+    >,
+}
+
+/// Which native `Queue_AI @ 0x00647260` body the frame tail runs. gamemd
+/// selects it from GameMode through the jump table at `0x006475D8`: modes 0
+/// (campaign) and 5 (skirmish) take the single-player body at `0x006474DC`;
+/// modes 1..=4 call `Queue_AI_Multiplayer @ 0x006475F0`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum CommandQueueRoute {
+    #[default]
+    SinglePlayer,
+    Multiplayer,
 }
 
 impl SimFrameOutput {
@@ -1324,6 +1350,14 @@ pub struct Simulation {
     executed_exit_owner: Option<InternedId>,
     #[serde(skip)]
     pub(crate) connection_lost: bool,
+    /// GameMode's `Queue_AI` route. The app's session owner is the authority
+    /// and writes it before every frame it admits; never saved or hashed.
+    #[serde(skip)]
+    command_queue_route: CommandQueueRoute,
+    /// Checksum computed by this frame's multiplayer tail, handed to the
+    /// frame output. Transient per frame.
+    #[serde(skip)]
+    frame_sync_checksum: Option<FrameSyncChecksum>,
     /// Pending gameplay commands waiting for their scheduled execution tick.
     /// Admitted through `queue_command(s)` and drained each tick when
     /// `cmd.execute_tick <= current_tick + 1`.
@@ -3366,6 +3400,8 @@ impl Simulation {
             quit_requested: false,
             executed_exit_owner: None,
             connection_lost: false,
+            command_queue_route: CommandQueueRoute::SinglePlayer,
+            frame_sync_checksum: None,
             pending_commands: Vec::new(),
             #[cfg(test)]
             replaying_recorded_commands: false,
@@ -6272,6 +6308,16 @@ impl Simulation {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
         }
 
+        // `Queue_AI_Multiplayer` computes and stores the sync checksum
+        // (`0x00647684`, history `0x00B04474[Frame & 0xFF]`) before any
+        // command transfer or dispatch; the single-player body never does.
+        if self.command_queue_route == CommandQueueRoute::Multiplayer {
+            self.frame_sync_checksum = Some(FrameSyncChecksum {
+                frame: self.session.binary_frame,
+                checksum: self.compute_retail_multiplayer_checksum(),
+            });
+        }
+
         // EventClass dispatch is a Main_Tick tail rung: the complete live
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
@@ -6508,6 +6554,11 @@ impl Simulation {
         Ok(self.collect_frame_output(frame?, effects))
     }
 
+    /// The session owner's GameMode route for the next admitted frames.
+    pub(crate) fn set_command_queue_route(&mut self, route: CommandQueueRoute) {
+        self.command_queue_route = route;
+    }
+
     /// Install the sole audio owner's read-only pending-interest projection
     /// immediately before an admitted frame. No voice names/state live here.
     pub(crate) fn prepare_unit_voice_visits(&mut self, owners: std::collections::BTreeSet<u64>) {
@@ -6542,6 +6593,7 @@ impl Simulation {
             Vec::new()
         };
         let lifecycle_outputs = std::mem::take(&mut self.lifecycle_outputs);
+        let multiplayer_checksum = self.frame_sync_checksum.take();
         let overlay_updates = std::mem::take(&mut self.frame_overlay_updates);
         let overlay_removals = std::mem::take(&mut self.frame_overlay_removals);
         let fire_events = std::mem::take(&mut self.fire_events);
@@ -6560,6 +6612,7 @@ impl Simulation {
             fire_events,
             combat_lights,
             lighting_events,
+            multiplayer_checksum,
         }
     }
 
@@ -6580,6 +6633,8 @@ impl Simulation {
         effects: FrameEffects<'_>,
     ) -> Result<MasterFrameOutput, FrameAdvanceError> {
         let effects = effects.with_rules(rules);
+        // A failed earlier frame never reached collection; drop its value.
+        self.frame_sync_checksum = None;
         self.combat_light_requests.clear();
         self.pending_projectile_detonations.clear();
         self.pending_wave_damage_requests.clear();

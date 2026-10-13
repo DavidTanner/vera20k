@@ -817,10 +817,12 @@ fn advance_one_simulation_frame(
         let mut super_weapon_messages: Vec<&'static str> = Vec::new();
         // Carried out of the sim borrow so the census can read `state` freely below.
         let mut census_tick: Option<u64> = None;
+        let command_queue_route = state.match_state.session.mode().command_queue_route();
         if let Some(rt) = state.match_state.sim_runtime.as_mut() {
             let sim = &mut rt.simulation;
             let native_frame = sim.session.binary_frame;
             sim.prepare_unit_voice_visits(unit_voice_owners);
+            sim.set_command_queue_route(command_queue_route);
             // Delay-zero AnimClass construction can emit StartSound during the
             // final map-load sweep. Keep it until this first tactical drain;
             // `drain(..)` below still consumes every event exactly once.
@@ -880,8 +882,20 @@ fn advance_one_simulation_frame(
                 fire_events: frame_fire_events,
                 combat_lights,
                 lighting_events,
+                multiplayer_checksum,
                 ..
             } = output;
+            if let Some(sync) = multiplayer_checksum {
+                // Native always stores a value; a VERA registry gap has no
+                // native equivalent and would desync every peer.
+                let checksum = sync.checksum.unwrap_or_else(|error| {
+                    panic!("multiplayer checksum for frame {}: {error}", sync.frame)
+                });
+                state
+                    .match_state
+                    .session
+                    .record_frame_checksum(sync.frame, checksum.value);
+            }
             camera_logic_frame = frame_lifecycle_outputs
                 .iter()
                 .any(|output| matches!(output, LifecycleOutput::LogicVisit))

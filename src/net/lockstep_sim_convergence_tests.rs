@@ -212,3 +212,206 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
         "negative and above-0x3ffff linear indices leave the allocated grid untouched"
     );
 }
+
+/// Stage 0 determinism guard: two multiplayer-route instances of one combat
+/// scene, one fed the live semantic commands and the other the same orders as
+/// native records through the lockstep queue, store identical retail sync
+/// checksums every frame; one extra Scenario RNG draw is then caught.
+#[test]
+fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
+    use crate::net::lockstep::{
+        CommandDispatchHouse, LockstepScheduler, MultiplayerChecksumHistory, SynchronizedCommand,
+        SynchronizedCommandQueue,
+    };
+    use crate::rules::ini_parser::IniFile;
+    use crate::sim::combat::TargetKind;
+    use crate::sim::world::{CommandQueueRoute, FrameEffects, TickLane};
+
+    const FRAMES: u32 = 150;
+
+    fn scene() -> (Simulation, RuleSet, u64, u64, u64) {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n[AircraftTypes]\n[BuildingTypes]\n\
+             [E1]\nStrength=125\nArmor=none\nSpeed=4\nSight=8\nPrimary=Rifle\n\
+             Locomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\n\
+             [Rifle]\nDamage=15\nROF=20\nRange=4\nProjectile=Bullet\nWarhead=SA\n\
+             [Bullet]\nAG=yes\nAA=no\n\
+             [SA]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%\n\
+             [Clear]\nFoot=100%\nTrack=100%\nWheel=100%\nFloat=0%\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::with_seed(0x0064_dab0);
+        sim.intern_rule_type_ids(&rules);
+        sim.resolve_type_handles(&rules);
+        for (index, (name, human)) in [("Local", true), ("Enemy", false)].into_iter().enumerate() {
+            let owner = sim.interner.intern(name);
+            sim.houses.insert(
+                owner,
+                crate::sim::house_state::HouseState::new(owner, index as u8, None, human, 0, 10),
+            );
+            sim.session.house_order.push(owner);
+        }
+        sim.session.current_house = sim.interner.get("Local");
+        let costs = rules
+            .terrain_rules
+            .semantics_by_name("Clear")
+            .unwrap()
+            .speed_costs;
+        let cells = (0..64)
+            .flat_map(|y| {
+                (0..64).map(move |x| {
+                    let mut cell = crate::map::resolved_terrain::ResolvedTerrainCell {
+                        filled_clear: true,
+                        terrain_class: Default::default(),
+                        accepts_smudge: true,
+                        ..crate::map::resolved_terrain::test_flat_cell(x, y)
+                    };
+                    cell.speed_costs = costs;
+                    cell.base_speed_costs = costs;
+                    cell
+                })
+            })
+            .collect();
+        sim.install_resolved_terrain_for_new_map(
+            crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(64, 64, cells),
+        );
+        assert!(sim.rebuild_dynamic_navigation(&rules));
+        sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
+            base: 16,
+            off_fc: -64,
+            off_100: -64,
+            off_104: 128,
+            off_108: 128,
+        });
+        sim.playfield_size_height = Some(64);
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
+        let actor = sim.spawn_object("E1", "Local", 10, 10, 0, &rules).unwrap();
+        let guard = sim.spawn_object("E1", "Local", 10, 12, 0, &rules).unwrap();
+        let enemy = sim.spawn_object("E1", "Enemy", 18, 10, 0, &rules).unwrap();
+        sim.set_command_queue_route(CommandQueueRoute::Multiplayer);
+        (sim, rules, actor, guard, enemy)
+    }
+
+    fn frame(sim: &mut Simulation, rules: &RuleSet, commands: &[CommandEnvelope]) -> u32 {
+        let sync = sim
+            .advance_app_frame(
+                commands,
+                Some(rules),
+                None,
+                67,
+                TickLane::Ordinary,
+                None,
+                FrameEffects::default(),
+            )
+            .expect("scene frame completes")
+            .multiplayer_checksum
+            .expect("multiplayer route checksums every frame");
+        sync.checksum.expect("scene registries are complete").value
+    }
+
+    let (mut live, rules, actor, guard, enemy) = scene();
+    let (mut raw, _, _, _, _) = scene();
+    assert_eq!(live.state_hash(), raw.state_hash());
+    let local = live.interner.get("Local").unwrap();
+    let orders = |frame: u32| match frame {
+        2 => Some(Command::Move {
+            entity_id: actor,
+            target_rx: 15,
+            target_ry: 10,
+            queue: false,
+        }),
+        20 => Some(Command::Guard {
+            entity_id: guard,
+            target: Some(TargetKind::Cell(10, 12)),
+        }),
+        40 => Some(Command::Scatter { entity_id: guard }),
+        _ => None,
+    };
+
+    let mut queue = SynchronizedCommandQueue::new();
+    let mut live_history = MultiplayerChecksumHistory::new();
+    let mut raw_history = MultiplayerChecksumHistory::new();
+    for _ in 0..FRAMES {
+        let native_frame = live.session.binary_frame;
+        assert_eq!(raw.session.binary_frame, native_frame);
+        let execute_tick = live.session.tick + 1;
+        let mut live_commands = Vec::new();
+        if let Some(order) = orders(native_frame) {
+            let record = match order {
+                Command::Scatter { entity_id } => raw.encode_scatter_record(local, entity_id),
+                ref megamission => raw.encode_megamission_record(local, megamission),
+            }
+            .expect("the scene's orders have native records");
+            let issued = LockstepScheduler::new()
+                .issue(
+                    native_frame,
+                    i32::from(record.house_id()),
+                    record.opcode(),
+                    record.payload(),
+                )
+                .unwrap();
+            assert_eq!(issued.record(), &record);
+            assert!(queue.issue(issued));
+            live_commands.push(CommandEnvelope::new(local, execute_tick, order));
+        }
+        queue.transfer_single_player();
+        let houses = raw
+            .session
+            .house_order
+            .iter()
+            .enumerate()
+            .map(|(index, owner)| {
+                CommandDispatchHouse::new(
+                    *owner,
+                    index as i8,
+                    raw.houses[owner].event_dispatch_eligible(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut raw_commands = Vec::new();
+        queue.dispatch_due_offline(
+            native_frame as i32,
+            &houses,
+            |_, _| {},
+            |_, command: &SynchronizedCommand, _| {
+                raw_commands.push(
+                    command
+                        .decode_for_simulation(&raw, execute_tick)
+                        .expect("dispatched record decodes"),
+                )
+            },
+        );
+        assert_eq!(raw_commands, live_commands, "frame {native_frame}");
+
+        let live_checksum = frame(&mut live, &rules, &live_commands);
+        let raw_checksum = frame(&mut raw, &rules, &raw_commands);
+        live_history.record(native_frame, live_checksum);
+        raw_history.record(native_frame, raw_checksum);
+        assert_eq!(
+            live_history.get(native_frame),
+            raw_history.get(native_frame),
+            "instances diverged at native frame {native_frame}"
+        );
+    }
+    assert_eq!(live.state_hash(), raw.state_hash());
+    let moved = &live.substrate.entities.get(actor).unwrap().position;
+    assert_ne!((moved.rx, moved.ry), (10, 10), "the Move order executed");
+    assert!(
+        live.substrate
+            .entities
+            .get(enemy)
+            .is_none_or(|enemy| enemy.health.current < 125),
+        "the scene exchanged fire"
+    );
+
+    // One extra Scenario RNG draw on one instance is a desync the next frame's
+    // stored checksum exposes.
+    let _ = raw.scenario_rng.next_u32();
+    let native_frame = live.session.binary_frame;
+    live_history.record(native_frame, frame(&mut live, &rules, &[]));
+    raw_history.record(native_frame, frame(&mut raw, &rules, &[]));
+    assert_ne!(
+        live_history.get(native_frame),
+        raw_history.get(native_frame)
+    );
+}

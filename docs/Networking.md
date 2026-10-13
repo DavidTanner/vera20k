@@ -86,8 +86,8 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 | Area | State |
 |---|---|
 | `src/net/lockstep.rs` | Ported native command staging and dispatch: send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. Test-only; no production caller. |
-| `src/net/lockstep_sim_convergence_tests.rs` | Two-instance convergence tests over the queue. |
-| `src/sim/multiplayer_checksum.rs` | Retail per-frame sync checksum. Not fed into the lockstep history. |
+| `src/net/lockstep_sim_convergence_tests.rs` | Convergence tests over the queue, including the stage 0 two-instance test: live semantic commands against the same orders as native records (Move, Area Guard, Scatter), with sync checksums compared every frame and an injected desync caught. |
+| `src/sim/multiplayer_checksum.rs` | Stage 0: per-frame sync checksum ported from `0x0064DAB0`, computed in the frame tail before command dispatch only on the multiplayer `Queue_AI` route (`CommandQueueRoute`, which the app writes from `MatchSession` before each frame). `MatchSession` records it into the `MultiplayerChecksumHistory` ring, with the native frame-0 ring reset. Offline frames never compute it. Its parity is bounded by VERA's object registries (open display-layer writers in `display_registry.rs`). |
 | `MatchSession` (`src/app/match_runtime/session.rs`) | Stage 1 done: the live session owner (mode, participant list, local participant, host flag). The launch path writes Campaign or Skirmish and the saved-game restore follows the persisted classification; the modal pump, elapsed clock and command bar read it. No writer produces `Lan` or `Wol` yet. |
 | `src/app/frontend/skirmish_session.rs` | Reads the local multiplayer preferences (handle, game mode) that native refreshes before the Network dialog. |
 | `src/skirmish_launch.rs` | Pre-fill plan already models several human nodes plus AI slots. |
@@ -122,7 +122,7 @@ and 9 move internet play into the app.
 Stages 3, 4 and 6 are shared by LAN and internet play and must not assume loopback:
 the transport binds a LAN-reachable address, and the peer table holds real endpoints.
 
-### Stage 0: determinism groundwork
+### Stage 0: determinism groundwork (in-process guard done; cross-platform open)
 
 Scope: hook `compute_retail_multiplayer_checksum` into `MultiplayerChecksumHistory`
 per frame, and extend the convergence tests to cover the command types the live game
@@ -131,6 +131,18 @@ checksums every frame.
 
 Done when: the two-instance test passes on macOS, Linux and Windows CI with identical
 checksums per frame.
+
+Delivered: the synthetic two-instance test runs in the lib suite without retail assets,
+and the ignored retail headless test (`RA2_DIR`) compares per-frame checksums on a real
+map. Both compare instances inside one process, so they catch in-process nondeterminism
+and command-path divergence, not platform differences.
+
+Residuals:
+- Cross-platform equality is not yet shown. Each CI platform runs the test alone and no
+  per-frame checksum sequence is pinned or compared across platforms.
+- `Queue_AI`'s playback branch (`0x00A8D5F8 & 2`) also computes the checksum
+  (`0x0064731C`); VERA has no production playback route.
+- The ring reset driven by `[0x00A8B8B8]` belongs to the stage 6 timing service.
 
 Why first: every later stage debugs against this. A desync found after the transport
 exists is far harder to attribute.

@@ -21,6 +21,13 @@
 //! (the layering rule); the simulation keeps its own persisted
 //! zero/nonzero classification (`ScenarioSession::game_mode_nonzero`), set
 //! from the same launch descriptor at construction.
+//!
+//! The one GameMode branch inside the simulation frame, the `Queue_AI` route
+//! (`CommandQueueRoute`), is written into the simulation by the app before
+//! every admitted frame from this owner's mode.
+
+use crate::net::lockstep::MultiplayerChecksumHistory;
+use crate::sim::world::CommandQueueRoute;
 
 /// Front-end session mode, as the modal pump reads it to decide whether the
 /// simulation advances behind an open modal dialog. Mirrors gamemd's
@@ -69,6 +76,19 @@ impl SessionMode {
     pub(crate) fn is_network(self) -> bool {
         matches!(self, SessionMode::Lan | SessionMode::Wol)
     }
+
+    /// The `Queue_AI @ 0x00647260` body this mode selects (jump table
+    /// `0x006475D8`): GameMode 1..=4 run `Queue_AI_Multiplayer`, 0 and 5 the
+    /// single-player body. `Other` stands for modes VERA never writes; the
+    /// legacy modem/serial values 1 and 2 would take the multiplayer body,
+    /// but no VERA writer produces them.
+    pub(crate) fn command_queue_route(self) -> CommandQueueRoute {
+        if self.is_network() {
+            CommandQueueRoute::Multiplayer
+        } else {
+            CommandQueueRoute::SinglePlayer
+        }
+    }
 }
 
 /// One human participant of the session: native `NodeNameType` as far as
@@ -83,7 +103,8 @@ pub(crate) struct SessionPlayer {
 }
 
 /// The live session: mode, human participant table, the local participant's
-/// index and whether this client owns the match setup (seed and player list).
+/// index, whether this client owns the match setup (seed and player list),
+/// and the retail sync-checksum history the multiplayer queue fills.
 ///
 /// Process start matches native: `GameMode` 0 with an empty participant list
 /// (`0x0077B532`). Fresh launches and saved-game restores are the only
@@ -95,6 +116,11 @@ pub(crate) struct MatchSession {
     players: Vec<SessionPlayer>,
     local_player: usize,
     host: bool,
+    /// gamemd's 256-entry checksum ring at `0x00B04474`, written once per
+    /// multiplayer frame by `Queue_AI_Multiplayer` (`0x006476A5`) and read by
+    /// the FRAMEINFO comparison. Process-lifetime like the native global: no
+    /// launch or load clears it; only the multiplayer frame-0 reset does.
+    checksum_history: MultiplayerChecksumHistory,
 }
 
 impl Default for MatchSession {
@@ -104,6 +130,7 @@ impl Default for MatchSession {
             players: Vec::new(),
             local_player: 0,
             host: false,
+            checksum_history: MultiplayerChecksumHistory::new(),
         }
     }
 }
@@ -167,6 +194,25 @@ impl MatchSession {
     /// The local participant's handle; `None` for launches without one.
     pub(crate) fn local_player_name(&self) -> Option<&str> {
         self.local_player().map(|player| player.name.as_str())
+    }
+
+    /// Store one multiplayer frame's checksum at `history[frame & 0xFF]`.
+    ///
+    /// On frame 0 `Queue_AI_Multiplayer` stores the value (`0x006476A5`), then
+    /// takes `0x006476B1 -> 0x00647825` and zeroes all 256 slots
+    /// (`0x00647879`), so frame 0's own slot ends at 0. The same reset also
+    /// runs while `[0x00A8B8B8]` is set; that flag belongs to the network
+    /// timing service of a later stage and VERA has no writer for it yet.
+    pub(crate) fn record_frame_checksum(&mut self, frame: u32, checksum: u32) {
+        self.checksum_history.record(frame, checksum);
+        if frame == 0 {
+            self.checksum_history = MultiplayerChecksumHistory::new();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn checksum_history(&self) -> &MultiplayerChecksumHistory {
+        &self.checksum_history
     }
 
     /// Whether this client owns the match setup: it reads the seed and fixes
@@ -233,6 +279,36 @@ mod tests {
         session.restore_from_save(false, None);
         assert_eq!(session.mode(), SessionMode::Campaign);
         assert_eq!(session.local_player_name(), None);
+    }
+
+    #[test]
+    fn network_modes_route_queue_ai_to_the_multiplayer_body() {
+        use crate::sim::world::CommandQueueRoute;
+        for (mode, route) in [
+            (SessionMode::Campaign, CommandQueueRoute::SinglePlayer),
+            (SessionMode::Skirmish, CommandQueueRoute::SinglePlayer),
+            (SessionMode::Lan, CommandQueueRoute::Multiplayer),
+            (SessionMode::Wol, CommandQueueRoute::Multiplayer),
+            (SessionMode::Other, CommandQueueRoute::SinglePlayer),
+        ] {
+            assert_eq!(mode.command_queue_route(), route, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn frame_zero_resets_the_checksum_ring_and_launches_do_not() {
+        let mut session = MatchSession::default();
+        session.record_frame_checksum(0x1_05, 0xdead_beef);
+        assert_eq!(session.checksum_history().get(0x05), 0xdead_beef);
+        assert_eq!(session.checksum_history().get(0x2_05), 0xdead_beef);
+        session.begin_offline(SessionMode::Skirmish, Some("Commander".to_owned()));
+        assert_eq!(session.checksum_history().get(0x05), 0xdead_beef);
+
+        session.record_frame_checksum(0, 0x1234_5678);
+        assert_eq!(session.checksum_history().get(0), 0);
+        assert_eq!(session.checksum_history().get(0x05), 0);
+        session.record_frame_checksum(1, 0x1234_5678);
+        assert_eq!(session.checksum_history().get(1), 0x1234_5678);
     }
 
     #[test]
