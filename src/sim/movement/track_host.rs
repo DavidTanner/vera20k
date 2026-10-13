@@ -726,28 +726,31 @@ impl Simulation {
             &self.interner,
         );
         observe(self, id, TrackWorldEvent::SetCoords);
-        if crossing && !terminal {
-            // Crossing uses actual current cell; this predicate instead uses
-            // the previous transformed cached point (or current at cursor0).
-            let grid = self.path_grid.as_deref();
-            if let Some(entity) = self.substrate.entities.get_mut(id)
-                && let Some((source, destination)) = grid.and_then(|grid| {
-                    grid.cell(previous_track_cell.0, previous_track_cell.1)
-                        .zip(grid.cell(selected_cell.0, selected_cell.1))
-                })
-            {
-                use super::movement_bridge::{BridgeStateUpdate, BridgeTransition};
-                let update =
-                    match super::movement_bridge::compute_bridge_transition(source, destination) {
-                        BridgeTransition::Enter => BridgeStateUpdate::Set,
-                        BridgeTransition::Exit => BridgeStateUpdate::Clear,
-                        BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
-                    };
+        let grid = self.path_grid.as_deref();
+        if crossing && let Some(entity) = self.substrate.entities.get_mut(id) {
+            if !terminal {
+                // Crossing uses actual current cell; this predicate instead
+                // uses the previous transformed cached point (or current at
+                // cursor0). The resolver also stores the entered cell's level.
+                let update = super::movement_bridge::resolve_cell_transition_bridge_state(
+                    &mut entity.position,
+                    grid,
+                    previous_track_cell,
+                    selected_cell,
+                    entity.on_bridge,
+                );
                 super::movement_bridge::apply_bridge_layer_state(
                     &mut entity.locomotor,
                     &mut entity.on_bridge,
                     update,
                 );
+            } else if let Some(entered) =
+                grid.and_then(|grid| grid.cell(selected_cell.0, selected_cell.1))
+            {
+                // The terminal point skips the bridge predicate but still
+                // enters a new cell.
+                entity.position.z =
+                    super::movement_bridge::stored_level(entered.ground_level, entity.on_bridge);
             }
         }
         if terminal && let Some(entity) = self.substrate.entities.get_mut(id) {

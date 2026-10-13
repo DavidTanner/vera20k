@@ -546,6 +546,32 @@ fn moving_ramp_snapshot_continues_residual_bridge_crossing_through_paid_points()
     }
 }
 
+/// A Drive or Ship crossing into a higher cell stores that cell's level, as a
+/// Walk boundary does: sight, radar and crew placement read it. Before, the
+/// track kept the level it was spawned at, so a vehicle that climbed onto a
+/// plateau still saw from the valley floor.
+#[test]
+fn drive_ship_crossing_stores_the_entered_cell_level() {
+    for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
+        let mut terrain = terrain();
+        terrain.cell_mut(3, 2).unwrap().level = 5;
+        let grid = PathGrid::from_resolved_terrain(&terrain);
+        let mut sim = Simulation::with_seed(71);
+        let mut entity = mover(&mut sim, kind);
+        entity.position.z = 0;
+        entity.position.sub_y = SimFixed::from_num(7);
+        let target = entity.movement_target.as_mut().unwrap();
+        target.speed = SimFixed::from_num(106);
+        seed_track(&mut entity, kind, 11, DriveCoord::cell(3, 2, 731));
+        insert(&mut sim, entity);
+        tick(&mut sim, &terrain, &grid, 0);
+        let entity = sim.substrate.entities.get(1).unwrap();
+        assert_eq!((entity.position.rx, entity.position.ry), (3, 2), "{kind:?}");
+        assert!(!entity.on_bridge, "{kind:?}");
+        assert_eq!(entity.position.z, 5, "{kind:?}");
+    }
+}
+
 #[test]
 fn walking_bridge_entry_commits_new_surface_and_object_list_plane() {
     let mut terrain = terrain();

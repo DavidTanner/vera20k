@@ -188,16 +188,23 @@ pub(super) fn resolve_cell_transition_bridge_state(
     // and therefore no value that can be absent, so this must not consult the A*
     // layer or any cell-side walkability permission — both are VERA inventions
     // that silently substituted ground level for the deck.
-    let z = (dst_cell.signed_level()
-        + if on_bridge_after {
-            crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
-        } else {
-            0
-        }) as u8;
-    position.z = z;
+    position.z = stored_level(dst_cell.ground_level, on_bridge_after);
     // Raw Object Z has a separate setter cadence. Paid Drive/Ship points and
     // Walk commits refresh it; a residual crossing retains it (0x4B253F).
     update
+}
+
+/// The coarse level VERA stores in [`Position::z`] for an object standing in
+/// a cell of terrain `level` (the cell's raw signed byte): that level, plus
+/// the bridge deck when OnBridge — `ObjectClass::SetHeight @ 0x005F5FA0`'s
+/// Z at height 0, in whole levels. Every mover that changes cell keeps it,
+/// since sight, radar, selection depth and crew placement read it.
+pub(crate) fn stored_level(level: u8, on_bridge: bool) -> u8 {
+    level.wrapping_add(if on_bridge {
+        crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8
+    } else {
+        0
+    })
 }
 
 /// Diagnostic wrapper for a single boundary crossing. It computes the same

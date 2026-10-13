@@ -544,7 +544,8 @@ impl Simulation {
         let terrain = self.resolved_terrain.as_ref();
         if let (Some(terrain), Some(entity)) = (terrain, self.substrate.entities.get(id)) {
             let cells = NativeCellQuery::canonical(terrain);
-            let structural = cells.flags(cells.lookup_world(x, y)) & 0x100 != 0;
+            let entered = cells.lookup_world(x, y);
+            let structural = cells.flags(entered) & 0x100 != 0;
             let height = super::super::air_movement::current_fly_height(entity, Some(terrain));
             let on_bridge =
                 if !entity.on_bridge && structural && height >= BRIDGE_DECK_HEIGHT_LEPTONS {
@@ -554,8 +555,10 @@ impl Simulation {
                 } else {
                     entity.on_bridge
                 };
+            let level = cells.ground_fields(entered).0;
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.on_bridge = on_bridge;
+                entity.position.z = super::super::movement_bridge::stored_level(level, on_bridge);
             }
         }
         self.foot_mark_put(id, Some(rules), registry, effects);

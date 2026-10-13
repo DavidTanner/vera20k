@@ -1084,6 +1084,10 @@ impl crate::sim::world::Simulation {
                         (destination.y / 256) as i16,
                     ));
                     entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
+                    entity.position.z = super::movement_bridge::stored_level(
+                        terrain.native_cell_ground_fields(cell).0,
+                        entity.on_bridge,
+                    );
                 }
                 super::ground_pose::set_height(
                     &mut entity.position,
