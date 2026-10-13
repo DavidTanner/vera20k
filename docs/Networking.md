@@ -8,8 +8,15 @@ Status: design. Nothing below is implemented unless the "Current state" section 
 
 ## Goal and non-goals
 
-Goal: several VERA20k clients play one deterministic lockstep match over UDP, first
-through the CnCNet client and its tunnels, later from VERA20k's own lobby.
+Goals:
+
+- Several VERA20k clients play one deterministic lockstep match over UDP.
+- On a local network, clients find each other from inside the app and play without
+  any external program, internet service or configuration file. This is what gamemd's
+  Network button does over IPX, and it is the native experience VERA20k reproduces
+  over UDP.
+- Over the internet, play first through the CnCNet client and its tunnels, later
+  from VERA20k's own lobby.
 
 Non-goals:
 
@@ -95,11 +102,12 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 |---|---|
 | Command staging, frame stamps, dispatch order, checksum history | `net::lockstep` (exists) |
 | Wire framing, peer table, send and receive, tunnel header | `net::protocol` (new) |
-| Tunnel discovery: master list, ping, selection | `net::tunnel` (new, stage 7) |
+| LAN discovery: announce, listen, game list | `net::discovery` (new, stage 7) |
+| Tunnel discovery: master list, ping, selection | `net::tunnel` (new, stage 8) |
 | Session mode, player list, local player id, host flag | one session owner in `app/match_runtime` (stage 1 names it) |
 | `spawn.ini` parsing into a launch descriptor | `app/frontend` launch path, reusing `skirmish_launch` types |
 | Per-frame network service in the game loop | `app/match_runtime/sim_tick` (stage 6) |
-| Lobby UI | `ui/` on top of the skirmish shell (stage 8) |
+| Lobby UI | `ui/` on top of the skirmish shell (stages 7 and 9) |
 
 Rules that apply throughout: one owner per state, no competing command paths, every
 RNG draw and timer in native frame order, presentation never reads the socket.
@@ -108,7 +116,11 @@ RNG draw and timer in native frame order, presentation never reads the socket.
 
 Each stage is one PR. A stage is done when its "Done when" holds and the usual lib
 suite and Clippy pass. Stages 1 to 6 produce the initial game port: a VERA20k that the
-CnCNet client can launch and play. Stages 7 and 8 move the lobby into the app.
+CnCNet client can launch and play. Stage 7 adds native LAN play from the app. Stages 8
+and 9 move internet play into the app.
+
+Stages 3, 4 and 6 are shared by LAN and internet play and must not assume loopback:
+the transport binds a LAN-reachable address, and the peer table holds real endpoints.
 
 ### Stage 0: determinism groundwork
 
@@ -147,10 +159,11 @@ behavior the game must already obey before a second client exists.
 
 ### Stage 3: UDP transport and network lockstep
 
-Scope: `net::protocol` with a `Transport` abstraction over a UDP socket. Wire format:
-a small versioned little-endian header (protocol version, game id, player id, packet
-kind) followed by lockstep command records. Peer table keyed by player id with an
-address per peer. Enable `transfer_network` and `dispatch_due_network`, exchange
+Scope: `net::protocol` with a `Transport` abstraction over a UDP socket bound to a
+configurable address, loopback for the CnCNet bridge and the LAN interface for native
+play. Wire format: a small versioned little-endian header (protocol version, game id,
+player id, packet kind) followed by lockstep command records. Peer table keyed by
+player id with an address per peer. Enable `transfer_network` and `dispatch_due_network`, exchange
 FrameInfo, compare checksums, raise a desync event.
 
 Done when: two VERA20k instances on one machine, started from a test harness or a
@@ -193,11 +206,30 @@ continue, and the match reports its result.
 
 This stage completes the initial game port.
 
-### Stage 7: built-in tunnel client
+### Stage 7: LAN discovery and native LAN play
+
+Scope: `net::discovery` announces a hosted game by UDP broadcast on a fixed port
+(game id, protocol version, host name, map, mode, player count, game port) and lists
+announcements heard on that port, with expiry. Host and join screens built on the
+skirmish shell: game list, player list, sides, colors, ready state, chat, and map and
+options broadcast from the host. Join negotiates the player list and seed, then
+stage 4 bootstraps and stage 3 carries the match over the LAN endpoints. The
+main-menu Network route replaces `bounce_network_to_main_menu` here, taking the role
+of gamemd's IPX game list and lobby (state 0x10 onward from `0x0052DD75`). Session
+mode is `Lan`.
+
+Done when: two machines on one LAN host, see, join and play a full match from the
+app with no CnCNet client, tunnel, internet access or configuration file.
+
+Evidence: side-by-side play on two machines, plus a two-process discovery test on one
+host.
+
+### Stage 8: built-in tunnel client
 
 Scope: `net::tunnel` fetches the master list, parses the twelve-field lines, pings
 tunnels with the 50-byte probe and sends game traffic with the 8-byte v3 header. Peer
-addresses in the stage 3 peer table become tunnel ids.
+addresses in the stage 3 peer table become tunnel ids. The stage 7 lobby gains a
+direct-IP join for internet play without a lobby server.
 
 Done when: two VERA20k instances play through a public or self-hosted tunnel with no
 CnCNet client running.
@@ -205,20 +237,19 @@ CnCNet client running.
 Before using public tunnels under a new game id, ask the CnCNet team. The tunnel
 server is open source and self-hosting is the fallback.
 
-### Stage 8: in-app lobby
+### Stage 9: in-app internet lobby
 
-Scope: host and join screens built on the skirmish shell: player list, sides, colors,
-ready state, chat, map and options broadcast. LAN discovery by UDP broadcast first,
-then direct IP, then a CnCNet IRC lobby speaking the client's dialect under a VERA20k
-game identifier so VERA20k games never appear joinable to gamemd players. The
-main-menu Network route replaces `bounce_network_to_main_menu` here.
+Scope: a CnCNet IRC lobby speaking the client's dialect under a VERA20k game
+identifier, so VERA20k games never appear joinable to gamemd players. It reuses the
+stage 7 lobby screens with the game list fed from IRC instead of broadcast.
 
 Done when: a full internet match is set up and played without any external program.
 
 ## Validation per stage
 
 - Determinism: stage 0 checksum test runs in every later stage's suite.
-- Transport: headless two-process tests in `src/net/`, never against retail assets in the lib suite.
+- Transport and discovery: headless two-process tests in `src/net/`, never against retail assets in the lib suite.
+- LAN: side-by-side play on two machines before stage 7 merges.
 - Gameplay: side-by-side play against retail for anything the lockstep semantics change.
 - Each PR states which evidence level each claim reached, per the project contract.
 
