@@ -88,7 +88,7 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 | `src/net/lockstep.rs` | Ported native command staging and dispatch: send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. Test-only; no production caller. |
 | `src/net/lockstep_sim_convergence_tests.rs` | Two-instance convergence tests over the queue. |
 | `src/sim/multiplayer_checksum.rs` | Retail per-frame sync checksum. Not fed into the lockstep history. |
-| `SessionMode` (`src/app/match_runtime/sim_tick.rs`) | Campaign / Lan / Wol / Skirmish, with the native modal-pump rule. `current_session_mode` is hard-coded to `Skirmish`. |
+| `MatchSession` (`src/app/match_runtime/session.rs`) | Stage 1 done: the live session owner (mode, participant list, local participant, host flag). The launch path writes Campaign or Skirmish and the saved-game restore follows the persisted classification; the modal pump, elapsed clock and command bar read it. No writer produces `Lan` or `Wol` yet. |
 | `src/app/frontend/skirmish_session.rs` | Reads the local multiplayer preferences (handle, game mode) that native refreshes before the Network dialog. |
 | `src/skirmish_launch.rs` | Pre-fill plan already models several human nodes plus AI slots. |
 | Main menu Network button | `bounce_network_to_main_menu` in `src/app/shell_main_menu.rs` reproduces native's silent return when the IPX socket fails. |
@@ -104,7 +104,7 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 | Wire framing, peer table, send and receive, tunnel header | `net::protocol` (new) |
 | LAN discovery: announce, listen, game list | `net::discovery` (new, stage 7) |
 | Tunnel discovery: master list, ping, selection | `net::tunnel` (new, stage 8) |
-| Session mode, player list, local player id, host flag | one session owner in `app/match_runtime` (stage 1 names it) |
+| Session mode, player list, local player id, host flag | `app::match_runtime::session::MatchSession` (exists) |
 | `spawn.ini` parsing into a launch descriptor | `app/frontend` launch path, reusing `skirmish_launch` types |
 | Per-frame network service in the game loop | `app/match_runtime/sim_tick` (stage 6) |
 | Lobby UI | `ui/` on top of the skirmish shell (stages 7 and 9) |
@@ -135,7 +135,7 @@ checksums per frame.
 Why first: every later stage debugs against this. A desync found after the transport
 exists is far harder to attribute.
 
-### Stage 1: live session mode
+### Stage 1: live session mode (done)
 
 Scope: replace the hard-coded `current_session_mode` with a value the launch path
 writes. Introduce the session owner holding mode, player list, local player index and
